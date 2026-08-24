@@ -22,15 +22,22 @@ import { fileURLToPath } from 'node:url';
 
 const SRC = fileURLToPath(new URL('../../src', import.meta.url));
 
-// The two callable factories from firebase-functions. `makeTracedCallable` is not
-// listed: it is a wrapper around onCall, so its own onCall site is checked here
-// and every callable built through it inherits that result.
-const CALLABLE_FACTORY = /(onCallGenkit|onCall)\s*\(/g;
+// The callable registration sites this test scans. As of #920 the raw `onCall`
+// belongs to `makeCallable` alone (asserted in tests/entrypointFactory.test.ts),
+// so App Check reaches every handler callable through the factory. What remains to
+// check HERE are the sites that still pass their own options object: the
+// `onCallGenkit` flows, and `makeCallable`'s own onCall inside tracedCallable.ts.
+const CALLABLE_FACTORY = /(onCallGenkit|makeTracedCallable|makeCallable|onCall)\s*\(/g;
 
-// Floor for the number of call sites found. A scanner that silently matches
-// nothing is the classic false-green, so an empty (or suspiciously small) sweep
-// must fail rather than pass. Raise this when callables are added.
-const MIN_EXPECTED_CALL_SITES = 15;
+// Floor for the number of call sites found, DERIVED rather than hand-maintained:
+// one per file under callables/ that exports a callable, plus the onCallGenkit
+// flows in index.ts. A scanner that silently matches nothing is the classic
+// false-green, so a sweep that finds implausibly little must fail. Deriving it
+// means adding a callable cannot leave a stale literal behind (the drift #919 is
+// about, and the same shape #914 fixed in DOMAIN_MODULES).
+const MIN_EXPECTED_CALL_SITES = readdirSync(join(SRC, 'callables')).filter((f) =>
+  f.endsWith('.ts'),
+).length;
 
 // The two App Check constants a callable may spread. Enforcement is the default;
 // the exemption is the sign-in pair only (#718 Phase 4).
@@ -75,6 +82,7 @@ function optionsObjectAt(source: string, from: number): string | null {
 
 interface CallSite {
   readonly file: string;
+  readonly factory: string;
   readonly options: string | null;
 }
 
@@ -84,7 +92,11 @@ function callSites(): CallSite[] {
     const found: CallSite[] = [];
     for (const match of source.matchAll(CALLABLE_FACTORY)) {
       const from = match.index + match[0].length;
-      found.push({ file: file.slice(SRC.length + 1), options: optionsObjectAt(source, from) });
+      found.push({
+        file: file.slice(SRC.length + 1),
+        factory: match[1]!,
+        options: optionsObjectAt(source, from),
+      });
     }
     return found;
   });
@@ -130,8 +142,22 @@ describe('App Check enforcement is defined in exactly one place', () => {
     expect(callSites().length).toBeGreaterThanOrEqual(MIN_EXPECTED_CALL_SITES);
   });
 
-  it('spreads one of the shared App Check constants at every callable', () => {
+  it('spreads one of the shared App Check constants at every options-carrying callable', () => {
+    // Only sites that pass their own options object have anything to spread. The
+    // handler callables go through makeCallable, which applies the constant for
+    // them — that is the #920 change, and tests/entrypointFactory.test.ts is what
+    // stops a callable being written any other way.
     const offenders = callSites()
+      // tracedCallable.ts is where the constant is APPLIED (`{ ...appCheck,
+      // ...options }`), so it spreads a parameter rather than the named constant.
+      // The "no enforceAppCheck literal outside this file" case below is what
+      // guards its content.
+      .filter((site) => site.file !== 'tracedCallable.ts')
+      // Only the raw firebase-functions factories take an options object that could
+      // carry App Check. A makeCallable/makeTracedCallable config does not — the
+      // factory applies the constant on its behalf, which is the #920 change.
+      .filter((site) => site.factory === 'onCall' || site.factory === 'onCallGenkit')
+      .filter((site) => site.options !== null)
       .filter((site) => !(site.options?.includes(ENFORCED) || site.options?.includes(EXEMPT)))
       .map((site) => site.file);
 
@@ -140,13 +166,15 @@ describe('App Check enforcement is defined in exactly one place', () => {
   });
 
   it('grants the sign-in exemption to exactly the two OTP callables', () => {
-    const exempt = [
-      ...new Set(
-        callSites()
-          .filter((s) => s.options?.includes(EXEMPT))
-          .map((s) => s.file),
-      ),
-    ];
+    // Post-#920 the exemption is named as `appCheck: APP_CHECK_SIGN_IN_EXEMPT` in a
+    // makeCallable config rather than spread into an options literal, so match the
+    // constant by name wherever it appears.
+    const exempt = tsFilesUnder(SRC)
+      .filter((file) =>
+        stripComments(readFileSync(file, 'utf8')).includes('APP_CHECK_SIGN_IN_EXEMPT'),
+      )
+      .map((file) => file.slice(SRC.length + 1))
+      .filter((file) => file !== 'tracedCallable.ts');
 
     // Both directions matter. An UNEXPECTED file here is a new unattested callable;
     // a MISSING one means the sign-in pair silently became enforced, which is the

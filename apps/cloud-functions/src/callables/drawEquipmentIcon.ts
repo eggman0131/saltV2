@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import {
@@ -8,7 +8,7 @@ import {
   DrawEquipmentIconInputSchema,
   EQUIPMENT_ICONS_COLLECTION,
 } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { generateEquipmentIconFlow } from '../flows/generateEquipmentIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
@@ -103,19 +103,15 @@ async function uploadEquipmentIcon(itemId: string, webp: Buffer): Promise<string
 // instance is OOM-killed, losing every in-flight icon. concurrency:1 serialises
 // icon work per instance (Cloud Run scales out instead); 1 GiB gives the single
 // decode room. 300 s covers the flow's own 60 s + 1 retry plus the imaging.
-export const drawEquipmentIcon = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const drawEquipmentIcon = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 300,
     memory: '1GiB',
     concurrency: 1,
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = DrawEquipmentIconInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
@@ -124,14 +120,9 @@ export const drawEquipmentIcon = onCall(
     const ref = getFirestore().collection(EQUIPMENT_ICONS_COLLECTION).doc(input.itemId);
 
     if (input.action === 'hide') {
-      try {
-        // Partial update: the sentinel and nothing else. The brief survives, so
-        // un-hiding is just pressing Draw again — there is nothing to restore.
-        await ref.update({ thumbnail: ICON_HIDDEN });
-      } catch (err) {
-        await reportFlowError(err);
-        throw err;
-      }
+      // Partial update: the sentinel and nothing else. The brief survives, so
+      // un-hiding is just pressing Draw again — there is nothing to restore.
+      await ref.update({ thumbnail: ICON_HIDDEN });
       return { ok: true } as const;
     }
 
@@ -156,51 +147,43 @@ export const drawEquipmentIcon = onCall(
       throw new HttpsError('failed-precondition', 'No description to draw from yet.');
     }
 
-    try {
-      // No outer withAiTimeout: the flow owns its budget (60 s + 1 retry). See
-      // the note in the brief trigger — nesting two budgets is how the canon path
-      // ended up with an outer race that can pre-empt the inner one.
-      const { imageBase64 } = await generateEquipmentIconFlow({
-        name: briefSourceName,
-        brief: input.brief,
-      });
-      const webp = await normalizeIconFraming(
-        await removeFlatBackground(Buffer.from(imageBase64, 'base64')),
-        // The canon value, tuned for the 40px row tile.
-        { contentMax: 108 },
-      );
-      const url = await uploadEquipmentIcon(input.itemId, webp);
+    // No outer withAiTimeout: the flow owns its budget (60 s + 1 retry). See
+    // the note in the brief trigger — nesting two budgets is how the canon path
+    // ended up with an outer race that can pre-empt the inner one.
+    const { imageBase64 } = await generateEquipmentIconFlow({
+      name: briefSourceName,
+      brief: input.brief,
+    });
+    const webp = await normalizeIconFraming(
+      await removeFlatBackground(Buffer.from(imageBase64, 'base64')),
+      // The canon value, tuned for the 40px row tile.
+      { contentMax: 108 },
+    );
+    const url = await uploadEquipmentIcon(input.itemId, webp);
 
-      // The write-back, in a transaction for ONE reason: a rename can land while
-      // the image is generating (~10 s), and the brief trigger will have
-      // re-authored `subjectBrief`/`briefSourceName` under the new name by the
-      // time we get here. Writing our stale brief over that fresh one would
-      // strand a description that no longer matches its item AND that the trigger
-      // will never re-author, because its guard already reads as satisfied.
-      //
-      // So: if nothing moved, stamp everything (including the user's edited brief,
-      // which is the whole point of the review gate). If the name moved, keep the
-      // picture — it is a real picture of a real appliance and worth having — but
-      // leave the newer brief and its name alone. `sourceName` is deliberately not
-      // stamped in that arm, so `equipmentIconAwaitingApproval` stays true and the
-      // user is asked to read the new description, which is exactly right.
-      await getFirestore().runTransaction(async (tx) => {
-        const fresh = await tx.get(ref);
-        if (!fresh.exists) return; // deleted mid-draw — nothing to stamp
-        const stamp = { thumbnail: url, iconRequestedAt: Date.now() };
-        if (fresh.get('briefSourceName') === briefSourceName) {
-          tx.update(ref, { ...stamp, subjectBrief: input.brief, sourceName: briefSourceName });
-        } else {
-          tx.update(ref, stamp);
-        }
-      });
-    } catch (err) {
-      // An unexpected AI/sharp/Storage/Firestore failure (the auth, validation and
-      // precondition guards above threw HttpsError before reaching here, so a
-      // signed-out caller or a bad payload is never reported as a defect).
-      await reportFlowError(err);
-      throw err;
-    }
+    // The write-back, in a transaction for ONE reason: a rename can land while
+    // the image is generating (~10 s), and the brief trigger will have
+    // re-authored `subjectBrief`/`briefSourceName` under the new name by the
+    // time we get here. Writing our stale brief over that fresh one would
+    // strand a description that no longer matches its item AND that the trigger
+    // will never re-author, because its guard already reads as satisfied.
+    //
+    // So: if nothing moved, stamp everything (including the user's edited brief,
+    // which is the whole point of the review gate). If the name moved, keep the
+    // picture — it is a real picture of a real appliance and worth having — but
+    // leave the newer brief and its name alone. `sourceName` is deliberately not
+    // stamped in that arm, so `equipmentIconAwaitingApproval` stays true and the
+    // user is asked to read the new description, which is exactly right.
+    await getFirestore().runTransaction(async (tx) => {
+      const fresh = await tx.get(ref);
+      if (!fresh.exists) return; // deleted mid-draw — nothing to stamp
+      const stamp = { thumbnail: url, iconRequestedAt: Date.now() };
+      if (fresh.get('briefSourceName') === briefSourceName) {
+        tx.update(ref, { ...stamp, subjectBrief: input.brief, sourceName: briefSourceName });
+      } else {
+        tx.update(ref, stamp);
+      }
+    });
     return { ok: true } as const;
   },
-);
+});

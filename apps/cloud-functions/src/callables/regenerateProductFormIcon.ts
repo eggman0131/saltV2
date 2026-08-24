@@ -1,7 +1,7 @@
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RegenerateProductFormIconInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { requestIconRegeneration } from './requestIconRegeneration.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
@@ -20,17 +20,13 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // index.ts's setGlobalOptions call. App Check rides in from the shared
 // APP_CHECK_ENFORCEMENT constant (#718) — this fires AI image generation, so it
 // belongs to the same cost surface App Check protects and must flip with it.
-export const regenerateProductFormIcon = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const regenerateProductFormIcon = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = RegenerateProductFormIconInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
@@ -39,4 +35,4 @@ export const regenerateProductFormIcon = onCall(
     await requestIconRegeneration('productForms', formId, hint);
     return { ok: true } as const;
   },
-);
+});

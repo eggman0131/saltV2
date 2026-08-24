@@ -6,8 +6,9 @@ import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
 import { BatchSchema, PushSubscriptionSchema, type BatchStageDoc } from '@salt/domain/schemas';
 import { remindableStages } from '@salt/domain';
-import { flushServerObservability, isServerFeatureEnabled } from '@salt/observability/server';
+import { isServerFeatureEnabled } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 import {
   BATCH_STAGE_REGION,
   CLOUD_TASKS_HORIZON_DAYS,
@@ -133,7 +134,7 @@ export const onBatchWritten = onDocumentWritten(
     memory: '512MiB',
     secrets: [posthogApiKey],
   },
-  async (event) => {
+  withFirestoreTrigger<{ batchId: string }>(async (event) => {
     const before = event.data?.before;
     const after = event.data?.after;
     const batchId = event.params.batchId;
@@ -227,34 +228,30 @@ export const onBatchWritten = onDocumentWritten(
     // no flag evaluation.
     const notifyUids = await resolveNotifyUids(batchId);
 
-    try {
-      // Region-qualified, never the bare name — see BATCH_STAGE_REGION for the
-      // us-central1 fallback this avoids and the outage it caused once already.
-      const queue = getFunctions().taskQueue<BatchStageTaskPayload>(
-        `locations/${BATCH_STAGE_REGION}/functions/onBatchStageDispatch`,
-      );
+    // Region-qualified, never the bare name — see BATCH_STAGE_REGION for the
+    // us-central1 fallback this avoids and the outage it caused once already.
+    const queue = getFunctions().taskQueue<BatchStageTaskPayload>(
+      `locations/${BATCH_STAGE_REGION}/functions/onBatchStageDispatch`,
+    );
 
-      for (const stage of due) {
-        try {
-          await queue.enqueue(
-            { batchId, stageId: stage.id, plannedStartAt: stage.plannedStartAt, notifyUids },
-            { scheduleTime: new Date(stage.plannedStartAt) },
-          );
-        } catch (err) {
-          // One failed enqueue must not fail the whole trigger (and re-fire it,
-          // re-enqueuing the stages that DID succeed → duplicates). Report and move
-          // on; the dispatch ledger de-dupes any eventual double anyway.
-          logger.error('onBatchWritten: enqueue failed', {
-            batchId,
-            stageId: stage.id,
-            plannedStartAt: stage.plannedStartAt,
-            err,
-          });
-          reportServerError(err);
-        }
+    for (const stage of due) {
+      try {
+        await queue.enqueue(
+          { batchId, stageId: stage.id, plannedStartAt: stage.plannedStartAt, notifyUids },
+          { scheduleTime: new Date(stage.plannedStartAt) },
+        );
+      } catch (err) {
+        // One failed enqueue must not fail the whole trigger (and re-fire it,
+        // re-enqueuing the stages that DID succeed → duplicates). Report and move
+        // on; the dispatch ledger de-dupes any eventual double anyway.
+        logger.error('onBatchWritten: enqueue failed', {
+          batchId,
+          stageId: stage.id,
+          plannedStartAt: stage.plannedStartAt,
+          err,
+        });
+        reportServerError(err);
       }
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

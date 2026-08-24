@@ -1,5 +1,5 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import {
   CanonItemSchema,
@@ -16,7 +16,7 @@ import {
   type GetImagePromptResult,
   type ImagePromptFamily,
 } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CANON_ICON_SEED_FILE } from '../flows/assets/canonIconSeed.js';
 import { buildIconPrompt } from '../flows/generateCanonIcon.js';
@@ -170,32 +170,17 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
 // Genkit + OTel + posthog-node. 512MiB is the floor, not an override: this
 // callable reads a document and joins strings, and never touches sharp, so it
 // needs none of the 1GiB headroom the imaging paths pin.
-export const getImagePrompt = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const getImagePrompt = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = GetImagePromptInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
-    try {
-      return await buildFor(parsed.data.family, parsed.data.id);
-    } catch (err) {
-      // A missing document is an expected outcome and already an HttpsError —
-      // rethrow it untouched rather than reporting a user asking about something
-      // that has just been deleted. Anything else is an unexpected Firestore read
-      // failure (StorageError-class): report additively, then rethrow so the
-      // callable's error path is unchanged.
-      if (err instanceof HttpsError) throw err;
-      await reportFlowError(err);
-      throw err;
-    }
+    return await buildFor(parsed.data.family, parsed.data.id);
   },
-);
+});

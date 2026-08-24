@@ -9,7 +9,7 @@ import {
   runWithSuppliedTraceContext,
   flushServerObservability,
 } from '@salt/observability/server';
-import { reportFlowError } from './observability/reportServerError.js';
+import { reportFlowError, reportServerError } from './observability/reportServerError.js';
 
 // ─── The traced-callable factory (issue #415) ────────────────────────────────
 //
@@ -136,15 +136,14 @@ const defaultOnError: CallableErrorHandler = async (err) => {
 // A malformed/absent traceparent must NOT fail the call: it is optional and
 // best-effort, so we just skip propagation. Only a malformed WIRE ENVELOPE (bad
 // domain input) is rejected — with HttpsError('invalid-argument') at the caller.
-function runFlowWithTraceContext<T>(
-  domainInput: unknown,
+function runWithCallableTraceContext<T>(
   headers: import('node:http').IncomingHttpHeaders | undefined,
   traceparent: string | undefined,
-  flow: (input: never) => T,
+  run: () => T,
 ): T {
   // Local dev: suppress propagation so flows stay root-listed in the Dev UI.
   if (process.env['GENKIT_TELEMETRY_SERVER']) {
-    return flow(domainInput as never);
+    return run();
   }
   // Production. The browser-supplied `traceparent` field WINS: it is the only
   // channel that can carry the browser's trace id (the Firebase callable SDK
@@ -154,9 +153,9 @@ function runFlowWithTraceContext<T>(
   // and could never unify with it — so it is the fallback only when no non-empty
   // field is present. Both helpers degrade safely to a plain call (Rule 10).
   if (traceparent) {
-    return runWithSuppliedTraceContext(traceparent, () => flow(domainInput as never));
+    return runWithSuppliedTraceContext(traceparent, run);
   }
-  return runWithExtractedTraceContext(headers ?? {}, () => flow(domainInput as never));
+  return runWithExtractedTraceContext(headers ?? {}, run);
 }
 
 interface TracedCallableConfig<TWire extends { traceparent?: string | undefined }> {
@@ -179,11 +178,148 @@ interface TracedCallableConfig<TWire extends { traceparent?: string | undefined 
   onError?: CallableErrorHandler;
 }
 
+// ─── The base callable entrypoint (issue #920) ────────────────────────────────
+//
+// EVERY callable goes through this factory. It owns the obligations no callable
+// may skip, in the one order they have to happen in:
+//
+//   App Check → auth → trace context → catch (report) → finally FLUSH
+//
+// The flush is why it exists. `onCall` has NO framework auto-flush (unlike
+// `onCallGenkit`) and posthog-node batches, so an un-flushed event is LOST when the
+// instance freezes between invocations. Before #920 not one file under ./callables/
+// flushed: the spans and error reports of all twelve, plus `listAiModels` and
+// `testModel` in index.ts, were dropped at freeze — invisible, because a dropped
+// event looks exactly like an event that never happened.
+//
+// Fourteen hand-written `finally` blocks would have fixed that symptom and left the
+// cause standing, which is the same cause `makeTracedCallable` was created for in
+// #415 (where copy-paste had already produced two callables that never flushed).
+// So the obligation moved into the wrapper rather than being written out again.
+// A callable defined any other way now fails tests/callables/entrypointFactory.test.ts.
+// A request the factory has already proved is signed in. `makeCallable` throws
+// `unauthenticated` before the handler runs, so re-checking `request.auth` inside a
+// handler is dead code — but without this type the compiler cannot know that, and
+// every handler that reads `request.auth.uid` would need a non-null assertion. The
+// type carries the guarantee the guard actually provides.
+export type AuthedCallableRequest = CallableRequest & {
+  auth: NonNullable<CallableRequest['auth']>;
+};
+
+export interface CallableConfig<TAuth extends 'required' | 'anonymous' = 'required'> {
+  // onCall options that vary per callable (secrets, timeoutSeconds, memory, …).
+  // App Check is applied by the factory and must NOT be passed here.
+  options: CallableOptions;
+  // Input validation, run BEFORE the guarded region. Whatever it returns is passed
+  // to the handler. Its throws (an `invalid-argument` HttpsError, typically) are
+  // deliberately NOT routed through `onError`: rejecting a malformed request is the
+  // entrypoint's own verdict, not a failure of the work, and a callable with a
+  // bespoke error taxonomy must not remap it. It IS still inside the flush finally.
+  prepare?: (request: CallableRequest) => unknown;
+  // The handler body. Receives the raw CallableRequest and whatever `prepare`
+  // returned; runs inside the trace context, the report-on-throw catch and the
+  // flush finally.
+  handler: (
+    request: TAuth extends 'anonymous' ? CallableRequest : AuthedCallableRequest,
+    prepared: unknown,
+  ) => unknown;
+  // Sign-in requirement. Defaults to 'required' — the factory throws
+  // `unauthenticated` before the handler runs, which is the guard that used to be
+  // hand-written at the top of eight callables with identical message strings.
+  // Only the two email-OTP sign-in callables are 'anonymous': they are how a user
+  // signs IN, so there is no auth to require yet.
+  auth?: TAuth;
+  // App Check posture. Defaults to enforced. The ONLY sanctioned exemption is the
+  // email-OTP sign-in pair (#718 Phase 4) — see APP_CHECK_SIGN_IN_EXEMPT above.
+  appCheck?: typeof APP_CHECK_ENFORCEMENT | typeof APP_CHECK_SIGN_IN_EXEMPT;
+  // Catch handler for a failure that escapes the handler. Defaults to
+  // report-unless-HttpsError, then re-throw.
+  onError?: CallableErrorHandler;
+  // Where the trace context comes from.
+  //   'header' (default) — extract the inbound W3C header off the raw request.
+  //     Correct for a handler callable: it has no wire envelope, so there is no
+  //     browser-supplied field to prefer.
+  //   'self' — the handler installs its own context and this factory installs
+  //     none. Used ONLY by makeTracedCallable, which must parse the wire envelope
+  //     before it can prefer the browser-supplied `traceparent` field over the
+  //     header. Installing one here as well would nest a second, header-rooted
+  //     context around it and double every propagation call.
+  trace?: 'header' | 'self';
+}
+
+// The default catch: report the genuine cause and re-throw unchanged.
+//
+// An `HttpsError` is deliberately NOT reported. It is the callable protocol's way
+// of saying "the client sent something wrong" or "you may not do that" — an
+// EXPECTED outcome, and §7.6 suppresses expected categories. Anything else
+// reaching here is an uncategorised server exception, which gates as reportable
+// ("report the unexpected"). This is the rule `reportUnexpected` already applied
+// to listAiModels/testModel in index.ts, now applied to every callable.
+const defaultCallableOnError: CallableErrorHandler = async (err) => {
+  if (!(err instanceof HttpsError)) {
+    reportServerError(err);
+  }
+  throw err;
+};
+
+export function makeCallable<TAuth extends 'required' | 'anonymous' = 'required'>(
+  config: CallableConfig<TAuth>,
+) {
+  const {
+    options,
+    handler,
+    auth = 'required',
+    appCheck = APP_CHECK_ENFORCEMENT,
+    onError = defaultCallableOnError,
+    trace = 'header',
+    prepare,
+  } = config;
+
+  return onCall({ ...appCheck, ...options }, async (request: CallableRequest) => {
+    if (auth === 'required' && !request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    try {
+      // Validation first, OUTSIDE the onError catch — see `prepare` above.
+      const prepared = prepare ? prepare(request) : undefined;
+      try {
+        // The auth guard above has already run, so `request` satisfies
+        // AuthedCallableRequest whenever auth is required; the cast carries that
+        // across the conditional-type boundary the compiler cannot follow.
+        const authed = request as Parameters<typeof handler>[0];
+        // No wire envelope here, so there is no browser-supplied `traceparent`
+        // field to prefer — the inbound W3C header is the only source. Degrades to
+        // a plain call when absent, and never throws (Rule 10). `trace: 'self'`
+        // opts out because the handler installs its own (see the field→header
+        // precedence in makeTracedCallable).
+        return await (trace === 'self'
+          ? handler(authed, prepared)
+          : runWithCallableTraceContext(request.rawRequest?.headers, undefined, () =>
+              handler(authed, prepared),
+            ));
+      } catch (err) {
+        return await onError(err);
+      }
+    } finally {
+      await flushServerObservability();
+    }
+  });
+}
+
+// ─── The flow-callable entrypoint (issue #415) ────────────────────────────────
+//
 // Manual onCall (instead of onCallGenkit) so the trace context is installed as the
 // active OTel context BEFORE Genkit opens the flow span — so the flow span nests
 // under the request trace and each invocation renders as ONE coherent trace,
-// instead of the flow re-rooting a fresh trace. See runFlowWithTraceContext above
-// for the field→header precedence and env-gating.
+// instead of the flow re-rooting a fresh trace. See runWithCallableTraceContext
+// above for the field→header precedence and env-gating.
+//
+// Built ON makeCallable as of #920, so there is exactly ONE flush point and ONE
+// auth guard in this package rather than two that could drift apart. What this
+// factory adds on top is the wire envelope: validate, then STRIP `traceparent` so
+// the flow receives the PURE domain input (domain purity), and prefer that
+// browser-supplied field over the inbound header.
 export function makeTracedCallable<TWire extends { traceparent?: string | undefined }>(
   config: TracedCallableConfig<TWire>,
 ) {
@@ -195,38 +331,41 @@ export function makeTracedCallable<TWire extends { traceparent?: string | undefi
     onError = defaultOnError,
   } = config;
 
-  return onCall({ ...APP_CHECK_ENFORCEMENT, ...options }, async (request: CallableRequest) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  return makeCallable({
+    options,
+    onError,
+    // This factory installs the context itself, AFTER the wire parse, so it can
+    // prefer the browser-supplied field over the inbound header.
+    trace: 'self',
+    // Validate the WIRE envelope (domain input + optional traceparent). A bad wire
+    // envelope is rejected HERE, before the guarded region, so a callable with a
+    // bespoke onError taxonomy cannot remap its own `invalid-argument` verdict into
+    // something else. An absent/malformed traceparent is NOT a failure — it is
+    // optional/best-effort. Strip traceparent so the flow receives the PURE domain
+    // input (domain purity).
+    prepare: (request: CallableRequest) => {
+      const parsed = wireSchema.safeParse(request.data);
+      if (!parsed.success) {
+        throw new HttpsError('invalid-argument', invalidArgumentMessage);
+      }
+      const { traceparent, ...domainInput } = parsed.data;
+      return { traceparent, domainInput };
+    },
+    handler: (request: CallableRequest, prepared: unknown) => {
+      const { traceparent, domainInput } = prepared as {
+        traceparent: string | undefined;
+        domainInput: unknown;
+      };
 
-    // Validate the WIRE envelope (domain input + optional traceparent). A bad
-    // wire envelope is rejected; an absent/malformed traceparent is NOT a
-    // failure (it is optional/best-effort). Strip traceparent so the flow
-    // receives the PURE domain input (domain purity).
-    const parsed = wireSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', invalidArgumentMessage);
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        flow,
+      // The browser-supplied field WINS over the inbound header: it is the only
+      // channel that can carry the browser's trace id (the Firebase callable SDK
+      // cannot carry a custom HTTP header), so it is the one that actually unifies
+      // the browser action with the server flow. The inbound header is GCP's FRESH
+      // request-trace root — preferring it would re-root away from the browser
+      // trace and could never unify with it.
+      return runWithCallableTraceContext(request.rawRequest?.headers, traceparent, () =>
+        flow(domainInput as never),
       );
-    } catch (err) {
-      // onError always throws (reports/maps the cause, then throws).
-      return await onError(err);
-    } finally {
-      // onCall has NO framework auto-flush (unlike onCallGenkit): drain any
-      // in-flight span exports before the function freezes. Idempotent +
-      // non-throwing, so flushing on the happy path too is safe — and it is the
-      // uniform flush point that closes the per-callable happy-path flush gap
-      // (#415). The error path's report() also flushes; flush is idempotent.
-      await flushServerObservability();
-    }
+    },
   });
 }

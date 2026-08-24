@@ -3,12 +3,12 @@ import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { KitchenTimersSchema, PushSubscriptionSchema } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
 import { sendPushover } from '../adapters/sendPushover.js';
 import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { KITCHEN_TIMER_REGION, type KitchenTimerTaskPayload } from './kitchenTimerTypes.js';
+import { withTaskTrigger } from './triggerEntrypoint.js';
 
 // Cloud Task handler that sends a standalone kitchen-timer push (issue #842).
 // Fires at the `endsAt` of a timer enqueued by onKitchenTimerWrite — "Eggs" at
@@ -144,7 +144,7 @@ export const onKitchenTimerDispatch = onTaskDispatched<KitchenTimerTaskPayload>(
     // Cap fan-out so a burst of timers can't stampede the push services.
     rateLimits: { maxConcurrentDispatches: 6 },
   },
-  async (req) => {
+  withTaskTrigger<KitchenTimerTaskPayload>(async (req) => {
     const { uid, timerId, endsAt } = req.data;
     const db = getFirestore();
 
@@ -291,8 +291,6 @@ export const onKitchenTimerDispatch = onTaskDispatched<KitchenTimerTaskPayload>(
       // otherwise make Cloud Tasks retry to exhaustion. Report and return.
       logger.error('onKitchenTimerDispatch: unexpected error', { uid, timerId, err });
       reportServerError(err);
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }),
 );

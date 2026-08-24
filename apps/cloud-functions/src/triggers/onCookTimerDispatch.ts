@@ -8,12 +8,12 @@ import {
   RecipeSchema,
   type CookActiveTimerDoc,
 } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
 import { sendPushover } from '../adapters/sendPushover.js';
 import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
+import { withTaskTrigger } from './triggerEntrypoint.js';
 
 // Cloud Task handler that actually sends the cook-timer push (issue #544). Fires
 // at the scheduled endsAt of a timer enqueued by onCookTimerWrite. The whole body
@@ -219,7 +219,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
     // Cap fan-out so a burst of timers can't stampede the push services.
     rateLimits: { maxConcurrentDispatches: 6 },
   },
-  async (req) => {
+  withTaskTrigger<CookTimerTaskPayload>(async (req) => {
     const { sessionId, timerId, endsAt } = req.data;
     const db = getFirestore();
 
@@ -376,8 +376,6 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       // Cloud Tasks retry to exhaustion. Report and return.
       logger.error('onCookTimerDispatch: unexpected error', { sessionId, err });
       reportServerError(err);
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }),
 );

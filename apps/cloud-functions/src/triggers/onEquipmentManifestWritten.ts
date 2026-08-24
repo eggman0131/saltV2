@@ -10,10 +10,10 @@ import {
   EQUIPMENT_MANIFEST_DOC_ID,
   type EquipmentItemDoc,
 } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { describeEquipmentSubjectFlow } from '../flows/describeEquipmentSubject.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Equipment pictogram BRIEFS (issue #877).
 //
@@ -186,7 +186,7 @@ export const onEquipmentManifestWritten = onDocumentWritten(
     // 19-item catch-up is ~55 s of AI time, so 300 s leaves comfortable headroom.
     timeoutSeconds: 300,
   },
-  async (event) => {
+  withFirestoreTrigger(async (event) => {
     const after = event.data?.after;
     // The manifest deleted outright: nothing to reconcile against, and wiping
     // every icon on what is almost certainly a mistake is not this trigger's call.
@@ -201,25 +201,19 @@ export const onEquipmentManifestWritten = onDocumentWritten(
     }
     const items = parsed.data.items;
 
-    try {
-      await reconcileRemovedItems(new Set(items.map((i) => i.id)));
+    await reconcileRemovedItems(new Set(items.map((i) => i.id)));
 
-      // E2E (FUNCTIONS_AI_FAKE): no brief authoring. The real text model is not
-      // emulator-safe here and no e2e spec asserts a generated brief.
-      // Unreachable in production — the flag is never set there.
-      if (aiFakeEnabled()) return;
-      if (!(await isIconGenerationEnabled())) return;
+    // E2E (FUNCTIONS_AI_FAKE): no brief authoring. The real text model is not
+    // emulator-safe here and no e2e spec asserts a generated brief.
+    // Unreachable in production — the flag is never set there.
+    if (aiFakeEnabled()) return;
+    if (!(await isIconGenerationEnabled())) return;
 
-      // Sequential, not parallel: nineteen concurrent Gemini calls from one
-      // invocation is a rate-limit shape for no gain, and the whole point of the
-      // gate is that this path is no longer time-critical.
-      for (const item of items) {
-        await maybeAuthorBrief(item);
-      }
-    } finally {
-      // The branch catches above report best-effort to posthog-node, which
-      // batches; flush before the function freezes so a report is not stranded.
-      await flushServerObservability();
+    // Sequential, not parallel: nineteen concurrent Gemini calls from one
+    // invocation is a rate-limit shape for no gain, and the whole point of the
+    // gate is that this path is no longer time-critical.
+    for (const item of items) {
+      await maybeAuthorBrief(item);
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

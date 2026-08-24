@@ -3,10 +3,10 @@ import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { BatchSchema, PushSubscriptionSchema } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush } from '../adapters/sendWebPush.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { BATCH_STAGE_REGION, type BatchStageTaskPayload } from './batchStageTypes.js';
+import { withTaskTrigger } from './triggerEntrypoint.js';
 
 // Cloud Task handler that sends a batch stage reminder (issue #812, phase 3 of epic
 // #778). Fires at the `plannedStartAt` of a stage enqueued by `onBatchWritten` —
@@ -76,7 +76,7 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
     // Cap fan-out so a burst of reminders can't stampede the push services.
     rateLimits: { maxConcurrentDispatches: 6 },
   },
-  async (req) => {
+  withTaskTrigger<BatchStageTaskPayload>(async (req) => {
     const { batchId, stageId, plannedStartAt, notifyUids } = req.data;
     const db = getFirestore();
 
@@ -218,8 +218,6 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
       // make Cloud Tasks retry to exhaustion. Report and return.
       logger.error('onBatchStageDispatch: unexpected error', { batchId, stageId, err });
       reportServerError(err);
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }),
 );

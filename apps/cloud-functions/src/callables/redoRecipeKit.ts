@@ -1,8 +1,8 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RedoRecipeKitInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
@@ -43,35 +43,23 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // shared APP_CHECK_ENFORCEMENT constant (#718) — this fires an AI call, so it is
 // part of the cost surface App Check protects and must flip with everything else
 // rather than on its own.
-export const redoRecipeKit = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const redoRecipeKit = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     // 512MiB floor, pinned inline (top-imported, runs before setGlobalOptions —
     // same reason region is inline above).
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = RedoRecipeKitInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
-    try {
-      await getFirestore()
-        .collection('recipes')
-        .doc(parsed.data.recipeId)
-        .update({ kitInferredAt: FieldValue.delete(), kitRequestedAt: Date.now() });
-    } catch (err) {
-      // An unexpected Firestore write failure (StorageError-class) — report it
-      // additively, flush, then re-throw so the callable's error path is
-      // unchanged. The auth/validation guards above throw HttpsError before this.
-      await reportFlowError(err);
-      throw err;
-    }
+    await getFirestore()
+      .collection('recipes')
+      .doc(parsed.data.recipeId)
+      .update({ kitInferredAt: FieldValue.delete(), kitRequestedAt: Date.now() });
     return { ok: true } as const;
   },
-);
+});

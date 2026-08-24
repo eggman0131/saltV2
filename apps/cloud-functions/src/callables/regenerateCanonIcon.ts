@@ -1,7 +1,7 @@
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { requestIconRegeneration } from './requestIconRegeneration.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
@@ -21,19 +21,15 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // App Check rides in from the shared APP_CHECK_ENFORCEMENT constant (#718) — this
 // also fires AI image generation, so it is part of the cost surface App Check
 // protects, and it must flip with everything else rather than on its own.
-export const regenerateCanonIcon = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const regenerateCanonIcon = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     // 512MiB floor, pinned inline (top-imported, runs before setGlobalOptions —
     // same reason region is inline above).
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = RegenerateCanonIconInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
@@ -42,4 +38,4 @@ export const regenerateCanonIcon = onCall(
     await requestIconRegeneration('canonItems', canonId, hint);
     return { ok: true } as const;
   },
-);
+});

@@ -21,7 +21,7 @@ import {
   attachAiOtlpSpanProcessor,
   attachDistributedSpanProcessor,
 } from '@salt/observability/server';
-import { makeTracedCallable, APP_CHECK_ENFORCEMENT } from './tracedCallable.js';
+import { makeCallable, makeTracedCallable, APP_CHECK_ENFORCEMENT } from './tracedCallable.js';
 import { runRefreshWeatherForecast } from './weather/refreshWeatherForecast.js';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
@@ -582,34 +582,21 @@ export const generateChatTitle = onCallGenkit(
 // outcome to an HttpsError / a `{ ok:false }` result, so only a non-HttpsError
 // escaping is reported — see reportUnexpected).
 //
-// reportUnexpected: report a genuine bug (a non-HttpsError throw) before it
-// propagates, then re-throw unchanged. An HttpsError is an outcome the handler /
-// requireAdmin deliberately classified (auth, permission, unavailable catalog) —
-// expected, so suppressed. Flush before return so the report is not stranded.
-async function reportUnexpected<T>(op: () => Promise<T>): Promise<T> {
-  try {
-    return await op();
-  } catch (err) {
-    if (!(err instanceof HttpsError)) await reportFlowError(err);
-    throw err;
-  }
-}
+// The report-unless-HttpsError rule these two needed is now the makeCallable
+// default (#920): an HttpsError is an outcome the handler / requireAdmin
+// deliberately classified (auth, permission, unavailable catalog) — expected, so
+// suppressed; anything else is a genuine bug and is reported before it
+// propagates. They used to carry a local `reportUnexpected` wrapper that said
+// exactly that; the factory says it once, for every callable, and also flushes.
+export const listAiModels = makeCallable({
+  options: { secrets: [geminiApiKey, posthogApiKey] },
+  handler: (request) => handleListAiModels(request),
+});
 
-export const listAiModels = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-  },
-  (request) => reportUnexpected(() => handleListAiModels(request)),
-);
-
-export const testModel = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-  },
-  (request) => reportUnexpected(() => handleTestModel(request)),
-);
+export const testModel = makeCallable({
+  options: { secrets: [geminiApiKey, posthogApiKey] },
+  handler: (request) => handleTestModel(request),
+});
 
 // Forecast fetch + cache pipeline (issue #382, Phase 2). Callable by any
 // signed-in member — deliberately NOT admin-gated (issue #408): the meal planner

@@ -4,7 +4,6 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { ProductFormSchema, DevSettingsSchema, type ProductFormDoc } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
@@ -12,6 +11,7 @@ import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Product-form pictogram generation (issue #871).
 //
@@ -203,7 +203,7 @@ export const onProductFormWritten = onDocumentWritten(
     concurrency: 1,
     memory: '1GiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ id: string }>(async (event) => {
     const after = event.data?.after;
     if (!after?.exists) return;
 
@@ -218,13 +218,6 @@ export const onProductFormWritten = onDocumentWritten(
       return;
     }
 
-    try {
-      await maybeGenerateIcon(event.params.id, parsed.data, event.data?.before);
-    } finally {
-      // The branch catch above reports best-effort to posthog-node, which
-      // batches; flush before the function freezes so a report is not stranded.
-      // Non-throwing + no-op when uninitialised, so it is always safe to call.
-      await flushServerObservability();
-    }
-  },
+    await maybeGenerateIcon(event.params.id, parsed.data, event.data?.before);
+  }, traceContextFromWrittenDoc),
 );
