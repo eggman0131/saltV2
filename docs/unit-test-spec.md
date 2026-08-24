@@ -20,8 +20,11 @@ suite had none and drifted. This document is the recurrence guard #913 requires.
 
 **Conventions.** Each requirement is `MUST` (a green-light blocker) or `SHOULD` (justify a deviation
 in the PR). IDs are stable (`UT-A1` …) so reviews and follow-ups can cite them. Every rule carries
-the measurement that justifies it; **numbers are as of 2026-08-24 on `main` @ `4a408fb3`** and the
-`_Verify:_` line is the command that re-measures it.
+the measurement that justifies it, and the `_Verify:_` line is the command that re-measures it.
+**Two provenances, kept apart deliberately** — the spec's own UT-A4 forbids conflating them: counts
+derived from the tree (files, assertions, `vi.mock` calls) were **re-measured on 2026-08-24 at `main`
+@ `4a408fb3`** and several have moved since #941; every **percentage** is from #941's
+`pnpm test:coverage` run at `cbc6efd9` and is marked as such, because a grep cannot produce one.
 
 **What this spec does not do.** It does not restate the harness.
 [`apps/web-pwa/tests/setup.ts`](../apps/web-pwa/tests/setup.ts) already documents, at length and
@@ -42,7 +45,8 @@ does, and precisely what it must not fail on.
   contents, or the argument payload a collaborator received. "The mock was called" is not a fact
   about behaviour; it is a fact about the current call graph.
   **Evidence:** 1,565 of 10,796 assertions (14.5%) are `toHaveBeenCalled*`. In `firebase-sync` it is
-  36% — the package with the worst coverage (51.3% lines) and three #913 refactors landing on it.
+  36% — the package with the worst coverage (51.3% lines, #941's coverage run) and three #913
+  refactors landing on it.
   `onCookTimerWrite.test.ts` is 11 assertions out of 11; `onKitchenTimerWrite.test.ts` 18 of 20.
   Neither would notice if the trigger wrote the wrong document.
   _Verify:_ in the changed file, every `it(` body must contain an `expect` that is not
@@ -56,8 +60,8 @@ does, and precisely what it must not fail on.
 
 - **UT-A3 (MUST) — Do not assert on a private helper the public entry point already covers.**
   Reach for the exported surface. A test bound to an internal name pins the refactor it is supposed
-  to protect. (`ssrf.ts` names none of its 8 exports in any test and is **97.3% covered** through
-  the `@salt/domain` barrel — that is the shape to aim for, not a defect to fix.)
+  to protect. (`ssrf.ts` names none of its 8 exports in any test and was **97.3% covered** in #941's
+  coverage run, through the `@salt/domain` barrel — that is the shape to aim for, not a defect.)
 
 - **UT-A4 (MUST) — Use the coverage report, not grep-by-symbol, to argue about coverage.** A claim
   that "nothing tests X" derived from grepping for `X` is unsound in a barrel-exporting codebase and
@@ -75,14 +79,15 @@ does, and precisely what it must not fail on.
   **Evidence:** 66 of 451 files mock more than 5 modules — web-pwa 40 of 141, cloud-functions 25 of
   92. The worst are `equipment.tracePropagation.test.ts` and `extractRecipeFromPhoto.test.ts` at 25
   each; the RecipeViewPage suites sit at 13–14. `domain` (126 files), `ui-components` (39) and
-  `observability` (21) each have **zero** files over the cap, which is why no #913 refactor is
-  blocked on them.
+  `observability` (21) each have **zero** files over the cap — and are the three best-covered areas
+  in #941's coverage run, which is why no #913 refactor is blocked on them.
   _Verify:_ `grep -c 'vi\.mock(' <file>`.
 
 - **UT-B2 (MUST) — Never mock a module the file could import for real.** A mock that exists because
   mocking is the local habit is pure cost.
-  **Evidence:** `auth.svelte` is mocked in 55 files and really imported in **0**; `canonService`
-  mocked in 54, real in 7.
+  **Evidence:** `auth.svelte` is mocked in 55 test files and imported **unmocked in none** — the
+  three files that import it also mock it, which is the ordinary `vi.mock`-then-import-the-mock
+  shape, not a real use. `canonService` is mocked in 54 and imported for real in 7.
   _Verify:_ for each `vi.mock` in the diff, ask what breaks if it is deleted. If the answer is
   "nothing", delete it.
 
@@ -90,9 +95,17 @@ does, and precisely what it must not fail on.
   boundary, or the service module — never a deep transitive path a layer below the unit under test.
   A path-shaped mock two layers down encodes the import graph into the test.
 
-- **UT-B4 (MUST NOT) — Do not stub out the guard you are testing under.** 18 CF test files stub
-  `withAiTimeout` entirely, so the timeout contract those tests appear to exercise is never run.
-  Stubbing a house rule's implementation is how a suite goes green over a violated rule.
+- **UT-B4 (MUST) — Stub a house rule's implementation only where a source guard enforces the rule
+  independently.** Replacing a wrapper with a pass-through is legitimate and often necessary — a flow
+  test must not wait out a 55 s deadline. What makes it safe is that something else, which the stub
+  cannot reach, still enforces the rule.
+  **Evidence:** 18 CF test files pass `withAiTimeout` straight through
+  (`vi.mock('../../src/adapters/withAiTimeout.js', …)`), and that is **fine**, because
+  [`aiTimeoutGuard.test.ts`](../apps/cloud-functions/tests/aiTimeoutGuard.test.ts) reads the source
+  off disk and never imports the modules it checks — its header says in terms that those 18 stubs
+  cannot make it vacuously green. Stub a rule with no such guard behind it and the suite goes green
+  over a violated rule with nothing to say so.
+  _Verify:_ name the guard in the PR. If you cannot, write it (UT-E1) or do not stub.
 
 ---
 
@@ -115,10 +128,11 @@ makes a refactor's noise indistinguishable from its breakage.
   `emptyIngredientGroup`, `newIngredient` and `newStep` are exported from
   [`packages/domain/src/recipe/commands/builders.ts`](../packages/domain/src/recipe/commands/builders.ts).
   A hand-rolled literal drifts from the schema silently and produces the #838 failure mode below.
-  **Evidence:** 30 hand-rolled `makeRecipe` helpers existed while the real builders sat unused.
+  **Evidence:** **34** test files still declare a hand-rolled `makeRecipe` while the real builders
+  sit unused — up from the 30 #941 counted, which is drift continuing in the absence of this rule.
 
 - **UT-C3 (MUST NOT) — Do not repeat what shared setup already does.**
-  `document.body.style.pointerEvents = ''` appeared in 31 files while
+  `document.body.style.pointerEvents = ''` appears in **34** files while
   [`tests/setup.ts`](../apps/web-pwa/tests/setup.ts) already does it globally in an `afterEach`.
   Before adding any file-level `beforeEach`/`afterEach`, read that file.
 
@@ -136,8 +150,9 @@ makes a refactor's noise indistinguishable from its breakage.
   bodies are where drift starts: each copy is later edited independently until no extraction is
   possible without a rewrite.
   **Evidence:** `.each` is used 47 times across 451 files; 4 of those are in web-pwa's 1,809 tests.
-  Meanwhile 13 of 25 firebase-sync unit files repeat the same ~35-line `vi.hoisted` +
-  `vi.mock('firebase/firestore')` block, each differing just enough to block extraction.
+  Meanwhile **15 of 27** firebase-sync unit files repeat the same ~35-line `vi.hoisted` +
+  `vi.mock('firebase/firestore')` block, each differing just enough to block extraction — 13 of 25
+  when #941 measured it, so this one is still growing too.
   _Verify:_ read consecutive `it(` bodies in the diff; if a diff between two is only a literal, it
   is a table row.
 
@@ -256,7 +271,7 @@ Mocking
 [ ] UT-B1  <= 5 vi.mock per file (or a comment naming why the seam can't narrow)
 [ ] UT-B2  No mock of a module the file could import for real
 [ ] UT-B3  Mocks sit on an architectural seam, not a deep transitive path
-[ ] UT-B4  No stubbing out the house rule under test (e.g. withAiTimeout)
+[ ] UT-B4  A stubbed house rule (e.g. withAiTimeout) has a named source guard behind it
 
 Preamble & shared fixtures
 [ ] UT-C1  Uses tests/support/testStore.ts; no local makeStore
@@ -301,9 +316,9 @@ re-proposes them as oversights.
 | Candidate rule | Verdict | Reason |
 | --- | --- | --- |
 | A per-file line cap | **Rejected** | `CookModePage.test.ts` is 1,894 lines and is the best-protected code in the #913 programme (#925 was dropped from the refactor because of it). Length is not the defect; preamble ratio is, and UT-C1–C4 target that directly. |
-| A blanket ban on `vi.mock` | **Narrowed → UT-B1/B2/B3** | `domain`, `ui-components` and `observability` reach 98.7% / 88.0% / 83.2% coverage with 0, 0 and 12 mocks — but `cloud-functions` and `web-pwa` genuinely sit on Firebase and Genkit seams. The rule is a cap and a seam, not a ban. |
+| A blanket ban on `vi.mock` | **Narrowed → UT-B1/B2/B3** | `domain`, `ui-components` and `observability` reached 98.7% / 88.0% / 83.2% in #941's coverage run with 0, 0 and 12 mocks — but `cloud-functions` and `web-pwa` genuinely sit on Firebase and Genkit seams. The rule is a cap and a seam, not a ban. |
 | Mandate a coverage floor per file | **Rejected here** | A per-area coverage ratchet is #941 Track A4's job, in CI where it can block. A per-file number in a prose spec is unenforceable and gameable. |
 | Ban `toHaveBeenCalled*` outright | **Narrowed → UT-A1/A2** | For a CF trigger whose entire behaviour is "enqueue this task", the call *is* the behaviour. The defect is a test where it is the **only** assertion. |
 | Require AAA / given-when-then comment structure | **Rejected** | Adds preamble to fix a preamble problem, and nothing can check it in a minute. |
 | Forbid snapshot tests | **Not needed** | The suite has no meaningful snapshot usage to govern; adding a rule for an absent practice is spec bloat. |
-| Require a test per exported symbol | **Rejected** | This is exactly the grep-by-symbol error UT-A4 exists to prevent — `ssrf.ts` is 97.3% covered while naming none of its exports. |
+| Require a test per exported symbol | **Rejected** | This is exactly the grep-by-symbol error UT-A4 exists to prevent — `ssrf.ts` measured 97.3% covered while naming none of its exports. |
