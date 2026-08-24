@@ -343,7 +343,7 @@ const BATCH = {
   schemaVersion: 1 as const,
   recipeId: 'r-1',
   recipeTitle: 'Sourdough',
-  state: 'planned' as const,
+  state: 'running' as const,
   quantities: [],
   totals: {
     basisGrams: 1000,
@@ -408,7 +408,14 @@ const LISTS_CONFIG = { defaultListId: 'list-1', schemaVersion: 1 as const };
 const MEAL_PLAN_CONFIG = { firstDayOfWeek: 'fri' as const, schemaVersion: 1 as const };
 const MEAL_PLAN_TEMPLATE = emptyTemplate();
 const MEAL_PLAN_WEEK = emptyWeek('2026-08-28');
-const EQUIPMENT_MANIFEST = { schemaVersion: 1 as const, updatedAt: NOW, items: [] };
+// `updatedAt` deliberately NOT `NOW`: `saveEquipmentManifest` stamps the clock,
+// and a fixture carrying the asserted value would let a pass-through of the
+// caller's field masquerade as a write-time stamp.
+const EQUIPMENT_MANIFEST = {
+  schemaVersion: 1 as const,
+  updatedAt: '2020-01-01T00:00:00.000Z',
+  items: [],
+};
 
 // ─── The table ──────────────────────────────────────────────────────────────
 
