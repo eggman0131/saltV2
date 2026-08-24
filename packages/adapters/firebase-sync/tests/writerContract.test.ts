@@ -2,18 +2,23 @@
  * The writer contract — every exported write, one table (#931).
  *
  * ─── What this file is for ───────────────────────────────────────────────────
- * #931's finding is that six writers in this package are typed `Promise<void>`
+ * #931's finding was that six writers in this package were typed `Promise<void>`
  * with no try/catch. A function that returns nothing cannot express failure, so
- * a rejected `setDoc` leaves the package as a thrown exception — which is what
- * CLAUDE.md Rule 10 forbids, and which the error-reporting gate never sees.
- * The fix changes those return types, and a return type is load-bearing at
- * every call site in `apps/web-pwa`.
+ * a rejected `setDoc` left the package as a thrown exception — which is what
+ * CLAUDE.md Rule 10 forbids, and which the error-reporting gate never saw.
  *
- * This is the characterisation net that goes in FIRST, green against the
- * unrefactored source. It RECORDS what each writer does today — including the
- * behaviour #931 considers wrong. It does not correct anything: the six rows
- * below assert, in terms, that those writers throw, because that is the fact
- * the refactor is about to change and the fact a reviewer needs to see change.
+ * It went in FIRST as a characterisation net, green against the unrefactored
+ * source, with those six rows asserting IN TERMS that the writers threw. The fix
+ * then turned all six red at once, which is the entire reason the net was
+ * written before the change rather than after it: a return type is load-bearing
+ * at every call site in `apps/web-pwa`, and this is what made a wide, quiet diff
+ * announce itself.
+ *
+ * Those six rows have now moved to `'failure'`, and this file is no longer a
+ * record of a defect — it is the standing contract that all 43 writers answer
+ * for their failures the same way. The tri-state below is kept, empty states and
+ * all, because that is what lets a regression be recorded rather than argued
+ * about.
  *
  * It is the sibling of subscriptionContract.emulator.test.ts (#928), which pins
  * the read half of the same 115-export surface. Same shape, same rules: one
@@ -39,19 +44,21 @@
  * Every row declares `onFailure`, and it is the whole point of the file:
  *
  *   'failure'  — returns `Failure<DomainError>` from `classifyFirestoreError`.
- *                The Rule 10 contract. 37 of the 43 writers.
+ *                The Rule 10 contract. All 43 writers, since #931.
  *   'throws'   — the rejected promise escapes the package RAW and unclassified.
- *                Rule 10 violated. 6 writers, listed in RULE_TEN_VIOLATIONS.
- *   'swallows' — resolves as though nothing happened. NOBODY does this today,
- *                and the guard below asserts that empty list rather than
- *                leaving it unsaid: "no writer silently drops a failure" is a
- *                fact worth pinning, and it is the state a careless repair of
- *                the six above would land in.
+ *                Rule 10 violated. Six writers until #931; NOBODY now, and
+ *                RULE_TEN_VIOLATIONS is the empty list the guard holds it to.
+ *   'swallows' — resolves as though nothing happened. Nobody has ever done this,
+ *                and the guard asserts that empty list rather than leaving it
+ *                unsaid: it is the state a careless repair of the six would
+ *                have landed in, and the one no assertion elsewhere would catch.
  *
- * The 'throws' rows assert the thrown value is the INJECTED ERROR ITSELF
- * (`toBe`, identity), which is the discriminator that matters: it proves the
- * error left unclassified, so no caller can categorise it and the observability
- * gate — which routes on `DomainError.kind` — has nothing to route on.
+ * A 'throws' row asserts the thrown value is the INJECTED ERROR ITSELF (`toBe`,
+ * identity), which is the discriminator that matters: it proves the error left
+ * unclassified, so no caller can categorise it and the observability gate —
+ * which routes on `DomainError.kind` — has nothing to route on. No row takes
+ * that branch today; it stays because a regression has to land somewhere, and
+ * an empty state that cannot be expressed is a state that gets argued away.
  *
  * ─── Why every row also pins the write it issues ─────────────────────────────
  * A row that only checked "returns a Failure when setDoc rejects" would stay
@@ -99,8 +106,8 @@
  * do cause a document to change — server-side, through a Cloud Function. They
  * are not in this table because they are a different port with a different
  * classifier (`classifyCallableError`, covered by callableErrorMapping.test.ts),
- * and because #931 is about the writers that hold a `setDoc` themselves. All 28
- * already return a `Result`, so none of them is a Rule 10 violation.
+ * and because #931 was about the writers that hold a `setDoc` themselves. All 28
+ * already returned a `Result`, so none of them was a Rule 10 violation.
  *
  * Runs under plain `pnpm test` — no emulator.
  */
@@ -422,7 +429,9 @@ const EQUIPMENT_MANIFEST = {
 /**
  * What a writer does when its Firestore write rejects. THE column this file
  * exists for — see the header. `'throws'` is a Rule 10 violation and every row
- * carrying it must also appear in RULE_TEN_VIOLATIONS below.
+ * carrying it must also appear in RULE_TEN_VIOLATIONS below. No row carries it
+ * any more; the state is kept because a table that can only express the right
+ * answer cannot record the wrong one arriving.
  */
 type FailureContract = 'failure' | 'throws' | 'swallows';
 
@@ -445,19 +454,18 @@ interface WriterCase {
 }
 
 /**
- * The six writers #931 is about, named here rather than derived, so the list a
- * reviewer reads is the list the table proves. The guard below asserts this is
- * EXACTLY the set of rows whose `onFailure` is `'throws'` — neither half can
- * drift without the other.
+ * EMPTY, and that is the finding of #931 discharged rather than a list nobody
+ * got round to filling in. It held the six — `saveAisles`,
+ * `saveEquipmentManifest`, `setAiStub`, `upsertCanonItem`, `upsertKitchenTool`,
+ * `upsertProductForm` — until the commit before this one gave them the same
+ * `ReadResult<void, DomainError>` the other 37 already returned.
+ *
+ * It stays, empty, as the recurrence guard: the guard below asserts this is
+ * EXACTLY the set of rows whose `onFailure` is `'throws'`, so a writer added
+ * tomorrow with a bare `Promise<void>` cannot be recorded here without somebody
+ * typing its name into a list called RULE_TEN_VIOLATIONS.
  */
-const RULE_TEN_VIOLATIONS = [
-  'saveAisles',
-  'saveEquipmentManifest',
-  'setAiStub',
-  'upsertCanonItem',
-  'upsertKitchenTool',
-  'upsertProductForm',
-];
+const RULE_TEN_VIOLATIONS: string[] = [];
 
 const writerCases: WriterCase[] = [
   // ── canon ────────────────────────────────────────────────────────────────
@@ -467,9 +475,9 @@ const writerCases: WriterCase[] = [
     // No `embedding` key: vectors are server-only since #410, and the write
     // strips one an un-migrated client edit would otherwise put back.
     ops: [{ op: 'set', path: 'canonItems/c-1', data: CANON_ITEM_WRITTEN }],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
   {
     name: 'deleteCanonItem',
@@ -490,9 +498,9 @@ const writerCases: WriterCase[] = [
         data: { schemaVersion: 1, updatedAt: NOW, aisles: [AISLE] },
       },
     ],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
   {
     name: 'recordCanonPurchases',
@@ -521,9 +529,9 @@ const writerCases: WriterCase[] = [
     name: 'upsertProductForm',
     run: () => barrel.upsertProductForm(PRODUCT_FORM),
     ops: [{ op: 'set', path: 'productForms/pf-1', data: PRODUCT_FORM }],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
   {
     name: 'deleteProductForm',
@@ -537,9 +545,9 @@ const writerCases: WriterCase[] = [
     name: 'upsertKitchenTool',
     run: () => barrel.upsertKitchenTool(KITCHEN_TOOL),
     ops: [{ op: 'set', path: 'kitchenTools/mixing-bowl', data: KITCHEN_TOOL }],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
   {
     name: 'deleteKitchenTool',
@@ -561,9 +569,9 @@ const writerCases: WriterCase[] = [
         data: { schemaVersion: 1, updatedAt: NOW, items: [] },
       },
     ],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
 
   // ── members ──────────────────────────────────────────────────────────────
@@ -882,7 +890,8 @@ const writerCases: WriterCase[] = [
   {
     name: 'setAiStub',
     // Emulator-only, but exported from the barrel and holding a `setDoc`, so it
-    // is in the table like any other writer. It throws today.
+    // is in the table like any other writer — and answers for its failure like
+    // one, because test infrastructure is still adapter code.
     run: () => barrel.setAiStub('populateEquipmentEntry', { ok: true }),
     ops: [
       {
@@ -891,9 +900,9 @@ const writerCases: WriterCase[] = [
         data: { response: { ok: true }, updatedAt: NOW },
       },
     ],
-    onSuccess: 'undefined',
-    onFailure: 'throws',
-    errorShape: 'raw',
+    onSuccess: 'success(undefined)',
+    onFailure: 'failure',
+    errorShape: 'classified',
   },
 ];
 
@@ -1050,23 +1059,32 @@ describe('writer contract — table coverage', () => {
         .map((c) => c.name)
         .sort();
 
+    // Both empty since #931's fix. Stated, not assumed: 'swallows' is the state
+    // a careless repair of the six would have landed in, and 'throws' is the one
+    // they came from.
     expect(named('throws')).toEqual([...RULE_TEN_VIOLATIONS].sort());
-    // Nobody drops a write failure on the floor today. Stated, not assumed.
+    expect(named('throws')).toEqual([]);
     expect(named('swallows')).toEqual([]);
-    expect(named('failure')).toHaveLength(37);
+    expect(named('failure')).toHaveLength(43);
   });
 
-  it('a writer that throws forwards the error unclassified, and one that returns a Result classifies it', () => {
+  it('a writer that returns a Result classifies its error, and one that throws would not', () => {
     for (const c of writerCases) {
       const expected = c.onFailure === 'failure' ? 'classified' : 'raw';
       expect(c.errorShape, `${c.name} disagrees with its own failure contract`).toBe(expected);
     }
   });
 
-  it('a writer that throws returns nothing, which is why it cannot report', () => {
+  /**
+   * The positive form of what the six rows used to say by their absence. A
+   * writer that returns nothing cannot report a failure — that was #931's whole
+   * argument — so the answer to it is that all 43 now return something.
+   */
+  it('every writer returns a Result, which is what makes the failure reportable', () => {
     for (const c of writerCases) {
-      if (c.onFailure !== 'throws') continue;
-      expect(c.onSuccess, `${c.name} throws but claims to return a Result`).toBe('undefined');
+      expect(c.onSuccess, `${c.name} returns nothing, so it cannot report`).toBe(
+        'success(undefined)',
+      );
     }
   });
 });
@@ -1090,9 +1108,10 @@ describe.each(writerCases)('$name', (c) => {
     h.state.reject = err;
 
     if (c.onFailure === 'throws') {
-      // The rejection escapes the package AS IS — the same object, uncategorised.
-      // No caller can branch on it and the reporting gate has no `kind` to route
-      // on, which is what Rule 10 exists to prevent.
+      // No row reaches this today. Kept because the branch is what a regression
+      // would land in: the rejection escaping the package AS IS — the same
+      // object, uncategorised — with no `kind` for a caller to branch on or the
+      // reporting gate to route on, which is what Rule 10 exists to prevent.
       await expect(c.run()).rejects.toBe(err);
       return;
     }
@@ -1110,8 +1129,9 @@ describe.each(writerCases)('$name', (c) => {
 
   it('maps the Firestore code rather than returning a fixed error', async () => {
     if (c.onFailure !== 'failure') {
-      // A throwing writer maps nothing: assert that directly rather than
-      // skipping the row, so the claim is on the record for all 43.
+      // Unreached since #931: a throwing writer maps nothing, and asserting that
+      // directly rather than skipping the row is what keeps the claim on the
+      // record for all 43 whichever state a row is in.
       const err = FIRESTORE_ERROR('resource-exhausted');
       h.state.reject = err;
       await expect(c.run()).rejects.toBe(err);
