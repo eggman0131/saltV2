@@ -19,8 +19,6 @@ export type ExtractRecipeFromUrlInput = z.infer<typeof ExtractRecipeFromUrlInput
 // the draft is guaranteed to be a valid, persistable recipe document.
 export const ExtractRecipeFromUrlOutputSchema = RecipeSchema;
 
-export type ExtractRecipeFromUrlOutput = z.infer<typeof ExtractRecipeFromUrlOutputSchema>;
-
 // The closed set of user-facing failure modes for URL import. The CF flow tags
 // each failure with one of these; the callable wrapper re-derives it from the
 // HttpsError code so the client can show the right copy without leaking SSRF
@@ -103,7 +101,4 @@ export const ExtractRecipeAIOutputSchema = z.object({
   notes: z.string().nullable(),
 });
 
-export type ExtractedIngredient = z.infer<typeof ExtractedIngredientSchema>;
-export type ExtractedIngredientGroup = z.infer<typeof ExtractedIngredientGroupSchema>;
-export type ExtractedStep = z.infer<typeof ExtractedStepSchema>;
 export type ExtractRecipeAIOutput = z.infer<typeof ExtractRecipeAIOutputSchema>;

@@ -46,8 +46,6 @@ export const IdentifyRecipeKitAIOutputSchema = z.object({
   kit: z.array(RecipeKitEntrySchema),
 });
 
-export type IdentifyRecipeKitAIOutput = z.infer<typeof IdentifyRecipeKitAIOutputSchema>;
-
 // The flow's output: the same shape, sanitised against the recipe it was asked
 // about. Named separately from the AI output for the reason parseRecipeIngredients
 // and categoriseRecipe name theirs — the two are the same today, and the seam is
@@ -55,5 +53,3 @@ export type IdentifyRecipeKitAIOutput = z.infer<typeof IdentifyRecipeKitAIOutput
 export const IdentifyRecipeKitOutputSchema = z.object({
   kit: z.array(RecipeKitEntrySchema),
 });
-
-export type IdentifyRecipeKitOutput = z.infer<typeof IdentifyRecipeKitOutputSchema>;

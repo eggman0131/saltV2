@@ -15,12 +15,8 @@ import {
   clearCheckedItems,
   moveItems,
 } from '@salt/domain';
-import type {
-  ShoppingList,
-  ShoppingListItem,
-  ShoppingListsConfig,
-  ShoppingListIdGenerator,
-} from '@salt/domain';
+import type { ShoppingList, ShoppingListItem, ShoppingListsConfig } from '@salt/domain';
+import type { IdGenerator } from '../../src/shoppingList/ports/IdGenerator.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +24,7 @@ const NOW = '2026-01-01T00:00:00.000Z';
 const NOW2 = '2026-01-02T00:00:00.000Z';
 
 let seq = 0;
-function makeIds(): ShoppingListIdGenerator {
+function makeIds(): IdGenerator {
   return {
     newListId: () => `list-${++seq}`,
     newItemId: () => `item-${++seq}`,

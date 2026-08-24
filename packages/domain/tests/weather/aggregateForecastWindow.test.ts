@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateForecastWindow, isForecastStale, FORECAST_MAX_AGE_MS } from '@salt/domain';
+import { aggregateForecastWindow, isForecastStale } from '@salt/domain';
 import type { HomeLocation } from '@salt/domain/schemas';
 import { OpenMeteoForecastResponseSchema } from '@salt/domain/schemas';
+import { FORECAST_MAX_AGE_MS } from '../../src/weather/index.js';
 
 // Pure weather aggregation + staleness logic (issue #382, Phase 2). These are the
 // load-bearing pure functions: the CF feeds them already-fetched, validated

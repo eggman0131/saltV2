@@ -31,5 +31,4 @@ export const ChatSessionSchema = z.object({
   expiresAt: z.string(),
 });
 
-export type MessageDoc = z.infer<typeof MessageSchema>;
 export type ChatSessionDoc = z.infer<typeof ChatSessionSchema>;

@@ -36,7 +36,6 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
   domain                          # Pure business logic, entities, validation, ports
   shared-types                    # Cross-cutting types/interfaces only
   ui-components                   # Shared UI primitives
-  testing-utils                   # Shared test helpers
   adapters/
     firebase-sync                 # Firebase Auth + Firestore implementation
                                   # of realtime subscriptions, direct writes, and auth ports
@@ -445,8 +444,8 @@ This module must remain extremely small and stable.
 
 - Enforce allowed import graph (boundaries plugin)
 - Forbid Firebase SDK imports (`firebase` / `firebase-admin`) in `domain`, `observability`, and `ui-components`. The browser `firebase` SDK lives in `firebase-sync`; `firebase-admin` is used directly in `cloud-functions` (§3, §8) and is **not** restricted there.
-- Forbid IndexedDB / browser-storage package imports (`idb`, `idb-keyval`, `dexie`) in `domain`, `firebase-sync`, `observability`, and `ui-components`. This rule is **not** applied to the apps (`web-pwa`, `cloud-functions`) or `testing-utils` — the "no browser storage" contract (Rule 3) holds there by convention and review, not by lint.
-- Forbid PostHog SDK imports (`posthog-js` / `posthog-node`) outside `observability`: every non-observability package (`shared-types`, `domain`, `firebase-sync`, `ui-components`, `testing-utils`) and both apps go through the `@salt/observability` ports, never the SDK directly.
+- Forbid IndexedDB / browser-storage package imports (`idb`, `idb-keyval`, `dexie`) in `domain`, `firebase-sync`, `observability`, and `ui-components`. This rule is **not** applied to the apps (`web-pwa`, `cloud-functions`) — the "no browser storage" contract (Rule 3) holds there by convention and review, not by lint.
+- Forbid PostHog SDK imports (`posthog-js` / `posthog-node`) outside `observability`: every non-observability package (`shared-types`, `domain`, `firebase-sync`, `ui-components`) and both apps go through the `@salt/observability` ports, never the SDK directly.
 - Forbid the wrong `observability` subpath per runtime: the default (browser `posthog-js`) subpath in cloud-functions, and the `observability/server` (`posthog-node`) subpath in web-pwa.
 - Forbid firebase-sync ↔ observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types — also blocks Node built-in imports (`no-restricted-imports`) and browser / `process` globals (`no-restricted-globals`), so domain purity re Node/browser is lint-enforced (issue #413)

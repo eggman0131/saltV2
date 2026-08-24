@@ -8,7 +8,6 @@ import { z } from 'zod';
 export const EmailOtpRequestSchema = z.object({
   email: z.string().email(),
 });
-export type EmailOtpRequest = z.infer<typeof EmailOtpRequestSchema>;
 
 export const EmailOtpVerifySchema = z.object({
   email: z.string().email(),
@@ -16,7 +15,6 @@ export const EmailOtpVerifySchema = z.object({
   // malformed code never reaches the hash comparison.
   code: z.string().regex(/^\d{6}$/),
 });
-export type EmailOtpVerify = z.infer<typeof EmailOtpVerifySchema>;
 
 // The in-flight code-entry step, persisted by web-pwa so it survives the app
 // being torn down (#585 follow-up). An installed iOS PWA is routinely killed

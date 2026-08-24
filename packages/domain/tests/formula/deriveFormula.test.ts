@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  basisYield,
   deriveFormula,
   solveFormula,
   unitShapeFromPreset,
   unitShapePreset,
   UNIT_SHAPE_PRESETS,
 } from '../../src/index.js';
+import { basisYield } from '../../src/formula/index.js';
 
 describe('deriveFormula', () => {
   it('refuses a formula with nothing in it', () => {

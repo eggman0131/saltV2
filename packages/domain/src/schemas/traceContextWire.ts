@@ -83,15 +83,3 @@ export const RefreshWeatherForecastWireInputSchema = RefreshWeatherForecastInput
 export const DescribeRecipeSceneWireInputSchema = DescribeRecipeSceneInputSchema.extend({
   traceparent: TraceparentSchema,
 });
-
-export type MatchOrCreateCanonWireInput = z.infer<typeof MatchOrCreateCanonWireInputSchema>;
-export type CanonicaliseRecipeIngredientsWireInput = z.infer<
-  typeof CanonicaliseRecipeIngredientsWireInputSchema
->;
-export type AuthorRecipeWireInput = z.infer<typeof AuthorRecipeWireInputSchema>;
-export type ExtractRecipeFromUrlWireInput = z.infer<typeof ExtractRecipeFromUrlWireInputSchema>;
-export type ExtractRecipeFromPhotoWireInput = z.infer<typeof ExtractRecipeFromPhotoWireInputSchema>;
-export type IdentifyEquipmentWireInput = z.infer<typeof IdentifyEquipmentWireInputSchema>;
-export type PopulateEquipmentEntryWireInput = z.infer<typeof PopulateEquipmentEntryWireInputSchema>;
-export type RefreshWeatherForecastWireInput = z.infer<typeof RefreshWeatherForecastWireInputSchema>;
-export type DescribeRecipeSceneWireInput = z.infer<typeof DescribeRecipeSceneWireInputSchema>;

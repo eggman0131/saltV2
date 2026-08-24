@@ -6,13 +6,10 @@ import {
   newStep,
   flattenIngredients,
 } from '@salt/domain';
-import type { Recipe, Ingredient, RecipeImage } from '@salt/domain';
-import {
-  RecipeSchema,
-  QuantitySchema,
-  RecipeImageSchema,
-  RecipeKindSchema,
-} from '@salt/domain/schemas';
+import type { Recipe, Ingredient } from '@salt/domain';
+import type { RecipeImageDoc } from '../../src/schemas/recipe.js';
+import { RecipeSchema, RecipeKindSchema } from '@salt/domain/schemas';
+import { QuantitySchema, RecipeImageSchema } from '../../src/schemas/recipe.js';
 
 // A deliberately messy recipe that exercises the union types: two groups (one
 // named, one default/unnamed), a single quantity, a range, a mixed "1 ½", a bare
@@ -236,7 +233,7 @@ describe('RecipeSchema', () => {
   });
 
   it('type-level: RecipeImage source is "ai" | "upload"', () => {
-    expectTypeOf<RecipeImage['source']>().toEqualTypeOf<'ai' | 'upload'>();
+    expectTypeOf<RecipeImageDoc['source']>().toEqualTypeOf<'ai' | 'upload'>();
   });
 
   // --- Tier-2 hero-image control fields (issue #148) ---

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MatchLogBuilder } from '@salt/domain';
-import type { StageLog } from '@salt/domain';
-
+import type { StageLog } from '../../src/canon/index.js';
 function makeStage(overrides: Partial<StageLog> = {}): StageLog {
   return {
     stage: 1,

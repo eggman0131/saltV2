@@ -48,21 +48,3 @@ export function weatherSeverity(code: number): number {
   if (!Number.isFinite(code)) return UNKNOWN_RANK;
   return RANK_BY_CODE.get(code) ?? UNKNOWN_RANK;
 }
-
-// Picks the most-significant code from a window of samples: the one with the
-// highest `weatherSeverity` rank. Returns the FIRST sample at the max rank, so a
-// run of equal-severity codes resolves to the earliest in-window hour (stable,
-// order-deterministic) — the caller relies on this to pick a matching is_day. An
-// empty array returns null (no code to choose). Pure and total.
-export function mostSignificantWeatherCode(codes: readonly number[]): number | null {
-  let bestCode: number | null = null;
-  let bestRank = -Infinity;
-  for (const code of codes) {
-    const rank = weatherSeverity(code);
-    if (rank > bestRank) {
-      bestRank = rank;
-      bestCode = code;
-    }
-  }
-  return bestCode;
-}

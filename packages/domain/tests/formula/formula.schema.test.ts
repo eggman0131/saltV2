@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { FormulaSchema } from '../../src/schemas/index.js';
 import {
   DensityClassSchema,
   FormulaComponentSchema,
-  FormulaSchema,
   ReferenceYieldSchema,
   UnitShapeSchema,
-} from '../../src/schemas/index.js';
+} from '../../src/schemas/formula.js';
 
 const MINIMAL_FORMULA = {
   recipeId: 'overnight-white-tin',

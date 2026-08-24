@@ -88,6 +88,3 @@ export const ShoppingListItemSchema = z.object({
   // read (back-compat; no migration).
   measureNote: z.string().optional(),
 });
-
-export type SourceRefDoc = z.infer<typeof SourceRefSchema>;
-export type ShoppingListItemDoc = z.infer<typeof ShoppingListItemSchema>;

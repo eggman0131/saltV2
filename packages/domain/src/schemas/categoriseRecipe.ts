@@ -15,19 +15,13 @@ export const CategoriseRecipeInputSchema = z.object({
   steps: z.array(z.string()).optional().default([]),
 });
 
-export type CategoriseRecipeInput = z.infer<typeof CategoriseRecipeInputSchema>;
-
 // What the model emits inside the flow (never leaves the CF boundary before
 // normalisation).
 export const CategoriseRecipeAIOutputSchema = z.object({
   tags: z.array(z.string()),
 });
 
-export type CategoriseRecipeAIOutput = z.infer<typeof CategoriseRecipeAIOutputSchema>;
-
 // The flow's normalised output: lowercase, kebab-cased, deduped category tags.
 export const CategoriseRecipeOutputSchema = z.object({
   tags: z.array(z.string()),
 });
-
-export type CategoriseRecipeOutput = z.infer<typeof CategoriseRecipeOutputSchema>;

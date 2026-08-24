@@ -25,5 +25,3 @@ export const RegenerateRecipeImageInputSchema = z.object({
   // remove without a deploy-window's grace. Phase 3 owns hint-driven brief revision.
   hint: z.string().trim().max(200).optional(),
 });
-
-export type RegenerateRecipeImageInput = z.infer<typeof RegenerateRecipeImageInputSchema>;

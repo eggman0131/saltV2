@@ -111,11 +111,6 @@ export const ProcessDiffSchema = z.object({
   changed: z.array(ProcessStageChangeSchema),
 });
 
-export type StageTextChange = z.infer<typeof StageTextChangeSchema>;
-export type StageNullableTextChange = z.infer<typeof StageNullableTextChangeSchema>;
-export type StageKindChange = z.infer<typeof StageKindChangeSchema>;
-export type StageEnvironmentChange = z.infer<typeof StageEnvironmentChangeSchema>;
-export type StageDurationChange = z.infer<typeof StageDurationChangeSchema>;
 export type ProcessStageDiffEntry = z.infer<typeof ProcessStageDiffEntrySchema>;
 export type ProcessStageChange = z.infer<typeof ProcessStageChangeSchema>;
 export type ProcessDiff = z.infer<typeof ProcessDiffSchema>;

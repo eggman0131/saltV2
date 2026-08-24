@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { summarizeMatchLog } from '@salt/domain';
-import type { ArbitrationLog, MatchLogEntry, StageLog } from '@salt/domain';
+import type { ArbitrationLog, MatchLogEntry } from '@salt/domain';
+import type { StageLog } from '../../src/canon/index.js';
 
 function makeStage(overrides: Partial<StageLog> = {}): StageLog {
   return {

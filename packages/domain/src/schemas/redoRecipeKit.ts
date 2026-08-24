@@ -7,5 +7,3 @@ import { z } from 'zod';
 export const RedoRecipeKitInputSchema = z.object({
   recipeId: z.string().min(1),
 });
-
-export type RedoRecipeKitInput = z.infer<typeof RedoRecipeKitInputSchema>;

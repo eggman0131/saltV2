@@ -21,5 +21,3 @@ export const SetRecipeImageUploadInputSchema = z.object({
   imageBase64: z.string().min(1).max(7_000_000),
   contentType: z.enum(['image/webp', 'image/jpeg', 'image/png']).optional(),
 });
-
-export type SetRecipeImageUploadInput = z.infer<typeof SetRecipeImageUploadInputSchema>;

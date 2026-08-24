@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CookActiveTimerSchema, CookSessionSchema } from '@salt/domain/schemas';
+import { CookSessionSchema } from '@salt/domain/schemas';
+import { CookActiveTimerSchema } from '../../src/schemas/cookSession.js';
 
 // A timer's wire shape (issue #748). `id` is its identity; `stepId` is nullable
 // (an ad-hoc timer belongs to no step); `label` and `durationMinutes` record what

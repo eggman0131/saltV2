@@ -1,37 +1,20 @@
 // Canon module — re-export the canon module's published surface so that
 // adapters and apps can reach it via @salt/domain. Cross-module access
 // inside the domain itself goes through './canon' (the module index).
-export type { MatchLogSummary, PendingCanonChangeDescription } from './canon/index.js';
 export type {
   CanonItem,
   ShoppingBehavior,
   CanonItemUnit,
   Aisle,
-  AislesDocument,
   CanonLocalStorePort,
   AisleLocalStorePort,
-  IdGenerator,
-  CreateCanonItemInput,
-  CreateAisleInput,
-  CreateAislesBulkInput,
-  RenameAisleInput,
-  ReorderAislesInput,
-  DeleteAislesInput,
   MergeAislesInput,
-  PerItemMergeChoice,
-  ItemMergeChoice,
-  MatchCandidate,
-  MatchStage,
   MatchLogEntry,
-  StageLog,
-  CandidateLog,
-  FinalDecision,
   MatchLoggingPort,
   EmbeddingPort,
   CanonArbitrationPort,
   ArbitrationRequest,
   ArbitrationResult,
-  PendingCanonChange,
 } from './canon/index.js';
 export {
   normaliseName,
@@ -46,7 +29,6 @@ export {
   ARBITRATION_FAILED_REASONING,
   ARBITRATION_NO_MATCH_REASONING,
   appendCanonSynonym,
-  recordPendingCanonChange,
   describePendingCanonChange,
   createAisle,
   createAislesBulk,
@@ -59,14 +41,7 @@ export {
   hasLiveCanonMatch,
   isResolvedMatchState,
 } from './canon/index.js';
-export type {
-  AppendCanonSynonymOptions,
-  DerivedNamePredicate,
-  FindClosestMatchResult,
-  MatchOrCreateInput,
-  MatchOrCreatePorts,
-  MatchOrCreateResult,
-} from './canon/index.js';
+export type { MatchOrCreateInput, MatchOrCreatePorts, MatchOrCreateResult } from './canon/index.js';
 export {
   approveCanonItem,
   renameCanonItem,
@@ -81,12 +56,9 @@ export type { ApproveCanonItemOverrides } from './canon/index.js';
 // ProductForm module — published surface.
 export type {
   ProductForm,
-  ProductFormYield,
-  ProductFormIdGenerator,
   CreateProductFormInput,
   UpdateProductFormInput,
   FormDemand,
-  ParentCountInput,
 } from './productForm/index.js';
 export {
   createProductForm,
@@ -113,16 +85,6 @@ export type {
   EquipmentItem,
   EquipmentManifest,
   EquipmentManifestPort,
-  EquipmentIdGenerator,
-  AddEquipmentInput,
-  RemoveEquipmentInput,
-  RenameEquipmentInput,
-  AddAccessoryInput,
-  RemoveAccessoryInput,
-  SetAccessoryOwnedInput,
-  AddRuleInput,
-  RemoveRuleInput,
-  EditRuleInput,
 } from './equipment/index.js';
 export {
   addEquipment,
@@ -144,37 +106,9 @@ export type {
   MatchState,
   SourceRef,
   ShoppingListsConfig,
-  ShoppingListPort,
-  ShoppingListItemPort,
-  ShoppingListsConfigPort,
-  ShoppingListIdGenerator,
-  CreateListInput,
-  RenameListInput,
-  DeleteListInput,
-  SetDefaultListInput,
-  AddItemInput,
-  EditItemRawTextInput,
-  EditItemNotesInput,
-  SetItemCheckedInput,
-  ConfirmItemNeededInput,
-  SetItemNeedsCheckInput,
-  DeleteItemInput,
-  MoveItemsInput,
-  MoveItemsResult,
-  CanonInfo as ShoppingListCanonInfo,
-  AisleInfo as ShoppingListAisleInfo,
-  OtherContributor,
-  OtherBucket,
-  CheckedBucket,
   AmountSubtotal,
   AisleRow,
   AisleGroup,
-  GroupedShoppingList,
-  GroupItemsOptions,
-  RecipeGroup,
-  ManualBucket,
-  GroupedByRecipe,
-  RecipeItemAddDefault,
   ParsedEntry,
   EntryParsePort,
 } from './shoppingList/index.js';
@@ -202,7 +136,7 @@ export {
 } from './shoppingList/index.js';
 
 // Members module — published surface (issue #155).
-export type { Member, CookMode, CreateMemberInput, UpdateMemberPatch } from './members/index.js';
+export type { Member, CookMode, UpdateMemberPatch } from './members/index.js';
 export {
   normaliseMemberEmail,
   createMember,
@@ -223,7 +157,6 @@ export type {
 } from './mealPlan/index.js';
 export {
   WEEKDAYS,
-  WEEKDAY_INDEX,
   weekStartFor,
   weekDates,
   weekdayOf,
@@ -231,7 +164,6 @@ export {
   weekExtendsIntoNext,
   WEEK_EXTENSION_DAYS,
   templateWeekStarts,
-  TEMPLATE_WEEK_OFFERS,
   emptyDay,
   emptyWeek,
   emptyTemplate,
@@ -249,20 +181,14 @@ export {
 
 // Recipe module — published surface (issue #179).
 export type {
-  SingleQuantity,
-  RangeQuantity,
-  MixedQuantity,
   Quantity,
   ParsedIngredient,
   Ingredient,
   IngredientGroup,
   Step,
-  StepTimer,
   Recipe,
-  RecipeImage,
   RecipeKind,
   RecipeMetadata,
-  RecipeSource,
 } from './recipe/index.js';
 export {
   emptyRecipe,
@@ -281,7 +207,6 @@ export {
   isAuthorable,
   takesComponents,
   cookShape,
-  UNNAMED_WAIT_LABEL,
   OTHER_WAITS_LABEL,
   hasComponents,
   resolveComponents,
@@ -300,27 +225,17 @@ export {
   PLACEHOLDER_MOODS,
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
-export type { IngredientMatchIssue } from './recipe/index.js';
-export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './recipe/index.js';
+export type { CookShapeSegment } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
-export type { ParsedImportUrl, IpClass } from './recipe/index.js';
-export {
-  parseImportUrl,
-  isHttpsScheme,
-  hostnameAsIpLiteral,
-  classifyIp,
-  isPublicIp,
-  isIpv4,
-  isIpv6,
-} from './recipe/index.js';
+export { parseImportUrl, isHttpsScheme, hostnameAsIpLiteral, isPublicIp } from './recipe/index.js';
 
 // Weather module — pure forecast aggregation + staleness logic (Phase 2) and
 // pure render-policy classifiers (Phase 3) (issue #382).
-export { aggregateForecastWindow, isForecastStale, FORECAST_MAX_AGE_MS } from './weather/index.js';
+export { aggregateForecastWindow, isForecastStale } from './weather/index.js';
 export { temperatureBand, classifyEatingMood } from './weather/index.js';
 export type { TemperatureBand, EatingMood } from './weather/index.js';
-export { weatherSeverity, mostSignificantWeatherCode, weatherIcon } from './weather/index.js';
+export { weatherIcon } from './weather/index.js';
 export type { WeatherIconId } from './weather/index.js';
 
 // Cook-session module — pure cook-mode session state: mise ticking, step
@@ -354,8 +269,6 @@ export {
   guidedPrepBoard,
   guidedMiseProgress,
   guidedPrepCardProgress,
-  unpreppedIngredients,
-  normaliseContainerName,
   prepEntryForContainer,
   prepEntryIngredients,
   looseIngredientsForStep,
@@ -367,20 +280,7 @@ export {
   heatWantsAttention,
   scheduleFor,
 } from './cookSession/index.js';
-export type {
-  TimerHeat,
-  ScheduledRow,
-  MakeFreshSessionArgs,
-  MiseProgress,
-  GuidedContainerProblems,
-  DuplicateContainerName,
-  DanglingContainerName,
-  GuidedPrepBoard,
-  GuidedPrepCard,
-  GuidedPrepJob,
-  GuidedPrepTickRow,
-  NextStepLookahead,
-} from './cookSession/index.js';
+export type { TimerHeat, GuidedPrepTickRow } from './cookSession/index.js';
 
 // Kitchen-timer module (issue #842) — a timer that belongs to nobody's cook.
 // Its own two-line module rather than more surface on the cook-session one:
@@ -398,22 +298,13 @@ export {
   unresolvedKitLabels,
   createKitchenTool,
   updateKitchenTool,
-  kitchenToolSlug,
 } from './kitchenTool/index.js';
-export type {
-  UnresolvedKitLabel,
-  KitLabelSource,
-  ContainerSource,
-  CreateKitchenToolInput,
-  UpdateKitchenToolInput,
-} from './kitchenTool/index.js';
+export type { CreateKitchenToolInput, UpdateKitchenToolInput } from './kitchenTool/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"
 // projection, and the one-shop-per-week reducer. No I/O, no clock.
 export {
-  isBeforeShop,
-  dateInZone,
   addCalendarDays,
   daysBetween,
   tomorrowInZone,
@@ -425,53 +316,28 @@ export {
 // many week documents the caller is holding. Pure, no per-user storage and no
 // clock.
 export { upcomingChefDays, dayForDate } from './personalView/index.js';
-export type { ChefNight } from './personalView/index.js';
-
 // Kitchen-memory module (issue #816) — reading a composer line as the one chat
 // command the app has. Pure string work by design: capture involves no AI at all.
 export { parseChatCommand } from './memory/index.js';
-export type { ChatCommand } from './memory/index.js';
-
 // Formula module (issue #782, epic #778) — composition as ratios against a
 // declared basis, and the bidirectional yield solve. Headless: nothing renders it
 // and nothing stores it yet, but the surface is what phase 01 is built against.
 export {
-  DENSITY_G_PER_ML,
-  DEFAULT_DENSITY_CLASS,
-  gramsFromMillilitres,
-  GRAM_DECIMAL_THRESHOLD,
-  PERCENT_DECIMALS,
   roundGrams,
   roundPercent,
   gramsFromParsed,
   deriveFormula,
-  BASIS_KEYWORDS,
   guessBasisIngredientIds,
   looksScalable,
   solveFormula,
-  BASIS_PERCENT_TOLERANCE,
   UNIT_SHAPE_PRESETS,
   unitShapePreset,
   unitShapeFromPreset,
   targetYield,
-  basisYield,
   withComponentPercentScaled,
   LEAVENING_PERCENT_BOUNDS,
 } from './formula/index.js';
-export type {
-  ComponentPercentBounds,
-  BasisGuessEntry,
-  DeriveFormulaInput,
-  DeriveFormulaResult,
-  FormulaComponentInput,
-  FormulaSolution,
-  SolveFormulaResult,
-  SolvedComponent,
-  SolvedUnits,
-  BoundViolation,
-  FormulaFailure,
-  UnitShapePreset,
-} from './formula/index.js';
+export type { BoundViolation, FormulaFailure } from './formula/index.js';
 
 // Process module (issues #806, #812) — ordering, total duration, the bidirectional
 // schedule that places an ordered process on a clock from either end, and the diff
@@ -488,18 +354,12 @@ export {
   diffProcess,
   remindableStages,
 } from './process/index.js';
-export type { DurationRange } from './process/index.js';
-export type {
-  ScheduleAnchor,
-  StageSchedule,
-  ScheduleFailure,
-  ResolveScheduleResult,
-} from './process/index.js';
+export type { ScheduleAnchor } from './process/index.js';
 
 // Batch module (issue #812, epic #778) — one run of a formula: the freeze that
 // starts it, and the producers that move it along. Pure; every instant injected.
 export { freezeBatch, currentStage, withStageAdvanced, withBatchAbandoned } from './batch/index.js';
-export type { FreezeBatchInput, FreezeBatchResult, FreezeBatchFailure } from './batch/index.js';
+export type { FreezeBatchFailure } from './batch/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';

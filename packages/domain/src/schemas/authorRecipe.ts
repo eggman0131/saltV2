@@ -63,7 +63,4 @@ export const LibrarianOutputSchema = z.object({
 });
 
 export type AuthorRecipeInput_ = z.infer<typeof AuthorRecipeInputSchema>;
-export type LibrarianIngredient = z.infer<typeof LibrarianIngredientSchema>;
-export type LibrarianGroup = z.infer<typeof LibrarianGroupSchema>;
-export type LibrarianStep = z.infer<typeof LibrarianStepSchema>;
 export type LibrarianOutput = z.infer<typeof LibrarianOutputSchema>;

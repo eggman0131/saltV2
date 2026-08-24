@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { FormulaSchema, StageDurationSchema } from '../../src/schemas/index.js';
 import {
-  FormulaSchema,
   ProcessSchema,
   ProcessStageContentSchema,
   ProcessStageSchema,
-  StageDurationSchema,
-} from '../../src/schemas/index.js';
+} from '../../src/schemas/process.js';
 
 // The stage shape (issue #806, phase 2 of epic #778). What these pin, in order of
 // how much it would cost to get wrong:

@@ -20,5 +20,3 @@ export const CanonEmbeddingSchema = z.object({
   // absent on rows written before it was added, and never consumed by matching.
   updatedAt: z.string().optional(),
 });
-
-export type CanonEmbeddingDoc = z.infer<typeof CanonEmbeddingSchema>;

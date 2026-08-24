@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  basisYield,
   deriveFormula,
   solveFormula,
   targetYield,
@@ -8,6 +7,7 @@ import {
   unitShapePreset,
 } from '../../src/index.js';
 import type { Formula } from '../../src/schemas/index.js';
+import { basisYield } from '../../src/formula/index.js';
 
 // The solve read from the other end, and the ways it refuses.
 

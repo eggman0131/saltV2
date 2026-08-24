@@ -1,12 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import {
-  cookShape,
-  emptyRecipe,
-  newStep,
-  OTHER_WAITS_LABEL,
-  UNNAMED_WAIT_LABEL,
-} from '@salt/domain';
+import { cookShape, emptyRecipe, newStep, OTHER_WAITS_LABEL } from '@salt/domain';
 import type { Recipe, RecipeMetadata, Step } from '@salt/domain';
+import { UNNAMED_WAIT_LABEL } from '../../src/recipe/index.js';
 
 const ISO = '2026-01-01T00:00:00.000Z';
 

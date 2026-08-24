@@ -9,11 +9,11 @@
  * preamble before the first `it(`, and preamble is what makes a refactor's noise
  * indistinguishable from its breakage.
  *
- * ─── Why it lives here and not in `@salt/testing-utils` ──────────────────────
- * The layer map does not permit `web-pwa → testing-utils`, so routing this
- * through a package would need an issue-first layer-map edit — and
- * `@salt/testing-utils` is slated for deletion under #923 anyway. #941's Track C
- * puts the shared kit in `apps/web-pwa/tests/support/`, deliberately local.
+ * ─── Why it lives here and not in a shared package ──────────────────────────
+ * There is no shared test-helper package: the one that existed, `@salt/testing-utils`,
+ * had zero importers and was deleted under #923, and routing this through a new
+ * package would need an issue-first layer-map edit. #941's Track C puts the
+ * shared kit in `apps/web-pwa/tests/support/`, deliberately local.
  *
  * ─── How to use it from a `vi.hoisted` block ─────────────────────────────────
  * `vi.hoisted` runs BEFORE the file's imports, so a top-level `import` of this

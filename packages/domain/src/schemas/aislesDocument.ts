@@ -11,6 +11,3 @@ export const AislesDocumentSchema = z.object({
   updatedAt: z.string(),
   aisles: z.array(AisleSchema),
 });
-
-export type AisleDoc = z.infer<typeof AisleSchema>;
-export type AislesDocumentDoc = z.infer<typeof AislesDocumentSchema>;

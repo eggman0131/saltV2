@@ -12,7 +12,6 @@ export default defineConfig({
       'packages/adapters/firebase-sync/vitest.config.ts',
       'packages/adapters/observability/vitest.config.ts',
       'packages/ui-components/vitest.config.ts',
-      'packages/testing-utils/vitest.config.ts',
       'apps/web-pwa/vitest.config.ts',
       'apps/cloud-functions/vitest.config.ts',
     ],
@@ -56,9 +55,8 @@ export default defineConfig({
       // this pin goes back to the measured figure and the headroom goes away.
       //
       // Areas deliberately unfloored: `packages/shared-types/src` (4 covered
-      // lines in total — a pin there is noise, not a signal), the storybook
-      // stories that `include` sweeps up (dev-only, never unit-tested), and
-      // `packages/testing-utils/src` (slated for deletion under #923).
+      // lines in total — a pin there is noise, not a signal) and the storybook
+      // stories that `include` sweeps up (dev-only, never unit-tested).
       //
       // NOTE for the two Svelte-bearing areas below (`apps/web-pwa/src/routes`,
       // `apps/web-pwa/src/components`; `packages/ui-components/src` likewise):

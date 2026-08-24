@@ -24,8 +24,6 @@ import { ExtractRecipeAIOutputSchema } from './extractRecipeFromUrl.js';
 // this schema.
 export const RECIPE_PAGE_PHOTO_CONTENT_TYPES = ['image/webp', 'image/jpeg', 'image/png'] as const;
 
-export type RecipePagePhotoContentType = (typeof RECIPE_PAGE_PHOTO_CONTENT_TYPES)[number];
-
 // Upper bound on pages per import. A recipe spans at most a spread in practice;
 // four allows a long method that runs over the page turn. The cap is what keeps
 // the payload inside the callable's 10 MB limit — at 1600px/q0.92 a page is
@@ -50,8 +48,6 @@ export type ExtractRecipeFromPhotoInput = z.infer<typeof ExtractRecipeFromPhotoI
 
 // The flow returns a complete recipe draft, same as the URL import.
 export const ExtractRecipeFromPhotoOutputSchema = RecipeSchema;
-
-export type ExtractRecipeFromPhotoOutput = z.infer<typeof ExtractRecipeFromPhotoOutputSchema>;
 
 // How long the client must be willing to wait, and how long the function is
 // given. ONE constant so the two cannot drift: the Firebase callable client
@@ -111,8 +107,6 @@ export const ExtractedBookSourceSchema = z.object({
   author: z.string().nullable(),
   page: z.number().int().positive().nullable(),
 });
-
-export type ExtractedBookSource = z.infer<typeof ExtractedBookSourceSchema>;
 
 export const ExtractRecipeFromPhotoAIOutputSchema = ExtractRecipeAIOutputSchema.extend({
   // null when nothing about the book is legible on the pages supplied.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { weatherSeverity, mostSignificantWeatherCode } from '@salt/domain';
+import { weatherSeverity } from '../../src/weather/index.js';
 
 // Pure WMO weather-code severity ranking (issue #387). The ranking lets
 // `aggregateForecastWindow` collapse a window of hourly codes to the single
@@ -56,28 +56,5 @@ describe('weatherSeverity', () => {
   it('never throws on any numeric input (total function)', () => {
     expect(() => weatherSeverity(Number.MAX_SAFE_INTEGER)).not.toThrow();
     expect(() => weatherSeverity(-Infinity)).not.toThrow();
-  });
-});
-
-describe('mostSignificantWeatherCode', () => {
-  it('picks the highest-severity code from a window of samples', () => {
-    // clear, partly-cloudy, thunder → thunder wins.
-    expect(mostSignificantWeatherCode([0, 2, 95])).toBe(95);
-    // light rain vs showers → showers (more significant).
-    expect(mostSignificantWeatherCode([61, 80, 3])).toBe(80);
-  });
-
-  it('returns null for an empty window', () => {
-    expect(mostSignificantWeatherCode([])).toBeNull();
-  });
-
-  it('returns the FIRST sample at the max rank when several tie (stable)', () => {
-    // 80, 81, 82 are all in the showers group (equal rank) — the first wins.
-    expect(mostSignificantWeatherCode([80, 81, 82])).toBe(80);
-    expect(mostSignificantWeatherCode([82, 80, 81])).toBe(82);
-  });
-
-  it('prefers a known condition over an unknown code even if the unknown is larger', () => {
-    expect(mostSignificantWeatherCode([0, 999])).toBe(0);
   });
 });

@@ -10,7 +10,6 @@ export type { ShoppingListsConfig } from './entities/ShoppingListsConfig.js';
 export type { ShoppingListPort } from './ports/ShoppingListPort.js';
 export type { ShoppingListItemPort } from './ports/ShoppingListItemPort.js';
 export type { ShoppingListsConfigPort } from './ports/ShoppingListsConfigPort.js';
-export type { IdGenerator as ShoppingListIdGenerator } from './ports/IdGenerator.js';
 
 export { createList } from './commands/createList.js';
 export type { CreateListInput } from './commands/createList.js';

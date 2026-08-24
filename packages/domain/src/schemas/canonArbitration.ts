@@ -12,8 +12,6 @@ export const ArbitrationRequestSchema = z.object({
   rawText: z.string().optional(),
 });
 
-export type ArbitrationRequestInput = z.infer<typeof ArbitrationRequestSchema>;
-
 // The arbitration outcome the CF flow returns and the domain port yields (issue
 // #417). Single source of truth for the shape: the domain `ArbitrationResult`
 // type and the `arbitrateCanon` flow's outputSchema both derive from this, so the
@@ -65,5 +63,3 @@ export const CanonArbitrationAIOutputSchema = z.object({
   unit: z.enum(['g', 'ml', 'count']).nullable(),
   reasoning: z.string(),
 });
-
-export type CanonArbitrationAIOutput = z.infer<typeof CanonArbitrationAIOutputSchema>;

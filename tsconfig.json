@@ -6,7 +6,6 @@
     { "path": "packages/adapters/firebase-sync/tsconfig.json" },
     { "path": "packages/adapters/observability/tsconfig.json" },
     { "path": "packages/ui-components/tsconfig.json" },
-    { "path": "packages/testing-utils/tsconfig.json" },
     { "path": "apps/web-pwa/tsconfig.json" },
     { "path": "apps/cloud-functions/tsconfig.json" },
     { "path": "apps/storybook/tsconfig.json" }

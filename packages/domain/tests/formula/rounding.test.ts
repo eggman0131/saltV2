@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  GRAM_DECIMAL_THRESHOLD,
-  PERCENT_DECIMALS,
-  roundGrams,
-  roundPercent,
-} from '../../src/index.js';
+import { roundGrams, roundPercent } from '../../src/index.js';
+import { GRAM_DECIMAL_THRESHOLD, PERCENT_DECIMALS } from '../../src/formula/index.js';
 
 describe('roundGrams', () => {
   it('gives whole grams at or above the threshold', () => {

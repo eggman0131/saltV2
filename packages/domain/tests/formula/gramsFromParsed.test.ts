@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { gramsFromParsed, DENSITY_G_PER_ML } from '../../src/index.js';
-import type { ParsedIngredientDoc } from '../../src/schemas/index.js';
-
+import { gramsFromParsed } from '../../src/index.js';
+import { DENSITY_G_PER_ML } from '../../src/formula/index.js';
+import type { ParsedIngredientDoc } from '../../src/schemas/recipe.js';
 // Reducing a parsed recipe ingredient to the one number a formula can scale.
 // Lines below are what `parseRecipeIngredients` actually emits for real recipes.
 

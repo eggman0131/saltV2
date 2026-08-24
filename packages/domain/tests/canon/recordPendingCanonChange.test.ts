@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { recordPendingCanonChange, describePendingCanonChange } from '@salt/domain';
-import type { CanonItem, PendingCanonChange } from '@salt/domain';
+import { describePendingCanonChange } from '@salt/domain';
+import type { CanonItem } from '@salt/domain';
+import { recordPendingCanonChange } from '../../src/canon/index.js';
+import type { PendingCanonChange } from '../../src/canon/index.js';
 
 const base: CanonItem = {
   id: 'item-1',
