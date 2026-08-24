@@ -36,13 +36,18 @@ export function subscribeCanonItems(
   );
 }
 
-export async function upsertCanonItem(item: CanonItem): Promise<void> {
-  const db = getFirestore(getApp());
-  // Never write embeddings from the client (#410): vectors are server-only, in
-  // the canonEmbeddings collection. Strip it so a client edit can't reintroduce a
-  // vector inline; the CF embedding branch backfills canonEmbeddings on the write.
-  const { embedding: _embedding, ...rest } = item;
-  await setDoc(doc(db, COLLECTION, item.id), { ...rest });
+export async function upsertCanonItem(item: CanonItem): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    // Never write embeddings from the client (#410): vectors are server-only, in
+    // the canonEmbeddings collection. Strip it so a client edit can't reintroduce a
+    // vector inline; the CF embedding branch backfills canonEmbeddings on the write.
+    const { embedding: _embedding, ...rest } = item;
+    await setDoc(doc(db, COLLECTION, item.id), { ...rest });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 export async function deleteCanonItem(id: string): Promise<ReadResult<void, DomainError>> {

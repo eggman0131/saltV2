@@ -13,7 +13,7 @@ import {
   CANON_ICON_HIDDEN,
 } from '@salt/domain';
 import type { ProductForm, CreateProductFormInput, UpdateProductFormInput } from '@salt/domain';
-import { type DomainError, type Result } from '@salt/shared-types';
+import { type DomainError, type ReadResult, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
@@ -57,12 +57,21 @@ export function getProductFormsSnapshot(): readonly ProductForm[] {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────────
 
+// The write half of every product-form edit (#931), the twin of canonService's
+// `commitCanonItemUpdate`: the persistence outcome comes back so a command that
+// produced a valid form still answers `err` when the document never landed, and
+// the §7.6 gate sees it once rather than at four call sites.
+async function commitProductForm(form: ProductForm): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await upsertProductForm(form));
+}
+
 export async function addProductForm(
   input: CreateProductFormInput,
 ): Promise<Result<ProductForm, DomainError>> {
   const result = createProductForm(input, { newProductFormId: () => crypto.randomUUID() });
-  if (result.kind === 'ok') await upsertProductForm(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitProductForm(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function editProductForm(
@@ -70,8 +79,9 @@ export async function editProductForm(
   input: UpdateProductFormInput,
 ): Promise<Result<ProductForm, DomainError>> {
   const result = updateProductForm(form, input);
-  if (result.kind === 'ok') await upsertProductForm(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitProductForm(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 // Confirm an AI-seeded (pending) product form (issue #500, Phase 3). Applies the
@@ -86,8 +96,9 @@ export async function confirmProductForm(
   const updated = updateProductForm(form, input);
   if (updated.kind !== 'ok') return updated;
   const confirmed = confirmProductFormCmd(updated.value);
-  if (confirmed.kind === 'ok') await upsertProductForm(confirmed.value);
-  return confirmed;
+  if (confirmed.kind !== 'ok') return confirmed;
+  const written = await commitProductForm(confirmed.value);
+  return written.kind === 'err' ? written : confirmed;
 }
 
 export async function deleteProductForm(id: string): Promise<Result<void, DomainError>> {
@@ -119,8 +130,9 @@ export async function hideProductFormIcon(
   form: ProductForm,
 ): Promise<Result<ProductForm, DomainError>> {
   const result = setProductFormThumbnail(form, CANON_ICON_HIDDEN);
-  if (result.kind === 'ok') await upsertProductForm(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitProductForm(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 /** Un-hide a product form's icon: clears the "hidden" sentinel (→ null) via the

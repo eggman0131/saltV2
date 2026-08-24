@@ -48,7 +48,7 @@ vi.mock('../src/lib/membersService.js', () => ({
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
   isLoadingAisles: mockIsLoading,
-  approveCanonItems: vi.fn().mockResolvedValue(undefined),
+  approveCanonItems: vi.fn().mockResolvedValue({ kind: 'ok' as const, value: undefined }),
   updateCanonItemName: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   updateCanonItemAisle: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   updateCanonItemSynonyms: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

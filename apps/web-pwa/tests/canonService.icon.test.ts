@@ -4,7 +4,7 @@ import type { CanonItem } from '@salt/domain';
 vi.mock('@salt/firebase-sync', () => ({
   subscribeCanonItems: vi.fn(),
   subscribeAisles: vi.fn(),
-  upsertCanonItem: vi.fn().mockResolvedValue(undefined),
+  upsertCanonItem: vi.fn().mockResolvedValue({ kind: 'ok' as const, value: undefined }),
   deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callMatchOrCreate: vi.fn(),
   callRegenerateCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

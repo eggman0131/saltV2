@@ -39,7 +39,14 @@ import type {
   MatchOrCreateResult,
   ShoppingBehavior,
 } from '@salt/domain';
-import { ErrorCode, failure, success, type DomainError, type Result } from '@salt/shared-types';
+import {
+  ErrorCode,
+  failure,
+  success,
+  type DomainError,
+  type ReadResult,
+  type Result,
+} from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
@@ -243,7 +250,10 @@ export async function addCanonItem(
         const updated = appendCanonSynonym(local.candidate.item, rawName, {
           isDerivedName: (name) => resolveProductForm(name, getProductFormsSnapshot()) !== null,
         });
-        if (updated !== local.candidate.item) await upsertCanonItem(updated);
+        if (updated !== local.candidate.item) {
+          const written = await commitCanonItemUpdate(updated);
+          if (written.kind === 'err') return written;
+        }
         span.setAttribute('canon.outcome', 'matched');
         span.setAttribute('canon.path', 'fast');
         span.setAttribute('canon.result', updated.name);
@@ -279,8 +289,12 @@ export async function addCanonItem(
   }
 }
 
-async function commitCanonItemUpdate(item: CanonItem): Promise<void> {
-  await upsertCanonItem(item);
+// The write half of every canon edit (#931). It hands back the persistence
+// outcome instead of discarding it, so a command that produced a perfectly valid
+// item still answers `err` when the document never landed — and the §7.6 gate
+// sees the failure once, here, rather than at each of the eight call sites.
+async function commitCanonItemUpdate(item: CanonItem): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await upsertCanonItem(item));
 }
 
 export async function updateCanonItemName(
@@ -288,8 +302,9 @@ export async function updateCanonItemName(
   newName: string,
 ): Promise<Result<CanonItem, DomainError>> {
   const result = renameCanonItem(item, newName);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function updateCanonItemAisle(
@@ -297,8 +312,9 @@ export async function updateCanonItemAisle(
   aisleId: string | null,
 ): Promise<Result<CanonItem, DomainError>> {
   const result = setCanonItemAisle(item, aisleId);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function updateCanonItemSynonyms(
@@ -306,8 +322,9 @@ export async function updateCanonItemSynonyms(
   synonyms: readonly string[],
 ): Promise<Result<CanonItem, DomainError>> {
   const result = setCanonItemSynonyms(item, synonyms);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function updateCanonItemShoppingBehavior(
@@ -315,8 +332,9 @@ export async function updateCanonItemShoppingBehavior(
   shoppingBehavior: ShoppingBehavior,
 ): Promise<Result<CanonItem, DomainError>> {
   const result = setCanonItemShoppingBehavior(item, shoppingBehavior);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function updateCanonItemThreshold(
@@ -325,8 +343,9 @@ export async function updateCanonItemThreshold(
   unit: CanonItemUnit | undefined,
 ): Promise<Result<CanonItem, DomainError>> {
   const result = setCanonItemThreshold(item, largeQuantityThreshold, unit);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function approveCanonItemWithOverrides(
@@ -334,21 +353,27 @@ export async function approveCanonItemWithOverrides(
   overrides?: ApproveCanonItemOverrides,
 ): Promise<Result<CanonItem, DomainError>> {
   const result = approveCanonItem(item, overrides);
-  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitCanonItemUpdate(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
-export async function approveCanonItems(ids: string[]): Promise<void> {
+// Bulk approve. A missing item and a command that refuses are both no-ops, as
+// they always were — what is new is that a REFUSED WRITE is answered for: every
+// id is still attempted, and the first document that failed to land is what the
+// caller hears about (#931).
+export async function approveCanonItems(ids: string[]): Promise<ReadResult<void, DomainError>> {
   const items = get(_canonItems);
-  await Promise.all(
-    ids.map((id) => {
+  const written = await Promise.all(
+    ids.map((id): Promise<ReadResult<void, DomainError>> => {
       const item = items.find((i) => i.id === id);
-      if (!item) return Promise.resolve();
+      if (!item) return Promise.resolve(success(undefined));
       const result = approveCanonItem(item);
       if (result.kind === 'ok') return commitCanonItemUpdate(result.value);
-      return Promise.resolve();
+      return Promise.resolve(success(undefined));
     }),
   );
+  return written.find((w) => w.kind === 'err') ?? success(undefined);
 }
 
 export async function splitMostRecentSynonym(
@@ -372,8 +397,12 @@ export async function splitMostRecentSynonym(
   const trimmedResult = setCanonItemSynonyms(item, item.synonyms.slice(0, -1));
   if (trimmedResult.kind !== 'ok') return trimmedResult;
   const trimmed = trimmedResult.value;
-  await upsertCanonItem(created.value);
-  await upsertCanonItem(trimmed);
+  // The promoted item first: if the second write is refused the synonym is
+  // duplicated rather than lost, which is the recoverable half of the split.
+  const wroteCreated = await commitCanonItemUpdate(created.value);
+  if (wroteCreated.kind === 'err') return wroteCreated;
+  const wroteTrimmed = await commitCanonItemUpdate(trimmed);
+  if (wroteTrimmed.kind === 'err') return wroteTrimmed;
   return created;
 }
 

@@ -1,5 +1,8 @@
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, failure } from '@salt/shared-types';
+import { classifyFirestoreError } from './firestoreErrors.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E AI stub writer (test-infra Phase 1) — emulator-only.
@@ -24,11 +27,23 @@ export const E2E_AI_STUB_COLLECTION = '_e2e_ai_stubs';
 /**
  * Registers the canned answer the CF fake model returns for `flowName`.
  * Test-only; resolves once the stub doc is written to the (emulator) Firestore.
+ *
+ * Test infrastructure is still adapter code: the failure crosses back as a
+ * `Failure<DomainError>` (Rule 10) so the e2e bridge can say the stub never
+ * landed instead of the spec failing later for an unrelated-looking reason.
  */
-export async function setAiStub(flowName: string, response: unknown): Promise<void> {
-  const db = getFirestore(getApp());
-  await setDoc(doc(db, E2E_AI_STUB_COLLECTION, flowName), {
-    response: response ?? null,
-    updatedAt: new Date().toISOString(),
-  });
+export async function setAiStub(
+  flowName: string,
+  response: unknown,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await setDoc(doc(db, E2E_AI_STUB_COLLECTION, flowName), {
+      response: response ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }

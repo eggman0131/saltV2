@@ -31,9 +31,14 @@ export function subscribeProductForms(
   );
 }
 
-export async function upsertProductForm(item: ProductForm): Promise<void> {
-  const db = getFirestore(getApp());
-  await setDoc(doc(db, COLLECTION, item.id), { ...item });
+export async function upsertProductForm(item: ProductForm): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await setDoc(doc(db, COLLECTION, item.id), { ...item });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 export async function deleteProductForm(id: string): Promise<ReadResult<void, DomainError>> {
