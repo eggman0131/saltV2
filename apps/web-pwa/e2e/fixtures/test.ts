@@ -14,6 +14,34 @@ const E2E_RAW_DIR = join(
   'e2e-raw',
 );
 
+// ── E2E V8 coverage is OPT-IN (issue #945) ────────────────────────────────────
+//
+// This fixture is `auto`, so before #945 it ran around EVERY test on EVERY CI
+// shard — `startJSCoverage`/`stopJSCoverage` per test, then a JSON file holding
+// the SOURCE TEXT of every script the page had loaded (under the dev server that
+// is the app, @salt/*, and Vite's pre-bundled deps, unminified and carrying
+// inline source maps). CI never ran `e2e:coverage:report`, `coverage/e2e-raw/`
+// was in no `upload-artifact` path, and the whole lot went into the bin with the
+// runner. Full cost, no output.
+//
+// The choice made was OPT-IN rather than wiring a report into CI, on three
+// grounds. (1) Nothing consumes it: there is no e2e coverage floor, no ratchet,
+// no artifact — and the `.svelte` route layer the report would describe already
+// carries a real unit-coverage floor (`apps/web-pwa/src/routes/**`, #966/#943).
+// (2) Retaining it properly means uploading that raw JSON from all three shards
+// and adding a fourth job to merge it — real, permanent, per-run cost bought for
+// a report nobody has asked to read. (3) The per-test cost could not be
+// measured: the "Run E2E tests" step swings 3:30–5:03 across shards of the same
+// run, so the overhead is smaller than the noise — which makes it unproven, not
+// free. Unproven cost for no consumer is a bad trade.
+//
+// Nothing is lost locally: `pnpm --filter @salt/web-pwa e2e:coverage` sets the
+// flag itself and still produces the HTML + LCOV report, and `E2E_COVERAGE=1`
+// in front of any `playwright test` collects on demand. Wiring a report into CI
+// stays available if e2e coverage ever gains a consumer — flip the default and
+// add the upload/merge; the collection code is untouched and still here.
+const COLLECT_COVERAGE = process.env.E2E_COVERAGE === '1';
+
 interface AutoFixtures {
   readonly clearFirestore: void;
   readonly coverageData: void;
@@ -34,6 +62,10 @@ export const test = baseTest.extend<AutoFixtures>({
 
   coverageData: [
     async ({ page }, use, testInfo) => {
+      if (!COLLECT_COVERAGE) {
+        await use();
+        return;
+      }
       await page.coverage.startJSCoverage();
       await use();
       const coverage = await page.coverage.stopJSCoverage();
