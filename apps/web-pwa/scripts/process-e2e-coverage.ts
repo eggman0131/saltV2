@@ -23,6 +23,13 @@ interface V8CoverageEntry {
   functions: FunctionCoverage[];
 }
 
+// Collection is opt-in (#945), so "nothing to process" is the expected state for
+// anyone who ran a plain `e2e`. Say which flag turns it on rather than leaving
+// them to find the fixture.
+const HOW_TO_COLLECT =
+  'E2E coverage collection is opt-in — run `pnpm --filter @salt/web-pwa e2e:coverage`, ' +
+  'or set E2E_COVERAGE=1 for the Playwright run you want measured.';
+
 const RAW_DIR = resolve('coverage', 'e2e-raw');
 const OUT_DIR = resolve('coverage', 'e2e');
 const APP_ORIGIN = 'http://127.0.0.1:5174';
@@ -33,12 +40,14 @@ async function main(): Promise<void> {
     files = await readdir(RAW_DIR);
   } catch {
     console.error('No raw coverage directory found at', RAW_DIR);
+    console.error(HOW_TO_COLLECT);
     process.exit(1);
   }
 
   const jsonFiles = files.filter((f) => f.endsWith('.json'));
   if (jsonFiles.length === 0) {
     console.error('No .json files found in', RAW_DIR);
+    console.error(HOW_TO_COLLECT);
     process.exit(1);
   }
 
