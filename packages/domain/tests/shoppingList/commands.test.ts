@@ -8,10 +8,9 @@ import {
   addItem,
   editItemRawText,
   editItemNotes,
-  checkItem,
+  setItemChecked,
   confirmItemNeeded,
   setItemNeedsCheck,
-  uncheckItem,
   deleteItem,
   clearCheckedItems,
   moveItems,
@@ -330,40 +329,37 @@ describe('editItemNotes', () => {
   });
 });
 
-// ── checkItem ─────────────────────────────────────────────────────────────────
+// ── setItemChecked ────────────────────────────────────────────────────────────
 
-describe('checkItem', () => {
+describe('setItemChecked', () => {
   it('sets checked to true', () => {
     const items = [makeItem('item-1', { checked: false })];
-    const result = checkItem(items, { id: 'item-1', now: NOW2 });
+    const result = setItemChecked(items, { id: 'item-1', checked: true, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value[0].checked).toBe(true);
     expect(result.value[0].updatedAt).toBe(NOW2);
   });
 
-  it('returns NotFound for unknown id', () => {
-    const result = checkItem([], { id: 'no-such', now: NOW });
-    expect(result.kind).toBe('err');
-    if (result.kind !== 'err') return;
-    expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
-  });
-});
-
-// ── uncheckItem ───────────────────────────────────────────────────────────────
-
-describe('uncheckItem', () => {
   it('sets checked to false', () => {
     const items = [makeItem('item-1', { checked: true })];
-    const result = uncheckItem(items, { id: 'item-1', now: NOW2 });
+    const result = setItemChecked(items, { id: 'item-1', checked: false, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value[0].checked).toBe(false);
     expect(result.value[0].updatedAt).toBe(NOW2);
   });
 
+  it('leaves the other items alone', () => {
+    const items = [makeItem('item-1', { checked: false }), makeItem('item-2', { checked: false })];
+    const result = setItemChecked(items, { id: 'item-1', checked: true, now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[1]).toBe(items[1]);
+  });
+
   it('returns NotFound for unknown id', () => {
-    const result = uncheckItem([], { id: 'no-such', now: NOW });
+    const result = setItemChecked([], { id: 'no-such', checked: true, now: NOW });
     expect(result.kind).toBe('err');
     if (result.kind !== 'err') return;
     expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
