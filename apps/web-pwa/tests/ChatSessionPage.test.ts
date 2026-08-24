@@ -57,11 +57,17 @@ vi.mock('../src/lib/recipeService.js', () => ({
   // Identity — attribution (#845) has its own suite; this one is about the page.
   stampRecipeAttribution: <T>(recipe: T) => recipe,
 }));
+// Reached through `applyRecipeAmendment`, not by this page (issue #918) — which
+// is the point of the suite at the bottom of this file.
+vi.mock('../src/lib/guidedPlanService.js', () => ({
+  discardGuidedPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
 
 import ChatSessionPage from '../src/routes/chat/ChatSessionPage.svelte';
 import { claimRecipe, sendMessage } from '../src/lib/chatService.js';
 import { attachComponentToMeal, authorRecipeTraced } from '../src/lib/recipeService.js';
 import { addToast } from '../src/lib/toastStore.js';
+import { discardGuidedPlan } from '../src/lib/guidedPlanService.js';
 import { push } from 'svelte-spa-router';
 
 function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
@@ -386,5 +392,67 @@ describe('ChatSessionPage — starter prompts', () => {
     const { queryAllByTestId } = renderPage();
 
     expect(queryAllByTestId('chat-starter')).toHaveLength(0);
+  });
+});
+
+// Applying an amendment from the chat page (issue #918).
+//
+// This surface is why the issue exists: the guided-plan check lived in the
+// recipe page's apply handler and nowhere else, so the SAME amendment applied
+// from here left the plan pointing at steps that no longer existed. The test is
+// at the surface deliberately — the bug was never in the rule, it was in which
+// door ran it.
+describe('ChatSessionPage — applying an amendment decides the guided plan', () => {
+  function pilafWithSteps(): Recipe {
+    return {
+      ...emptyRecipe('pilaf', NOW),
+      title: 'Chorizo & Red Pepper Pilaf',
+      steps: [
+        { id: 'step-a', text: 'Fry the chorizo.', timer: null, note: null },
+        { id: 'step-b', text: 'Add the rice.', timer: null, note: null },
+      ],
+    };
+  }
+
+  async function applyFromChat(getByTestId: (id: string) => HTMLElement) {
+    await fireEvent.click(getByTestId('chat-apply-changes-btn'));
+    await waitFor(() => expect(getByTestId('recipe-change-apply')).toBeInTheDocument());
+    await fireEvent.click(getByTestId('recipe-change-apply'));
+  }
+
+  it('discards a plan whose steps the amendment re-minted', async () => {
+    mockSessions._set([makeSession({ recipeId: 'pilaf' })]);
+    mockRecipes._set([pilafWithSteps()]);
+    // What the CF actually returns on an amend: fresh ids for every step.
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: {
+        ...pilafWithSteps(),
+        steps: [
+          { id: 'fresh-1', text: 'Fry the chorizo hard.', timer: null, note: null },
+          { id: 'fresh-2', text: 'Add the rice.', timer: null, note: null },
+        ],
+      },
+    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+    const { getByTestId } = renderPage();
+
+    await applyFromChat(getByTestId);
+
+    await waitFor(() => expect(discardGuidedPlan).toHaveBeenCalledExactlyOnceWith('pilaf'));
+  });
+
+  it('leaves a plan alone when the amendment kept every step id', async () => {
+    mockSessions._set([makeSession({ recipeId: 'pilaf' })]);
+    mockRecipes._set([pilafWithSteps()]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: { ...pilafWithSteps(), title: 'Chorizo & Red Pepper Pilaf (hot)' },
+    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+    const { getByTestId } = renderPage();
+
+    await applyFromChat(getByTestId);
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith('Recipe updated!', 'success'));
+    expect(discardGuidedPlan).not.toHaveBeenCalled();
   });
 });

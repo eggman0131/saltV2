@@ -14,10 +14,24 @@ import type { RecipeDoc } from '@salt/domain/schemas';
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
-vi.mock('../src/lib/recipeService.js', () => ({ authorRecipeTraced: vi.fn() }));
+vi.mock('../src/lib/recipeService.js', () => ({
+  authorRecipeTraced: vi.fn(),
+  // Identity — attribution (#845) has its own suite; these tests are about the
+  // guided plan and the merge.
+  stampRecipeAttribution: <T>(recipe: T) => recipe,
+}));
+vi.mock('../src/lib/guidedPlanService.js', () => ({ discardGuidedPlan: vi.fn() }));
 
-import { mergeAmendedRecipe, proposeRecipeAmendment } from '../src/lib/recipeAmend.js';
+import {
+  mergeAmendedRecipe,
+  proposeRecipeAmendment,
+  applyRecipeAmendment,
+  type RecipeAmendment,
+} from '../src/lib/recipeAmend.js';
 import { authorRecipeTraced } from '../src/lib/recipeService.js';
+import { discardGuidedPlan } from '../src/lib/guidedPlanService.js';
+import { saveRecipe } from '@salt/firebase-sync';
+import { diffRecipe } from '@salt/domain';
 
 const NOW = '2026-08-11T12:00:00.000Z';
 
@@ -233,5 +247,68 @@ describe('proposeRecipeAmendment — what the librarian is asked to read', () =>
     const result = await proposeRecipeAmendment(existingRecipe(), [], []);
 
     expect(result.kind).toBe('err');
+  });
+});
+
+// The guided plan, decided on the ONE path both surfaces apply through (issue
+// #918). This lived in the recipe page's apply handler and nowhere else, so the
+// same amendment applied from `/chat/:id` left the plan pointing at steps that
+// no longer existed. These tests pin the rule where it now lives; a surface that
+// forgets it can no longer exist, because there is nothing left to forget.
+
+function step(id: string, text: string) {
+  return { id, text, timer: null, note: null };
+}
+
+function amendmentWith(existingStepIds: string[], updatedStepIds: string[]): RecipeAmendment {
+  const existing = { ...existingRecipe(), steps: existingStepIds.map((id) => step(id, 'Chop.')) };
+  const updated = { ...existing, steps: updatedStepIds.map((id) => step(id, 'Chop finely.')) };
+  return { existing, updated, diff: diffRecipe(existing, updated) };
+}
+
+describe('applyRecipeAmendment — whether the guided plan survives the write', () => {
+  it('discards the plan when the write re-mints the step ids its notes point at', async () => {
+    // What `assembleRecipeDraft` actually does on every amend: a fresh
+    // `crypto.randomUUID()` for EVERY step, changed or not.
+    const result = await applyRecipeAmendment(amendmentWith(['s1', 's2'], ['new-1', 'new-2']));
+
+    expect(result.kind).toBe('ok');
+    expect(discardGuidedPlan).toHaveBeenCalledExactlyOnceWith('pilaf');
+  });
+
+  it('leaves the plan alone when every step id survives', async () => {
+    // An edit that touches only metadata or ingredient text keeps its ids, and
+    // the plan's `stepNotes` still resolve. Deleting it would be a plain loss.
+    await applyRecipeAmendment(amendmentWith(['s1', 's2'], ['s1', 's2']));
+
+    expect(discardGuidedPlan).not.toHaveBeenCalled();
+  });
+
+  it('does not discard when the save failed', async () => {
+    // Throwing away the plan for a write that never landed is a loss with
+    // nothing bought for it — the recipe still has the steps the plan names.
+    vi.mocked(saveRecipe).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'corruption' },
+    } as Awaited<ReturnType<typeof saveRecipe>>);
+
+    const result = await applyRecipeAmendment(amendmentWith(['s1'], ['new-1']));
+
+    expect(result.kind).toBe('err');
+    expect(discardGuidedPlan).not.toHaveBeenCalled();
+  });
+
+  it('reports the save result, not the plan delete — a stale plan is not a failed save', async () => {
+    // Best-effort by design: a failed delete leaves the situation we were
+    // already in, so it must not turn a successful save into an error the user
+    // has to interpret.
+    vi.mocked(discardGuidedPlan).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'corruption' },
+    } as Awaited<ReturnType<typeof discardGuidedPlan>>);
+
+    const result = await applyRecipeAmendment(amendmentWith(['s1'], ['new-1']));
+
+    expect(result.kind).toBe('ok');
   });
 });

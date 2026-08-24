@@ -104,11 +104,7 @@
   import { formatMinutes } from './recipeDuration.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
-  import {
-    guidedPlan,
-    initGuidedPlanSync,
-    discardGuidedPlan,
-  } from '../../lib/guidedPlanService.js';
+  import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { formula, initFormulaSync } from '../../lib/formulaService.js';
   import { currentMember, firstName } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
@@ -1100,28 +1096,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
   async function handleSidebarApplyChanges(): Promise<void> {
     if (!sidebarPending || sidebarIsApplying || !recipe) return;
-    const amendedId = sidebarPending.updated.id;
-    // Whether the guided plan survives this write, decided by the one fact that
-    // actually governs it: are the step ids its `stepNotes` point at still there?
-    //
-    // This used to ask a different question — did the proposal come from Refresh
-    // rather than from the chat (issue #784) — on the belief that a chat
-    // amendment preserved the ids of steps it did not change. It does not:
-    // `assembleRecipeDraft` mints a fresh `crypto.randomUUID()` for EVERY step on
-    // every amend, ingredients being the only things reused by content. So a chat
-    // amendment left the plan pointing at steps that no longer existed, silently,
-    // and the stale-recipe banner cannot help with references that do not
-    // resolve. Asking about the ids covers both doors and cannot drift when a
-    // third one opens (issue #890).
-    const survivingStepIds = new Set(sidebarPending.updated.steps.map((step) => step.id));
-    const planStepsInvalidated = recipe.steps.some((step) => !survivingStepIds.has(step.id));
+    // Whether the guided plan survives the write is decided inside
+    // `applyRecipeAmendment` (issue #918), not here. It used to be decided here
+    // and only here, so the same amendment applied from `/chat/:id` left a plan
+    // pointing at steps that no longer existed. A page owns its busy state, its
+    // toasts and where it navigates; it owns nothing about what gets written.
     sidebarIsApplying = true;
     const saveResult = await applyRecipeAmendment(sidebarPending);
-    // Only after the save succeeds — throwing away the plan for a write that
-    // never landed would be a plain loss. Best-effort: a failed delete leaves a
-    // stale plan, which is the situation we were already in, so it must not turn
-    // a successful save into an error the user has to interpret.
-    if (saveResult.kind === 'ok' && planStepsInvalidated) await discardGuidedPlan(amendedId);
     sidebarIsApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');

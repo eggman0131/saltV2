@@ -3,6 +3,7 @@ import type { AuthorRecipeInput, RecipeDiff, RecipeDoc } from '@salt/domain/sche
 import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { authorRecipeTraced, stampRecipeAttribution } from './recipeService.js';
+import { discardGuidedPlan } from './guidedPlanService.js';
 
 // Amending a recipe by chat — propose, merge, diff, apply (issue #764).
 //
@@ -27,6 +28,15 @@ export interface RecipeAmendment {
   updated: Recipe;
   /** What changed, for the review summary. Diffed POST-merge, so preserved fields show no row. */
   diff: RecipeDiff;
+  /**
+   * The recipe this was authored from. Carried on the proposal rather than
+   * asked of the caller (issue #918) so that applying cannot be done without
+   * the one fact that decides whether the guided plan survives the write — see
+   * `applyRecipeAmendment`. A surface that holds a proposal necessarily holds
+   * what it was proposed against, so nothing is asked of the page that it did
+   * not already have.
+   */
+  existing: Recipe;
 }
 
 /**
@@ -108,23 +118,54 @@ async function propose(
   if (result.kind !== 'ok') return result;
 
   const updated = mergeAmendedRecipe(existing, result.value, new Date().toISOString());
-  return success({ updated, diff: diffRecipe(existing, updated) });
+  return success({ existing, updated, diff: diffRecipe(existing, updated) });
 }
 
 /**
- * Commit a proposal — the gate's confirm. A one-line pass through to the
- * adapter, and deliberately so: it keeps the save on the same seam as the
- * propose, so the two surfaces cannot acquire different ideas about what
+ * Commit a proposal — the gate's confirm. It keeps the save on the same seam as
+ * the propose, so the two surfaces cannot acquire different ideas about what
  * applying means the way they did about merging.
  *
- * The one thing it adds is attribution (issue #845): confirming a proposal IS
- * the human edit, so the amender is stamped here — on the write, not on a
- * proposal that may be discarded. `createdBy` is untouched by that stamp when it
- * already holds a name, so amending someone else's recipe by chat credits you as
- * the editor and leaves them as the one who added it.
+ * It adds attribution (issue #845): confirming a proposal IS the human edit, so
+ * the amender is stamped here — on the write, not on a proposal that may be
+ * discarded. `createdBy` is untouched by that stamp when it already holds a
+ * name, so amending someone else's recipe by chat credits you as the editor and
+ * leaves them as the one who added it.
+ *
+ * And it decides the guided plan (issue #918). That check used to live in the
+ * recipe page's apply handler and nowhere else, so the SAME amendment applied
+ * from `/chat/:id` left the plan behind — one rule with two implementations,
+ * only one of which knew the rule, which is the #764 shape exactly. It lives
+ * here now because here is the one door both surfaces come through.
+ *
+ * Whether the plan survives is decided by the one fact that actually governs it:
+ * are the step ids its `stepNotes` point at still there? This used to ask a
+ * different question — did the proposal come from Refresh rather than from the
+ * chat (issue #784) — on the belief that a chat amendment preserved the ids of
+ * steps it did not change. It does not: `assembleRecipeDraft` mints a fresh
+ * `crypto.randomUUID()` for EVERY step on every amend, ingredients being the
+ * only things reused by content. So a chat amendment left the plan pointing at
+ * steps that no longer existed, silently, and the stale-recipe banner cannot
+ * help with references that do not resolve. Asking about the ids covers every
+ * door and cannot drift when a new one opens (issue #890).
  */
 export async function applyRecipeAmendment(
   amendment: RecipeAmendment,
 ): Promise<ReadResult<void, DomainError>> {
-  return saveRecipeDoc(stampRecipeAttribution(amendment.updated));
+  const survivingStepIds = new Set(amendment.updated.steps.map((step) => step.id));
+  const planStepsInvalidated = amendment.existing.steps.some(
+    (step) => !survivingStepIds.has(step.id),
+  );
+
+  const saveResult = await saveRecipeDoc(stampRecipeAttribution(amendment.updated));
+
+  // Only after the save succeeds — throwing away the plan for a write that never
+  // landed would be a plain loss. Best-effort: a failed delete leaves a stale
+  // plan, which is the situation we were already in, so it must not turn a
+  // successful save into an error the user has to interpret.
+  if (saveResult.kind === 'ok' && planStepsInvalidated) {
+    await discardGuidedPlan(amendment.updated.id);
+  }
+
+  return saveResult;
 }
