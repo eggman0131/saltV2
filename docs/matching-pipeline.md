@@ -16,7 +16,7 @@ The pipeline is invoked from two server-side entry points:
 
 The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF callable; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
 
-`findClosestMatch` is the only stage 1–4 entry point — `tokenMatch`, `stringSimilarity`, `synonymMatch`, and `embedMatch` are not exported and the boundary lint forbids reaching past `findClosestMatch` to call them.
+`findClosestMatch` is the only stage 1–4 entry point, and neither app may reach past it to `tokenMatch`, `stringSimilarity`, `synonymMatch` or `embedMatch` (stage 5): `no-restricted-imports` in `eslint.config.js` forbids all four by name off `@salt/domain` and by deep subpath, with a `__boundary_tests__` fixture per app asserting the error. That lint rule is the whole guarantee — do not read it as "these are not exported", because `embedMatch` is on the canon barrel (`packages/domain/src/canon/index.ts`).
 
 ---
 

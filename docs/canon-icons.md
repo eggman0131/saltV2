@@ -219,7 +219,9 @@ Runtime: region `europe-west2`; raise the function timeout/memory for the icon p
 ## Storage
 
 First use of Firebase Storage in the project. Adds a `storage` block to
-`firebase.json` and a `storage.rules`:
+`firebase.json` and a `storage.rules`. That file is the list of prefixes — it also
+carries the non-pictogram `recipe-images/` and `batch-images/` blocks, which this doc
+does not cover. The pictogram prefixes, and what is peculiar to each:
 
 - `canon-icons/{file}` — **public read**, **no client write** (only the CF Admin SDK
   writes). Icons are non-sensitive, so public read keeps the client SDK-free: the
@@ -237,6 +239,9 @@ First use of Firebase Storage in the project. Adds a `storage` block to
   Storage objects are reclaimed by `sweepOrphanedStorage`, which only works because
   `onEquipmentManifestWritten` deletes the icon DOC when its item leaves the
   manifest — a left-behind doc would make the sweep conclude "not orphaned".
+- `kit-icons/{file}` — same posture a fourth time, added by #882 for the curated
+  `kitchenTools` vocabulary and written by `onKitchenToolWritten`, with the same
+  deploy-ordering trap as the two above.
 
 ### Provisioning (one-time, per environment)
 

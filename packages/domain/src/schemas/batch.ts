@@ -160,10 +160,10 @@ export const BatchSchema = z.object({
 //     partner's entry. A subcollection makes that collision impossible: separate
 //     documents, separate writes, no merge logic anywhere.
 //
-// FAMILY-SHARED like its parent — no `ownerUid`. The per-user collections are
-// exactly three (`chatSessions`, `cookSessions`, `pushSubscriptions`) and a reading
-// off the household's own crock is not personal state: either partner weighs it,
-// and either partner needs to see what the other found.
+// FAMILY-SHARED like its parent — no `ownerUid`. The per-user collections are the
+// short, closed list in CLAUDE.md's data-model conventions, and a reading off the
+// household's own crock is not on it: either partner weighs the crock, and either
+// partner needs to see what the other found.
 //
 // WHAT AN OBSERVATION IS: a measurement of a run at an instant. Weight, pH,
 // temperature, a note, a photograph — the five the contract doc names, and nothing
