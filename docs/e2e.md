@@ -218,7 +218,10 @@ Changing the ports means changing all three in lockstep.
 ## CI
 
 CI runs the two stacks as **separate jobs** in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml), both gated behind the cheap `ci` job:
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Neither is gated behind the cheap `ci`
+aggregate job — both depend only on `changes`, the path-filter job. That gate was deliberately
+removed; why, and why the `concurrency` block replaced it, is in the `vitest-integration` job
+comment.
 
 1. **`vitest-integration`** — runs `pnpm test:emulator` (the isolated Vitest stack). No host Java,
    no Cloud Functions prebuild, no Playwright (Firestore+Auth-only stack; `scripts/test-emulator.mjs`
