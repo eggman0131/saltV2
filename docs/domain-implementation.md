@@ -336,8 +336,11 @@ This document defines the repeatable pattern for domain modules:
 - adapters implementing infrastructure ports
 - UI calling domain, not infrastructure
 
-Canon is the worked example. The same pattern applies to recipe, shopping,
-members, mealPlan, and productForm.
+Canon is the worked example. The same pattern applies to every other module under
+`packages/domain/src/` — that directory listing *is* the list of modules, which is
+also where the boundary lint derives its rules from rather than from a hand-maintained
+copy (issue #914). The write-ups below cover the modules whose shape needed explaining;
+a module with no entry here is not an exception, only unremarkable.
 
 The `weather` module is a lightweight variant — pure classification utilities
 (`weatherIcon`, `classifyEatingMood`, `temperatureBand`, `weatherSeverity`,
