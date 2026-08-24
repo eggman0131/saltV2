@@ -3,16 +3,11 @@ import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
-import {
-  flushServerObservability,
-  startSpan,
-  type ObservabilitySpan,
-} from '@salt/observability/server';
+import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import { whenCfTelemetryReady } from '../observability/telemetryReady.js';
-import { runTriggerWithTraceContext } from './triggerTraceContext.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
 
@@ -49,7 +44,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
     timeoutSeconds: 180,
     memory: '512MiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ listId: string; itemId: string }>(async (event) => {
     const after = event.data?.after;
     const before = event.data?.before;
 
@@ -86,11 +81,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const db = getFirestore();
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
-    // Wait for the OTel pipeline (propagator + context manager) to be live before
-    // extracting the supplied browser trace, so a cold-started invocation does not
-    // silently drop it and re-root (issue #370). Resolves immediately once warm.
-    await whenCfTelemetryReady();
-
     let errorCategory: string | null = null;
     // Continue the browser-rooted trace carried by the doc's traceContext field
     // (issue #362, Phase 5). The span is opened INSIDE the supplied context so it
@@ -106,61 +96,59 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // strict control-flow analysis — an object property sidesteps that.
     const spanHolder: { current: ObservabilitySpan | null } = { current: null };
     try {
-      await runTriggerWithTraceContext(traceContext, async () => {
-        // Parse INSIDE the installed trace context so the compound-entry AI
-        // fallback's `parseEntry` flow joins this trace instead of re-rooting a
-        // fresh one (issue #370 — it ran before the wrapper previously).
-        // Deterministic first; AI fallback only for compound entries the rule missed.
-        let parsed = parseShoppingListEntry(rawText);
-        if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
-          const aiResult = await createServerEntryParseAdapter().parse(rawText);
-          if (aiResult.kind === 'ok') {
-            parsed = aiResult.value;
-          }
+      // Parse INSIDE the installed trace context so the compound-entry AI
+      // fallback's `parseEntry` flow joins this trace instead of re-rooting a
+      // fresh one (issue #370 — it ran before the wrapper previously).
+      // Deterministic first; AI fallback only for compound entries the rule missed.
+      let parsed = parseShoppingListEntry(rawText);
+      if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
+        const aiResult = await createServerEntryParseAdapter().parse(rawText);
+        if (aiResult.kind === 'ok') {
+          parsed = aiResult.value;
         }
-        const cleanName = parsed.name;
-        const context = parsed.context;
-        const parsedAmount = parsed.amount;
-        const parsedUnit = parsed.unit;
+      }
+      const cleanName = parsed.name;
+      const context = parsed.context;
+      const parsedAmount = parsed.amount;
+      const parsedUnit = parsed.unit;
 
-        const matchSpan = startSpan(`shoppingList.matchItem: ${rawText}`);
-        spanHolder.current = matchSpan; // hoist for the finally below (end + flush)
-        matchSpan.setAttribute('entrySource', 'shoppingListItem');
-        matchSpan.setAttribute('listId', listId);
-        matchSpan.setAttribute('itemId', itemId);
+      const matchSpan = startSpan(`shoppingList.matchItem: ${rawText}`);
+      spanHolder.current = matchSpan; // hoist for the finally below (end + flush)
+      matchSpan.setAttribute('entrySource', 'shoppingListItem');
+      matchSpan.setAttribute('listId', listId);
+      matchSpan.setAttribute('itemId', itemId);
 
-        const result = await matchOrCreate(
-          { rawName: cleanName, ...(rawText ? { rawText } : {}) },
-          buildMatchOrCreatePorts(matchSpan, traceContext),
-        );
+      const result = await matchOrCreate(
+        { rawName: cleanName, ...(rawText ? { rawText } : {}) },
+        buildMatchOrCreatePorts(matchSpan, traceContext),
+      );
 
-        if (result.kind === 'err') {
-          errorCategory = result.error.kind;
-          await docRef.update({
-            matchState: 'failed',
-            updatedAt: new Date().toISOString(),
-            ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
-            ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
-          });
-          return;
-        }
-
-        const { item, decision } = result.value;
-        const newMatchState = item.needs_approval ? 'needs_approval' : 'matched';
-
-        matchSpan.setAttribute('canon.outcome', decision);
-        matchSpan.setAttribute('canon.result', item.id);
-
-        const nameChanged = cleanName !== rawText;
-
+      if (result.kind === 'err') {
+        errorCategory = result.error.kind;
         await docRef.update({
-          canonId: item.id,
-          matchState: newMatchState,
+          matchState: 'failed',
           updatedAt: new Date().toISOString(),
-          ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
           ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
           ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
         });
+        return;
+      }
+
+      const { item, decision } = result.value;
+      const newMatchState = item.needs_approval ? 'needs_approval' : 'matched';
+
+      matchSpan.setAttribute('canon.outcome', decision);
+      matchSpan.setAttribute('canon.result', item.id);
+
+      const nameChanged = cleanName !== rawText;
+
+      await docRef.update({
+        canonId: item.id,
+        matchState: newMatchState,
+        updatedAt: new Date().toISOString(),
+        ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
+        ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+        ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
       });
     } catch (err) {
       // matchOrCreate and the AI adapters convert operational failures into a
@@ -196,7 +184,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
       // null only if startSpan threw before assignment (it cannot — it returns a
       // no-op span when telemetry is off); guard for type-safety.
       spanHolder.current?.end();
-      await flushServerObservability();
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

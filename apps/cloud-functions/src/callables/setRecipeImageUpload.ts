@@ -1,9 +1,9 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { SetRecipeImageUploadInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { reportFlowError } from '../observability/reportServerError.js';
@@ -40,55 +40,43 @@ const IMAGE_STORAGE_PREFIX = 'recipe-images';
 // region/memory are pinned inline (not via setGlobalOptions) because this module
 // is imported at the top of index.ts and its onCall is built before
 // setGlobalOptions runs — same reason regenerateRecipeImage pins them.
-export const setRecipeImageUpload = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const setRecipeImageUpload = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     // sharp decode/encode of a full-resolution upload needs headroom above the
     // 256MiB default — same 512MiB floor the rest of the image path uses.
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = SetRecipeImageUploadInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
     const { recipeId, imageBase64 } = parsed.data;
 
-    try {
-      // Decode → re-encode to the bounded WebP hero (sharp auto-detects the input
-      // format, so the optional contentType hint is not needed here).
-      const raw = Buffer.from(imageBase64, 'base64');
-      const webp = await encodeHeroImage(raw);
+    // Decode → re-encode to the bounded WebP hero (sharp auto-detects the input
+    // format, so the optional contentType hint is not needed here).
+    const raw = Buffer.from(imageBase64, 'base64');
+    const webp = await encodeHeroImage(raw);
 
-      const bucket = getStorage().bucket();
-      const path = `${IMAGE_STORAGE_PREFIX}/${recipeId}.webp`;
-      await bucket.file(path).save(webp, {
-        contentType: 'image/webp',
-        // Same short max-age as the generated hero: the object path is stable but
-        // its bytes change on each upload/regenerate, so it must not be immutable.
-        metadata: { cacheControl: 'public, max-age=3600' },
-      });
-      const url = buildStorageDownloadUrl(bucket.name, path);
+    const bucket = getStorage().bucket();
+    const path = `${IMAGE_STORAGE_PREFIX}/${recipeId}.webp`;
+    await bucket.file(path).save(webp, {
+      contentType: 'image/webp',
+      // Same short max-age as the generated hero: the object path is stable but
+      // its bytes change on each upload/regenerate, so it must not be immutable.
+      metadata: { cacheControl: 'public, max-age=3600' },
+    });
+    const url = buildStorageDownloadUrl(bucket.name, path);
 
-      // Partial update: set the hero to the uploaded photo and bump the cache-bust
-      // nonce so the identical Storage URL re-fetches. `source: 'upload'` marks it
-      // user-supplied so the onRecipeWritten trigger skips it forever.
-      await getFirestore()
-        .collection('recipes')
-        .doc(recipeId)
-        .update({ image: { url, source: 'upload' }, imageRequestedAt: Date.now() });
-    } catch (err) {
-      // An unexpected sharp/Storage/Firestore failure (StorageError-class) — report
-      // it additively, flush, then re-throw so the callable's error path is
-      // unchanged. The auth/validation guards above throw HttpsError before this.
-      await reportFlowError(err);
-      throw err;
-    }
+    // Partial update: set the hero to the uploaded photo and bump the cache-bust
+    // nonce so the identical Storage URL re-fetches. `source: 'upload'` marks it
+    // user-supplied so the onRecipeWritten trigger skips it forever.
+    await getFirestore()
+      .collection('recipes')
+      .doc(recipeId)
+      .update({ image: { url, source: 'upload' }, imageRequestedAt: Date.now() });
     return { ok: true } as const;
   },
-);
+});

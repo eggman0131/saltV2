@@ -40,6 +40,10 @@ vi.mock('../../src/imaging/encodeHeroImage.js', () => ({
 const mockReport = vi.fn(async () => undefined);
 vi.mock('../../src/observability/reportServerError.js', () => ({
   reportFlowError: (...args: unknown[]) => mockReport(...(args as [])),
+  // The makeCallable entrypoint reports through reportServerError (#920): this
+  // callable no longer carries its own report-and-rethrow catch, because the
+  // factory does exactly that for every callable.
+  reportServerError: (...args: unknown[]) => mockReport(...(args as [])),
 }));
 
 class FakeHttpsError extends Error {

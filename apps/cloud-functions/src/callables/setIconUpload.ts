@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import {
   SetIconUploadInputSchema,
@@ -8,7 +8,7 @@ import {
   KITCHEN_TOOLS_COLLECTION,
   type IconUploadFamily,
 } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { reportFlowError } from '../observability/reportServerError.js';
@@ -77,17 +77,13 @@ const CONTENT_MAX = 108;
 // index.ts, so its onCall is built before setGlobalOptions runs. 512MiB is the
 // floor the rest of the image path uses — enough for one sharp decode of an
 // uploaded crop, and no more, since nothing here calls an image model.
-export const setIconUpload = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const setIconUpload = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = SetIconUploadInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
@@ -108,37 +104,28 @@ export const setIconUpload = onCall(
       throw new HttpsError('not-found', 'There is nothing here to put a picture on yet.');
     }
 
-    try {
-      // Decode → frame. No re-encode step of its own: normalizeIconFraming already
-      // emits a 128px WebP with alpha, which is exactly what the generated path
-      // stores, so an uploaded pictogram is byte-normalised identically to a drawn
-      // one.
-      const raw = Buffer.from(imageBase64, 'base64');
-      const webp = await normalizeIconFraming(raw, { contentMax: CONTENT_MAX });
+    // Decode → frame. No re-encode step of its own: normalizeIconFraming already
+    // emits a 128px WebP with alpha, which is exactly what the generated path
+    // stores, so an uploaded pictogram is byte-normalised identically to a drawn
+    // one.
+    const raw = Buffer.from(imageBase64, 'base64');
+    const webp = await normalizeIconFraming(raw, { contentMax: CONTENT_MAX });
 
-      const bucket = getStorage().bucket();
-      const path = `${prefix}/${id}.webp`;
-      await bucket.file(path).save(webp, {
-        contentType: 'image/webp',
-        // `immutable`, matching every generated icon on these four prefixes. The
-        // nonce below is what makes a replacement visible; a short max-age here
-        // would diverge from the drawn path for no gain.
-        metadata: { cacheControl: 'public, max-age=31536000, immutable' },
-      });
-      const url = buildStorageDownloadUrl(bucket.name, path);
+    const bucket = getStorage().bucket();
+    const path = `${prefix}/${id}.webp`;
+    await bucket.file(path).save(webp, {
+      contentType: 'image/webp',
+      // `immutable`, matching every generated icon on these four prefixes. The
+      // nonce below is what makes a replacement visible; a short max-age here
+      // would diverge from the drawn path for no gain.
+      metadata: { cacheControl: 'public, max-age=31536000, immutable' },
+    });
+    const url = buildStorageDownloadUrl(bucket.name, path);
 
-      // Partial update: the picture and the cache-bust nonce, nothing else. A
-      // whole-document write from a function would clobber whatever somebody
-      // typed a moment ago — a synonym, a matcher, a brief — under LWW.
-      await ref.update({ thumbnail: url, iconRequestedAt: Date.now() });
-    } catch (err) {
-      // An unexpected sharp/Storage/Firestore failure (StorageError-class). The
-      // auth, validation and not-found guards above throw HttpsError before
-      // reaching here, so a signed-out caller, a bad payload or a deleted item is
-      // never reported as a defect.
-      await reportFlowError(err);
-      throw err;
-    }
+    // Partial update: the picture and the cache-bust nonce, nothing else. A
+    // whole-document write from a function would clobber whatever somebody
+    // typed a moment ago — a synonym, a matcher, a brief — under LWW.
+    await ref.update({ thumbnail: url, iconRequestedAt: Date.now() });
     return { ok: true } as const;
   },
-);
+});

@@ -62,7 +62,12 @@ vi.mock('firebase-admin/storage', () => ({
 }));
 
 const mockFlush = vi.fn().mockResolvedValue(undefined);
-vi.mock('@salt/observability/server', () => ({
+vi.mock('@salt/observability/server', async (importOriginal) => ({
+  // Spread the real module so an export the ENTRYPOINT WRAPPER needs
+  // (runWithSuppliedTraceContext) cannot go missing from this mock the way it
+  // did when the wrapper landed — a one-export factory is exactly what goes
+  // stale. Only the calls this suite asserts on are overridden below.
+  ...((await importOriginal()) as Record<string, unknown>),
   flushServerObservability: mockFlush,
   // reportServerError.js constructs this at module load — it must exist on the mock.
   createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),

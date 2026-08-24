@@ -5,7 +5,6 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
 import { componentDisplayLines, isCookable } from '@salt/domain';
-import { flushServerObservability } from '@salt/observability/server';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
 import { identifyRecipeKitFlow } from '../flows/identifyRecipeKit.js';
@@ -15,7 +14,7 @@ import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import { whenCfTelemetryReady } from '../observability/telemetryReady.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Tier-2 recipe hero-image generation (issue #148). The counterpart to
 // onCanonItemWritten's icon branch: when a recipe is created (or its image is
@@ -426,7 +425,7 @@ export const onRecipeWritten = onDocumentWritten(
     concurrency: 1,
     memory: '1GiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ id: string }>(async (event) => {
     const after = event.data?.after;
     if (!after?.exists) return;
 
@@ -443,21 +442,13 @@ export const onRecipeWritten = onDocumentWritten(
     // Wait for the OTel pipeline to be live before running so the flow's AI spans
     // are captured by the span processors (issue #370); resolves immediately once
     // warm, and settles (never rejects) on a telemetry-init failure.
-    await whenCfTelemetryReady();
-    try {
-      // Two independently-guarded side-effects, as onCanonItemWritten has. allSettled
-      // so a failure in one branch never rejects the handler — a rejection would
-      // retry BOTH, paying a second time for the one that had already succeeded. Both
-      // are edge-triggered on before→after, so both need the prior snapshot.
-      await Promise.allSettled([
-        maybeGenerateImage(id, parsed.data, event.data?.before),
-        maybeInferKit(id, parsed.data, event.data?.before),
-      ]);
-    } finally {
-      // The branch catch above reports best-effort to posthog-node, which
-      // batches; flush before the function freezes so a report is not stranded.
-      // Non-throwing + no-op when uninitialised, so it is always safe to call.
-      await flushServerObservability();
-    }
-  },
+    // Two independently-guarded side-effects, as onCanonItemWritten has. allSettled
+    // so a failure in one branch never rejects the handler — a rejection would
+    // retry BOTH, paying a second time for the one that had already succeeded. Both
+    // are edge-triggered on before→after, so both need the prior snapshot.
+    await Promise.allSettled([
+      maybeGenerateImage(id, parsed.data, event.data?.before),
+      maybeInferKit(id, parsed.data, event.data?.before),
+    ]);
+  }, traceContextFromWrittenDoc),
 );

@@ -1,8 +1,8 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RegenerateRecipeImageInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
@@ -29,19 +29,15 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // shared APP_CHECK_ENFORCEMENT constant (#718) — this also fires AI image
 // generation, so it is part of the cost surface App Check protects, and it must
 // flip with everything else rather than on its own.
-export const regenerateRecipeImage = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const regenerateRecipeImage = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     // 512MiB floor, pinned inline (top-imported, runs before setGlobalOptions —
     // same reason region is inline above).
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = RegenerateRecipeImageInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
@@ -63,24 +59,16 @@ export const regenerateRecipeImage = onCall(
     // one written by an in-flight client before this deploy; leaving it would leak a
     // stale one-shot steer into a generation the user did not ask it for. The field
     // and the trigger's read of it stay (retired-but-present, like imageHidden).
-    try {
-      await getFirestore()
-        .collection('recipes')
-        .doc(recipeId)
-        .update({
-          image: null,
-          imageHidden: FieldValue.delete(),
-          imageHint: FieldValue.delete(),
-          imageBrief: brief ? brief : FieldValue.delete(),
-          imageRequestedAt: Date.now(),
-        });
-    } catch (err) {
-      // An unexpected Firestore write failure (StorageError-class) — report it
-      // additively, flush, then re-throw so the callable's error path is
-      // unchanged. The auth/validation guards above throw HttpsError before this.
-      await reportFlowError(err);
-      throw err;
-    }
+    await getFirestore()
+      .collection('recipes')
+      .doc(recipeId)
+      .update({
+        image: null,
+        imageHidden: FieldValue.delete(),
+        imageHint: FieldValue.delete(),
+        imageBrief: brief ? brief : FieldValue.delete(),
+        imageRequestedAt: Date.now(),
+      });
     return { ok: true } as const;
   },
-);
+});

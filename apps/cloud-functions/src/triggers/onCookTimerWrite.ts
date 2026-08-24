@@ -1,10 +1,13 @@
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions';
 import { CookSessionSchema, type CookActiveTimerDoc } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
 import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
+
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 export type { CookTimerTaskPayload } from './cookTimerTypes.js';
 
@@ -13,9 +16,13 @@ export type { CookTimerTaskPayload } from './cookTimerTypes.js';
 // and enqueue ONE Cloud Task per NEWLY-armed timer, scheduled for its endsAt.
 // The dispatch handler (onCookTimerDispatch) sends the push when the task fires.
 //
-// No secrets here — enqueue touches neither AI nor push. memory/region pinned
-// INLINE because this module is evaluated before index.ts's setGlobalOptions
-// runs (same reason the other triggers pin them inline).
+// Enqueue touches neither AI nor push, but it DOES report and flush server
+// observability — and posthog-node needs POSTHOG_API_KEY bound to do either, so
+// the secret is declared (#920). Without it the reporting in this trigger silently
+// no-ops, which is indistinguishable from a trigger that never failed. The comment
+// that used to sit here said "no secrets here" and was the reason the gap survived.
+// memory/region pinned INLINE because this module is evaluated before index.ts's
+// setGlobalOptions runs (same reason the other triggers pin them inline).
 
 // A timer's identity for diffing: same timer + same absolute end-time. Extending
 // (or shortening) a timer changes endsAt → a NEW key → a NEW task (the old task
@@ -27,11 +34,12 @@ function timerKey(t: CookActiveTimerDoc): string {
 
 export const onCookTimerWrite = onDocumentWritten(
   {
+    secrets: [posthogApiKey],
     document: 'cookSessions/{sessionId}',
     region: COOK_TIMER_REGION,
     memory: '512MiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ sessionId: string }>(async (event) => {
     const before = event.data?.before;
     const after = event.data?.after;
 
@@ -66,42 +74,38 @@ export const onCookTimerWrite = onDocumentWritten(
     );
     if (newTimers.length === 0) return;
 
-    try {
-      // The task queue is keyed by the DEPLOYED function name (onCookTimerDispatch),
-      // and it MUST be region-qualified. firebase-admin's `taskQueue()` parses a bare
-      // name as `{ resourceId }` with NO location and then falls back to its
-      // DEFAULT_LOCATION of `us-central1` — it does NOT inherit the calling function's
-      // region. Since both this trigger and the dispatch handler are pinned to
-      // europe-west2, the bare form built a us-central1 queue URL and every enqueue
-      // failed with `functions/not-found: Queue does not exist`, silently killing all
-      // cook-timer pushes in every environment. The `locations/{region}/functions/
-      // {name}` form is what firebase-admin's parseResourceName accepts.
-      const queue = getFunctions().taskQueue<CookTimerTaskPayload>(
-        `locations/${COOK_TIMER_REGION}/functions/onCookTimerDispatch`,
-      );
-      const sessionId = event.params.sessionId;
+    // The task queue is keyed by the DEPLOYED function name (onCookTimerDispatch),
+    // and it MUST be region-qualified. firebase-admin's `taskQueue()` parses a bare
+    // name as `{ resourceId }` with NO location and then falls back to its
+    // DEFAULT_LOCATION of `us-central1` — it does NOT inherit the calling function's
+    // region. Since both this trigger and the dispatch handler are pinned to
+    // europe-west2, the bare form built a us-central1 queue URL and every enqueue
+    // failed with `functions/not-found: Queue does not exist`, silently killing all
+    // cook-timer pushes in every environment. The `locations/{region}/functions/
+    // {name}` form is what firebase-admin's parseResourceName accepts.
+    const queue = getFunctions().taskQueue<CookTimerTaskPayload>(
+      `locations/${COOK_TIMER_REGION}/functions/onCookTimerDispatch`,
+    );
+    const sessionId = event.params.sessionId;
 
-      for (const t of newTimers) {
-        try {
-          await queue.enqueue(
-            { sessionId, timerId: t.id, endsAt: t.endsAt },
-            { scheduleTime: new Date(t.endsAt) },
-          );
-        } catch (err) {
-          // One failed enqueue must not fail the whole trigger (and re-fire it,
-          // re-enqueuing the timers that DID succeed → duplicates). Report and
-          // move on; the dispatch ledger de-dupes any eventual double anyway.
-          logger.error('onCookTimerWrite: enqueue failed', {
-            sessionId,
-            timerId: t.id,
-            endsAt: t.endsAt,
-            err,
-          });
-          reportServerError(err);
-        }
+    for (const t of newTimers) {
+      try {
+        await queue.enqueue(
+          { sessionId, timerId: t.id, endsAt: t.endsAt },
+          { scheduleTime: new Date(t.endsAt) },
+        );
+      } catch (err) {
+        // One failed enqueue must not fail the whole trigger (and re-fire it,
+        // re-enqueuing the timers that DID succeed → duplicates). Report and
+        // move on; the dispatch ledger de-dupes any eventual double anyway.
+        logger.error('onCookTimerWrite: enqueue failed', {
+          sessionId,
+          timerId: t.id,
+          endsAt: t.endsAt,
+          err,
+        });
+        reportServerError(err);
       }
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

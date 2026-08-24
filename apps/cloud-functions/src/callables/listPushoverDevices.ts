@@ -1,6 +1,6 @@
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
 
@@ -32,9 +32,8 @@ export type ListPushoverDevicesResponse =
   // could not be reached. The card says so rather than crying misconfiguration.
   | { readonly status: 'unavailable' };
 
-export const listPushoverDevices = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const listPushoverDevices = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [pushoverAppToken, pushoverUserKey, posthogApiKey],
     // 512MiB floor, pinned inline: top-imported, so index.ts's setGlobalOptions
@@ -42,11 +41,7 @@ export const listPushoverDevices = onCall(
     // platform default — the same gap that OOM-killed onEquipmentManifestWritten.
     memory: '512MiB',
   },
-  async (request): Promise<ListPushoverDevicesResponse> => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-
+  handler: async (request): Promise<ListPushoverDevicesResponse> => {
     const token = pushoverAppToken.value();
     const user = pushoverUserKey.value();
     if (!token || !user) return { status: 'unavailable' };
@@ -71,4 +66,4 @@ export const listPushoverDevices = onCall(
       return { status: 'unavailable' };
     }
   },
-);
+});

@@ -1,11 +1,11 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpVerifySchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
-import { APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
+import { makeCallable, APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import {
   OTP_COLLECTION,
@@ -34,14 +34,15 @@ const BAD_CODE = 'That code is incorrect or has expired.';
 // authz boundary — which is why it can stay App Check EXEMPT until #718 Phase 4
 // flips the sign-in path alone (see APP_CHECK_SIGN_IN_EXEMPT). A caller without a
 // valid code still gets nothing, and attempts are capped and burned.
-export const verifyEmailOtp = onCall(
-  {
-    ...APP_CHECK_SIGN_IN_EXEMPT,
+export const verifyEmailOtp = makeCallable({
+  auth: 'anonymous',
+  appCheck: APP_CHECK_SIGN_IN_EXEMPT,
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     memory: '512MiB',
   },
-  async (request) => {
+  handler: async (request) => {
     const parsed = EmailOtpVerifySchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'A valid email and 6-digit code are required.');
@@ -106,7 +107,7 @@ export const verifyEmailOtp = onCall(
       throw new HttpsError('internal', 'Sign-in failed. Please try again.');
     }
   },
-);
+});
 
 // Existing member → their uid; first-time member → create the account (allowed
 // only after the allowlist check above). emailVerified:true because a delivered

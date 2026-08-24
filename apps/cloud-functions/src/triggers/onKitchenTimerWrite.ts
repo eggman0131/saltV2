@@ -1,10 +1,13 @@
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions';
 import { KitchenTimersSchema, type KitchenTimerDoc } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
 import { KITCHEN_TIMER_REGION, type KitchenTimerTaskPayload } from './kitchenTimerTypes.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
+
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 export type { KitchenTimerTaskPayload } from './kitchenTimerTypes.js';
 
@@ -40,11 +43,12 @@ function timerKey(t: KitchenTimerDoc): string {
 
 export const onKitchenTimerWrite = onDocumentWritten(
   {
+    secrets: [posthogApiKey],
     document: 'kitchenTimers/{uid}',
     region: KITCHEN_TIMER_REGION,
     memory: '512MiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ uid: string }>(async (event) => {
     const before = event.data?.before;
     const after = event.data?.after;
 
@@ -80,38 +84,34 @@ export const onKitchenTimerWrite = onDocumentWritten(
     );
     if (newTimers.length === 0) return;
 
-    try {
-      // Region-qualified, and it MUST be: `firebase-admin`'s `taskQueue()` parses
-      // a bare name as `{ resourceId }` with NO location and falls back to its
-      // DEFAULT_LOCATION of us-central1, which silently killed every cook-timer
-      // push until #544's follow-up found it. The
-      // `locations/{region}/functions/{name}` form is what parseResourceName takes.
-      const queue = getFunctions().taskQueue<KitchenTimerTaskPayload>(
-        `locations/${KITCHEN_TIMER_REGION}/functions/onKitchenTimerDispatch`,
-      );
-      const uid = event.params.uid;
+    // Region-qualified, and it MUST be: `firebase-admin`'s `taskQueue()` parses
+    // a bare name as `{ resourceId }` with NO location and falls back to its
+    // DEFAULT_LOCATION of us-central1, which silently killed every cook-timer
+    // push until #544's follow-up found it. The
+    // `locations/{region}/functions/{name}` form is what parseResourceName takes.
+    const queue = getFunctions().taskQueue<KitchenTimerTaskPayload>(
+      `locations/${KITCHEN_TIMER_REGION}/functions/onKitchenTimerDispatch`,
+    );
+    const uid = event.params.uid;
 
-      for (const t of newTimers) {
-        try {
-          await queue.enqueue(
-            { uid, timerId: t.id, endsAt: t.endsAt },
-            { scheduleTime: new Date(t.endsAt) },
-          );
-        } catch (err) {
-          // One failed enqueue must not fail the whole trigger (and re-fire it,
-          // re-enqueuing the timers that DID succeed → duplicates). Report and
-          // move on; the dispatch ledger de-dupes any eventual double anyway.
-          logger.error('onKitchenTimerWrite: enqueue failed', {
-            uid,
-            timerId: t.id,
-            endsAt: t.endsAt,
-            err,
-          });
-          reportServerError(err);
-        }
+    for (const t of newTimers) {
+      try {
+        await queue.enqueue(
+          { uid, timerId: t.id, endsAt: t.endsAt },
+          { scheduleTime: new Date(t.endsAt) },
+        );
+      } catch (err) {
+        // One failed enqueue must not fail the whole trigger (and re-fire it,
+        // re-enqueuing the timers that DID succeed → duplicates). Report and
+        // move on; the dispatch ledger de-dupes any eventual double anyway.
+        logger.error('onKitchenTimerWrite: enqueue failed', {
+          uid,
+          timerId: t.id,
+          endsAt: t.endsAt,
+          err,
+        });
+        reportServerError(err);
       }
-    } finally {
-      await flushServerObservability();
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

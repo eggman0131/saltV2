@@ -1,9 +1,9 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { SetObservationImageUploadInputSchema } from '@salt/domain/schemas';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { makeCallable } from '../tracedCallable.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { reportFlowError } from '../observability/reportServerError.js';
@@ -46,59 +46,46 @@ const IMAGE_STORAGE_PREFIX = 'batch-images';
 // region/memory are pinned inline (not via setGlobalOptions) because this module is
 // imported at the top of index.ts and its onCall is built before setGlobalOptions
 // runs — same reason setRecipeImageUpload pins them.
-export const setObservationImageUpload = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
+export const setObservationImageUpload = makeCallable({
+  options: {
     region: 'europe-west2',
     secrets: [posthogApiKey],
     // sharp decode/encode of a full-resolution phone photo needs headroom above the
     // 256MiB default — same 512MiB floor the rest of the image path uses.
     memory: '512MiB',
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
+  handler: async (request) => {
     const parsed = SetObservationImageUploadInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
     const { batchId, observationId, imageBase64 } = parsed.data;
 
-    try {
-      // Decode → re-encode to the bounded WebP (sharp auto-detects the input
-      // format, so the optional contentType hint is not needed here).
-      const raw = Buffer.from(imageBase64, 'base64');
-      const webp = await encodeHeroImage(raw);
+    // Decode → re-encode to the bounded WebP (sharp auto-detects the input
+    // format, so the optional contentType hint is not needed here).
+    const raw = Buffer.from(imageBase64, 'base64');
+    const webp = await encodeHeroImage(raw);
 
-      const bucket = getStorage().bucket();
-      const path = `${IMAGE_STORAGE_PREFIX}/${batchId}/${observationId}.webp`;
-      await bucket.file(path).save(webp, {
-        contentType: 'image/webp',
-        // Same short max-age as the hero paths: the object path is stable per
-        // observation but its bytes change if the photo is retaken, so it must not
-        // be immutable.
-        metadata: { cacheControl: 'public, max-age=3600' },
-      });
-      const url = buildStorageDownloadUrl(bucket.name, path);
+    const bucket = getStorage().bucket();
+    const path = `${IMAGE_STORAGE_PREFIX}/${batchId}/${observationId}.webp`;
+    await bucket.file(path).save(webp, {
+      contentType: 'image/webp',
+      // Same short max-age as the hero paths: the object path is stable per
+      // observation but its bytes change if the photo is retaken, so it must not
+      // be immutable.
+      metadata: { cacheControl: 'public, max-age=3600' },
+    });
+    const url = buildStorageDownloadUrl(bucket.name, path);
 
-      // Partial update: the photo and nothing else. `source: 'upload'` marks it
-      // user-supplied, matching `recipe.image` — nothing generates an observation
-      // photo, and if anything ever does, that field is where it says so.
-      await getFirestore()
-        .collection('batches')
-        .doc(batchId)
-        .collection('observations')
-        .doc(observationId)
-        .update({ image: { url, source: 'upload' } });
-    } catch (err) {
-      // An unexpected sharp/Storage/Firestore failure (StorageError-class) — report
-      // it additively, flush, then re-throw so the callable's error path is
-      // unchanged. The auth/validation guards above throw HttpsError before this,
-      // so a signed-out caller or a bad payload is never reported as a defect.
-      await reportFlowError(err);
-      throw err;
-    }
+    // Partial update: the photo and nothing else. `source: 'upload'` marks it
+    // user-supplied, matching `recipe.image` — nothing generates an observation
+    // photo, and if anything ever does, that field is where it says so.
+    await getFirestore()
+      .collection('batches')
+      .doc(batchId)
+      .collection('observations')
+      .doc(observationId)
+      .update({ image: { url, source: 'upload' } });
     return { ok: true } as const;
   },
-);
+});

@@ -14,8 +14,7 @@ import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import { whenCfTelemetryReady } from '../observability/telemetryReady.js';
-import { runTriggerWithTraceContext } from './triggerTraceContext.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -246,7 +245,7 @@ export const onCanonItemWritten = onDocumentWritten(
     concurrency: 1,
     memory: '1GiB',
   },
-  async (event) => {
+  withFirestoreTrigger<{ id: string }>(async (event) => {
     const after = event.data?.after;
     if (!after?.exists) return;
 
@@ -270,27 +269,18 @@ export const onCanonItemWritten = onDocumentWritten(
     // off thumbnail/iconRequestedAt/embedding), so a bare traceContext-only
     // re-fire of this trigger cannot loop into duplicate generation.
     const traceContext = parsed.data.traceContext;
-    // Wait for the OTel pipeline (propagator + context manager) to be live before
-    // continuing the supplied trace, so a cold-started invocation does not silently
-    // drop traceContext and re-root the icon/embedding flows (issue #370). This
-    // trigger fires less often than onShoppingListItemWrite, so it cold-starts more
-    // and lost this race far more often. Resolves immediately once warm.
-    await whenCfTelemetryReady();
     try {
       // Two independently-guarded side-effects. allSettled so a failure in one
       // branch never rejects the handler (which would retry both). The icon branch
       // is edge-triggered on before→after, so it needs the prior snapshot.
-      await runTriggerWithTraceContext(traceContext, () =>
-        Promise.allSettled([
-          maybeGenerateEmbedding(id, parsed.data),
-          maybeGenerateIcon(id, parsed.data, event.data?.before),
-        ]),
-      );
+      await Promise.allSettled([
+        maybeGenerateEmbedding(id, parsed.data),
+        maybeGenerateIcon(id, parsed.data, event.data?.before),
+      ]);
     } finally {
       // The branch catches above report best-effort to posthog-node, which
       // batches; flush before the function freezes so a report is not stranded.
       // Non-throwing + no-op when uninitialised, so it is always safe to call.
-      await flushServerObservability();
     }
-  },
+  }, traceContextFromWrittenDoc),
 );

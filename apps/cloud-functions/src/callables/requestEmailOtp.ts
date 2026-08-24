@@ -1,10 +1,10 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { onCall, HttpsError } from 'firebase-functions/https';
+import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpRequestSchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
-import { APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
+import { makeCallable, APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { sendOtpEmail } from '../adapters/sendOtpEmail.js';
 import {
@@ -43,14 +43,15 @@ const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 // and membership can't be probed from the response). Per-email cooldown bounds
 // resend spam. The real authz boundary is verifyEmailOtp, which re-checks the
 // allowlist before minting a token.
-export const requestEmailOtp = onCall(
-  {
-    ...APP_CHECK_SIGN_IN_EXEMPT,
+export const requestEmailOtp = makeCallable({
+  auth: 'anonymous',
+  appCheck: APP_CHECK_SIGN_IN_EXEMPT,
+  options: {
     region: 'europe-west2',
     secrets: [resendApiKey, posthogApiKey, otpEmailFrom],
     memory: '512MiB',
   },
-  async (request) => {
+  handler: async (request) => {
     const parsed = EmailOtpRequestSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'A valid email address is required.');
@@ -112,7 +113,7 @@ export const requestEmailOtp = onCall(
       throw new HttpsError('internal', 'Could not send the code. Please try again.');
     }
   },
-);
+});
 
 // Validate a stored OTP doc defensively; a corrupt doc is treated as absent.
 function existingOtp(snap: FirebaseFirestore.DocumentSnapshot): OtpDoc | null {
