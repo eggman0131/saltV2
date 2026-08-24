@@ -193,15 +193,41 @@ jobs:
       - name: Svelte check
         run: pnpm check
 
+  # Runs the unit suite UNDER COVERAGE, and the per-area thresholds in the root
+  # `vitest.config.ts` turn the report into a blocking ratchet (issue #943).
+  #
+  # Coverage used to be its own job gated `if: github.event_name != 'pull_request'`
+  # — it measured, uploaded a 14-day artifact, and failed nothing, so a PR could
+  # drop an area's coverage and nothing would say so. That is exactly the wrong
+  # posture in front of #913's behaviour-preserving refactor.
+  #
+  # Folded into `unit` rather than added ALONGSIDE it, on measurement: the suite
+  # is 33.0 s and 39.3 s under `--coverage` (5,845 tests, same machine) — a 6.3 s,
+  # ~19% delta. A separate job would re-pay checkout + workspace setup to re-run
+  # the identical 5,845 tests for a saving of six seconds, so running the suite
+  # twice per PR is not worth it. Keeping the job id `unit` also leaves the `ci`
+  # aggregator's `needs` list — and therefore the required status contexts —
+  # untouched.
   unit:
-    name: Unit tests
+    name: Unit tests + coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/workspace
 
-      - name: Test
-        run: pnpm test
+      - name: Test with coverage
+        run: pnpm test:coverage
+
+      # `always()` so a THRESHOLD failure still ships the report — the whole point
+      # of the artifact is diagnosing which files lost coverage, and that is
+      # needed precisely on the runs that go red.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit
+          path: coverage/unit/
+          retention-days: 14
 
   # The only PRODUCTION BUILD in CI (issue #813). Two things it catches, neither
   # of which anything else here can:
@@ -725,21 +751,3 @@ jobs:
             exit 1
           fi
           echo "E2E OK."
-
-  coverage:
-    name: Coverage (post-merge)
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/workspace
-
-      - name: Unit test coverage
-        run: pnpm test:coverage
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-unit
-          path: coverage/unit/
-          retention-days: 14
