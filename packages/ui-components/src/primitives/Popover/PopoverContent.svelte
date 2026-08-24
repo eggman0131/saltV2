@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.7 v0.2.3 -->
+<!-- spec: ui-spec-v02.md §8.7 v0.2.3 -->
 <script lang="ts">
   import { Popover } from 'bits-ui';
   import { cn } from '../../lib/cn';

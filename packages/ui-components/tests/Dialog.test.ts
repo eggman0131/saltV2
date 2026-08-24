@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.2.3
+// spec: ui-spec-v02.md §6 v0.2.3
 // Note: Dialog.test.ts omits focus-trap assertions that require a real browser (bits-ui FocusScope).
 // Composition, open/close, ARIA, and axe coverage are provided instead.
 import { describe, it, expect, vi, afterEach } from 'vitest';

@@ -1,3 +1,4 @@
+// spec: ui-spec-v04.md §13.3, §16.3, §17.2 v0.4; ui-spec-v05.md §2.3 v0.5 (chrome)
 import type { Snippet } from 'svelte';
 import type { NavItem } from '../NavItem.types';
 

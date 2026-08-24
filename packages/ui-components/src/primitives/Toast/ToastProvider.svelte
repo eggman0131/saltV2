@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 -->
+<!-- spec: ui-spec-v03.md §6 v0.3 -->
 <script lang="ts">
   import {
     TOAST_PROVIDER_CONTEXT,

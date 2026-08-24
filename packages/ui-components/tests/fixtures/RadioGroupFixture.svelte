@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 — test fixture for RadioGroup composition -->
+<!-- spec: ui-spec-v03.md §6 v0.3 — test fixture for RadioGroup composition -->
 <script lang="ts">
   import RadioGroup from '../../src/primitives/RadioGroup/RadioGroup.svelte';
   import RadioGroupItem from '../../src/primitives/RadioGroup/RadioGroupItem.svelte';

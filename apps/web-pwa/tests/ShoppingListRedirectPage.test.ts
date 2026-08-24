@@ -1,24 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, waitFor } from '@testing-library/svelte';
 
-const { mockDefaultListId } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockDefaultListId } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return { mockDefaultListId: makeStore<string | null | undefined>(undefined) };
 });
 

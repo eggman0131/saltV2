@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §9.3 v0.2.3; ui-spec-v07.md §1 v0.7 (fill) -->
+<!-- spec: ui-spec-v02.md §9.3 v0.2.3; ui-spec-v07.md §1 v0.7 (fill) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Button from '../../primitives/Button/Button.svelte';

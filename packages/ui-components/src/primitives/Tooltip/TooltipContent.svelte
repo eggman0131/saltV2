@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.8 v0.2.6 -->
+<!-- spec: ui-spec-v02.md §8.8 v0.2.6 -->
 <script lang="ts">
   import { Tooltip } from 'bits-ui';
   import { cn } from '../../lib/cn';

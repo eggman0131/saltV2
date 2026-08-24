@@ -1,4 +1,4 @@
-// spec: SPEC.md §5 + §6 + §7 v0.3
+// spec: ui-spec-v03.md §5, §6, §7 v0.3
 // Note: focus-trap and focus-restoration assertions require a real browser (bits-ui FocusScope).
 // Composition, open/close, ARIA, side variants, and axe coverage are provided instead.
 import { describe, it, expect, vi, afterEach } from 'vitest';

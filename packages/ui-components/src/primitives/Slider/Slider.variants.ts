@@ -1,4 +1,4 @@
-// spec: SPEC.md §4 v0.3
+// spec: ui-spec-v03.md §4 v0.3
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const sliderRootVariants = cva('relative flex touch-none select-none', {

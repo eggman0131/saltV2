@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.6, §8.1 v0.2.7
+// spec: ui-spec-v02.md §3.6, §8.1 v0.2.7
 
 /** Minimum time a press stays visible once it has started.
  *

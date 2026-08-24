@@ -13,25 +13,9 @@ import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
 // resolver and the write are the same code the app runs. Assertions land on the
 // WRITE that reaches the adapter, which is the boundary that matters.
 
-const { mockRecipes, mockMembers, mockIsLoading, mockAuth, toolSink, plansResult } = vi.hoisted(
-  () => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((fn) => fn(v));
-        },
-      };
-    }
+const { mockRecipes, mockMembers, mockIsLoading, mockAuth, toolSink, plansResult } =
+  await vi.hoisted(async () => {
+    const { makeStore } = await import('./support/testStore.js');
     return {
       mockRecipes: makeStore<readonly Recipe[]>([]),
       // AdminGuard reads these.
@@ -42,8 +26,7 @@ const { mockRecipes, mockMembers, mockIsLoading, mockAuth, toolSink, plansResult
       toolSink: { push: null as null | ((tools: readonly unknown[]) => void) },
       plansResult: { value: [] as GuidedPlanDoc[] },
     };
-  },
-);
+  });
 
 vi.mock('svelte-spa-router', () => ({
   push: vi.fn(),

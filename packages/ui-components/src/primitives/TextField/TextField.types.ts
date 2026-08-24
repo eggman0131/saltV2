@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.2 v0.2.13
+// spec: ui-spec-v02.md §8.2 v0.2.13
 import type { Snippet } from 'svelte';
 import type { HTMLInputAttributes } from 'svelte/elements';
 import type { TextFieldFrameVariants } from './TextField.variants';

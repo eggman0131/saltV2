@@ -5,6 +5,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { logger } from 'firebase-functions';
 import { flushServerObservability } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
+import { SWEEPS } from './storageSweepTargets.js';
 
 // Weekly sweep of artefacts whose owning Firestore doc is gone (issues #620, #789).
 //
@@ -35,24 +36,9 @@ const GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Upper bound on deletions per run — blast-radius cap, not a pagination limit. */
 const MAX_DELETIONS_PER_RUN = 500;
 
-const SWEEPS = [
-  { prefix: 'canon-icons/', collection: 'canonItems' },
-  { prefix: 'recipe-images/', collection: 'recipes' },
-  // Product-form pictograms (issue #871). Same deterministic keying as the two
-  // above — `product-form-icons/{formId}.webp` — so deleting a form strands its
-  // icon identically, and the join is the same join.
-  { prefix: 'product-form-icons/', collection: 'productForms' },
-  // Equipment pictograms (issue #877). Same deterministic-id shape as canon
-  // icons: `equipment-icons/{itemId}.webp` beside `equipmentIcons/{itemId}`.
-  // This pass only works because `onEquipmentManifestWritten` deletes the icon
-  // DOC when its item leaves the manifest — otherwise the join below would find
-  // the doc still present and correctly conclude the object is not orphaned.
-  { prefix: 'equipment-icons/', collection: 'equipmentIcons' },
-  // Generic kitchen-tool pictograms (issue #882). Same deterministic keying
-  // again — `kit-icons/{toolId}.webp` beside `kitchenTools/{toolId}` — so
-  // retiring a tool from the curated vocabulary strands its icon identically.
-  { prefix: 'kit-icons/', collection: 'kitchenTools' },
-] as const;
+// SWEEPS / UNSWEPT live in their own module so the coverage guard can import the
+// real values instead of regexing this file, and can do it without paying for
+// firebase-admin, firebase-functions and Genkit at module init.
 
 /** A candidate artefact, reduced to just what the decision needs. */
 export interface SweepCandidate {

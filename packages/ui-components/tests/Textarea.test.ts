@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.2.3
+// spec: ui-spec-v02.md §6 v0.2.3
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';

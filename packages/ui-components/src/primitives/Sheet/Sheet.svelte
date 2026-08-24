@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §5 v0.3 -->
+<!-- spec: ui-spec-v03.md §5 v0.3 -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { Dialog } from 'bits-ui';

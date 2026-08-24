@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 -->
+<!-- spec: ui-spec-v03.md §6 v0.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { ToastActionProps } from './Toast.types';

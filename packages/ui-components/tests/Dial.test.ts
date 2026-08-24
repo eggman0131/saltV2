@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.22 v0.8
+// spec: ui-spec-v08.md §8.22 v0.8
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import { axe } from 'vitest-axe';

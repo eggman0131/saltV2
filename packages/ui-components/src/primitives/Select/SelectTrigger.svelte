@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §3.4 v0.3.4 -->
+<!-- spec: ui-spec-v03.md §3.4 v0.3.4 -->
 <script lang="ts">
   import { ChevronDown } from '@lucide/svelte';
   import { cn } from '../../lib/cn';

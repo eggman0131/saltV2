@@ -7,24 +7,8 @@ import type { EquipmentIconDoc } from '@salt/domain/schemas';
 // rewrite the words in the box and PERSIST NOTHING — Draw is still the only thing
 // that writes a description to the item, and the only thing that spends money.
 
-const { mockEquipment, mockEquipmentIcons } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((f) => f(v));
-      },
-    };
-  }
+const { mockEquipment, mockEquipmentIcons } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockEquipment: makeStore<EquipmentManifest | null>(null),
     mockEquipmentIcons: makeStore<Map<string, EquipmentIconDoc>>(new Map()),

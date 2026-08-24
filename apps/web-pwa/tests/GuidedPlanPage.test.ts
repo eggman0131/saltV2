@@ -21,24 +21,8 @@ import type { GuidedPlanDoc } from '@salt/domain/schemas';
 // carrying either still cooks, and a save that refuses would strand the hand-edits
 // made alongside it. `hasCheckInError` remains the one deliberately blocking check.
 
-const { mockRecipes, mockIsLoadingRecipes, mockPlan } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockRecipes, mockIsLoadingRecipes, mockPlan } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockIsLoadingRecipes: makeStore<boolean>(false),

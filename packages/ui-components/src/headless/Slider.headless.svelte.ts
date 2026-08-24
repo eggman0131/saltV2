@@ -1,4 +1,4 @@
-// spec: SPEC.md §4 v0.3
+// spec: ui-spec-v03.md §4 v0.3
 import { createContext } from '../lib/context';
 
 export type SliderState = {

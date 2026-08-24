@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.13)
+# Salt 2.0 — UI Primitives Specification (v0.2.14)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -47,17 +47,17 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 
 ## 1.1 Technology Stack
 
-| Concern       | Technology                                                                         |
-| ------------- | ---------------------------------------------------------------------------------- |
-| Framework     | Svelte 5 `^5.55.0` (runes: `$state`, `$derived`, `$effect`, `$props`, `$bindable`) |
-| Styling       | Tailwind CSS + shadcn token scheme                                                 |
-| Animations    | tailwindcss-animate (registered by preset — see §3.3)                              |
-| Headless      | bits-ui ≥ 1.0.0; melt-ui ≥ 1.0.0-svelte5 (fallback only)                           |
-| Variants      | class-variance-authority (CVA)                                                     |
-| Class merging | tailwind-merge + clsx via `cn()`                                                   |
+| Concern       | Technology                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Framework     | Svelte 5 `^5.55.0` (runes: `$state`, `$derived`, `$effect`, `$props`, `$bindable`)                                       |
+| Styling       | Tailwind CSS + shadcn token scheme                                                                                       |
+| Animations    | tailwindcss-animate (registered by preset — see §3.3)                                                                    |
+| Headless      | bits-ui ≥ 1.0.0; melt-ui ≥ 1.0.0-svelte5 (fallback only)                                                                 |
+| Variants      | class-variance-authority (CVA)                                                                                           |
+| Class merging | tailwind-merge + clsx via `cn()`                                                                                         |
 | Icons         | @lucide/svelte, via the curated registry in `src/primitives/Icon/iconRegistry.ts` (typed as `keyof typeof iconRegistry`) |
-| Testing       | Vitest + @testing-library/svelte + user-event + axe-core                           |
-| TS            | strict: true                                                                       |
+| Testing       | Vitest + @testing-library/svelte + user-event + axe-core                                                                 |
+| TS            | strict: true                                                                                                             |
 
 ---
 
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.13).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.14).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -335,21 +335,11 @@ export default {
         foreground: 'hsl(var(--salt-foreground) / <alpha-value>)',
         // ... every semantic color from §4.1
       },
-      borderRadius: {
-        /* from §4.1 */
-      },
-      transitionDuration: {
-        /* from §4.1 */
-      },
-      transitionTimingFunction: {
-        /* from §4.1 */
-      },
-      boxShadow: {
-        /* from §4.1 */
-      },
-      zIndex: {
-        /* from §4.1 */
-      },
+      borderRadius: {/* from §4.1 */},
+      transitionDuration: {/* from §4.1 */},
+      transitionTimingFunction: {/* from §4.1 */},
+      boxShadow: {/* from §4.1 */},
+      zIndex: {/* from §4.1 */},
     },
   },
   plugins: [
@@ -365,9 +355,7 @@ Apps must import the preset:
 import salt from '@salt/ui-components/tailwind-preset';
 export default {
   presets: [salt],
-  content: [
-    /* app globs */
-  ],
+  content: [/* app globs */],
 };
 ```
 
@@ -668,14 +656,41 @@ Portal implementation uses bits-ui's built-in `.Portal` part for Dialog, Popover
 
 ## 3.8 Provenance Header Convention
 
-**Every generated file under `src/headless/**`, `src/primitives/**`, and `src/lib/**` MUST begin with a provenance header on the first non-blank line:\*\*
+**Every file under `src/` MUST begin with a provenance header on the first non-blank line:**
 
-- `.svelte` files: `<!-- spec: SPEC.md §X.Y vM.m.p -->`
-- `.ts` / `.svelte.ts` files: `// spec: SPEC.md §X.Y vM.m.p`
+- `.svelte` files: `<!-- spec: <doc>.md §X.Y vM.m.p -->`
+- `.ts` / `.svelte.ts` files: `// spec: <doc>.md §X.Y vM.m.p`
 
-Where `§X.Y` is the most specific spec section the file implements and `vM.m.p` is the spec version that was current when the file was generated or last amended.
+Where `<doc>.md` is **the file name of a real document in `docs/design/` (or `docs/`)**, `§X.Y` is the
+most specific spec section the file implements, and `vM.m.p` is the spec version that
+was current when the file was generated or last amended. A file implementing two
+specs cites both, separated by `; ` — `ui-spec-v04.md §9 v0.4; ui-spec-v05.md §1 v0.5 (fill)`
+— with an optional parenthesised note saying which part each citation covers.
 
-Files without a provenance header fail CI. Files whose header version is older than the current spec and whose referenced section has changed must be regenerated or manually reconciled and re-stamped.
+Files without a provenance header fail CI. Files whose header version is older than
+the current spec and whose referenced section has changed must be regenerated or
+manually reconciled and re-stamped.
+
+**Amended v0.2.14 (issue #919), and the amendment is the point of the section.**
+Two clauses above used to say something narrower, and the checker faithfully
+implemented both:
+
+- **The scan surface was three named directories** — `headless`, `primitives`, `lib`
+  — written when those were all there was. `layout/` and `templates/` arrived later
+  and were never added, so **29 files were exempt from a CI gate nobody knew they
+  were outside**, and 13 of them had simply never been stamped. The surface is now
+  _all of `src/`_, stated as a rule about the tree rather than a list beside it, so
+  a directory added tomorrow is covered the day it appears. `src/__boundary_tests__/`
+  is the one exclusion: those files are deliberate lint violations, not generated
+  components, and they exist to be rejected.
+- **The document was literally named `SPEC.md`.** There has never been a `SPEC.md`
+  in this repo — this document was split into `ui-spec-v02.md` … `ui-spec-v11.md`
+  long ago and §3.8 was not re-read — so 170 of 223 source files carried a header
+  citing a file that does not exist, and the regex, which only ever checked the
+  _shape_ `[\w.-]+\.md`, passed every one of them. The header now names a real
+  document and the checker resolves it against `docs/design/`, then `docs/`, which is what makes
+  the citation worth reading: a header that cannot be followed to a section is
+  decoration.
 
 ---
 
@@ -701,7 +716,7 @@ Salt adopts the shadcn token scheme, emitted as CSS variables on `:root` and `.d
 - `border`, `input`, `ring`
 - `placeholder` — example text, and nothing else
 
-**`placeholder` is a role, not a shade of `muted-foreground`.** Its job is to be legible *and* unmistakably not a value, and those pull in opposite directions: it must clear **4.5:1 against the background** (never bought back by fading — ui-spec-v04 §17.5) while sitting far enough off `foreground` that a filled field and an empty one are told apart without clicking in. `muted-foreground` satisfies only the first (8.88:1 on the background, but **1.79:1** off value text — no separation at all), which is why this is its own token rather than a reuse.
+**`placeholder` is a role, not a shade of `muted-foreground`.** Its job is to be legible _and_ unmistakably not a value, and those pull in opposite directions: it must clear **4.5:1 against the background** (never bought back by fading — ui-spec-v04 §17.5) while sitting far enough off `foreground` that a filled field and an empty one are told apart without clicking in. `muted-foreground` satisfies only the first (8.88:1 on the background, but **1.79:1** off value text — no separation at all), which is why this is its own token rather than a reuse.
 
 Light `#677174` (`hsl(195 6% 43%)`) — 4.79:1 / 3.38:1. Dark `#99a1a3` (`hsl(195 5% 62%)`) — 4.92:1 / 2.32:1. Dark trades value-text separation for an AA pass it did not previously have; every AA-passing dark value does, because `--salt-background` is not dark enough for a three-way split. In dark mode the italic below carries the differentiation alone.
 
@@ -764,15 +779,15 @@ CSS (see #661).
 things the tokens never named, and a new overlay must pick its rung **by this
 table** rather than by choosing a number bigger than whatever it collided with:
 
-| Rung | Value | What sits here |
-| --- | --- | --- |
-| Page & chrome | `z-10` | In-page sticky headers, absolutely-positioned badges, `TopBar` (sticky) and `BottomNav` (fixed). One rung on purpose: a page-local sticky is scoped to its own scroll container and never needs to outrank the chrome. If it does, it belongs on a rung above — not on a bigger number here. |
-| Bar above the nav | `z-20` | A fixed bar that sits **clear of** the `BottomNav` rather than over it, offset by the nav's height — the chat composer (`bottom-14`, `lg:bottom-0`). Above page content, below anything that covers the nav. |
-| Chrome-replacing bar | `z-30` | A contextual bar that deliberately **covers** the `BottomNav` for the duration of a mode — `ListPage`'s bulk-action bar (ui-spec-v04 §9). Above the nav, below any floating layer. |
-| Popover | `z-popover` (40) | Popover, and any anchored floating surface that is not a dialog. |
-| Dialog / Sheet / full-viewport route | `z-dialog` (50) | Dialog and Sheet overlays and panels, and a full-viewport route (v0.5 §2). |
-| Tooltip | `z-tooltip` (70) | Above dialogs on purpose: a tooltip inside a dialog must not be clipped by it. |
-| Toast | `z-[100]` | Deliberately top of the ladder. A toast reports something that has already happened and must stay legible over every other layer, including a full-viewport mode. |
+| Rung                                 | Value            | What sits here                                                                                                                                                                                                                                                                               |
+| ------------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Page & chrome                        | `z-10`           | In-page sticky headers, absolutely-positioned badges, `TopBar` (sticky) and `BottomNav` (fixed). One rung on purpose: a page-local sticky is scoped to its own scroll container and never needs to outrank the chrome. If it does, it belongs on a rung above — not on a bigger number here. |
+| Bar above the nav                    | `z-20`           | A fixed bar that sits **clear of** the `BottomNav` rather than over it, offset by the nav's height — the chat composer (`bottom-14`, `lg:bottom-0`). Above page content, below anything that covers the nav.                                                                                 |
+| Chrome-replacing bar                 | `z-30`           | A contextual bar that deliberately **covers** the `BottomNav` for the duration of a mode — `ListPage`'s bulk-action bar (ui-spec-v04 §9). Above the nav, below any floating layer.                                                                                                           |
+| Popover                              | `z-popover` (40) | Popover, and any anchored floating surface that is not a dialog.                                                                                                                                                                                                                             |
+| Dialog / Sheet / full-viewport route | `z-dialog` (50)  | Dialog and Sheet overlays and panels, and a full-viewport route (v0.5 §2).                                                                                                                                                                                                                   |
+| Tooltip                              | `z-tooltip` (70) | Above dialogs on purpose: a tooltip inside a dialog must not be clipped by it.                                                                                                                                                                                                               |
+| Toast                                | `z-[100]`        | Deliberately top of the ladder. A toast reports something that has already happened and must stay legible over every other layer, including a full-viewport mode.                                                                                                                            |
 
 Two rules follow from the table and are the point of writing it down:
 
@@ -788,7 +803,7 @@ into the enclosing `DialogContent`/`SheetContent` (§2.5), which is `fixed` at
 `z-dialog` and therefore a stacking context of its own. Inside it the listbox is
 simply the anchored floating surface the `Popover` rung already describes, and
 `z-popover` is correct. This is the general answer: when a new overlay seems to
-need a rung above the layer that opened it, put it *inside* that layer instead.
+need a rung above the layer that opened it, put it _inside_ that layer instead.
 
 ---
 
@@ -853,13 +868,13 @@ base class (`w-full`), and below the `sm` breakpoint every size collapses to the
 base clamp of `max-w-[calc(100%-2rem)]` — one `rem` of gutter each side once the
 panel is centred. A phone shows the same dialog at every size.
 
-| size   | max-width (≥ `sm`)             | max-width (< `sm`)         |
-| ------ | ------------------------------ | -------------------------- |
-| `sm`   | `sm:max-w-sm`                  | `max-w-[calc(100%-2rem)]`  |
-| `md`   | `sm:max-w-md`                  | `max-w-[calc(100%-2rem)]`  |
-| `lg`   | `sm:max-w-2xl`                 | `max-w-[calc(100%-2rem)]`  |
-| `xl`   | `sm:max-w-4xl`                 | `max-w-[calc(100%-2rem)]`  |
-| `full` | `sm:max-w-[calc(100%-2rem)]`   | `max-w-[calc(100%-2rem)]`  |
+| size   | max-width (≥ `sm`)           | max-width (< `sm`)        |
+| ------ | ---------------------------- | ------------------------- |
+| `sm`   | `sm:max-w-sm`                | `max-w-[calc(100%-2rem)]` |
+| `md`   | `sm:max-w-md`                | `max-w-[calc(100%-2rem)]` |
+| `lg`   | `sm:max-w-2xl`               | `max-w-[calc(100%-2rem)]` |
+| `xl`   | `sm:max-w-4xl`               | `max-w-[calc(100%-2rem)]` |
+| `full` | `sm:max-w-[calc(100%-2rem)]` | `max-w-[calc(100%-2rem)]` |
 
 **Why the size classes carry an `sm:` modifier.** The base clamp and the size
 ceiling are the same tailwind-merge key. Unprefixed, the size class wins and the
@@ -920,7 +935,7 @@ Expands to:
 - its own per-property durations (the press is `--duration-base`; colour keeps the `--duration-fast` hover beat), written as `transition-[…]` + `[transition-duration:…]` because CSS gives no way to retime one member of a list this utility did not author;
 - `ease-standard`, and `motion-reduce:transition-none` if it wants the whole transition gone under reduced motion.
 
-**Specificity, not source order.** The pressed rule is scoped to `:active` so it lands at `(0,2,0)` against a call site's `(0,1,0)`. Tailwind emits this utility *before* the call sites' timing classes, so an unscoped declaration here would silently lose.
+**Specificity, not source order.** The pressed rule is scoped to `:active` so it lands at `(0,2,0)` against a call site's `(0,1,0)`. Tailwind emits this utility _before_ the call sites' timing classes, so an unscoped declaration here would silently lose.
 
 **Reduced motion.** The rule is gated on `no-preference` rather than reset afterwards by a `reduce` block — a rule that never applies is the sturdier "does not move" (same reasoning as `.salt-button`, §8.1). The utility needs no `reduce` reset of its own.
 
@@ -1130,17 +1145,17 @@ Trigger an action.
 
 Every Button answers a press. This is a **system default, not a per-call-site choice** — a button that does not move under the finger reads as broken, and the whole point is that it is the same everywhere. The approved values:
 
-| Facet          | Value                                                                          |
-| -------------- | ------------------------------------------------------------------------------ |
-| Treatment      | scale + shade                                                                  |
-| Depth          | `scale(0.94)`                                                                  |
-| Shade          | one step deeper than hover, per variant — see **Pressed fill** below           |
-| Press-in       | 0ms — instant, no easing                                                       |
-| Release        | `--duration-base` (180ms), `--ease-standard`                                   |
-| Minimum hold   | `--duration-fast` (120ms), enforced in JS (`PRESS_FLOOR_MS`), always           |
-| Excluded       | `disabled` **and** `loading`                                                   |
-| Reduced motion | shade only — nothing moves; the floor still runs                               |
-| Haptics        | none                                                                           |
+| Facet          | Value                                                                |
+| -------------- | -------------------------------------------------------------------- |
+| Treatment      | scale + shade                                                        |
+| Depth          | `scale(0.94)`                                                        |
+| Shade          | one step deeper than hover, per variant — see **Pressed fill** below |
+| Press-in       | 0ms — instant, no easing                                             |
+| Release        | `--duration-base` (180ms), `--ease-standard`                         |
+| Minimum hold   | `--duration-fast` (120ms), enforced in JS (`PRESS_FLOOR_MS`), always |
+| Excluded       | `disabled` **and** `loading`                                         |
+| Reduced motion | shade only — nothing moves; the floor still runs                     |
+| Haptics        | none                                                                 |
 
 **The two halves.** CSS `:active` alone is not enough: a real tap can start and end inside 30ms, and a treatment that lives and dies with `:active` flashes for exactly that long — which reads as nothing happening. So the press is held by JS for a minimum beat and CSS renders it:
 
@@ -1151,15 +1166,15 @@ Every Button answers a press. This is a **system default, not a per-call-site ch
 
 **Exclusions.** `[data-loading]` needs its own exclusion in the selector — per §4.3 a loading button carries `data-loading` but **not** `data-disabled`, so excluding only disabled would still press a loading button.
 
-**Pressed fill.** Each variant deepens one step past its own hover fill. Percentages are `color-mix(in oklab, …)` against `black`; they are **not uniform**, because an 80% mix scales oklab lightness by 0.8 and so takes a proportionally bigger absolute step on a fill that is already light. They are chosen to keep the *perceptual* step (ΔL from that variant's hover fill) comparable, not to keep the number the same. Light-theme values, computed not eyeballed:
+**Pressed fill.** Each variant deepens one step past its own hover fill. Percentages are `color-mix(in oklab, …)` against `black`; they are **not uniform**, because an 80% mix scales oklab lightness by 0.8 and so takes a proportionally bigger absolute step on a fill that is already light. They are chosen to keep the _perceptual_ step (ΔL from that variant's hover fill) comparable, not to keep the number the same. Light-theme values, computed not eyeballed:
 
-| Variant       | Pressed fill                                                | Resolved   | Text                        | Contrast    | ΔL from hover |
-| ------------- | ----------------------------------------------------------- | ---------- | --------------------------- | ----------- | ------------- |
-| `solid`       | `color-mix(in oklab, var(--color-primary) 80%, black)`      | `#254550`  | `--color-primary-foreground`| **10.26:1** | 0.148         |
-| `destructive` | `color-mix(in oklab, var(--color-destructive) 80%, black)`  | `#8a1111`  | `--color-destructive-foreground` | **9.66:1** | 0.132     |
-| `outline`     | `color-mix(in oklab, var(--color-secondary) 80%, black)`    | `#394930`  | `--color-secondary-foreground` | **9.69:1** | 0.096      |
-| `ghost`       | `color-mix(in oklab, var(--color-muted) 90%, black)`        | `#cdcfcf`  | `--color-foreground`        | **10.85:1** | 0.095         |
-| `link`        | `color-mix(in oklab, var(--color-primary) 12%, transparent)`| `#e2e8ea`  | `--color-primary`           | **5.56:1**  | 0.059         |
+| Variant       | Pressed fill                                                 | Resolved  | Text                             | Contrast    | ΔL from hover |
+| ------------- | ------------------------------------------------------------ | --------- | -------------------------------- | ----------- | ------------- |
+| `solid`       | `color-mix(in oklab, var(--color-primary) 80%, black)`       | `#254550` | `--color-primary-foreground`     | **10.26:1** | 0.148         |
+| `destructive` | `color-mix(in oklab, var(--color-destructive) 80%, black)`   | `#8a1111` | `--color-destructive-foreground` | **9.66:1**  | 0.132         |
+| `outline`     | `color-mix(in oklab, var(--color-secondary) 80%, black)`     | `#394930` | `--color-secondary-foreground`   | **9.69:1**  | 0.096         |
+| `ghost`       | `color-mix(in oklab, var(--color-muted) 90%, black)`         | `#cdcfcf` | `--color-foreground`             | **10.85:1** | 0.095         |
+| `link`        | `color-mix(in oklab, var(--color-primary) 12%, transparent)` | `#e2e8ea` | `--color-primary`                | **5.56:1**  | 0.059         |
 
 All five clear WCAG AA for body text (4.5:1); the four filled variants clear AAA (7:1). The build emits three tiers per rule — Lightning CSS down-levels each `oklab` mix to an `in srgb` one behind `@supports (color: color-mix(in lab, red, red))`, and `outline`/`ghost` add a plain fill ahead of both. All three tiers were checked: the srgb path lands 8.61:1 – 11.66:1, the plain path 6.4:1 / 14.58:1. No tier drops below AA. Notes on the ones that are not simply "80%":
 
@@ -1167,13 +1182,13 @@ All five clear WCAG AA for body text (4.5:1); the four filled variants clear AAA
 - **`link` mixes toward `transparent`, not `black`.** It has no hover fill to deepen, so its press introduces one from nothing; a 12% tint of the link's own colour keeps it a text button instead of promoting it to a ghost. Fainter than the other four by design, but still ~1.6× the step `ghost`'s own rest→hover fill makes.
 - **`outline` and `ghost` also restate the foreground** their hover sets. A pressed button is not reliably hovered — touch has no hover at all, and the floor holds `data-pressed` past pointerup — so leaning on the hover rule to have recoloured the text would leave `outline` at dark-on-dark (~1.4:1). Those two, alone of the five, therefore also carry a plain fallback `background-color` ahead of the mix: an engine without `color-mix()` drops the mix but keeps the `color`, and white text on `outline`'s unhovered near-white rest fill is invisible. The fallback is the variant's own hover fill — no press deepening, but a readable pairing.
 
-Worth knowing when reading those numbers: on a light page the existing `/90` hovers **lighten**. `bg-primary/90` composites toward the near-white background, so solid's hover fill (`#496f7c`) is measurably *lighter* than its rest fill (`#35606e`). "One step deeper than hover" is therefore also comfortably deeper than rest — the press cannot be confused with the hover state in either direction.
+Worth knowing when reading those numbers: on a light page the existing `/90` hovers **lighten**. `bg-primary/90` composites toward the near-white background, so solid's hover fill (`#496f7c`) is measurably _lighter_ than its rest fill (`#35606e`). "One step deeper than hover" is therefore also comfortably deeper than rest — the press cannot be confused with the hover state in either direction.
 
 Specificity: the pressed rules are `(0,5,0)` (`:not()` carries its argument's specificity) against each variant's `(0,2,0)` `:hover`. A pressed button under the cursor is both; pressed wins.
 
 **Reduced motion.** The transform rule is gated on `@media (prefers-reduced-motion: no-preference)` rather than reset by a following `reduce` block. `:not()` carries the specificity of its argument, so the obvious `.salt-button:active { transform: none }` reset loses to the press selector and the button moves anyway; a rule that never applies is the only reliable "does not move". The **pressed-fill rules sit outside that gate** — colour is not movement, and a reduced-motion user who gets no acknowledgement at all is worse served than one who gets a shade. The `reduce` block drops `.salt-button`'s transition entirely, so under the preference the shade lands instantly rather than over 120ms.
 
-The JS floor **runs regardless of the preference**. It is a timer, not an animation, and what it holds on is `data-pressed` — which under `reduce` still renders the shade. (An earlier revision skipped it under the preference, correctly, back when the press was scale-only and a held-but-invisible press was a pointless delay. With a shade in play, skipping it means a quick tap flashes colour for the true pointer-down time — often under a frame — which is the exact "reads as nothing happened" the floor exists to prevent.) Suppressing the *movement* is CSS's job alone; `Button.headless.svelte.ts` does not read `prefers-reduced-motion`.
+The JS floor **runs regardless of the preference**. It is a timer, not an animation, and what it holds on is `data-pressed` — which under `reduce` still renders the shade. (An earlier revision skipped it under the preference, correctly, back when the press was scale-only and a held-but-invisible press was a pointless delay. With a shade in play, skipping it means a quick tap flashes colour for the true pointer-down time — often under a frame — which is the exact "reads as nothing happened" the floor exists to prevent.) Suppressing the _movement_ is CSS's job alone; `Button.headless.svelte.ts` does not read `prefers-reduced-motion`.
 
 **No haptics.** `navigator.vibrate` is deliberately not called. Press feedback is visual only.
 
@@ -1187,13 +1202,13 @@ Visual styles are defined as `.salt-button--*` CSS component classes in `package
 
 **Box-model contract:** All button variants carry `border` so that mixed-variant rows (e.g. a `solid` next to an `outline`) share the same computed height. Non-outline variants use `border-transparent` to keep the border invisible while holding the box space; `outline` overrides with `border-secondary`.
 
-| Variant       | Classes                                                                                      |
-| ------------- | -------------------------------------------------------------------------------------------- |
-| `solid`       | `border border-transparent bg-primary text-primary-foreground hover:bg-primary/90`           |
+| Variant       | Classes                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| `solid`       | `border border-transparent bg-primary text-primary-foreground hover:bg-primary/90`                        |
 | `outline`     | `border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground` |
-| `ghost`       | `border border-transparent bg-transparent hover:bg-muted hover:text-foreground`              |
-| `link`        | `border border-transparent bg-transparent underline-offset-4 hover:underline text-primary`   |
-| `destructive` | `border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90` |
+| `ghost`       | `border border-transparent bg-transparent hover:bg-muted hover:text-foreground`                           |
+| `link`        | `border border-transparent bg-transparent underline-offset-4 hover:underline text-primary`                |
+| `destructive` | `border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90`            |
 
 Those classes carry rest + hover only. The **pressed** fill for each variant is a separate rule keyed off `:active` / `[data-pressed]`, written as longhand `color-mix()` rather than `@apply` — an alpha modifier like `/90` can only fade toward the page, which on a light theme lightens. Values and contrast ratios are in **Press feedback → Pressed fill** above; sizes (`sm`/`md`/`lg`/`icon`) carry no colour and so do not vary the press.
 
@@ -1235,7 +1250,7 @@ Single-line text input with label + description + error.
 
 `class` lands on the outer stack (label + frame + description + error);
 `frameClass` lands on the frame itself, merged last via `cn()`. It exists so a
-*surface* can reach the element that paints the field — the value chip
+_surface_ can reach the element that paints the field — the value chip
 (v0.9 §8.27.5) is the only sanctioned use. It is not a general styling hatch:
 anything that changes how a frame looks elsewhere earns a variant on
 `textFieldFrameVariants`.
@@ -1317,7 +1332,7 @@ than growing a bespoke prop per such need.
   internally for autoresize, so a consumer that does not bind it is unaffected.
 - Text remains owned by `value` / `onValueChange`. A consumer that mutates the
   node directly must dispatch an `input` event (`new Event('input', { bubbles:
-  true })`) so the component's own handler updates `value` and notifies the
+true })`) so the component's own handler updates `value` and notifies the
   caller — `setRangeText` does not fire one by itself.
 - Do not use it to bypass the primitive for styling, focus management, or
   reading the value; those have props.
@@ -1680,12 +1695,12 @@ Note: `as` is constrained to a union — **not** an arbitrary string — to keep
 
 ### Props
 
-| Name        | Type                                   | Default      |
-| ----------- | -------------------------------------- | ------------ |
+| Name        | Type                                     | Default      |
+| ----------- | ---------------------------------------- | ------------ |
 | `name`      | `IconName` — `keyof typeof iconRegistry` | — (required) |
-| `size`      | `number`                               | `16`         |
-| `ariaLabel` | `string \| undefined`                  | —            |
-| `class`     | `string \| undefined`                  | —            |
+| `size`      | `number`                                 | `16`         |
+| `ariaLabel` | `string \| undefined`                    | —            |
+| `class`     | `string \| undefined`                    | —            |
 
 ### Icon registry
 
@@ -1823,18 +1838,19 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 # 9. Changelog
 
-| Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-08-16 | v0.2.13 | §4.1 Tokens: the semantic colour list gains **`destructive-container`, `on-destructive-container`** — the destructive counterpart to the sage `secondary-container` pair already listed above it, and the surface a _removed_ change is tinted with in the recipe review gate where an addition gets the sage one. The values are not new: they are `design.md`'s long-standing `error-container` / `on-error-container` (light `#ffdad6` / `#93000a`), which PR #832 plumbed through to `salt.css` and `tokens/colors.ts` for the first time. This row records that plumbing in the spec — the code shipped without it because #832's governing issue forbade amending the UI spec in that diff. Naming follows `secondary-container` exactly, including its asymmetry: the CSS variable is `--salt-on-destructive-container` while the Tailwind utility is `destructive-container-foreground`. No primitive contract changed, so nothing is re-stamped. Issue #833. |
-| 2026-08-15 | v0.2.12 | §4.1 Tokens: new semantic colour role **`placeholder`** (light `#677174`, dark `#99a1a3`) plus the rule that example text is styled by **one `::placeholder` rule in `salt.css`'s `@layer base`**, in colour **and** `font-style: italic`, never per-primitive. The old arrangement was `placeholder:text-muted-foreground` copied across twelve sites in three mechanisms, two of which styled nothing and fell back to the browser default — and `muted-foreground` sits **1.79:1** from value text, so an empty field looked filled and a long form could only be reviewed by clicking into every field. The new role holds 4.79:1 on the background (AA with margin, so the difference is never bought by fading — ui-spec-v04 §17.5) at 3.38:1 off value text; italic is the second, non-colour channel WCAG 1.4.1 requires and ships as a real `@fontsource-variable/inter` italic face, latin subset only (51.8 kB). §8.2 and §8.3 accordingly drop `placeholder:text-muted-foreground` from their class matrices and gain a pointer to §4.1. A base rule reaches hand-rolled inputs and inputs not yet written, which is why the drift cannot recur — but a `placeholder:*` utility still beats `@layer base`, so adding one reopens it. `SelectTrigger` is the one thing no such rule can reach (its placeholder is a `<span>`) and is specified in ui-spec-v03 §3.4. Contract change — `TextField.svelte`, `Textarea.svelte` re-stamped. Issue #821 Phase 1. |
-| 2026-08-14 | v0.2.11 | §8.12 Icon + §1.1 Icons row: `name` is keyed off a **curated registry** (`src/primitives/Icon/iconRegistry.ts`) instead of `keyof typeof import('@lucide/svelte').icons`. The `icons` barrel is a namespace object, so nothing tree-shook and all 1,764 icon modules shipped — **632.75 kB (108.75 kB gzipped), the single largest item in the PWA's boot payload**, to draw the ~70 icons Salt actually uses. The registry imports each icon from its own `@lucide/svelte/icons/<kebab-name>` subpath, so only registered icons ship. New §8.12 "Icon registry" records that it is hand-maintained, that the narrowed `IconName` union turns an unregistered name into a `pnpm check` failure (the whole maintenance mechanism — no generator, no CI staleness check, because no icon name crosses a serialization boundary), and that direct named imports inside single-icon primitives are unaffected and stay correct. `iconNames` joins the package surface (§1.3) so Storybook's gallery renders the real set rather than a second hand-list. Contract change — `Icon.svelte`, `Icon.types.ts` re-stamped; `ListPage.types.ts`'s `BulkActionIcon` re-pointed. Issue #813 Phase 1. **v0.2.10 is absent from this table on purpose:** #691 bumped the header to it without adding a row, so the number is already spent — pre-existing doc drift, not amended here. |
-| 2026-08-02 | v0.2.9  | §8.6 Dialog + §4.4 Dialog Size Scale: the content base gains `w-full`, a mobile `max-w-[calc(100%-2rem)]` clamp, and `max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`; the size scale becomes an `sm:`-and-up ceiling. The base stated no width at all, so a `position: fixed` panel with `left: 50%` and no `right` was shrink-to-fit against `100vw - left` — **every dialog was capped at roughly half the viewport width** (the photo-import dialog of #676 measured 221px on a 393px phone), with `max-w-*` powerless to correct it — a ceiling the panel was already under. The `sm:` modifiers keep the mobile clamp alive through tailwind-merge. Height is capped so a panel taller than the viewport scrolls rather than putting its footer out of reach. Behavioural amendment — `Dialog.variants.ts` re-stamped. |
-| 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588. |
+| Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-24 | v0.2.14 | §3.8 Provenance Header Convention: the scan surface becomes **all of `src/`** (minus `src/__boundary_tests__/`) instead of the three directories `headless`, `primitives`, `lib` that existed when it was written — `layout/` and `templates/` had been outside the CI gate since they were created, and 13 layout files had never been stamped at all. And the header now names **a real document in `docs/design/`**, checked by resolving it, instead of the literal `SPEC.md`: no such file has ever existed in this repo (this document was split into `ui-spec-v02.md` … `ui-spec-v11.md`), yet 170 of 223 source files cited it and the shape-only regex passed every one. The multi-citation form already in use (`a.md §1 v0.1; b.md §2 v0.2 (note)`) is written down rather than left to the two files that had guessed it. All 170 headers are re-pointed at the document their version already identified — a `v0.4` header was always an ui-spec-v04.md header — and the 13 unstamped layout files are stamped against ui-spec-v04 §13/§16, which is where they are specified (§0 of that document says so). No primitive contract changed; nothing is re-stamped for behaviour. Issue #919.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-08-16 | v0.2.13 | §4.1 Tokens: the semantic colour list gains **`destructive-container`, `on-destructive-container`** — the destructive counterpart to the sage `secondary-container` pair already listed above it, and the surface a _removed_ change is tinted with in the recipe review gate where an addition gets the sage one. The values are not new: they are `design.md`'s long-standing `error-container` / `on-error-container` (light `#ffdad6` / `#93000a`), which PR #832 plumbed through to `salt.css` and `tokens/colors.ts` for the first time. This row records that plumbing in the spec — the code shipped without it because #832's governing issue forbade amending the UI spec in that diff. Naming follows `secondary-container` exactly, including its asymmetry: the CSS variable is `--salt-on-destructive-container` while the Tailwind utility is `destructive-container-foreground`. No primitive contract changed, so nothing is re-stamped. Issue #833.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-08-15 | v0.2.12 | §4.1 Tokens: new semantic colour role **`placeholder`** (light `#677174`, dark `#99a1a3`) plus the rule that example text is styled by **one `::placeholder` rule in `salt.css`'s `@layer base`**, in colour **and** `font-style: italic`, never per-primitive. The old arrangement was `placeholder:text-muted-foreground` copied across twelve sites in three mechanisms, two of which styled nothing and fell back to the browser default — and `muted-foreground` sits **1.79:1** from value text, so an empty field looked filled and a long form could only be reviewed by clicking into every field. The new role holds 4.79:1 on the background (AA with margin, so the difference is never bought by fading — ui-spec-v04 §17.5) at 3.38:1 off value text; italic is the second, non-colour channel WCAG 1.4.1 requires and ships as a real `@fontsource-variable/inter` italic face, latin subset only (51.8 kB). §8.2 and §8.3 accordingly drop `placeholder:text-muted-foreground` from their class matrices and gain a pointer to §4.1. A base rule reaches hand-rolled inputs and inputs not yet written, which is why the drift cannot recur — but a `placeholder:*` utility still beats `@layer base`, so adding one reopens it. `SelectTrigger` is the one thing no such rule can reach (its placeholder is a `<span>`) and is specified in ui-spec-v03 §3.4. Contract change — `TextField.svelte`, `Textarea.svelte` re-stamped. Issue #821 Phase 1.                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-08-14 | v0.2.11 | §8.12 Icon + §1.1 Icons row: `name` is keyed off a **curated registry** (`src/primitives/Icon/iconRegistry.ts`) instead of `keyof typeof import('@lucide/svelte').icons`. The `icons` barrel is a namespace object, so nothing tree-shook and all 1,764 icon modules shipped — **632.75 kB (108.75 kB gzipped), the single largest item in the PWA's boot payload**, to draw the ~70 icons Salt actually uses. The registry imports each icon from its own `@lucide/svelte/icons/<kebab-name>` subpath, so only registered icons ship. New §8.12 "Icon registry" records that it is hand-maintained, that the narrowed `IconName` union turns an unregistered name into a `pnpm check` failure (the whole maintenance mechanism — no generator, no CI staleness check, because no icon name crosses a serialization boundary), and that direct named imports inside single-icon primitives are unaffected and stay correct. `iconNames` joins the package surface (§1.3) so Storybook's gallery renders the real set rather than a second hand-list. Contract change — `Icon.svelte`, `Icon.types.ts` re-stamped; `ListPage.types.ts`'s `BulkActionIcon` re-pointed. Issue #813 Phase 1. **v0.2.10 is absent from this table on purpose:** #691 bumped the header to it without adding a row, so the number is already spent — pre-existing doc drift, not amended here.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-08-02 | v0.2.9  | §8.6 Dialog + §4.4 Dialog Size Scale: the content base gains `w-full`, a mobile `max-w-[calc(100%-2rem)]` clamp, and `max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`; the size scale becomes an `sm:`-and-up ceiling. The base stated no width at all, so a `position: fixed` panel with `left: 50%` and no `right` was shrink-to-fit against `100vw - left` — **every dialog was capped at roughly half the viewport width** (the photo-import dialog of #676 measured 221px on a 393px phone), with `max-w-*` powerless to correct it — a ceiling the panel was already under. The `sm:` modifiers keep the mobile clamp alive through tailwind-merge. Height is capped so a panel taller than the viewport scrolls rather than putting its footer out of reach. Behavioural amendment — `Dialog.variants.ts` re-stamped.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 2026-07-24 | v0.2.7  | §8.1 Button: recorded the system-wide **press feedback** contract — `scale(0.94)`, instant press-in / 180ms (`--duration-base`, `--ease-standard`) release, a 120ms (`--duration-fast`) JS minimum-hold floor so a too-quick click is still visible, `disabled` **and** `loading` excluded, reduced motion = shade only (no movement), no haptics. Adds the `data-pressed` attribute and the pointer/keyboard wiring behind it. **Both halves are now implemented:** the scale, and the per-variant **pressed fill** — each variant one perceptual step deeper than its own hover, as longhand `color-mix(in oklab, …)` (solid/destructive/outline 80% toward black, ghost 90% because `--color-muted` is near-white, link a 12% tint since it has no hover fill to deepen). Values, resolved hexes, and computed light-theme contrast ratios (5.56:1 – 10.85:1, all AA) recorded in §8.1. The fill rules sit **outside** the `prefers-reduced-motion: no-preference` gate that holds the transform, so a shade survives the preference; correspondingly the JS floor (`PRESS_FLOOR_MS`) **no longer skips under reduced motion** — it holds `data-pressed`, which now renders something, so skipping it would let a sub-frame tap flash colour invisibly. `Button.headless.svelte.ts` no longer reads `prefers-reduced-motion` at all. Ratifies the press-in that shipped unrecorded in #573 (retuned from `scale(0.97)`, symmetric 120ms) and fixes the loading-button exclusion it missed. §1.5 gains the rationale for amending on the v0.2.x line (v0.3.0 collides with `ui-spec-v03.md`); §8.1 Styling's two stale `tailwind-preset.ts` references corrected to `salt.css`. Issue #579; approved mock: _Button press (system-wide mock)_ in `Salt.dc.html`, Claude Design project "Salt — Culinary Modernist" (mock not in-repo). |
-| 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                        |
-| 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                            |
-| 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                        |
-| 2026-04-22 | v0.2.3  | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list.                                                                                                                                                                                                                                                                                                       |
-| 2026-04-22 | v0.2.2  | Locked four implementation decisions: Svelte pin `^5.55.0` (§1.1), Icon surface `keyof typeof import('lucide-svelte')` (§1.1 + §8.12 unchanged), `tailwindcss-animate` registered by preset (§1.1 + §3.3), `useId` kept as module-scope counter explicitly **not SSR-safe** (§2.6). No breaking change to generated code.                                                                                                                                |
-| 2026-04-21 | v0.2.1  | Finished Progress spec. Centralized headless layer under `src/headless/`. Added §1.4 event naming rule, §1.5 spec versioning, §3.5 helper signatures, §3.6 canonical Button example + controlled/uncontrolled + snippet patterns, §3.7 bits-ui mapping table, §3.8 provenance header convention, §4.4 shared size scale, §4.5 dark-mode contract, §6.2 test template. Added CVA class matrices to all primitives. Added per-primitive "Forbidden" lists. |
-| earlier    | v0.2    | Initial draft.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-04-22 | v0.2.3  | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 2026-04-22 | v0.2.2  | Locked four implementation decisions: Svelte pin `^5.55.0` (§1.1), Icon surface `keyof typeof import('lucide-svelte')` (§1.1 + §8.12 unchanged), `tailwindcss-animate` registered by preset (§1.1 + §3.3), `useId` kept as module-scope counter explicitly **not SSR-safe** (§2.6). No breaking change to generated code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-04-21 | v0.2.1  | Finished Progress spec. Centralized headless layer under `src/headless/`. Added §1.4 event naming rule, §1.5 spec versioning, §3.5 helper signatures, §3.6 canonical Button example + controlled/uncontrolled + snippet patterns, §3.7 bits-ui mapping table, §3.8 provenance header convention, §4.4 shared size scale, §4.5 dark-mode contract, §6.2 test template. Added CVA class matrices to all primitives. Added per-primitive "Forbidden" lists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| earlier    | v0.2    | Initial draft.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

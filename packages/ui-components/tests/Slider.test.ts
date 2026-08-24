@@ -1,4 +1,4 @@
-// spec: SPEC.md §4 + §6 + §7 v0.3
+// spec: ui-spec-v03.md §4, §6, §7 v0.3
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';

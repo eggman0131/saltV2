@@ -34,24 +34,8 @@ const {
   mockSubscribeKitchenWeeks,
   mockKitchenTeardown,
   mockAddToast,
-} = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((f) => f(v));
-      },
-    };
-  }
+} = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   const mockCookSessionTeardown = vi.fn();
   const mockKitchenTeardown = vi.fn();
   return {

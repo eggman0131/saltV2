@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.26 v0.2.3 -->
+<!-- spec: ui-spec-v02.md §8.26 v0.2.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Button from '../Button/Button.svelte';

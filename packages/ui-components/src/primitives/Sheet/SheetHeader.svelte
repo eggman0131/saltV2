@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §5 v0.3 -->
+<!-- spec: ui-spec-v03.md §5 v0.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { SheetPartProps } from './Sheet.types';

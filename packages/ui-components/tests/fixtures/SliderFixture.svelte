@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 — test fixture for Slider composition -->
+<!-- spec: ui-spec-v03.md §6 v0.3 — test fixture for Slider composition -->
 <script lang="ts">
   import Slider from '../../src/primitives/Slider/Slider.svelte';
   import SliderTrack from '../../src/primitives/Slider/SliderTrack.svelte';

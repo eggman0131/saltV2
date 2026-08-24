@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §5.3.1 v0.3.2 -->
+<!-- spec: ui-spec-v03.md §5.3.1 v0.3.2 -->
 <script lang="ts">
   import { Dialog } from 'bits-ui';
   import type { SheetPartProps } from './Sheet.types';

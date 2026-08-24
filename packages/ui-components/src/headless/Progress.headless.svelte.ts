@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.15 v0.2.3
+// spec: ui-spec-v02.md §8.15 v0.2.3
 
 export type ProgressState = {
   readonly isIndeterminate: boolean;

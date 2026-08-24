@@ -1,4 +1,4 @@
-// spec: SPEC.md §3 v0.3
+// spec: ui-spec-v03.md §3 v0.3
 import { createContext } from '../lib/context';
 
 export type SelectRegisteredItem = {

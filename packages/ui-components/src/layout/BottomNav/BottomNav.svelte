@@ -1,3 +1,4 @@
+<!-- spec: ui-spec-v04.md §13.2, §17.3 v0.4 -->
 <script lang="ts">
   import { Ellipsis } from '@lucide/svelte';
   import { cn } from '../../lib/cn';

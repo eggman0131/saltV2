@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.3 v0.2.3
+// spec: ui-spec-v02.md §3.3 v0.2.3
 // Compares design/design.md frontmatter against the CSS-first design-system
 // entry (src/salt.css). Fails with a diff when the two drift. Run via
 // `pnpm theme:check`.

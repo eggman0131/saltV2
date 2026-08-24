@@ -1,4 +1,4 @@
-// spec: SPEC.md §3 v0.3
+// spec: ui-spec-v03.md §3 v0.3
 import type { Snippet } from 'svelte';
 import type { HTMLButtonAttributes } from 'svelte/elements';
 

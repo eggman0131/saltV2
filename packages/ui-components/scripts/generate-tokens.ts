@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.3 v0.2.3
+// spec: ui-spec-v02.md §3.3 v0.2.3
 // Reads the CSS-first design-system entry (src/salt.css) and (re)writes
 // src/tokens/*.ts + src/tokens.ts. Idempotent: running twice produces no git diff.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -11,7 +11,7 @@ const srcDir = join(__dirname, '../src');
 const css = readFileSync(join(srcDir, 'salt.css'), 'utf8');
 
 const HEADER =
-  '// spec: SPEC.md §3.3 v0.2.3\n// AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.\n';
+  '// spec: ui-spec-v02.md §3.3 v0.2.3\n// AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.\n';
 
 // Every `--name: value;` custom-property value in salt.css, first occurrence
 // wins (so :root/@theme light values beat the later .dark overrides). Insertion
@@ -110,7 +110,7 @@ writeFileSync(
 );
 
 // --- tokens.ts ---
-const tokensBarrel = `// spec: SPEC.md §1.3 v0.2.3
+const tokensBarrel = `// spec: ui-spec-v02.md §1.3 v0.2.3
 // AUTO-GENERATED — do not hand-edit. Run \`pnpm --filter @salt/ui-components generate-tokens\` to regenerate.
 export * as colors from './tokens/colors';
 export * as radius from './tokens/radius';

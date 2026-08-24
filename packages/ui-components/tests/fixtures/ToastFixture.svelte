@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 — test fixture for Toast composition -->
+<!-- spec: ui-spec-v03.md §6 v0.3 — test fixture for Toast composition -->
 <script lang="ts">
   import ToastProvider from '../../src/primitives/Toast/ToastProvider.svelte';
   import ToastViewport from '../../src/primitives/Toast/ToastViewport.svelte';

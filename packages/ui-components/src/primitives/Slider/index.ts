@@ -1,4 +1,4 @@
-// spec: SPEC.md §4 v0.3
+// spec: ui-spec-v03.md §4 v0.3
 export { default as Slider } from './Slider.svelte';
 export { default as SliderTrack } from './SliderTrack.svelte';
 export { default as SliderRange } from './SliderRange.svelte';

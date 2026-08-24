@@ -1,3 +1,4 @@
+<!-- spec: ui-spec-v04.md §13.3, §16.3, §17.2 v0.4; ui-spec-v05.md §2.3 v0.5 (chrome) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import TopBar from '../TopBar/TopBar.svelte';

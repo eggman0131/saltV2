@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §3 v0.3 -->
+<!-- spec: ui-spec-v03.md §3 v0.3 -->
 <script lang="ts">
   import { tick } from 'svelte';
   import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';

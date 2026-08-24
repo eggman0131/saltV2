@@ -13,24 +13,8 @@ import type { Member } from '@salt/domain';
 // firebase-sync/tests/firestoreRules.emulator.test.ts, which is where the
 // escalation attempts live.
 
-const { mockCurrentMember, mockPush, mockInstall } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockCurrentMember, mockPush, mockInstall } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockCurrentMember: makeStore<Member | null>(null),
     mockPush: {

@@ -1,3 +1,4 @@
+// spec: ui-spec-v04.md §13.2, §17.3 v0.4
 import type { NavItem } from '../NavItem.types';
 
 export interface BottomNavProps {
