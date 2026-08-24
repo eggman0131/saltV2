@@ -173,6 +173,22 @@ E2E_FRESH=1 pnpm --filter @salt/web-pwa e2e      # down -v first, then a cold up
 
 `pnpm --filter @salt/web-pwa e2e:ui` opens Playwright's UI mode for interactive debugging.
 
+### Coverage — opt-in, and deliberately not in CI (issue #945)
+
+V8 coverage collection is **off unless `E2E_COVERAGE=1`**. It used to be an unconditional auto
+fixture, so every CI shard paid for it and then binned the output — CI never ran the report and
+never uploaded `coverage/e2e-raw/`. Rather than build a report nobody consumes (there is no e2e
+coverage floor, and the route layer already carries a unit one), collection became opt-in:
+
+```bash
+pnpm --filter @salt/web-pwa e2e:coverage          # sets the flag, then writes HTML + LCOV
+E2E_COVERAGE=1 pnpm --filter @salt/web-pwa e2e    # collect only; report later
+pnpm --filter @salt/web-pwa e2e:coverage:report   # convert whatever is in coverage/e2e-raw/
+```
+
+Reports land in `apps/web-pwa/coverage/e2e/` (gitignored). Reasoning, and what to change if e2e
+coverage ever gains a consumer, is in the comment at `e2e/fixtures/test.ts`.
+
 ## Vitest emulator integration suites
 
 `pnpm test:emulator` runs `scripts/test-emulator.mjs`, which owns the full lifecycle of the
