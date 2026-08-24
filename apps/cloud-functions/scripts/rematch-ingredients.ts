@@ -150,6 +150,7 @@ let changed = 0;
 let unchanged = 0;
 let failed = 0;
 let skipped = 0;
+let keptForNullQuantity = 0;
 let written = 0;
 
 interface ParsedLine {
@@ -227,6 +228,30 @@ for (const recipeId of recipeIds) {
     const result = results[i] as
       { kind: 'ok'; value: { item: { id: string } } } | { kind: 'err' } | undefined;
     if (result === undefined) return;
+    // A BACKFILL MUST NOT DESTROY DATA. The parse is an AI call, and an AI call
+    // is not reproducible even at temperature 0 — the same line yields "5 g lemon
+    // zest" on one run and no quantity at all on the next. Improving 30 lines is
+    // no justification for silently emptying one: a line with no amount puts
+    // nothing on the shopping list, and the original number is gone.
+    //
+    // So the trade is refused wherever it arises. A line that HAD an amount keeps
+    // the one it has unless the new parse also has one; everything else about the
+    // re-parse (the item name, the unit, the canon match — the whole point of the
+    // pass) is discarded with it, because a quantity and its unit are one fact and
+    // splicing half of each together would invent a reading neither parse gave.
+    // Re-running later is free and may well come back with a number.
+    // The work list stores a rendered quantity, and `describeQuantity` renders a
+    // null one as an em dash — so that string, not null, is what "no amount" looks
+    // like here. Nine of prod's 79 lines are already in that state.
+    const hadQuantity = work.quantity !== '—' && work.quantity.trim() !== '';
+    const hasQuantity = (parsed as Record<string, unknown>)['quantity'] != null;
+    if (hadQuantity && !hasQuantity) {
+      console.log(
+        `   KEPT       ${work.rawText.slice(0, 46).padEnd(46)} new parse had no quantity`,
+      );
+      keptForNullQuantity += 1;
+      return;
+    }
     updateById.set(work.ingredientId, {
       parsed,
       canonId: result.kind === 'ok' ? result.value.item.id : null,
@@ -281,7 +306,8 @@ function describeQuantity(quantity: unknown): string {
 }
 
 console.log(
-  `\nparse changed ${changed}   unchanged ${unchanged}   failed ${failed}   skipped ${skipped}`,
+  `\nparse changed ${changed}   unchanged ${unchanged}   failed ${failed}   skipped ${skipped}` +
+    `   kept (no new quantity) ${keptForNullQuantity}`,
 );
 console.log(
   apply
