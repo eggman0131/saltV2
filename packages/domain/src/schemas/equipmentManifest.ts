@@ -29,6 +29,4 @@ export const EquipmentManifestSchema = z.object({
   items: z.array(EquipmentItemSchema).default([]),
 });
 
-export type AccessoryDoc = z.infer<typeof AccessorySchema>;
 export type EquipmentItemDoc = z.infer<typeof EquipmentItemSchema>;
-export type EquipmentManifestDoc = z.infer<typeof EquipmentManifestSchema>;

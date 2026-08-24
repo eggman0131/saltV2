@@ -8,5 +8,3 @@ export const RegenerateCanonIconInputSchema = z.object({
   canonId: z.string().min(1),
   hint: z.string().trim().max(200).optional(),
 });
-
-export type RegenerateCanonIconInput = z.infer<typeof RegenerateCanonIconInputSchema>;

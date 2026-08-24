@@ -36,7 +36,6 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
   domain                          # Pure business logic, entities, validation, ports
   shared-types                    # Cross-cutting types/interfaces only
   ui-components                   # Shared UI primitives
-  testing-utils                   # Shared test helpers
   adapters/
     firebase-sync                 # Firebase Auth + Firestore implementation
                                   # of realtime subscriptions, direct writes, and auth ports
@@ -111,7 +110,7 @@ The domain exposes:
   - Recipes (single-document model; `kind: 'recipe' | 'outing' | 'cocktail' | 'placeholder'` (#637, #652) records what an entry _is_ — the `recipes` collection also holds "When you CBA" outings, cocktails, and placeholder heroes (a stock photograph of "a good dinner, no particular dish", attached to a planner day that was planned in a sentence). The pure capability predicates `takesIngredients` / `isCookable` / `isPlannable` (`domain/src/recipe/queries/capabilities.ts`, exported from `@salt/domain`) are the **published surface** for that field: they are the only place a `RecipeKind` is inspected for behaviour, backed by a `Record<RecipeKind, …>` table so a new kind cannot compile until it has answered all three. They take a `RecipeKind`, not a `Recipe`, because callers do not always hold a whole recipe. No consumer outside the domain compares a kind to decide _behaviour_; the direct comparisons that do exist all pick words, pictures or identity — which list section you are on, whether a planner picker row wears a label, and which art-direction prompt a hero generation uses)
   - Canon items (name, synonyms, aisle, optional embedding, thumbnail icon)
   - Shopping lists (items, checked state, canon links)
-  - Shopping days (ShoppingDay — the family-shared shop-day doc for the week, `shoppingDays/{YYYY-MM-DD}`; `date`, `slot: 'am' | 'pm'`, `setBy`, `setAt`; pure helpers `isBeforeShop`, `dateInZone`, `addCalendarDays`, `daysBetween`, `tomorrowInZone`, `shopDayForWeek` in `domain/src/shoppingDay/`)
+  - Shopping days (ShoppingDay — the family-shared shop-day doc for the week, `shoppingDays/{YYYY-MM-DD}`; `date`, `slot: 'am' | 'pm'`, `setBy`, `setAt`; pure helpers `dateInZone`, `addCalendarDays`, `daysBetween`, `tomorrowInZone`, `shopDayForWeek` in `domain/src/shoppingDay/`)
   - Members (email-keyed allowlist membership records, admin role, email normalisation)
   - Meal plan (MealPlanConfig, MealPlanTemplate, MealPlanWeek, Day, Attendee, Weekday — weekly evening-meal planner with a weekday-keyed template and per-day guest count)
   - Chat sessions (ChatSession, Message — per-user AI kitchen assistant conversations; `ownerUid`-scoped, 14-day TTL via Firestore TTL policy on `expiresAt`; optional `recipeId` for recipe-attached sessions)
@@ -445,8 +444,8 @@ This module must remain extremely small and stable.
 
 - Enforce allowed import graph (boundaries plugin)
 - Forbid Firebase SDK imports (`firebase` / `firebase-admin`) in `domain`, `observability`, and `ui-components`. The browser `firebase` SDK lives in `firebase-sync`; `firebase-admin` is used directly in `cloud-functions` (§3, §8) and is **not** restricted there.
-- Forbid IndexedDB / browser-storage package imports (`idb`, `idb-keyval`, `dexie`) in `domain`, `firebase-sync`, `observability`, and `ui-components`. This rule is **not** applied to the apps (`web-pwa`, `cloud-functions`) or `testing-utils` — the "no browser storage" contract (Rule 3) holds there by convention and review, not by lint.
-- Forbid PostHog SDK imports (`posthog-js` / `posthog-node`) outside `observability`: every non-observability package (`shared-types`, `domain`, `firebase-sync`, `ui-components`, `testing-utils`) and both apps go through the `@salt/observability` ports, never the SDK directly.
+- Forbid IndexedDB / browser-storage package imports (`idb`, `idb-keyval`, `dexie`) in `domain`, `firebase-sync`, `observability`, and `ui-components`. This rule is **not** applied to the apps (`web-pwa`, `cloud-functions`) — the "no browser storage" contract (Rule 3) holds there by convention and review, not by lint.
+- Forbid PostHog SDK imports (`posthog-js` / `posthog-node`) outside `observability`: every non-observability package (`shared-types`, `domain`, `firebase-sync`, `ui-components`) and both apps go through the `@salt/observability` ports, never the SDK directly.
 - Forbid the wrong `observability` subpath per runtime: the default (browser `posthog-js`) subpath in cloud-functions, and the `observability/server` (`posthog-node`) subpath in web-pwa.
 - Forbid firebase-sync ↔ observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types — also blocks Node built-in imports (`no-restricted-imports`) and browser / `process` globals (`no-restricted-globals`), so domain purity re Node/browser is lint-enforced (issue #413)

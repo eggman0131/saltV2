@@ -5,7 +5,6 @@
 export type { Accessory, EquipmentItem } from './entities/EquipmentItem.js';
 export type { EquipmentManifest } from './entities/EquipmentManifest.js';
 export type { EquipmentManifestPort } from './ports/EquipmentManifestPort.js';
-export type { IdGenerator as EquipmentIdGenerator } from './ports/IdGenerator.js';
 
 export { addEquipment } from './commands/addEquipment.js';
 export type { AddEquipmentInput } from './commands/addEquipment.js';

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createAisle } from '@salt/domain';
-import type { IdGenerator, AisleLocalStorePort } from '@salt/domain';
+import type { AisleLocalStorePort } from '@salt/domain';
 import type { Aisle } from '../../src/canon/entities/Aisle.js';
 import { ErrorCode } from '@salt/shared-types';
+import type { IdGenerator } from '../../src/canon/index.js';
 
 let n = 0;
 function makeIds(): IdGenerator {

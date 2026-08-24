@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { confirmProductForm, decideProductFormProposal, resolveProductForm } from '@salt/domain';
 import type { ProductForm } from '@salt/domain';
-import type { ProductFormArbitrationAIOutput } from '@salt/domain/schemas';
-
+import type { ProductFormArbitrationAIOutput } from '../../src/schemas/productFormArbitration.js';
 const pendingForm: ProductForm = {
   id: 'pf-pending',
   schemaVersion: 1,

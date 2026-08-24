@@ -29,5 +29,3 @@ export const MemberSchema = z.object({
 });
 
 export type CookMode = z.infer<typeof MemberSchema>['cookMode'];
-
-export type MemberDoc = z.infer<typeof MemberSchema>;

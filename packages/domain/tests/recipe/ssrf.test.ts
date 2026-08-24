@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseImportUrl,
-  isHttpsScheme,
-  hostnameAsIpLiteral,
-  classifyIp,
-  isPublicIp,
-  isIpv4,
-  isIpv6,
-} from '@salt/domain';
+import { parseImportUrl, isHttpsScheme, hostnameAsIpLiteral, isPublicIp } from '@salt/domain';
+import { classifyIp, isIpv4, isIpv6 } from '../../src/recipe/index.js';
 
 describe('parseImportUrl', () => {
   it('parses a valid https url', () => {

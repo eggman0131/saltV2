@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { dateInZone, addCalendarDays, daysBetween, tomorrowInZone } from '../../src/index.js';
+import { addCalendarDays, daysBetween, tomorrowInZone } from '../../src/index.js';
+import { dateInZone } from '../../src/shoppingDay/index.js';
 
 const LONDON = 'Europe/London';
 

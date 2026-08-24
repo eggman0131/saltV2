@@ -8,7 +8,6 @@ import {
   weekExtendsIntoNext,
   WEEK_EXTENSION_DAYS,
   templateWeekStarts,
-  TEMPLATE_WEEK_OFFERS,
   emptyDay,
   emptyWeek,
   emptyTemplate,
@@ -26,6 +25,7 @@ import {
   type MealPlanTemplate,
   type Weekday,
 } from '@salt/domain';
+import { TEMPLATE_WEEK_OFFERS } from '../../src/mealPlan/index.js';
 
 const config = (firstDayOfWeek: Weekday): MealPlanConfig => ({
   firstDayOfWeek,

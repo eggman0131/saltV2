@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveSchedule } from '../../src/index.js';
-import type { ResolveScheduleResult } from '../../src/index.js';
 import type { ProcessStage, StageDuration } from '../../src/schemas/index.js';
+import type { ResolveScheduleResult } from '../../src/process/index.js';
 
 // The overnight white tin's own process, as the extraction flow reads it off the
 // method: mix, bulk ferment, shape, prove, preheat, bake. Six stages, five and a

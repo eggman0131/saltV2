@@ -180,5 +180,4 @@ export type QuietHours = z.infer<typeof QuietHoursSchema>;
 export type ProposeScheduleInput = z.infer<typeof ProposeScheduleInputSchema>;
 export type ProposedStage = z.infer<typeof ProposedStageSchema>;
 export type ComponentAdjustment = z.infer<typeof ComponentAdjustmentSchema>;
-export type ProposeScheduleAIOutput = z.infer<typeof ProposeScheduleAIOutputSchema>;
 export type ProposeScheduleOutput = z.infer<typeof ProposeScheduleOutputSchema>;

@@ -218,11 +218,8 @@ export const BatchObservationSchema = z.object({
   image: BatchObservationImageSchema.nullable(),
 });
 
-export type BatchState = z.infer<typeof BatchStateSchema>;
 export type BatchQuantityDoc = z.infer<typeof BatchQuantitySchema>;
-export type BatchUnitsDoc = z.infer<typeof BatchUnitsSchema>;
 export type BatchTotalsDoc = z.infer<typeof BatchTotalsSchema>;
 export type BatchStageDoc = z.infer<typeof BatchStageSchema>;
 export type BatchDoc = z.infer<typeof BatchSchema>;
-export type BatchObservationImage = z.infer<typeof BatchObservationImageSchema>;
 export type BatchObservationDoc = z.infer<typeof BatchObservationSchema>;

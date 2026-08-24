@@ -11,7 +11,8 @@ import {
   removeRule,
   editRule,
 } from '@salt/domain';
-import type { EquipmentManifest, EquipmentIdGenerator } from '@salt/domain';
+import type { EquipmentManifest } from '@salt/domain';
+import type { IdGenerator } from '../../src/equipment/ports/IdGenerator.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ const NOW = '2026-01-01T00:00:00.000Z';
 const NOW2 = '2026-01-02T00:00:00.000Z';
 
 let seq = 0;
-function makeIds(): EquipmentIdGenerator {
+function makeIds(): IdGenerator {
   return {
     newEquipmentId: () => `eq-${++seq}`,
     newAccessoryId: () => `acc-${++seq}`,

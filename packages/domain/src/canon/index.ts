@@ -10,7 +10,6 @@ export type {
   PendingCanonChange,
 } from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
-export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
 export type { AisleLocalStorePort } from './ports/AisleLocalStorePort.js';
 export type { IdGenerator } from './ports/IdGenerator.js';

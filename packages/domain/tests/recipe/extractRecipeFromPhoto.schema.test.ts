@@ -4,11 +4,11 @@ import {
   ExtractRecipeFromPhotoAIOutputSchema,
   ExtractRecipeAIOutputSchema,
   ExtractRecipeFromPhotoWireInputSchema,
-  RecipeSourceSchema,
   MAX_RECIPE_PAGE_PHOTOS,
   PHOTO_IMPORT_FAILURE_CODES,
   PHOTO_IMPORT_TIMEOUT_SECONDS,
 } from '../../src/schemas/index.js';
+import { RecipeSourceSchema } from '../../src/schemas/recipe.js';
 
 // Import a recipe from photographs of a cookbook page (issue #649, Phase 3).
 

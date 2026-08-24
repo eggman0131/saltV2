@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import {
-  normaliseContainerName,
-  prepEntryForContainer,
-  prepEntryIngredients,
-  looseIngredientsForStep,
-} from '@salt/domain';
+import { prepEntryForContainer, prepEntryIngredients, looseIngredientsForStep } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { GuidedPrepEntryDoc, GuidedStepNoteDoc, IngredientDoc } from '@salt/domain/schemas';
+import { normaliseContainerName } from '../../src/cookSession/index.js';
 
 // The three questions guided mode has to answer before it can show an amount
 // (issue #761, Phase 1): which job filled the bowl this step names, what that job

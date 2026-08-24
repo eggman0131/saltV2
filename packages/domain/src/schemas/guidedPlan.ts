@@ -180,5 +180,4 @@ export type GuidedPrepEntryDoc = z.infer<typeof GuidedPrepEntrySchema>;
 export type GuidedStepNoteDoc = z.infer<typeof GuidedStepNoteSchema>;
 export type GuidedPlanDoc = z.infer<typeof GuidedPlanSchema>;
 export type GenerateGuidedPlanInput = z.infer<typeof GenerateGuidedPlanInputSchema>;
-export type GenerateGuidedPlanAIOutput = z.infer<typeof GenerateGuidedPlanAIOutputSchema>;
 export type GenerateGuidedPlanOutput = z.infer<typeof GenerateGuidedPlanOutputSchema>;

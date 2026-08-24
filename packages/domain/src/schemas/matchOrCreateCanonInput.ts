@@ -6,5 +6,3 @@ export const MatchOrCreateCanonInputSchema = z.object({
   forceCreate: z.boolean().optional(),
   rawText: z.string().optional(),
 });
-
-export type MatchOrCreateCanonInput = z.infer<typeof MatchOrCreateCanonInputSchema>;

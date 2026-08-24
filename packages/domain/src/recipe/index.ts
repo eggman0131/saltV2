@@ -2,12 +2,7 @@
 // This file is the ONLY thing other domain modules and adapters import from
 // recipe. Anything not re-exported here is private. See docs/recipe-module.md.
 
-export type {
-  SingleQuantity,
-  RangeQuantity,
-  MixedQuantity,
-  Quantity,
-} from './entities/Quantity.js';
+export type { Quantity } from './entities/Quantity.js';
 export type {
   MatchState,
   ParsedIngredient,
@@ -15,13 +10,7 @@ export type {
   IngredientGroup,
 } from './entities/Ingredient.js';
 export type { Step, StepTimer } from './entities/Step.js';
-export type {
-  Recipe,
-  RecipeImage,
-  RecipeKind,
-  RecipeMetadata,
-  RecipeSource,
-} from './entities/Recipe.js';
+export type { Recipe, RecipeKind, RecipeMetadata } from './entities/Recipe.js';
 
 export {
   emptyRecipe,

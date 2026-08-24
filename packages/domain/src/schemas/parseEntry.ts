@@ -7,5 +7,3 @@ export const ParseEntryAIOutputSchema = z.object({
   amount: z.number().optional(),
   unit: z.string().optional(),
 });
-
-export type ParseEntryAIOutput = z.infer<typeof ParseEntryAIOutputSchema>;

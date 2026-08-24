@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  GuidedCheckInSchema,
   GuidedPlanSchema,
-  GuidedPrepEntrySchema,
-  GuidedStepNoteSchema,
   GenerateGuidedPlanAIOutputSchema,
   GenerateGuidedPlanInputSchema,
 } from '@salt/domain/schemas';
+import {
+  GuidedCheckInSchema,
+  GuidedPrepEntrySchema,
+  GuidedStepNoteSchema,
+} from '../../src/schemas/guidedPlan.js';
 
 // The guided plan document (issue #751, Phase 1). Two properties carry most of
 // the weight here: every absent content field reads back as a CONCRETE value

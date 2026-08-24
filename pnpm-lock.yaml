@@ -311,15 +311,6 @@ importers:
 
   packages/shared-types: {}
 
-  packages/testing-utils:
-    dependencies:
-      '@salt/domain':
-        specifier: workspace:*
-        version: link:../domain
-      '@salt/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
-
   packages/ui-components:
     dependencies:
       '@floating-ui/dom':

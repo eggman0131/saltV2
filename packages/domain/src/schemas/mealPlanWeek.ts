@@ -11,5 +11,3 @@ export const MealPlanWeekSchema = z.object({
   days: z.record(z.string(), MealPlanDaySchema),
   updatedAt: z.string(),
 });
-
-export type MealPlanWeekDoc = z.infer<typeof MealPlanWeekSchema>;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { unpreppedIngredients } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { GuidedPrepEntryDoc, IngredientDoc } from '@salt/domain/schemas';
+import { unpreppedIngredients } from '../../src/cookSession/index.js';
 
 // What a guided plan accounts for NOWHERE (issue #751, Phase 2) — the "Also get
 // out" remainder. How much of the prep screen is ticked is asked of the board

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createCanonItem } from '@salt/domain';
-import type { IdGenerator } from '@salt/domain';
 import { ErrorCode } from '@salt/shared-types';
+import type { IdGenerator } from '../../src/canon/index.js';
 
 function counterIds(prefix = 'id'): IdGenerator {
   let n = 0;

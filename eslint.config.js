@@ -28,10 +28,6 @@ const ELEMENTS = [
     pattern: ['packages/ui-components/**', '@salt/ui-components'],
   },
   {
-    type: 'testing-utils',
-    pattern: ['packages/testing-utils/**', '@salt/testing-utils'],
-  },
-  {
     type: 'web-pwa',
     pattern: ['apps/web-pwa/**', '@salt/web-pwa'],
   },
@@ -204,8 +200,6 @@ const DOMAIN_BASE_PATTERNS = [
       '@salt/observability/*',
       '@salt/ui-components',
       '@salt/ui-components/*',
-      '@salt/testing-utils',
-      '@salt/testing-utils/*',
     ],
     '@salt/domain may only import @salt/shared-types from the workspace.',
   ),
@@ -297,10 +291,6 @@ export default [
             { from: 'firebase-sync', allow: ['domain', 'shared-types'] },
             { from: 'observability', allow: ['domain', 'shared-types'] },
             { from: 'ui-components', allow: [] },
-            {
-              from: 'testing-utils',
-              allow: ['shared-types', 'domain', 'firebase-sync'],
-            },
             {
               from: 'web-pwa',
               allow: ['shared-types', 'domain', 'firebase-sync', 'observability', 'ui-components'],
@@ -414,8 +404,6 @@ export default [
                 '@salt/observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
-                '@salt/testing-utils',
-                '@salt/testing-utils/*',
               ],
               '@salt/shared-types must not import any other @salt/* package.',
             ),
@@ -490,22 +478,6 @@ export default [
     },
   },
 
-  // @salt/testing-utils — only inherits the generic "no apps" rule unless tightened later.
-  {
-    files: ['packages/testing-utils/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            ...forbidGroup(SALT_APP_IMPORTS, 'Testing utilities must not import from apps.'),
-            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
-          ],
-        },
-      ],
-    },
-  },
-
   // Boundary-test fixtures: apply the same restrictions as their target layer.
   // (no-restricted-globals is inherited from the domain catch-all block above.)
   {
@@ -547,8 +519,6 @@ export default [
                 '@salt/observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
-                '@salt/testing-utils',
-                '@salt/testing-utils/*',
               ],
               '@salt/shared-types must not import any other @salt/* package.',
             ),
@@ -728,8 +698,6 @@ export default [
                 '@salt/firebase-sync/*',
                 '@salt/observability',
                 '@salt/observability/*',
-                '@salt/testing-utils',
-                '@salt/testing-utils/*',
               ],
               'storybook is a UI showcase — it may import @salt/ui-components only.',
             ),

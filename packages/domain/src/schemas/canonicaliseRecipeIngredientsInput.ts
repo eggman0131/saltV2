@@ -10,9 +10,6 @@ export const CanonicaliseRecipeIngredientsInputSchema = z.object({
   items: z.array(CanonicaliseRecipeIngredientsItemSchema).min(1),
 });
 
-export type CanonicaliseRecipeIngredientsItem = z.infer<
-  typeof CanonicaliseRecipeIngredientsItemSchema
->;
 export type CanonicaliseRecipeIngredientsInput = z.infer<
   typeof CanonicaliseRecipeIngredientsInputSchema
 >;

@@ -7,8 +7,9 @@ import {
   setProductFormThumbnail,
   CANON_ICON_HIDDEN,
 } from '@salt/domain';
-import type { ProductForm, ProductFormIdGenerator } from '@salt/domain';
+import type { ProductForm } from '@salt/domain';
 import { ProductFormSchema } from '@salt/domain/schemas';
+import type { ProductFormIdGenerator } from '../../src/productForm/index.js';
 
 function counterIds(): ProductFormIdGenerator {
   let n = 0;

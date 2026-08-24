@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { BASIS_KEYWORDS, guessBasisIngredientIds, looksScalable } from '../../src/index.js';
-import type { BasisGuessEntry } from '../../src/index.js';
-
+import { guessBasisIngredientIds, looksScalable } from '../../src/index.js';
+import { BASIS_KEYWORDS } from '../../src/formula/index.js';
+import type { BasisGuessEntry } from '../../src/formula/index.js';
 // The basis guess (issue #806). It exists to save the common case a tap, not to
 // be right — the mapping screen shows what it picked and every row toggles — so
 // these tests pin the SHAPE of the guess (canon leads, raw text is the fallback,

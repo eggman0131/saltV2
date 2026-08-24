@@ -1,8 +1,8 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import { createCanonItem } from '@salt/domain';
-import type { CanonItem, PendingCanonChange } from '@salt/domain';
-import type { IdGenerator } from '@salt/domain';
+import type { CanonItem } from '@salt/domain';
 import { CanonItemSchema } from '@salt/domain/schemas';
+import type { IdGenerator, PendingCanonChange } from '../../src/canon/index.js';
 
 function counterIds(): IdGenerator {
   let n = 0;
