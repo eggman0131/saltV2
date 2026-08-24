@@ -346,10 +346,12 @@ The `weather` module is a lightweight variant — pure classification utilities
 `@salt/domain/schemas` convention.
 
 The `shoppingDay` module is a lightweight variant — pure, runtime-neutral
-helpers over the `shoppingDays/{YYYY-MM-DD}` collection (issue #629): `isBeforeShop`
-(the planner's pre-shop shading predicate), `shopDayForWeek` (the one-shop-per-week
-reducer), `dateInZone`, `addCalendarDays`, `daysBetween`, and `tomorrowInZone` (UTC
-date-only arithmetic so a 23- or 25-hour local day cannot round the answer off).
+helpers over the `shoppingDays/{YYYY-MM-DD}` collection (issue #629):
+`shopDayForWeek` (the one-shop-per-week reducer), `dateInZone`,
+`addCalendarDays`, `daysBetween`, and `tomorrowInZone` (UTC date-only
+arithmetic so a 23- or 25-hour local day cannot round the answer off). The
+pre-shop shading predicate `isBeforeShop` was deleted in #923 — it had no
+reader anywhere in the repo.
 No entities, commands, queries, or ports subfolders — flat, matching the `weather`
 pattern. The doc shape (`ShoppingDaySchema`) lives in `@salt/domain/schemas`.
 No I/O, no clock (CLAUDE.md Rule 1): every date and timezone is injected.

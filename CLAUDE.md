@@ -11,6 +11,7 @@ firebase-sync              →  domain, shared-types          # Firebase SDKs on
 observability              →  domain, shared-types          # PostHog browser SDK (posthog-js); default subpath, for web-pwa
 observability/server       →  domain, shared-types          # posthog-node + native OTel; ships CF spans/events server-side, exposes a span-processor registration hook for CF-local concerns
 ui-components              →  (external only — shadcn/tailwind)
+testing-utils              →  shared-types, domain, firebase-sync
 web-pwa                    →  shared-types, domain, firebase-sync, observability, ui-components
 cloud-functions            →  shared-types, domain, observability/server
 storybook                  →  ui-components                 # dev-only Storybook; typecheck+check in CI, no build/e2e (see apps/storybook/README.md)
@@ -113,6 +114,7 @@ Some commands seize resources that belong to the whole machine rather than to a 
 | `packages/adapters/firebase-sync` | `@salt/firebase-sync`   |
 | `packages/adapters/observability` | `@salt/observability`   |
 | `packages/ui-components`          | `@salt/ui-components`   |
+| `packages/testing-utils`          | `@salt/testing-utils`   |
 | `apps/web-pwa`                    | `@salt/web-pwa`         |
 | `apps/cloud-functions`            | `@salt/cloud-functions` |
 | `apps/storybook`                  | `@salt/storybook`       |
