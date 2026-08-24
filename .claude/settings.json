@@ -20,6 +20,19 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/git-guard.mjs",
+            "if": "Bash(git *)",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {
