@@ -3,7 +3,7 @@ import type { QueryConstraint } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError } from '@salt/shared-types';
 import { classifyFirestoreError } from './firestoreErrors.js';
-import { parseDocuments, type ParsedBy } from './schemaParsing.js';
+import { parseDocument, type ParsedBy, type ParseOutcome } from './schemaParsing.js';
 
 // The collection subscription, once (issue #928).
 //
@@ -68,6 +68,47 @@ export interface CollectionRead<TParsed, TDelivered> {
  * Subscribe to a collection. Delivers the valid subset on every snapshot;
  * stream-level failures cross as a `Failure`-shaped `DomainError` on `onError`,
  * never as a throw (Rule 10).
+ *
+ * ─── Only what changed is parsed (issue #939) ────────────────────────────────
+ * A snapshot used to be walked whole: `snap.docs` re-`safeParse`d end to end
+ * every time any one document in the collection moved. At the measured cost of
+ * ~21 µs per recipe that is 1.3 ms per snapshot at today's 64 recipes and
+ * 10.6 ms at the several hundred the library is heading for — and a recipe
+ * import is four snapshots, not one, because `onRecipeWritten` writes the
+ * thumbnail, the kit and the canonicalised ingredients back afterwards.
+ *
+ * `snap.docChanges()` is the view over the same already-materialised snapshot
+ * that says which documents actually differ, so the loop below parses `k`
+ * documents rather than `N` — `k = N` once, on the first snapshot, and `k = 1`
+ * per ordinary write thereafter. Nothing about the query, the transport or the
+ * billing changes; this is entirely a main-thread saving.
+ *
+ * ORDER STILL COMES FROM `snap.docs`, and that is the whole reason this is a
+ * cache beside the walk rather than a local array spliced by `oldIndex`/
+ * `newIndex`. The splice is the shape the Firestore docs show, and it is a
+ * standing invitation to reorder a result set by one index and never notice:
+ * two subscriptions impose a real order — `subscribeBatchObservations`
+ * (`orderBy('at','asc')`) and `subscribeMyCookSessions`
+ * (`orderBy('updatedAt','desc')` + `limit(5)`, where a sixth session pushes the
+ * oldest out) — and both would fail silently and permanently. Walking `snap.docs`
+ * makes the delivered order *identical to a full re-read by construction*, costs
+ * two Map operations per document (single-digit µs at N = 500, against the
+ * 10.6 ms of parsing it removes), handles a document leaving a `limit` window
+ * with no removal branch at all, and degrades the only way worth degrading: if
+ * `docChanges()` ever under-reports, a document is re-parsed, never lost.
+ *
+ * OBJECT IDENTITY IS NOW STABLE across snapshots. An unchanged document is
+ * delivered as the same object it was delivered as last time, where before every
+ * snapshot allocated afresh — that is the point, and it is what stops canon's
+ * `{...item, embedding: null}` projection (#410) running 281 times per snapshot.
+ * Safe because no consumer mutates a delivered document in place: every service
+ * copies (`recipeService`/`chatService` build a new array in `applySnapshot`, the
+ * rest `set` the store). The delivered ARRAY is still built fresh per snapshot,
+ * so a caller that sorts what it is handed still sorts only its own copy.
+ *
+ * A document the schema REFUSED is cached as a refusal rather than forgotten, so
+ * a corrupt document costs one parse and one `logRejection` instead of one of
+ * each per snapshot for as long as it sits there.
  */
 export function subscribeCollection<TParsed, TDelivered>(
   read: CollectionRead<TParsed, TDelivered>,
@@ -77,9 +118,37 @@ export function subscribeCollection<TParsed, TDelivered>(
   const db = getFirestore(getApp());
   const ref = collection(db, ...read.path);
   const constraints = read.constraints ?? [];
+
+  // What every document in the last snapshot came to, by id. Private to this
+  // listener, so it dies with the unsubscribe and a fresh subscription parses
+  // the whole collection again, exactly as a first snapshot should.
+  let parsed = new Map<string, ParseOutcome<TDelivered>>();
+
   return onSnapshot(
     constraints.length > 0 ? query(ref, ...constraints) : ref,
-    (snap) => onDocs(parseDocuments(snap.docs, read.schema, read.label, read.project)),
+    (snap) => {
+      // Added and modified alike: the document's contents are new to us, so the
+      // cached answer for that id is stale. A removal needs no entry here — the
+      // document is simply absent from `snap.docs` below.
+      const stale = new Set<string>();
+      for (const change of snap.docChanges()) {
+        if (change.type !== 'removed') stale.add(change.doc.id);
+      }
+
+      const next = new Map<string, ParseOutcome<TDelivered>>();
+      const docs: TDelivered[] = [];
+      for (const d of snap.docs) {
+        const outcome =
+          (stale.has(d.id) ? undefined : parsed.get(d.id)) ??
+          parseDocument(d, read.schema, read.label, read.project);
+        next.set(d.id, outcome);
+        if (outcome.ok) docs.push(outcome.value);
+      }
+      parsed = next;
+      // Every snapshot delivers, the empty first one included — unchanged from
+      // the whole-snapshot loop this replaced.
+      onDocs(docs);
+    },
     (err) => {
       const domainError = classifyFirestoreError(err);
       if (read.forwardsRawError) onError(domainError, err);
