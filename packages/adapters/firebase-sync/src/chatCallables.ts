@@ -2,8 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { ChefChatInput } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
-
-const REGION = 'europe-west2';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 export async function callGenerateChatTitle(
   userMessage: string,
@@ -11,7 +10,7 @@ export async function callGenerateChatTitle(
 ): Promise<ReadResult<string, DomainError>> {
   try {
     const fn = httpsCallable<{ userMessage: string; assistantResponse: string }, string>(
-      getFunctions(undefined, REGION),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'generateChatTitle',
     );
     const res = await fn({ userMessage, assistantResponse });
@@ -30,7 +29,7 @@ export async function streamChefChat(
 ): Promise<ReadResult<string, DomainError>> {
   try {
     const fn = httpsCallable<ChefChatInput, string, string>(
-      getFunctions(undefined, REGION),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'chefChat',
     );
     const { stream, data } = await fn.stream(input);

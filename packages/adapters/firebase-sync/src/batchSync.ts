@@ -1,9 +1,11 @@
-import { getFirestore, collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { BatchSchema, type BatchDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Batch persistence (issue #812, phase 1 of epic #778). One document per RUN at
 // `batches/{batchId}` — a RANDOM UUID minted by `batchService`, which is the whole
@@ -52,22 +54,16 @@ export function subscribeBatches(
   onBatches: (batches: BatchDoc[]) => void,
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: BatchDoc[] = [];
-      for (const d of snap.docs) {
-        const result = BatchSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[BatchSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onBatches(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: BatchSchema,
+      label: 'BatchSchema',
+      project: (batch) => batch,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onBatches,
+    onError,
   );
 }
 
@@ -85,23 +81,17 @@ export function subscribeBatch(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, batchId),
-    (snap) => {
-      if (!snap.exists()) {
-        onBatch(null);
-        return;
-      }
-      const result = BatchSchema.safeParse(snap.data());
-      if (!result.success) {
-        console.error(`[BatchSchema] Document ${snap.id} failed validation`, result.error);
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onBatch(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, batchId],
+      schema: BatchSchema,
+      label: 'BatchSchema',
+      onCorrupt: 'error',
+      logsRejection: true,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onBatch,
+    onError,
   );
 }
 

@@ -6,13 +6,14 @@ import {
   getDoc,
   getDocs,
   deleteDoc,
-  onSnapshot,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { GuidedPlanSchema, type GuidedPlanDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { parseDocuments } from './schemaParsing.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Guided-plan persistence (issue #751, Phase 1). One document per recipe at
 // `guidedPlans/{recipeId}` — a DETERMINISTIC id, so this is a SINGLE-DOCUMENT
@@ -52,23 +53,17 @@ export function subscribeGuidedPlan(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, recipeId),
-    (snap) => {
-      if (!snap.exists()) {
-        onPlan(null);
-        return;
-      }
-      const result = GuidedPlanSchema.safeParse(snap.data());
-      if (!result.success) {
-        console.error(`[GuidedPlanSchema] Document ${snap.id} failed validation`, result.error);
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onPlan(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, recipeId],
+      schema: GuidedPlanSchema,
+      label: 'GuidedPlanSchema',
+      onCorrupt: 'error',
+      logsRejection: true,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onPlan,
+    onError,
   );
 }
 
@@ -115,13 +110,9 @@ export async function loadAllGuidedPlans(): Promise<ReadResult<GuidedPlanDoc[], 
   try {
     const db = getFirestore(getApp());
     const snap = await getDocs(collection(db, COLLECTION));
-    const valid: GuidedPlanDoc[] = [];
-    for (const d of snap.docs) {
-      const result = GuidedPlanSchema.safeParse(d.data());
-      if (result.success) valid.push(result.data);
-      else console.error(`[GuidedPlanSchema] Document ${d.id} failed validation`, result.error);
-    }
-    return success(valid);
+    // The LIST parse loop, shared with every collection subscription in the
+    // package (#928, B2-005/B2-006) — skip the corrupt plan, keep the tally.
+    return success(parseDocuments(snap.docs, GuidedPlanSchema, 'GuidedPlanSchema', (plan) => plan));
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

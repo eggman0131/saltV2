@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Browser → the Pushover device readout (issue #680). CLAUDE.md rule #2: the
 // Firebase SDK is only touched here. Error mapping goes through the shared
@@ -24,7 +25,7 @@ export interface PushoverDevices {
 export async function callListPushoverDevices(): Promise<ReadResult<PushoverDevices, DomainError>> {
   try {
     const fn = httpsCallable<Record<string, never>, PushoverDevices>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'listPushoverDevices',
     );
     const res = await fn({});

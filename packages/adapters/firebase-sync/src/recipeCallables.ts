@@ -12,13 +12,14 @@ import type {
   UrlImportFailure,
 } from '@salt/domain/schemas';
 import { classifyCallableError, isBrowserOffline } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 export async function callParseRecipeIngredients(
   rawText: string,
 ): Promise<ReadResult<IngredientGroup[], DomainError>> {
   try {
     const fn = httpsCallable<{ rawText: string }, IngredientGroup[]>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'parseRecipeIngredients',
     );
     const res = await fn({ rawText });
@@ -95,7 +96,7 @@ export async function callRegenerateRecipeImage(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<{ recipeId: string; brief?: string }, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'regenerateRecipeImage',
     );
     await fn(brief && brief.trim() ? { recipeId, brief: brief.trim() } : { recipeId });
@@ -118,7 +119,7 @@ export async function callRegenerateRecipeImage(
 export async function callRedoRecipeKit(recipeId: string): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<{ recipeId: string }, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'redoRecipeKit',
     );
     await fn({ recipeId });
@@ -144,7 +145,7 @@ export async function callSetRecipeImageUpload(
     const fn = httpsCallable<
       { recipeId: string; imageBase64: string; contentType?: string },
       { ok: true }
-    >(getFunctions(undefined, 'europe-west2'), 'setRecipeImageUpload');
+    >(getFunctions(undefined, FUNCTIONS_REGION), 'setRecipeImageUpload');
     await fn(contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 });
     return success(undefined);
   } catch (err) {
@@ -174,7 +175,7 @@ export async function callDescribeRecipeScene(
     const fn = httpsCallable<
       DescribeRecipeSceneInput & { traceparent?: string },
       DescribeRecipeSceneOutput
-    >(getFunctions(undefined, 'europe-west2'), 'describeRecipeScene');
+    >(getFunctions(undefined, FUNCTIONS_REGION), 'describeRecipeScene');
     const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
@@ -196,7 +197,7 @@ export async function callExtractRecipeFromUrl(
 ): Promise<ReadResult<RecipeDoc, UrlImportFailure>> {
   try {
     const fn = httpsCallable<ExtractRecipeFromUrlInput & { traceparent?: string }, RecipeDoc>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'extractRecipeFromUrl',
     );
     const res = await fn(traceparent ? { ...input, traceparent } : input);
@@ -275,7 +276,7 @@ export async function callExtractRecipeFromPhoto(
 ): Promise<ReadResult<RecipeDoc, PhotoImportFailure>> {
   try {
     const fn = httpsCallable<ExtractRecipeFromPhotoInput & { traceparent?: string }, RecipeDoc>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'extractRecipeFromPhoto',
       { timeout: PHOTO_IMPORT_TIMEOUT_SECONDS * 1000 },
     );

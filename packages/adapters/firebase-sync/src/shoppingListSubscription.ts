@@ -6,7 +6,6 @@ import {
   deleteDoc,
   getDocs,
   updateDoc,
-  onSnapshot,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { ShoppingList } from '@salt/domain';
@@ -14,6 +13,8 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ShoppingListSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { parseDocuments } from './schemaParsing.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 const COLLECTION = 'shoppingLists';
 
@@ -23,22 +24,16 @@ export function subscribeShoppingLists(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: ShoppingList[] = [];
-      for (const d of snap.docs) {
-        const result = ShoppingListSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[ShoppingListSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onLists(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: ShoppingListSchema,
+      label: 'ShoppingListSchema',
+      project: (list) => list,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onLists,
+    onError,
   );
 }
 
@@ -48,16 +43,11 @@ export async function listShoppingLists(): Promise<
   try {
     const db = getFirestore(getApp());
     const snap = await getDocs(collection(db, COLLECTION));
-    const valid: ShoppingList[] = [];
-    for (const d of snap.docs) {
-      const result = ShoppingListSchema.safeParse(d.data());
-      if (result.success) {
-        valid.push(result.data);
-      } else {
-        console.error(`[ShoppingListSchema] Document ${d.id} failed validation`, result.error);
-      }
-    }
-    return success(valid);
+    // The same list contract the subscription above delivers, through the same
+    // parse loop — this one-shot used to repeat it verbatim (#928, B2-006).
+    return success(
+      parseDocuments(snap.docs, ShoppingListSchema, 'ShoppingListSchema', (list) => list),
+    );
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

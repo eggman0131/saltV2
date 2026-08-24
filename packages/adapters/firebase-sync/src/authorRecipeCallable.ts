@@ -3,8 +3,7 @@ import { failure, success, type DomainError, type ReadResult } from '@salt/share
 import type { AuthorRecipeInput } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
-
-const REGION = 'europe-west2';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Calls the librarian flow: sends a conversation and receives a canon-matched
 // RecipeDoc draft. The client should add/override id + timestamps before
@@ -21,7 +20,7 @@ export async function callAuthorRecipe(
 ): Promise<ReadResult<RecipeDoc, DomainError>> {
   try {
     const fn = httpsCallable<AuthorRecipeInput & { traceparent?: string }, RecipeDoc>(
-      getFunctions(undefined, REGION),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'authorRecipe',
     );
     const res = await fn(traceparent ? { ...input, traceparent } : input);

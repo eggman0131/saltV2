@@ -7,6 +7,7 @@ import {
   type ImagePromptFamily,
 } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Browser → the getImagePrompt callable (issue #892). CLAUDE.md rule #2: the
 // Firebase SDK is touched only here; the web services consume this wrapper, never
@@ -44,7 +45,7 @@ export async function callGetImagePrompt(
 ): Promise<ReadResult<GetImagePromptResult, DomainError>> {
   try {
     const fn = httpsCallable<GetImagePromptInput, unknown>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'getImagePrompt',
     );
     const res = await fn({ family, id });

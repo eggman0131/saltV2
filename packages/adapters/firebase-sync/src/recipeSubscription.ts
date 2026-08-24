@@ -1,18 +1,11 @@
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDoc,
-  onSnapshot,
-} from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { Recipe } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { RecipeSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 // Recipe persistence (issue #179). One document per recipe at `recipes/{id}`,
 // whole-document last-write-wins on `updatedAt`. The list subscription skips and
@@ -27,22 +20,16 @@ export function subscribeRecipes(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, RECIPES_COLLECTION),
-    (snap) => {
-      const valid: Recipe[] = [];
-      for (const d of snap.docs) {
-        const result = RecipeSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[RecipeSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onRecipes(valid);
+  return subscribeCollection(
+    {
+      path: [RECIPES_COLLECTION],
+      schema: RecipeSchema,
+      label: 'RecipeSchema',
+      project: (recipe) => recipe,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onRecipes,
+    onError,
   );
 }
 

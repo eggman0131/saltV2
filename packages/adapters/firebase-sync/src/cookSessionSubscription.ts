@@ -1,14 +1,11 @@
 import {
   getFirestore,
-  collection,
   doc,
   setDoc,
   deleteDoc,
   getDoc,
   limit,
-  onSnapshot,
   orderBy,
-  query,
   where,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -17,6 +14,8 @@ import { success, failure } from '@salt/shared-types';
 import { CookSessionSchema } from '@salt/domain/schemas';
 import type { CookSessionDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Cook session persistence (cooking mode, Phase 1). One document per user per
 // recipe at cookSessions/{recipeId}_{uid}. The id is DETERMINISTIC, so this is a
@@ -42,23 +41,19 @@ export function subscribeCookSession(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, sessionId),
-    (snap) => {
-      if (!snap.exists()) {
-        onSession(null);
-        return;
-      }
-      const result = CookSessionSchema.safeParse(snap.data());
-      if (!result.success) {
-        console.error(`[CookSessionSchema] Document ${snap.id} failed validation`, result.error);
-        onSession(null);
-        return;
-      }
-      onSession(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, sessionId],
+      schema: CookSessionSchema,
+      label: 'CookSessionSchema',
+      // Disposable transient state: a corrupt session is "no session", and the
+      // page bootstraps a fresh one over it. See the header.
+      onCorrupt: 'null',
+      logsRejection: true,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onSession,
+    onError,
   );
 }
 
@@ -84,28 +79,24 @@ export function subscribeMyCookSessions(
   onSessions: (sessions: CookSessionDoc[]) => void,
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  const q = query(
-    collection(db, COLLECTION),
-    where('ownerUid', '==', ownerUid),
-    orderBy('updatedAt', 'desc'),
-    limit(MY_SESSIONS_LIMIT),
-  );
-  return onSnapshot(
-    q,
-    (snap) => {
-      const valid: CookSessionDoc[] = [];
-      for (const d of snap.docs) {
-        const result = CookSessionSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[CookSessionSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onSessions(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      // The where + orderBy pair needs the composite index in
+      // firestore.indexes.json; see the header for why the filter is what makes
+      // this readable at all.
+      constraints: [
+        where('ownerUid', '==', ownerUid),
+        orderBy('updatedAt', 'desc'),
+        limit(MY_SESSIONS_LIMIT),
+      ],
+      schema: CookSessionSchema,
+      label: 'CookSessionSchema',
+      project: (session) => session,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onSessions,
+    onError,
   );
 }
 

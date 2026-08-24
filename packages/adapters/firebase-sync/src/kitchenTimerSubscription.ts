@@ -1,10 +1,11 @@
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { KitchenTimersSchema } from '@salt/domain/schemas';
 import type { KitchenTimersDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Standalone kitchen timers (issue #842). ONE document per user at
 // `kitchenTimers/{uid}` — the id IS the uid, so this is a SINGLE-DOCUMENT
@@ -31,23 +32,20 @@ export function subscribeKitchenTimers(
   // the categorised DomainError, matching the other single-doc subscriptions.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, uid),
-    (snap) => {
-      if (!snap.exists()) {
-        onDoc(null);
-        return;
-      }
-      const result = KitchenTimersSchema.safeParse(snap.data());
-      if (!result.success) {
-        console.error(`[KitchenTimersSchema] Document ${snap.id} failed validation`, result.error);
-        onDoc(null);
-        return;
-      }
-      onDoc(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, uid],
+      schema: KitchenTimersSchema,
+      label: 'KitchenTimersSchema',
+      // Absent OR invalid is "no timers" — see the header: the document does not
+      // exist until the first timer starts, and the next start writes a fresh one
+      // over a corrupt one.
+      onCorrupt: 'null',
+      logsRejection: true,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onDoc,
+    onError,
   );
 }
 
