@@ -314,8 +314,10 @@ describe('FormulaPage — what the machine cannot know', () => {
     await waitFor(() => expect(percentsOf(container)[4]).toBe('—'));
   });
 
-  it('says on screen that a range was taken at its midpoint', async () => {
-    // "2–3 tbsp olive oil", parsed to 30–45 ml. The midpoint is 37.5.
+  it('says on screen that a range was taken at the top of its range', async () => {
+    // "2–3 tbsp olive oil", parsed to 30–45 ml. Taken at 45 — `quantityToNumber`,
+    // the one reduction both this screen and the shopping list now run (issue
+    // #917). This test used to pin the midpoint, 37.5 ml → 38 g.
     mockRecipes._set([
       makeRecipe([
         ...LOAF,
@@ -327,13 +329,13 @@ describe('FormulaPage — what the machine cannot know', () => {
     await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
 
     const disclosure = getByTestId('formula-range-disclosure');
-    expect(disclosure.textContent).toContain('midpoint');
+    expect(disclosure.textContent).toContain('top of the range');
     expect(disclosure.textContent).toContain('2–3 tbsp olive oil');
-    // The figure itself, not just the word: this is the only moment anyone can
-    // object, and objecting needs the number. 30–45 ml → 37.5 ml at water-like
-    // density → 38 g through the one rounding authority (whole grams at or above
+    // The figure itself, not just the words: this is the only moment anyone can
+    // object, and objecting needs the number. 30–45 ml → 45 ml at water-like
+    // density → 45 g through the one rounding authority (whole grams at or above
     // 10 — what a domestic scale can actually weigh).
-    expect(disclosure.textContent).toContain('38 g');
+    expect(disclosure.textContent).toContain('45 g');
   });
 
   it('excludes a weighed ingredient outright and rebases the rest', async () => {

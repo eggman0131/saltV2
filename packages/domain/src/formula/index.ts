@@ -20,7 +20,11 @@
 // docs/formulas-schedules-batches.md's "what not to build".
 export { DENSITY_G_PER_ML, DEFAULT_DENSITY_CLASS, gramsFromMillilitres } from './density.js';
 export { GRAM_DECIMAL_THRESHOLD, PERCENT_DECIMALS, roundGrams, roundPercent } from './rounding.js';
-export { amountFromQuantity, gramsFromParsed } from './gramsFromParsed.js';
+// `amountFromQuantity` is gone (issue #917): reducing a `Quantity` to a number is
+// the recipe module's job and is published as `quantityToNumber`. A formula's own
+// copy of that reduction was how the shopping list and the mapping screen came to
+// disagree about what "2–3 tbsp" means.
+export { gramsFromParsed } from './gramsFromParsed.js';
 export { deriveFormula } from './deriveFormula.js';
 export { BASIS_KEYWORDS, guessBasisIngredientIds, looksScalable } from './guessBasis.js';
 export type { BasisGuessEntry } from './guessBasis.js';

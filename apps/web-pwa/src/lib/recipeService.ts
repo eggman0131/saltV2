@@ -28,12 +28,12 @@ import {
   convertYield,
   maxCountWinners,
   aggregateParentCount,
+  quantityToNumber,
 } from '@salt/domain';
 import type {
   Recipe,
   Ingredient,
   IngredientGroup,
-  Quantity,
   SourceRef,
   CanonItem,
   ProductForm,
@@ -749,11 +749,10 @@ export async function removeRecipe(id: string): Promise<ReadResult<void, DomainE
 
 // ─── Shopping-list extraction ─────────────────────────────────────────────────
 
-function quantityToNumber(q: Quantity): number {
-  if (q.type === 'single') return q.value;
-  if (q.type === 'range') return q.min;
-  return q.whole + q.numerator / q.denominator;
-}
+// `quantityToNumber` is imported from `@salt/domain` (issue #917). This file used
+// to carry its own copy that took a range's `min`, so "2–3 tbsp" bought less than
+// the same line baked; the rule and the argument for it live in the domain
+// helper and are not restated here.
 
 const _itemIds = { newListId: () => crypto.randomUUID(), newItemId: () => crypto.randomUUID() };
 
