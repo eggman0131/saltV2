@@ -7,7 +7,7 @@ import type { CanonItem, Aisle } from '@salt/domain';
 vi.mock('@salt/firebase-sync', () => ({
   subscribeCanonItems: vi.fn(),
   subscribeAisles: vi.fn(),
-  upsertCanonItem: vi.fn().mockResolvedValue(undefined),
+  upsertCanonItem: vi.fn().mockResolvedValue({ kind: 'ok' as const, value: undefined }),
   deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callMatchOrCreate: vi.fn(),
   loadCanonPurchaseCounts: vi
@@ -103,7 +103,7 @@ describe('canonService — subscription-fed stores', () => {
   beforeEach(() => {
     __resetCanonServiceForTest();
     vi.clearAllMocks();
-    fs.upsertCanonItem.mockResolvedValue(undefined);
+    fs.upsertCanonItem.mockResolvedValue({ kind: 'ok' as const, value: undefined });
     fs.deleteCanonItem.mockResolvedValue({ kind: 'ok', value: undefined });
   });
 
@@ -282,7 +282,7 @@ describe('canonService — commands', () => {
   beforeEach(() => {
     __resetCanonServiceForTest();
     vi.clearAllMocks();
-    fs.upsertCanonItem.mockResolvedValue(undefined);
+    fs.upsertCanonItem.mockResolvedValue({ kind: 'ok' as const, value: undefined });
     fs.deleteCanonItem.mockResolvedValue({ kind: 'ok', value: undefined });
   });
 

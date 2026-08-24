@@ -56,7 +56,10 @@ export function installE2EHooks(): void {
       };
       // Fire-and-forget: setDoc hangs when the SDK network is disabled (offline
       // test). Firestore still writes to local cache and fires onSnapshot
-      // immediately, so we wait for the store to reflect the write instead.
+      // immediately, so we wait for the store to reflect the write instead — the
+      // wait below IS how this seed answers for the write. Since #931 the
+      // discarded promise resolves to a `Failure` rather than rejecting, so
+      // dropping it no longer leaves an unhandled rejection behind either.
       void upsertCanonItem(item);
       const deadline = Date.now() + 5000;
       while (!get(canonItems).some((i) => i.id === item.id)) {
@@ -87,7 +90,12 @@ export function installE2EHooks(): void {
     },
 
     async seedEquipmentManifest(manifest) {
-      await seedEquipmentManifest(manifest);
+      // The bridge's contract with Playwright is an exception, not a Result: a
+      // seed that silently never landed would fail the spec later, somewhere
+      // unrelated-looking.
+      const written = await seedEquipmentManifest(manifest);
+      if (written.kind === 'err')
+        throw new Error(`seedEquipmentManifest: write refused (${written.error.kind})`);
     },
 
     getEquipmentManifest() {
@@ -152,7 +160,9 @@ export function installE2EHooks(): void {
       // emulator Firestore; the CF fake model (FUNCTIONS_AI_FAKE=1) reads it.
       // See packages/adapters/firebase-sync/src/e2eAiStubSync.ts and
       // apps/cloud-functions/src/ai/fakeModel.ts for the full contract.
-      await setAiStub(flowName, response);
+      const written = await setAiStub(flowName, response);
+      if (written.kind === 'err')
+        throw new Error(`stubAi(${flowName}): write refused (${written.error.kind})`);
     },
 
     async probeFirestoreCache(path) {

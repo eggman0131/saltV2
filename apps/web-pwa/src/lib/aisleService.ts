@@ -7,7 +7,7 @@ import {
   mergeAisles as mergeAislesCmd,
 } from '@salt/domain';
 import type { Aisle, MergeAislesInput } from '@salt/domain';
-import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { saveAisles, upsertCanonItem } from '@salt/firebase-sync';
 import {
   aisles,
@@ -28,7 +28,10 @@ export async function addAisle(name: string): Promise<ReadResult<Aisle, DomainEr
   const result = await createAisle({ name }, idGen, store);
   if (result.kind === 'ok') {
     const newAisles = getWritten();
-    if (newAisles !== null) await saveAisles([...newAisles]);
+    if (newAisles !== null) {
+      const written = await saveAisles([...newAisles]);
+      if (written.kind === 'err') return written;
+    }
   }
   return result;
 }
@@ -40,7 +43,10 @@ export async function addAislesBulk(
   const result = await createAislesBulk({ names }, idGen, store);
   if (result.kind === 'ok') {
     const newAisles = getWritten();
-    if (newAisles !== null) await saveAisles([...newAisles]);
+    if (newAisles !== null) {
+      const written = await saveAisles([...newAisles]);
+      if (written.kind === 'err') return written;
+    }
   }
   return result;
 }
@@ -53,16 +59,20 @@ export async function renameAisle(
   const result = await renameAisleCmd({ id, newName }, store);
   if (result.kind === 'ok') {
     const newAisles = getWritten();
-    if (newAisles !== null) await saveAisles([...newAisles]);
+    if (newAisles !== null) {
+      const written = await saveAisles([...newAisles]);
+      if (written.kind === 'err') return written;
+    }
   }
   return result;
 }
 
-export async function reorderAisles(orderedIds: string[]): Promise<void> {
+export async function reorderAisles(orderedIds: string[]): Promise<ReadResult<void, DomainError>> {
   const { store, getWritten } = memAisleStore(getAislesSnapshot());
   await reorderAislesCmd({ orderedIds }, store);
   const newAisles = getWritten();
-  if (newAisles !== null) await saveAisles([...newAisles]);
+  if (newAisles === null) return success(undefined);
+  return saveAisles([...newAisles]);
 }
 
 export async function deleteAisles(ids: string[]): Promise<ReadResult<void, DomainError>> {
@@ -71,10 +81,14 @@ export async function deleteAisles(ids: string[]): Promise<ReadResult<void, Doma
   const result = await deleteAislesCmd({ ids }, aisleStore, canonStore);
   if (result.kind === 'ok') {
     const newAisles = getWritten();
-    const writes: Promise<void>[] = [];
+    const writes: Promise<ReadResult<void, DomainError>>[] = [];
     if (newAisles !== null) writes.push(saveAisles([...newAisles]));
     for (const item of getUpserted()) writes.push(upsertCanonItem(item));
-    await Promise.all(writes);
+    // Every write is still issued — this is a fan-out, and abandoning the rest
+    // on the first refusal would leave the aisles and the canon items that
+    // pointed at them disagreeing. The first failure is what the caller hears.
+    const failed = (await Promise.all(writes)).find((w) => w.kind === 'err');
+    if (failed) return failed;
   }
   return result;
 }
@@ -85,10 +99,14 @@ export async function mergeAisles(input: MergeAislesInput): Promise<ReadResult<v
   const result = await mergeAislesCmd(input, aisleStore, canonStore);
   if (result.kind === 'ok') {
     const newAisles = getWritten();
-    const writes: Promise<void>[] = [];
+    const writes: Promise<ReadResult<void, DomainError>>[] = [];
     if (newAisles !== null) writes.push(saveAisles([...newAisles]));
     for (const item of getUpserted()) writes.push(upsertCanonItem(item));
-    await Promise.all(writes);
+    // Every write is still issued — this is a fan-out, and abandoning the rest
+    // on the first refusal would leave the aisles and the canon items that
+    // pointed at them disagreeing. The first failure is what the caller hears.
+    const failed = (await Promise.all(writes)).find((w) => w.kind === 'err');
+    if (failed) return failed;
   }
   return result;
 }

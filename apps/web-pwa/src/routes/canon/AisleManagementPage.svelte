@@ -38,6 +38,7 @@
   import { canonItems } from '../../lib/canonService.js';
   import type { Aisle } from '@salt/domain';
   import { titleCase } from '../../lib/titleCase.js';
+  import { addToast } from '../../lib/toastStore.js';
 
   // Filter state
   let filterText = $state('');
@@ -129,7 +130,13 @@
 
   async function commitRename(id: string) {
     const trimmed = editingName.trim();
-    if (trimmed) await renameAisle(id, trimmed);
+    // Inline edits have no dialog to hold a message, so the two of them use the
+    // shared toast — the same failure the Add/Delete/Merge dialogs already word
+    // for themselves, which since #931 arrives as a Result instead of a throw.
+    if (trimmed) {
+      const result = await renameAisle(id, trimmed);
+      if (result.kind !== 'ok') addToast('Failed to rename aisle. Try again.', 'destructive');
+    }
     editingId = null;
   }
 
@@ -144,7 +151,8 @@
 
   // Reorder
   async function handleReorder(orderedIds: string[]) {
-    await reorderAisles(orderedIds);
+    const result = await reorderAisles(orderedIds);
+    if (result.kind !== 'ok') addToast('Failed to reorder aisles. Try again.', 'destructive');
   }
 
   // Derived: canon items affected by a bulk delete of all selected aisles

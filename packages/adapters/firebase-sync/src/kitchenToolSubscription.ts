@@ -52,10 +52,20 @@ export function subscribeKitchenTools(
  * Write a tool document whole (LWW, the house contract — no merge logic at any
  * layer). Creating and editing are the same call because the id is deterministic
  * kebab-case of the label.
+ *
+ * Crosses back as a `Failure<DomainError>` rather than throwing (Rule 10), like
+ * every other write in the package.
  */
-export async function upsertKitchenTool(tool: KitchenToolDoc): Promise<void> {
-  const db = getFirestore(getApp());
-  await setDoc(doc(db, KITCHEN_TOOLS_COLLECTION, tool.id), { ...tool });
+export async function upsertKitchenTool(
+  tool: KitchenToolDoc,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await setDoc(doc(db, KITCHEN_TOOLS_COLLECTION, tool.id), { ...tool });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 /**
@@ -65,9 +75,7 @@ export async function upsertKitchenTool(tool: KitchenToolDoc): Promise<void> {
  *
  * Crosses back as a `Failure<DomainError>` rather than throwing (Rule 10), like
  * `deleteCanonItem` and `deleteProductForm` — the admin page has a toast to show
- * and no business catching a Firestore exception. The `upsert` above keeps the
- * house `Promise<void>` shape it shares with `upsertCanonItem` /
- * `upsertProductForm`; only the delete has a caller that can act on the answer.
+ * and no business catching a Firestore exception.
  */
 export async function deleteKitchenTool(id: string): Promise<ReadResult<void, DomainError>> {
   try {

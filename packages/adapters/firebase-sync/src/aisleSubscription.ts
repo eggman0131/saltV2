@@ -1,8 +1,10 @@
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { Aisle } from '@salt/domain';
-import type { DomainError } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, failure } from '@salt/shared-types';
 import { AislesDocumentSchema } from '@salt/domain/schemas';
+import { classifyFirestoreError } from './firestoreErrors.js';
 import { subscribeDocument } from './subscribeDocument.js';
 
 const AISLES_COLLECTION = 'canonData';
@@ -32,11 +34,16 @@ export function subscribeAisles(
   );
 }
 
-export async function saveAisles(aisles: Aisle[]): Promise<void> {
-  const db = getFirestore(getApp());
-  await setDoc(doc(db, AISLES_COLLECTION, AISLES_DOC_ID), {
-    schemaVersion: 1,
-    updatedAt: new Date().toISOString(),
-    aisles: [...aisles],
-  });
+export async function saveAisles(aisles: Aisle[]): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await setDoc(doc(db, AISLES_COLLECTION, AISLES_DOC_ID), {
+      schemaVersion: 1,
+      updatedAt: new Date().toISOString(),
+      aisles: [...aisles],
+    });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
