@@ -264,8 +264,9 @@ Changing them is a harness change, not a test change — issue-first.
   mode must be `retain-on-failure`, not `on-first-retry`.** `on-first-retry` only traces the _retry_
   attempt, so for a "passes on retry" flake the retained trace is of a run that _passed_ — useless
   for this suite's exact symptom. `retain-on-failure` keeps the trace of whichever attempt actually
-  failed; add `video: 'retain-on-failure'` for the same reason. (The current config still reads
-  `on-first-retry` — a known gap closed by the e2e reliability refactor.)
+  failed; `video: 'retain-on-failure'` is set for the same reason. Both are live in
+  [`playwright.config.ts:34-35`](../apps/web-pwa/playwright.config.ts#L34-L35) — the gap this rule
+  was written against is closed, and this rule is now what keeps it closed.
 
 ### Harness option: `webServer` (deferred)
 
