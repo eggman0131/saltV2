@@ -26,10 +26,9 @@ import {
   editItemRawText,
   editItemNotes,
   editItemAmountUnit,
-  checkItem,
+  setItemChecked,
   confirmItemNeeded as domainConfirmItemNeeded,
   setItemNeedsCheck as domainSetItemNeedsCheck,
-  uncheckItem,
   deleteItem,
   clearCheckedItems,
   moveItems,
@@ -440,9 +439,7 @@ export async function toggleItemChecked(
 ): Promise<ReadResult<void, DomainError>> {
   const items = get(_itemsForActiveList);
   const now = new Date().toISOString();
-  const result = item.checked
-    ? uncheckItem(items, { id: item.id, now })
-    : checkItem(items, { id: item.id, now });
+  const result = setItemChecked(items, { id: item.id, checked: !item.checked, now });
   if (result.kind !== 'ok') return result;
   const updated = result.value.find((i) => i.id === item.id)!;
   const saveResult = await saveShoppingListItem(listId, updated);
@@ -508,7 +505,7 @@ export async function checkItems(listId: string, itemIds: readonly string[]): Pr
   const now = new Date().toISOString();
   let working = [...items];
   for (const id of itemIds) {
-    const result = checkItem(working, { id, now });
+    const result = setItemChecked(working, { id, checked: true, now });
     if (result.kind === 'ok') working = result.value;
   }
   const toSave = working.filter((i) => itemIds.includes(i.id));
@@ -531,7 +528,7 @@ export async function uncheckItems(listId: string, itemIds: readonly string[]): 
   const now = new Date().toISOString();
   let working = [...items];
   for (const id of itemIds) {
-    const result = uncheckItem(working, { id, now });
+    const result = setItemChecked(working, { id, checked: false, now });
     if (result.kind === 'ok') working = result.value;
   }
   const toSave = working.filter((i) => itemIds.includes(i.id));

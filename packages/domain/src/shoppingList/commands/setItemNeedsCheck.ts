@@ -1,6 +1,7 @@
-import { failure, success } from '@salt/shared-types';
+import { success } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { ShoppingListItem } from '../entities/ShoppingListItem.js';
+import { updateListItem } from './updateListItem.js';
 
 export interface SetItemNeedsCheckInput {
   readonly id: string;
@@ -17,13 +18,7 @@ export function setItemNeedsCheck(
   items: readonly ShoppingListItem[],
   input: SetItemNeedsCheckInput,
 ): ReadResult<ShoppingListItem[], DomainError> {
-  const item = items.find((i) => i.id === input.id);
-  if (!item) {
-    return failure({ kind: 'NotFound', resource: 'shoppingListItem', id: input.id });
-  }
-  return success(
-    items.map((i) =>
-      i.id === input.id ? { ...i, needsCheck: input.needsCheck, updatedAt: input.now } : i,
-    ),
+  return updateListItem(items, input.id, input.now, (item) =>
+    success({ ...item, needsCheck: input.needsCheck }),
   );
 }
