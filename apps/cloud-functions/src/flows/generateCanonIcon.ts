@@ -1,27 +1,21 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
-import { setActiveSpanName } from '@salt/observability/server';
-import { ai } from '../genkit.js';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
-import { loadCanonIconSeed } from './assets/canonIconSeed.js';
-import { resolveModel } from '../ai/resolveModel.js';
-import { parseDataUrl } from './dataUrl.js';
+import { defineIconFlow } from './defineIconFlow.js';
 
 // Tier-1 canon-item pictogram generation (issue #148).
 //
-// Reference-conditioned off the committed red-apple seed: the model copies ONLY
-// the rendering style of the seed, not its subject. The prompt is reproduced
-// VERBATIM from docs/canon-icons.md → "Proven prompt"; do NOT paraphrase —
-// wording changes drift the house style. The negative clauses are keyed to the
-// red-apple seed (see canonIconSeed.ts) — update them if the seed changes.
-
-// Image generation is far slower than text (~5–8s, occasionally more). Give it
-// a generous deadline; the trigger's function timeout is raised to match.
-const ICON_GEN_TIMEOUT_MS = 60_000;
+// The generation body lives in defineIconFlow.ts, shared with the equipment and
+// kitchen-tool families (issue #989). What stays here is what is genuinely
+// canon's: the locked house-style wording, the UK steer, and the prompt builder.
+//
+// The prompt is reproduced VERBATIM from docs/canon-icons.md → "Proven prompt";
+// do NOT paraphrase — wording changes drift the house style. The negative
+// clauses are keyed to the red-apple seed (see canonIconSeed.ts) — update them if
+// the seed changes.
 
 // Shared style string (STYLE) — verbatim from docs/canon-icons.md. Exported so
-// the weather-icon generator (issue #387) can reuse the locked house style
-// WITHOUT copying the wording; do not change this literal's text.
+// the weather-icon generator (issue #387), the equipment builder (#877) and the
+// kitchen-tool builder (#882) reuse the locked house style WITHOUT copying the
+// wording; do not change this literal's text.
 export const STYLE =
   'Flat vector cartoon illustration. A single centered subject filling most of the frame. Thick, uniform, rounded dark outline. Soft cheerful limited pastel colour palette. Simple minimal friendly shapes, low detail. Plain solid off-white background. No border or frame around the image; the subject sits directly on the plain background. No faces, no eyes, no facial expressions on any object. No caption text, no separate labels, and no lettering added under, beside, or around the subject; any text must be part of the depicted item itself (such as wording printed on a tin or jar). No drop shadows, no background gradients. Square composition, app sticker / emoji style.';
 
@@ -49,44 +43,9 @@ export const GenerateCanonIconInputSchema = z.object({
   hint: z.string().optional(),
 });
 
-// Raw generated image bytes, base64-encoded (Genkit flow outputs must be
-// JSON-serialisable). The caller decodes to a Buffer before background removal.
-export const GenerateCanonIconOutputSchema = z.object({
-  imageBase64: z.string(),
-  contentType: z.string(),
+export const generateCanonIconFlow = defineIconFlow({
+  name: 'generateCanonIcon',
+  inputSchema: GenerateCanonIconInputSchema,
+  subjectOf: ({ name }) => name,
+  promptOf: ({ name, hint }) => buildIconPrompt(name, hint),
 });
-
-export const generateCanonIconFlow = ai.defineFlow(
-  {
-    name: 'generateCanonIcon',
-    inputSchema: GenerateCanonIconInputSchema,
-    outputSchema: GenerateCanonIconOutputSchema,
-  },
-  async ({ name, hint }) => {
-    setActiveSpanName(`generateCanonIcon: ${name}`);
-    const seed = loadCanonIconSeed();
-
-    const modelId = await resolveModel('image', 'generateCanonIcon');
-    const imageModel = googleAI.model(modelId);
-    const result = await withAiTimeout(
-      'generateCanonIcon',
-      () =>
-        ai.generate({
-          model: imageModel,
-          prompt: [
-            { media: { url: seed.url, contentType: seed.contentType } },
-            { text: buildIconPrompt(name, hint) },
-          ],
-        }),
-      { timeoutMs: ICON_GEN_TIMEOUT_MS, retries: 1 },
-    );
-
-    const media = result.media;
-    if (!media?.url) {
-      throw new Error('generateCanonIcon: model returned no image');
-    }
-
-    const { base64, contentType } = parseDataUrl(media.url, 'generateCanonIcon');
-    return { imageBase64: base64, contentType };
-  },
-);
