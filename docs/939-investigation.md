@@ -44,7 +44,7 @@ Recommending a `limit` on the other fourteen would be churn.
 | finding | verdict | one line |
 | --- | --- | --- |
 | `B2-013` | **CONFIRMED** (issue body's headline count is STALE) | 9 whole-collection unbounded reads, not 11 of 15; only `subscribeMyCookSessions` carries a `limit` |
-| `A5-012` | **CONFIRMED — and the single biggest real cost** | app-lifetime, 76 fat documents, and they never expire |
+| `A5-012` | **CONFIRMED — and the single biggest real cost** | app-lifetime, 76 fat documents, 52 of them written immortal — and no sweep has ever run |
 | `A5-011` | **CONFIRMED mechanically, REFUTED as a perf problem** | the collection holds 1 document |
 | `A5-010` | **CONFIRMED — but it is an AI-cost/behaviour decision, not a perf fix** | |
 | `A3-007` | **CONFIRMED** — and already carries a `ponytail:` debt marker in-code | 2–5 full 281-doc canon reads per recipe import |
@@ -94,11 +94,31 @@ before the descriptor refactor and should be corrected on the issue.
   each holds the full `messages[]` array of a conversation. A four-document sample
   measured ~5 KB each, so the boot payload is order **380 KB** and grows with every
   chat ever held.
-- **They never expire.** `chatSessionSubscription.ts:30` writes
-  `expiresAt: '9999-12-31T23:59:59.999Z'` for any session with a `recipeId` (#696,
-  deliberate). A count over staging with `recipeId == null` returns **0** — i.e.
-  *every* session on staging is in the never-expires class. The 14-day TTL sweeps
-  nothing in practice.
+- **The dominant class never expires, and nothing sweeps the rest either.**
+  `chatSessionSubscription.ts:30` writes `expiresAt: '9999-12-31T23:59:59.999Z'`
+  for any session with a `recipeId` (#696, deliberate). Counted against staging on
+  **2026-08-25** (point-in-time; re-count before quoting these):
+
+  | count | over staging's `chatSessions` |
+  | --- | --- |
+  | 76 | documents in total |
+  | 24 | with `recipeId == null` — so **52 carry one** and are written immortal |
+  | 31 | actually holding the `9999-12-31` sentinel today |
+  | 42 | already past their own recorded `expiresAt`, and all 42 still present |
+
+  A chat claims its recipe as soon as it produces one, so the immortal class is
+  the majority, not an edge case. The 52/31 gap is the sessions written before
+  #696 landed — they carry an ordinary 14-day date and were never restamped.
+
+  The 42 are the other half of the finding, and this investigation originally
+  missed it: **nothing has ever swept a chat**, sentinel or not. `expiresAt` is
+  written as an ISO-8601 *string*, and a Firestore TTL policy only expires a
+  document whose TTL field holds a `Timestamp` — anything else is skipped in
+  silence. So the fortnightly sweep described since #206 has never run on any
+  project. Fixed in part by #939 (the sentinel became a 540-day window); the
+  `string` → `Timestamp` migration that would arm the sweep is deliberately its
+  own issue, because it is a shape change on live per-user documents and it would
+  make those 42 sweepable at once.
 
 This is the only subscription whose document count grows without bound, whose
 documents are large, and which is attached for the whole life of the app.
