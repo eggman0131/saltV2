@@ -30,7 +30,13 @@ import type { Locator, Page } from '@playwright/test';
 import type { Recipe } from '@salt/domain';
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-import { getShoppingListItems, seedAisles, seedCanonItem, seedRecipe } from './helpers/seed';
+import {
+  getShoppingListItems,
+  seedAisles,
+  seedCanonItem,
+  seedRecipe,
+  seedShoppingListBeforeBoot,
+} from './helpers/seed';
 import { HYDRATE_TIMEOUT, SYNC_TIMEOUT, TRIGGER_TIMEOUT } from './helpers/timeouts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -252,16 +258,13 @@ function shoppingRecipe(): Recipe {
 
 // ─── Shared arrival ───────────────────────────────────────────────────────────
 
-/** Create the household's first shopping list through the create page — which is
- *  also what makes it the DEFAULT list, the one cook mode's long-press targets. */
-async function createDefaultShoppingList(page: Page, name: string): Promise<void> {
-  await page.goto('/#/shopping');
-  await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: SYNC_TIMEOUT });
-  await page.getByTestId('shopping-create-list-name').fill(name);
-  await page.getByRole('button', { name: /create/i }).click();
-  await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
-  // The default id is what the add resolves against, and it arrives on the
-  // config listener rather than with the navigation (NF-A3).
+// Since the list and its config are seeded before boot
+// (`seedShoppingListBeforeBoot`, NF-C4), this is only a settle gate on the
+// config listener's FIRST snapshot — a wait that always terminates — rather
+// than the old bet on a post-attach update the emulator transport could drop
+// for good. The default id is what the hold's add resolves against, and it
+// arrives on the config listener rather than with any navigation (NF-A3).
+async function awaitDefaultList(page: Page): Promise<void> {
   await expect
     .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
     .not.toBeNull();
@@ -284,8 +287,13 @@ async function startCook(
   // overshoot, exactly one settled state per move. A real user setting, and it
   // makes every deck move deterministic without a single sleep (NF-A1).
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // The default shopping list is seeded BEFORE the app boots, so it is in the
+  // config listener's first snapshot (NF-C4) — the helper takes no Page, and
+  // that is what enforces the ordering. The seeded name is the one the add
+  // toast quotes.
+  if (opts.shoppingList) await seedShoppingListBeforeBoot(opts.shoppingList);
   await gotoAndSignIn(page, email, '/');
-  if (opts.shoppingList) await createDefaultShoppingList(page, opts.shoppingList);
+  if (opts.shoppingList) await awaitDefaultList(page);
   await seedRecipe(page, recipe);
   await page.goto(`/#/recipes/${recipe.id}`);
   await page.getByTestId('recipe-cook-button').click();
