@@ -211,28 +211,30 @@ import { subscribeWeatherForecast } from '../src/weatherSync.js';
 // reproduced it on demand, and removing that pattern was worth doing — but it is
 // NOT the whole cause, and the row's claim that it is has now been falsified.
 //
-// CI run 32845375930 hit #122 on `'subscribeBatch' (document) > delivers the
-// document after it is written` — a row that issues ONE write under an attached
-// listener, the shape the corrupt row was rewritten INTO. So the back-to-back
-// pair is a trigger, not the trigger.
+// AND DO NOT REACH FOR #122 TO EXPLAIN A TIMEOUT. Two CI runs of this file
+// (32845375930, 32856731377) each failed exactly two rows, always on
+// `delivers the document after it is written` and never on another test:
+// subscribeBatch + subscribeMealPlanTemplate, then subscribeDevSettings +
+// subscribeWeatherForecast. #122 was present in the first run and ENTIRELY
+// ABSENT from the second — zero `RESOURCE_EXHAUSTED`, zero stream errors — so
+// it cannot be the cause of a failure that reproduced identically both times.
+// The real cause was that that row alone wrote without settling its listener
+// first; the fix and the reasoning are on the row itself.
 //
-// What that run did settle is what the error is. gRPC reported
-// `RESOURCE_EXHAUSTED: Received message larger than max (1650553701 vs
+// #122 is still real, and one thing that run did settle is worth keeping: gRPC
+// reported `RESOURCE_EXHAUSTED: Received message larger than max (1650553701 vs
 // 17825792)`, and 1650553701 is 0x62617365 — the four ASCII bytes `base`. The
 // client is not being sent a 1.65 GB message; it is reading a length prefix out
 // of the middle of a payload string (`…/databases/…`), which is a FRAMING
-// DESYNC in the message deframer, downstream of anything this suite writes. That
-// also explains the silence: Firestore treats `resource-exhausted` as retryable,
-// so it goes to maximum backoff (60 s) rather than surfacing on `onError`, and
-// the row simply stops receiving inside its 15 s budget with nothing reported.
-//
-// Diagnose there. Two facts bound the search: the SDK's node build always uses
-// `GrpcConnection` (`newConnection` has no long-polling branch at all), so no
-// `experimentalForceLongPolling` setting can move this; and 12 consecutive full
-// runs against an emulator on plain loopback did not reproduce it once, while CI
-// reaches the emulator through docker's userspace port proxy — an extra hop that
-// re-segments the stream. `grpcFlowControlWindow` (Firestore settings, node
-// only, default 256 KB) is the one knob that reaches the deframer.
+// DESYNC in the message deframer, downstream of anything this suite writes.
+// Firestore treats `resource-exhausted` as retryable, so the client goes to
+// maximum backoff rather than surfacing anything on `onError` — which is why,
+// when it DOES bite, it looks exactly like the bug fixed above and will be
+// mistaken for it again. Two facts bound a real fix: the SDK's node build always
+// uses `GrpcConnection` (`newConnection` has no long-polling branch at all), so
+// no `experimentalForceLongPolling` setting can move it; and `grpcFlowControlWindow`
+// (Firestore settings, node only, default 256 KB) is the one knob that reaches
+// the deframer.
 //
 // This suite has NO retries and must not gain any (see vitest.emulator.config.ts
 // and docs/unit-test-spec.md UT-G3). If it flakes, the fix is here or in the
@@ -1685,6 +1687,29 @@ describe.each(documentCases)('$name (document)', (c) => {
       (e) => errors.push(e),
     );
     try {
+      // SETTLE THE LISTENER BEFORE WRITING. The seed goes through the REST door
+      // (see the header), so it is a genuinely out-of-band write racing the
+      // Listen target's registration — and this was the ONLY write-after-
+      // subscribe site in the file that did not wait first. Its two siblings
+      // both do: the collection row waits for the background set, and
+      // `delivers only its own key` below waits for exactly this null.
+      //
+      // Unwaited, it failed twice on CI (runs 32845375930 and 32856731377) on
+      // four different rows — subscribeBatch, subscribeMealPlanTemplate,
+      // subscribeDevSettings, subscribeWeatherForecast — always this test, never
+      // another, and always as a silent 15 s timeout with nothing on `onError`.
+      // The first of those runs also carried a #122 RESOURCE_EXHAUSTED and the
+      // second carried no transport error at all, which is what rules the
+      // transport out as the explanation: the constant is the missing wait.
+      //
+      // The wait also makes the assertion STRONGER rather than merely calmer.
+      // With it, the document provably arrives as a LIVE UPDATE to an attached
+      // listener; without it, an initial snapshot that already contained the
+      // document would satisfy the row just as happily — which is the one thing
+      // a test named "after it is written" must not accept.
+      await waitFor(() => seen.length > 0, CONVERGENCE_MS, `${c.name} initial snapshot`, errors);
+      expect(seen[0]).toBeNull();
+
       await c.seed();
       await waitFor(() => seen.some(c.matches), CONVERGENCE_MS, `${c.name} document`, errors);
       expect(seen.some(c.matches)).toBe(true);
