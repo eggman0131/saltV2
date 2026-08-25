@@ -139,9 +139,12 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     config never did, and `defaultListId` stayed null for the rest of the run. So the list and
     its config are written together before boot. Creating a list through the UI remains the
     subject of `shopping-list-happy-path.spec.ts` and of the creation-is-subject tests in
-    `shopping-list-multi-list.spec.ts`, which keep doing it for real; call sites where the
-    list is setup rather than subject (`cook-mode.spec.ts`'s hold-to-add test, the multi-list
-    move test) seed before boot instead.
+    `shopping-list-multi-list.spec.ts`, which keep doing it for real. Two call sites where the
+    list was setup rather than subject were converted to seed before boot:
+    `cook-mode.spec.ts`'s hold-to-add test and `shopping-list-multi-list.spec.ts`'s "move item
+    to second list" test. (`mealplan.spec.ts`'s list bootstrap is also setup-only, but stays on
+    its working `page.reload()` mitigation by #1001's scope decision — it is not a pre-boot
+    seeder.)
 
   Preserve all four orderings. Do not add a fifth back door without the same drop-hazard
   justification.
