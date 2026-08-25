@@ -89,6 +89,12 @@ interface AbstractTimer {
   readonly endsAt: string;
   readonly notify: boolean;
   readonly label: string;
+  /**
+   * Cook only, and only where a row needs `id` and `stepId` to DIFFER; the
+   * kitchen document builder ignores it. Undefined means "let the builder mirror
+   * `id`", which is what every shared row wants.
+   */
+  readonly stepId?: string | null;
 }
 
 const armed = (id: string, endsAt: string): AbstractTimer => ({
@@ -102,6 +108,10 @@ const silent = (id: string, endsAt: string): AbstractTimer => ({
   notify: false,
 });
 const renamed = (t: AbstractTimer, label: string): AbstractTimer => ({ ...t, label });
+/** An ad-hoc cook timer: started from the timer bar, so it belongs to no step. */
+const adHoc = (t: AbstractTimer): AbstractTimer => ({ ...t, stepId: null });
+/** A cook timer started from a method step: a minted id, and the step's own id beside it. */
+const forStep = (t: AbstractTimer, stepId: string): AbstractTimer => ({ ...t, stepId });
 
 type DocState =
   | { readonly state: 'deleted' }
@@ -145,7 +155,7 @@ const COOK: TimerKind = {
       completedStepIds: [],
       activeTimers: timers.map((t) => ({
         id: t.id,
-        stepId: t.id,
+        stepId: t.stepId === undefined ? t.id : t.stepId,
         label: t.label,
         durationMinutes: 10,
         endsAt: t.endsAt,
@@ -359,6 +369,59 @@ describe.each(KINDS)('$kind timer write trigger', (kind) => {
 
     expectEnqueued(kind, []);
     expect(mockFlush).toHaveBeenCalled();
+  });
+});
+
+// Cook only: every row in the shared table builds `stepId: t.id`, so not one of
+// them can tell the two fields apart — and in production they are never the same
+// value. `CookActiveTimerSchema`'s header is explicit that they are not
+// interchangeable: "`id` — NOT `stepId` — is its identity everywhere: … the
+// enqueue trigger's diff key, the Cloud Task payload, the timerDeliveries ledger
+// id". A timer started from a method step carries a minted id AND the step's id;
+// one started from the timer bar carries a minted id and a NULL `stepId`. Build
+// the payload from `stepId` and the whole shared table stays green while
+// `onCookTimerDispatch`'s re-read (`activeTimers.find((t) => t.id === timerId &&
+// …)`) never matches, so the push is silently missed with no error anywhere. Both
+// shapes are in this row deliberately — the null one is the case a `stepId ?? id`
+// slip recovers from, and the string one is the case it does not. This is what
+// `onCookTimerWrite.test.ts` covered and the shared net did not.
+const AD_HOC_ROWS: Row[] = [
+  {
+    name: 'a step timer and an ad-hoc timer each enqueue under their own id, not their stepId',
+    fixture: {
+      before: DELETED,
+      after: valid(
+        forStep(armed('timer-a', T1), 'step-3'),
+        adHoc(armed('timer-b', T2)),
+        adHoc(silent('timer-decoy', T3)),
+      ),
+    },
+    expected: [forStep(armed('timer-a', T1), 'step-3'), adHoc(armed('timer-b', T2))],
+    decoy: adHoc(silent('timer-decoy', T3)),
+    mutation: 'the decoy is armed',
+    mutated: {
+      before: DELETED,
+      after: valid(
+        forStep(armed('timer-a', T1), 'step-3'),
+        adHoc(armed('timer-b', T2)),
+        adHoc(armed('timer-decoy', T3)),
+      ),
+    },
+  },
+];
+
+describe('onCookTimerWrite — a timer whose id is not its stepId', () => {
+  it.each(AD_HOC_ROWS)('$name', async (row) => {
+    await run(COOK, row.fixture);
+
+    expectEnqueued(COOK, row.expected);
+    expect(payloads()).not.toContainEqual(COOK.payload(row.decoy));
+  });
+
+  it.each(AD_HOC_ROWS)('$name — decoy proved by mutation: $mutation', async (row) => {
+    await run(COOK, row.mutated);
+
+    expect(payloads()).toContainEqual(COOK.payload(row.decoy));
   });
 });
 
