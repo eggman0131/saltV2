@@ -1528,10 +1528,12 @@ describe.each(collectionCases)('$name (collection)', (c) => {
      * replaced 13 parse loops with one would drop it without a single row here
      * changing colour otherwise.
      *
-     * The listener is settled before the seed, like every other row: the REST
-     * seed racing the Listen target's registration is what triggers the #122
-     * back-to-back-response framing desync (see the corrupt row's note), and it
-     * hit exactly this row on both attempts of run 32876589235 (#999).
+     * The listener is settled before the seed, like every other row: this row's
+     * unsettled write-after-subscribe raced the Listen target's registration,
+     * and both attempts of run 32876589235 failed here as a silent convergence
+     * timeout (#999). The #122 framing desync (see the corrupt row's note)
+     * appeared in only one of those attempts — incidental, not the trigger;
+     * the unsettled write is the constant.
      */
     it(projection.what, async () => {
       const seen: unknown[][] = [];
