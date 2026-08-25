@@ -1,10 +1,9 @@
 import { getFirestore, FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
 import { logger } from 'firebase-functions';
 import { DevSettingsSchema } from '@salt/domain/schemas';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
-import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
+import { ICON_CONTENT_MAX, uploadIcon } from '../imaging/iconStorage.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
@@ -30,29 +29,23 @@ import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntry
 //  • `onEquipmentManifestWritten` authors text briefs and reconciles orphans; it
 //    draws nothing. It shares exactly one thing with the three — the kill-switch
 //    reader — and imports that alone.
-//  • Canon's embedding branch. It is genuinely canon-only, so it stays in
-//    `onCanonItemWritten.ts` and arrives here as the optional `alongside`
-//    descriptor field. What lives here is only the `Promise.allSettled` pairing,
-//    two lines of composition that belong beside the branch they pair with.
+//  • Canon's embedding branch, AND the `Promise.allSettled` pairing that guards
+//    it beside the icon branch. Both are canon-only policy, so both stay in
+//    `onCanonItemWritten.ts`: that file composes its own trigger body out of the
+//    two exported pieces below (`parseIconDocument` + `maybeGenerateIcon`)
+//    rather than handing this factory a hook only it would ever pass. A shared
+//    factory with a one-user extension point is a worse trade than ten lines of
+//    composition at the one call site that needs them.
+//  • The Storage upload and the framing constant. `uploadIcon` and
+//    `ICON_CONTENT_MAX` are not trigger-specific and live in
+//    `src/imaging/iconStorage.ts` beside the rest of the imaging chain, where
+//    the callable draw/upload paths can reach them too.
 //
 // Registration stays at each call site, deliberately: `memory`, `region`,
 // `concurrency` and `timeoutSeconds` must be pinned in a literal options object
 // at the `onDocumentWritten` call, because these modules are evaluated before
 // index.ts's `setGlobalOptions` runs and a pin hoisted in here would not apply.
 // `tests/functionMemoryPin.test.ts` scans for exactly that.
-
-/**
- * The framing target for every Tier-1 pictogram: 84% of the 128px frame.
- *
- * Tuned for the ~40px row tile, and deliberately larger than
- * `normalizeIconFraming`'s own 92px default, which is the weather set's
- * watermark value — those are watermarks, these are scanned in a list. Not
- * pushed higher because the match-reveal sage lift reads through the margin that
- * remains (ui-spec-v04 §14.5.3). Named once here rather than written out per
- * family: a form icon sits in the same tile as a canon icon, right above one in
- * the same list, so any difference between them would read as two icon sets.
- */
-export const ICON_CONTENT_MAX = 108;
 
 /**
  * All this module needs of a drawable document — the tri-state `thumbnail`
@@ -171,42 +164,13 @@ export async function isIconGenerationEnabled(name: string): Promise<boolean> {
   }
 }
 
-/**
- * Uploads a pictogram to Storage and returns its public download URL.
- *
- * We deliberately use the Firebase Storage download endpoint
- * (`/v0/b/<bucket>/o/<path>?alt=media`) rather than the raw GCS URL
- * (`storage.googleapis.com/<bucket>/<path>`): only the former is governed by
- * `storage.rules` (which grant public read on each icon prefix), so no object
- * ACL / `makePublic()` is needed — that path is the raw-GCS IAM model and throws
- * on buckets with uniform bucket-level access (the default). The same URL shape
- * works against the Storage emulator (just a different host).
- *
- * `prefix` stays per family rather than shared, and that is load-bearing: the
- * weekly orphan sweep joins each prefix against its OWN collection (the SWEEPS
- * table in maintenance/storageSweepTargets.ts), and one prefix serving several
- * collections could not tell a live object from a stranded one.
- *
- * A regeneration reuses the same object path; the `iconRequestedAt` nonce on the
- * document is what busts the browser cache in front of it.
- */
-export async function uploadIcon(prefix: string, id: string, webp: Buffer): Promise<string> {
-  const bucket = getStorage().bucket();
-  const path = `${prefix}/${id}.webp`;
-  await bucket.file(path).save(webp, {
-    contentType: 'image/webp',
-    metadata: { cacheControl: 'public, max-age=31536000, immutable' },
-  });
-  return buildStorageDownloadUrl(bucket.name, path);
-}
-
 /** The five axes an icon family differs on, plus the name its logs are grepped by. */
 export interface IconTriggerDescriptor<TDoc extends IconDocument> {
   /** The deployed function name, used as the log prefix. */
   readonly name: string;
   /** The collection the finished icon is written back to. */
   readonly collection: string;
-  /** This family's Storage prefix — distinct per family; see `uploadIcon`. */
+  /** This family's Storage prefix — distinct per family; see `imaging/iconStorage.ts`. */
   readonly storagePrefix: string;
   /** Parses the written document. Kept whole so schema defaults and back-compat run. */
   readonly schema: IconDocumentSchema<TDoc>;
@@ -227,13 +191,6 @@ export interface IconTriggerDescriptor<TDoc extends IconDocument> {
    * to copy.
    */
   readonly draw: (subject: string, hint?: string) => Promise<{ imageBase64: string }>;
-  /**
-   * A SECOND, independently-guarded side-effect on the same write. Only canon
-   * has one (its name embedding), and it stays in that trigger's own file; this
-   * field is how it is paired with the icon branch under `Promise.allSettled`,
-   * so a failure in either can never reject the handler and retry both.
-   */
-  readonly alongside?: (id: string, doc: TDoc) => Promise<void>;
 }
 
 /**
@@ -243,8 +200,13 @@ export interface IconTriggerDescriptor<TDoc extends IconDocument> {
  * Trade-off of edge-triggering: a generation that *fails* leaves `thumbnail`
  * null but no longer self-heals on the next unrelated write — the regenerate
  * path (which bumps `iconRequestedAt`) is the retry.
+ *
+ * Exported for the one family that cannot use the factory below wholesale:
+ * `onCanonItemWritten` pairs this branch with its own embedding branch under
+ * `Promise.allSettled`, and that pairing is canon-only policy that belongs in
+ * canon's file rather than as a hook in here.
  */
-async function maybeGenerateIcon<TDoc extends IconDocument>(
+export async function maybeGenerateIcon<TDoc extends IconDocument>(
   descriptor: IconTriggerDescriptor<TDoc>,
   id: string,
   doc: TDoc,
@@ -304,38 +266,45 @@ async function maybeGenerateIcon<TDoc extends IconDocument>(
   }
 }
 
+/**
+ * Parses a written document against its family's schema, or logs and returns
+ * undefined. An absent/deleted `after` is simply "nothing to do".
+ *
+ * Trigger boundary: an invalid shape is logged and swallowed — there is no caller
+ * to surface a `Failure` to (Zod conventions, root CLAUDE.md).
+ *
+ * Exported for the same reason `maybeGenerateIcon` is: canon composes its own
+ * trigger body, and this keeps the one log line single-source across both.
+ */
+export function parseIconDocument<TDoc extends IconDocument>(
+  descriptor: IconTriggerDescriptor<TDoc>,
+  id: string,
+  after: DocumentSnapshot | undefined,
+): TDoc | undefined {
+  if (!after?.exists) return undefined;
+
+  const parsed = descriptor.schema.safeParse(after.data());
+  if (parsed.success) return parsed.data;
+
+  logger.error(`${descriptor.name}: invalid doc shape, skipping`, {
+    id,
+    error: parsed.error.message,
+  });
+  return undefined;
+}
+
 export function iconWriteTrigger<TDoc extends IconDocument>(
   descriptor: IconTriggerDescriptor<TDoc>,
 ) {
-  const { name, schema, alongside } = descriptor;
-
   return withFirestoreTrigger<{ id: string }>(async (event) => {
-    const after = event.data?.after;
-    if (!after?.exists) return;
-
-    const parsed = schema.safeParse(after.data());
-    if (!parsed.success) {
-      // Trigger boundary: log and return — there is no caller to surface a
-      // Failure to (Zod conventions, root CLAUDE.md).
-      logger.error(`${name}: invalid doc shape, skipping`, {
-        id: event.params.id,
-        error: parsed.error.message,
-      });
-      return;
-    }
-
     const id = event.params.id;
+    const doc = parseIconDocument(descriptor, id, event.data?.after);
+    if (!doc) return;
+
     // The icon branch is edge-triggered on before→after, so it needs the prior
     // snapshot. Reading `traceContext` is a no-op for its idempotency guard (it
     // keys off thumbnail/iconRequestedAt), so a bare traceContext-only re-fire
     // cannot loop into a duplicate generation.
-    const icon = maybeGenerateIcon(descriptor, id, parsed.data, event.data?.before);
-    if (!alongside) {
-      await icon;
-      return;
-    }
-    // Two independently-guarded side-effects. allSettled so a failure in one
-    // branch never rejects the handler, which would retry both.
-    await Promise.allSettled([alongside(id, parsed.data), icon]);
+    await maybeGenerateIcon(descriptor, id, doc, event.data?.before);
   }, traceContextFromWrittenDoc);
 }

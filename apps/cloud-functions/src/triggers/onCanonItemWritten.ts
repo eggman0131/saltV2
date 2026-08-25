@@ -7,7 +7,12 @@ import { CanonItemSchema, type CanonItemDoc } from '@salt/domain/schemas';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import { iconWriteTrigger } from './iconWriteTrigger.js';
+import {
+  maybeGenerateIcon,
+  parseIconDocument,
+  type IconTriggerDescriptor,
+} from './iconWriteTrigger.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -27,9 +32,10 @@ const ICON_STORAGE_PREFIX = 'canon-icons';
  * server-only `canonEmbeddings/{id}` collection (issue #410) rather than inline
  * on this client-subscribed doc.
  *
- * CANON-ONLY, and the reason this trigger is the only icon family with an
- * `alongside` branch: product forms and kitchen tools are matched on label/matcher
- * TEXT, never on a vector, so there is nothing to embed.
+ * CANON-ONLY, and the reason this trigger is the only icon family that composes
+ * its own body instead of declaring a descriptor to `iconWriteTrigger`: product
+ * forms and kitchen tools are matched on label/matcher TEXT, never on a vector,
+ * so there is nothing to embed.
  *
  * Idempotency guard (two cheap checks): skip if an INLINE vector is still present
  * (an un-migrated doc — already embedded, and the match adapter reads it via its
@@ -67,6 +73,19 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
   }
 }
 
+/**
+ * Canon's icon family, on the five axes `iconWriteTrigger` reads (issue #989).
+ * Named here rather than inlined because the trigger body below passes it twice.
+ */
+const canonIconDescriptor: IconTriggerDescriptor<CanonItemDoc> = {
+  name: 'onCanonItemWritten',
+  collection: 'canonItems',
+  storagePrefix: ICON_STORAGE_PREFIX,
+  schema: CanonItemSchema,
+  subjectOf: (item) => item.name,
+  draw: (name, hint) => generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
+};
+
 export const onCanonItemWritten = onDocumentWritten(
   {
     document: 'canonItems/{id}',
@@ -92,13 +111,27 @@ export const onCanonItemWritten = onDocumentWritten(
   // W3C traceparent onto this canon doc as `traceContext` when it wrote the
   // match, and continuing it here nests the icon + embedding work under the SAME
   // trace ("Add item …" → canon-match → icon) instead of re-rooting.
-  iconWriteTrigger<CanonItemDoc>({
-    name: 'onCanonItemWritten',
-    collection: 'canonItems',
-    storagePrefix: ICON_STORAGE_PREFIX,
-    schema: CanonItemSchema,
-    subjectOf: (item) => item.name,
-    draw: (name, hint) => generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
-    alongside: maybeGenerateEmbedding,
-  }),
+  //
+  // This is the ONE icon family that does not hand its descriptor straight to
+  // `iconWriteTrigger`: it composes the trigger body itself, because pairing the
+  // icon branch with the canon-only embedding branch is canon-only policy. The
+  // shared factory therefore has no hook for a second branch — the alternative
+  // was an extension point with exactly one user, permanently, in a module the
+  // next icon family is meant to be a one-line declaration over.
+  withFirestoreTrigger<{ id: string }>(async (event) => {
+    const id = event.params.id;
+    // Reading `traceContext` is a no-op for both idempotency guards (they key off
+    // thumbnail/iconRequestedAt/embedding), so a bare traceContext-only re-fire
+    // cannot loop into a duplicate generation.
+    const item = parseIconDocument(canonIconDescriptor, id, event.data?.after);
+    if (!item) return;
+
+    // Two independently-guarded side-effects. allSettled so a failure in one
+    // branch never rejects the handler (which would retry both). The icon branch
+    // is edge-triggered on before→after, so it needs the prior snapshot.
+    await Promise.allSettled([
+      maybeGenerateEmbedding(id, item),
+      maybeGenerateIcon(canonIconDescriptor, id, item, event.data?.before),
+    ]);
+  }, traceContextFromWrittenDoc),
 );
