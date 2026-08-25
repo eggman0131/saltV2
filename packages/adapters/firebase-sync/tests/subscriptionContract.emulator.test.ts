@@ -1527,6 +1527,13 @@ describe.each(collectionCases)('$name (collection)', (c) => {
      * because that is the only place it is observable — and a consolidation that
      * replaced 13 parse loops with one would drop it without a single row here
      * changing colour otherwise.
+     *
+     * The listener is settled before the seed, like every other row: this row's
+     * unsettled write-after-subscribe raced the Listen target's registration,
+     * and both attempts of run 32876589235 failed here as a silent convergence
+     * timeout (#999). The #122 framing desync (see the corrupt row's note)
+     * appeared in only one of those attempts — incidental, not the trigger;
+     * the unsettled write is the constant.
      */
     it(projection.what, async () => {
       const seen: unknown[][] = [];
@@ -1536,6 +1543,9 @@ describe.each(collectionCases)('$name (collection)', (c) => {
         (e) => errors.push(e),
       );
       try {
+        await waitFor(() => seen.length > 0, CONVERGENCE_MS, `${c.name} initial snapshot`, errors);
+        expect(seen[0]).toEqual([]);
+
         await projection.seed();
         await waitFor(
           () => seen.some((docs) => docs.length > 0),
@@ -1689,8 +1699,9 @@ describe.each(documentCases)('$name (document)', (c) => {
     try {
       // SETTLE THE LISTENER BEFORE WRITING. The seed goes through the REST door
       // (see the header), so it is a genuinely out-of-band write racing the
-      // Listen target's registration — and this was the ONLY write-after-
-      // subscribe site in the file that did not wait first. Its two siblings
+      // Listen target's registration — and this was one of TWO write-after-
+      // subscribe sites in the file that did not wait first (the other was the
+      // projection row, missed at the time and fixed in #999). Its two siblings
       // both do: the collection row waits for the background set, and
       // `delivers only its own key` below waits for exactly this null.
       //
