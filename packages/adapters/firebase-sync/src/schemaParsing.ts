@@ -43,6 +43,42 @@ export function logRejection(label: string, id: string, error: unknown): void {
 }
 
 /**
+ * What one document came to: the projected value, or nothing because the schema
+ * refused it (and `logRejection` has already said so).
+ *
+ * A refusal is a VALUE rather than an absence so that `subscribeCollection` can
+ * CACHE one (issue #939). Its per-snapshot cache is keyed by document id and
+ * falls through to `parseDocument` on a miss, so a refusal recorded as `undefined`
+ * would be indistinguishable from a document never seen: a corrupt document would
+ * be re-parsed and re-logged on every snapshot for as long as it sat in the
+ * collection. `{ok: false}` is what makes "already refused, and already said so"
+ * a thing the cache can hold.
+ */
+export type ParseOutcome<T> = { readonly ok: true; readonly value: T } | { readonly ok: false };
+
+/**
+ * One document, parsed: `safeParse`, then `project` it or log and refuse it.
+ *
+ * The single place the skip-and-log half of the contract is written. Both
+ * readers go through it — `parseDocuments` below for a whole result set, and
+ * `subscribeCollection` for the one document a snapshot actually changed — so
+ * neither can drift on what a rejection does or what it says.
+ */
+export function parseDocument<TParsed, TDelivered>(
+  d: ReadableDoc,
+  schema: ParsedBy<TParsed>,
+  label: string,
+  project: (parsed: TParsed, id: string) => TDelivered,
+): ParseOutcome<TDelivered> {
+  const result = schema.safeParse(d.data());
+  if (!result.success) {
+    logRejection(label, d.id, result.error);
+    return { ok: false };
+  }
+  return { ok: true, value: project(result.data, d.id) };
+}
+
+/**
  * The LIST read contract (CLAUDE.md, zod conventions): parse every document,
  * skip and log the invalid ones, deliver the valid subset. One corrupt document
  * must never fail the whole read.
@@ -52,6 +88,9 @@ export function logRejection(label: string, id: string, error: unknown): void {
  * are two names for one shape, and a real transform for canon (#410). It takes
  * the document id because that is not always a field: `subscribeEquipmentIcons`
  * keys its Map by it.
+ *
+ * This is the ONE-SHOT read now (`getDocs`): a live listener parses only what
+ * changed, in `subscribeCollection`.
  */
 export function parseDocuments<TParsed, TDelivered>(
   docs: readonly ReadableDoc[],
@@ -61,12 +100,8 @@ export function parseDocuments<TParsed, TDelivered>(
 ): TDelivered[] {
   const valid: TDelivered[] = [];
   for (const d of docs) {
-    const result = schema.safeParse(d.data());
-    if (result.success) {
-      valid.push(project(result.data, d.id));
-    } else {
-      logRejection(label, d.id, result.error);
-    }
+    const outcome = parseDocument(d, schema, label, project);
+    if (outcome.ok) valid.push(outcome.value);
   }
   return valid;
 }

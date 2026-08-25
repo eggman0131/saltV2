@@ -1,192 +1,93 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Member } from '@salt/domain';
+/**
+ * `subscribeMembers` — the one claim the two contract nets do not hold (#928, #939).
+ *
+ * This file used to test the members module end to end with a mocked
+ * `onSnapshot`. Almost all of that is now held, and held harder, elsewhere:
+ *
+ *   • `tests/subscriptionContract.emulator.test.ts` — the `subscribeMembers` row
+ *     pins the EXACT delivered id set against a decoy it must exclude, the empty
+ *     collection, the unsubscribe, and the corrupt-document skip together with
+ *     its bound rejection log. Against a real emulator, so it says nothing about
+ *     which module calls `collection()`.
+ *   • `tests/writerContract.test.ts` — the `upsertMember` and `deleteMember` rows
+ *     pin the exact op, path and payload with `toEqual`, the success shape, and a
+ *     classified `Failure` on three separate Firestore codes.
+ *
+ * Those replaced tests are gone rather than repaired: re-asserting them here
+ * against a hand-built snapshot double is the copied-file defect #928 exists to
+ * end, and the doubles are what broke under #939's `docChanges()` in the first
+ * place.
+ *
+ * What survives both nets is the STREAM path, and specifically its ARITY.
+ * `subscribeMembers` is the one collection subscription whose `onError` takes a
+ * single argument — `forwardsRawError: false` in `membersSubscription.ts`, which
+ * is #928's finding B2-009 recorded as data rather than unified away. The
+ * contract net asserts `rawError` only on the single-document rows' PARSE path;
+ * no row there drives a collection subscription's stream callback, and provoking
+ * a real one would mean revoking a security rule mid-listen. A mocked
+ * `onSnapshot` hands the error callback whatever it likes, which is why this one
+ * assertion is still a unit test.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const {
-  mockUnsubscribe,
-  mockOnSnapshot,
-  mockSetDoc,
-  mockDeleteDoc,
-  mockDoc,
-  mockCollection,
-  mockGetFirestore,
-} = vi.hoisted(() => ({
-  mockUnsubscribe: vi.fn(),
-  mockOnSnapshot: vi.fn(),
-  mockSetDoc: vi.fn(),
-  mockDeleteDoc: vi.fn(),
-  mockDoc: vi.fn(() => 'mock-doc-ref'),
-  mockCollection: vi.fn(() => 'mock-collection-ref'),
-  mockGetFirestore: vi.fn(() => 'mock-db'),
-}));
+const { mockUnsubscribe, mockOnSnapshot, mockDoc, mockCollection, mockGetFirestore } = vi.hoisted(
+  () => ({
+    mockUnsubscribe: vi.fn(),
+    mockOnSnapshot: vi.fn(),
+    mockDoc: vi.fn(() => 'mock-doc-ref'),
+    mockCollection: vi.fn(() => 'mock-collection-ref'),
+    mockGetFirestore: vi.fn(() => 'mock-db'),
+  }),
+);
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
 }));
 
+// The SDK boundary this package exists to wrap (UT-B3). `setDoc`/`deleteDoc` are
+// declared because the module imports them, not because anything here calls
+// them — the writers answer to writerContract.test.ts.
 vi.mock('firebase/firestore', () => ({
   getFirestore: mockGetFirestore,
   doc: mockDoc,
   collection: mockCollection,
   onSnapshot: mockOnSnapshot,
-  setDoc: mockSetDoc,
-  deleteDoc: mockDeleteDoc,
+  setDoc: vi.fn(),
+  deleteDoc: vi.fn(),
 }));
 
-import { subscribeMembers, upsertMember, deleteMember } from '../src/membersSubscription.js';
+import { subscribeMembers } from '../src/membersSubscription.js';
 
-type SnapCallback = (snap: { docs: { id: string; data: () => unknown }[] }) => void;
 type ErrorCallback = (err: Error & { code?: string }) => void;
-
-function validMemberData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    id: 'daniel@pendery.org',
-    schemaVersion: 1,
-    name: 'Daniel',
-    email: 'daniel@pendery.org',
-    admin: true,
-    sortOrder: 0,
-    icon: null,
-    updatedAt: '2026-06-07T12:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function member(overrides: Partial<Member> & { id: string }): Member {
-  return {
-    schemaVersion: 1,
-    name: 'Daniel',
-    email: overrides.id,
-    admin: false,
-    sortOrder: 0,
-    icon: null,
-    updatedAt: '2026-06-07T12:00:00.000Z',
-    ...overrides,
-  };
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
-  mockSetDoc.mockResolvedValue(undefined);
-  mockDeleteDoc.mockResolvedValue(undefined);
   // classifyFirestoreError short-circuits to NetworkError/offline when
   // navigator.onLine is false; stub it online so error-code mapping is exercised.
   vi.stubGlobal('navigator', { onLine: true });
 });
 
-describe('subscribeMembers', () => {
-  it('targets the members collection', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('subscribeMembers — the stream-error path', () => {
+  it('classifies a stream error and calls onError with ONE argument, never the raw error', () => {
+    // Captured as an argument LIST rather than matched with
+    // `toHaveBeenCalledWith`, so the arity is asserted as a value: a second
+    // argument appearing here is a visible API change for every call site that
+    // declares a one-parameter handler, and it must not arrive as a side effect
+    // of a consolidation (#928 finding B2-009).
+    const calls: unknown[][] = [];
     subscribeMembers(
       () => {},
-      () => {},
+      (...args) => calls.push(args),
     );
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'members');
-  });
-
-  it('returns the unsubscribe function from onSnapshot', () => {
-    const unsub = subscribeMembers(
-      () => {},
-      () => {},
-    );
-    expect(unsub).toBe(mockUnsubscribe);
-  });
-
-  it('delivers all valid members', () => {
-    const onMembers = vi.fn();
-    subscribeMembers(onMembers, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        { id: 'daniel@pendery.org', data: () => validMemberData() },
-        {
-          id: 'amy@pendery.org',
-          data: () =>
-            validMemberData({
-              id: 'amy@pendery.org',
-              email: 'amy@pendery.org',
-              name: 'Amy',
-              admin: false,
-            }),
-        },
-      ],
-    });
-
-    expect(onMembers).toHaveBeenCalledTimes(1);
-    expect(onMembers.mock.calls[0][0]).toHaveLength(2);
-  });
-
-  it('skips corrupt docs and delivers the valid subset', () => {
-    const onMembers = vi.fn();
-    const onError = vi.fn();
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    subscribeMembers(onMembers, onError);
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          id: 'good@e.org',
-          data: () => validMemberData({ id: 'good@e.org', email: 'good@e.org' }),
-        },
-        {
-          id: 'bad@e.org',
-          data: () => ({ id: 'bad@e.org', schemaVersion: 1 /* missing fields */ }),
-        },
-      ],
-    });
-
-    const delivered = onMembers.mock.calls[0][0] as Member[];
-    expect(delivered).toHaveLength(1);
-    expect(delivered[0]!.id).toBe('good@e.org');
-    expect(onError).not.toHaveBeenCalled(); // corrupt doc is skipped, not a stream error
-    expect(errSpy).toHaveBeenCalled();
-    errSpy.mockRestore();
-  });
-
-  it('classifies a stream-level permission error', () => {
-    const onError = vi.fn();
-    subscribeMembers(() => {}, onError);
 
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
     errCb(Object.assign(new Error('denied'), { code: 'permission-denied' }));
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
-  });
-});
-
-describe('upsertMember', () => {
-  it('writes to members/{id} and returns ok', async () => {
-    const m = member({ id: 'daniel@pendery.org', admin: true });
-    const result = await upsertMember(m);
-
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'members', 'daniel@pendery.org');
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...m });
-    expect(result.kind).toBe('ok');
-  });
-
-  it('returns a Failure (does not throw) when the write rejects', async () => {
-    mockSetDoc.mockRejectedValueOnce(
-      Object.assign(new Error('denied'), { code: 'permission-denied' }),
-    );
-    const result = await upsertMember(member({ id: 'x@e.org' }));
-    expect(result.kind).toBe('err');
-  });
-});
-
-describe('deleteMember', () => {
-  it('deletes members/{id} and returns ok', async () => {
-    const result = await deleteMember('daniel@pendery.org');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'members', 'daniel@pendery.org');
-    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
-    expect(result.kind).toBe('ok');
-  });
-
-  it('returns a Failure when the delete rejects', async () => {
-    mockDeleteDoc.mockRejectedValueOnce(
-      Object.assign(new Error('denied'), { code: 'permission-denied' }),
-    );
-    const result = await deleteMember('x@e.org');
-    expect(result.kind).toBe('err');
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }]]);
   });
 });

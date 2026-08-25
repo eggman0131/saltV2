@@ -1,53 +1,83 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/**
+ * Shopping-list reads — what the two contract nets do not hold (#928, #939).
+ *
+ * `createShoppingList`, `renameShoppingList` and `deleteShoppingList` moved to
+ * `tests/writerContract.test.ts` — including the one partial write in the
+ * package, `renameShoppingList`'s `updateDoc`, whose exact payload is a row
+ * there. The collection target, the unsubscribe, the delivered id set, the empty
+ * collection and the corrupt-document skip moved to the `subscribeShoppingLists`
+ * row of `tests/subscriptionContract.emulator.test.ts`, which seeds a decoy in a
+ * same-named subcollection so a widening to `collectionGroup` costs something.
+ *
+ * What is left is what neither net can see:
+ *
+ *   1. THE DELIVERED DOCUMENT, including what the schema does with a document
+ *      that is missing everything. The contract net normalises the row to a list
+ *      of ids, so a lost field is invisible to it — and `ShoppingListSchema`
+ *      defaulting rather than refusing is the difference between a legacy
+ *      document appearing with an empty name and vanishing from the list
+ *      entirely.
+ *   2. THE STREAM path and its arity (`forwardsRawError: true`, against `false`
+ *      on `subscribeMembers` — #928 finding B2-009). No emulator row drives a
+ *      collection subscription's error callback.
+ *   3. `listShoppingLists`, the one-shot `getDocs`. `writerContract.test.ts`
+ *      classifies it as a `'read'` and covers no reads; the subscription net
+ *      covers no one-shots.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const {
-  mockUnsubscribe,
-  mockOnSnapshot,
-  mockSetDoc,
-  mockDeleteDoc,
-  mockGetDocs,
-  mockUpdateDoc,
-  mockDoc,
-  mockCollection,
-  mockGetFirestore,
-} = vi.hoisted(() => ({
-  mockUnsubscribe: vi.fn(),
-  mockOnSnapshot: vi.fn(),
-  mockSetDoc: vi.fn(),
-  mockDeleteDoc: vi.fn(),
-  mockGetDocs: vi.fn(),
-  mockUpdateDoc: vi.fn(),
-  mockDoc: vi.fn(() => 'mock-doc-ref'),
-  mockCollection: vi.fn(() => 'mock-collection-ref'),
-  mockGetFirestore: vi.fn(() => 'mock-db'),
-}));
+const { mockUnsubscribe, mockOnSnapshot, mockGetDocs, mockDoc, mockCollection, mockGetFirestore } =
+  vi.hoisted(() => ({
+    mockUnsubscribe: vi.fn(),
+    mockOnSnapshot: vi.fn(),
+    mockGetDocs: vi.fn(),
+    mockDoc: vi.fn(() => 'mock-doc-ref'),
+    mockCollection: vi.fn(() => 'mock-collection-ref'),
+    mockGetFirestore: vi.fn(() => 'mock-db'),
+  }));
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
 }));
 
+// The SDK boundary (UT-B3). The write primitives are declared because the module
+// imports them; the writers answer to writerContract.test.ts.
 vi.mock('firebase/firestore', () => ({
   getFirestore: mockGetFirestore,
   collection: mockCollection,
   doc: mockDoc,
   onSnapshot: mockOnSnapshot,
-  setDoc: mockSetDoc,
-  deleteDoc: mockDeleteDoc,
+  setDoc: vi.fn(),
+  deleteDoc: vi.fn(),
   getDocs: mockGetDocs,
-  updateDoc: mockUpdateDoc,
+  updateDoc: vi.fn(),
 }));
 
-import {
-  subscribeShoppingLists,
-  listShoppingLists,
-  createShoppingList,
-  renameShoppingList,
-  deleteShoppingList,
-} from '../src/shoppingListSubscription.js';
+import { subscribeShoppingLists, listShoppingLists } from '../src/shoppingListSubscription.js';
 import type { ShoppingList } from '@salt/domain';
 
-type SnapCallback = (snap: { docs: Array<{ data: () => Record<string, unknown> }> }) => void;
+type SnapDoc = { id: string; data: () => unknown };
+type SnapCallback = (snap: QuerySnapshotDouble) => void;
 type ErrorCallback = (err: Error & { code?: string }) => void;
+
+/**
+ * As much of a `QuerySnapshot` as the parse loop reads — BOTH halves of it.
+ * `subscribeCollection` asks which documents changed (#939) and re-parses only
+ * those, so a double carrying `docs` alone lies about the SDK and fails on
+ * `snap.docChanges is not a function` rather than on any behaviour.
+ */
+interface QuerySnapshotDouble {
+  docs: SnapDoc[];
+  docChanges: () => { type: 'added'; doc: SnapDoc; oldIndex: number; newIndex: number }[];
+}
+
+/** Every document reported as `added` — which is what a real FIRST snapshot says. */
+function firstSnapshot(docs: SnapDoc[]): QuerySnapshotDouble {
+  return {
+    docs,
+    docChanges: () => docs.map((doc, i) => ({ type: 'added', doc, oldIndex: -1, newIndex: i })),
+  };
+}
 
 const LIST_1: ShoppingList = {
   id: 'list-1',
@@ -60,184 +90,81 @@ const LIST_1: ShoppingList = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
-  mockSetDoc.mockResolvedValue(undefined);
-  mockDeleteDoc.mockResolvedValue(undefined);
   mockGetDocs.mockResolvedValue({ docs: [] });
-  mockUpdateDoc.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { onLine: true });
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('subscribeShoppingLists', () => {
-  it('targets the shoppingLists collection', () => {
+  it('delivers each list exactly as it was stored', () => {
+    const delivered: ShoppingList[][] = [];
+    subscribeShoppingLists(
+      (lists) => delivered.push(lists),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+      firstSnapshot([{ id: LIST_1.id, data: () => ({ ...LIST_1 }) }]),
+    );
+
+    expect(delivered).toEqual([[LIST_1]]);
+  });
+
+  it('normalises missing fields to safe defaults rather than skipping the document', () => {
+    const delivered: ShoppingList[][] = [];
+    subscribeShoppingLists(
+      (lists) => delivered.push(lists),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+      firstSnapshot([{ id: 'legacy', data: () => ({}) }]),
+    );
+
+    // Defaults, not a rejection. The parse loop SKIPS an invalid document, so a
+    // schema that refused this one would take a legacy list off the screen
+    // instead of showing it unnamed.
+    expect(delivered).toEqual([
+      [{ id: '', name: '', schemaVersion: 1, createdAt: '', updatedAt: '' }],
+    ]);
+  });
+
+  it('classifies a stream error and forwards the raw one alongside it', () => {
+    const calls: unknown[][] = [];
     subscribeShoppingLists(
       () => {},
-      () => {},
+      (...args) => calls.push(args),
     );
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists');
-  });
 
-  it('returns the unsubscribe function from onSnapshot', () => {
-    const unsub = subscribeShoppingLists(
-      () => {},
-      () => {},
-    );
-    expect(unsub).toBe(mockUnsubscribe);
-  });
-
-  it('calls onLists with mapped lists on snapshot', () => {
-    const onLists = vi.fn();
-    subscribeShoppingLists(onLists, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'list-1',
-            name: 'Weekly Shop',
-            schemaVersion: 1,
-            createdAt: '2026-05-14T10:00:00.000Z',
-            updatedAt: '2026-05-14T10:00:00.000Z',
-          }),
-        },
-      ],
-    });
-
-    expect(onLists).toHaveBeenCalledWith([LIST_1]);
-  });
-
-  it('calls onLists with empty array when collection is empty', () => {
-    const onLists = vi.fn();
-    subscribeShoppingLists(onLists, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({ docs: [] });
-
-    expect(onLists).toHaveBeenCalledWith([]);
-  });
-
-  it('normalises missing fields to safe defaults', () => {
-    const onLists = vi.fn();
-    subscribeShoppingLists(onLists, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({ docs: [{ data: () => ({}) }] });
-
-    const [lists] = onLists.mock.calls[0] as [ShoppingList[]];
-    expect(lists[0]).toEqual({
-      id: '',
-      name: '',
-      schemaVersion: 1,
-      createdAt: '',
-      updatedAt: '',
-    });
-  });
-
-  it('calls onError with classified DomainError on permission-denied', () => {
-    const onError = vi.fn();
-    subscribeShoppingLists(() => {}, onError);
-
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
     const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
-    errCb(raw);
+    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
 
-    // onError forwards the raw error (real stack) alongside the classified kind.
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
+    // TWO arguments — see the header (#928 finding B2-009).
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
   });
 });
 
 describe('listShoppingLists', () => {
-  it('targets the shoppingLists collection', async () => {
-    mockGetDocs.mockResolvedValue({ docs: [] });
-    await listShoppingLists();
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists');
-  });
-
-  it('returns success with mapped lists', async () => {
-    mockGetDocs.mockResolvedValue({
-      docs: [
-        {
-          data: () => ({
-            id: 'list-1',
-            name: 'Weekly Shop',
-            schemaVersion: 1,
-            createdAt: '2026-05-14T10:00:00.000Z',
-            updatedAt: '2026-05-14T10:00:00.000Z',
-          }),
-        },
-      ],
-    });
+  it('reads the shoppingLists collection and returns the mapped lists', async () => {
+    mockGetDocs.mockResolvedValue({ docs: [{ id: LIST_1.id, data: () => ({ ...LIST_1 }) }] });
 
     const result = await listShoppingLists();
+
+    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists');
     expect(result).toEqual({ kind: 'ok', value: [LIST_1] });
   });
 
-  it('returns failure on Firestore error', async () => {
+  it('returns a Failure (never throws) on a Firestore error', async () => {
     mockGetDocs.mockRejectedValue(Object.assign(new Error('err'), { code: 'unauthenticated' }));
+
     const result = await listShoppingLists();
+
     expect(result).toEqual({
       kind: 'err',
       error: { kind: 'AuthError', reason: 'unauthenticated' },
     });
-  });
-});
-
-describe('createShoppingList', () => {
-  it('writes to shoppingLists/{id}', async () => {
-    await createShoppingList(LIST_1);
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1');
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...LIST_1 });
-  });
-
-  it('returns success on write', async () => {
-    const result = await createShoppingList(LIST_1);
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on Firestore error', async () => {
-    mockSetDoc.mockRejectedValue(Object.assign(new Error('err'), { code: 'permission-denied' }));
-    const result = await createShoppingList(LIST_1);
-    expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
-  });
-});
-
-describe('renameShoppingList', () => {
-  it('calls updateDoc on shoppingLists/{id} with name and updatedAt', async () => {
-    await renameShoppingList('list-1', 'Renamed', '2026-05-14T11:00:00.000Z');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1');
-    expect(mockUpdateDoc).toHaveBeenCalledWith('mock-doc-ref', {
-      name: 'Renamed',
-      updatedAt: '2026-05-14T11:00:00.000Z',
-    });
-  });
-
-  it('returns success on update', async () => {
-    const result = await renameShoppingList('list-1', 'Renamed', '2026-05-14T11:00:00.000Z');
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on Firestore error', async () => {
-    mockUpdateDoc.mockRejectedValue(Object.assign(new Error('err'), { code: 'unavailable' }));
-    const result = await renameShoppingList('list-1', 'Renamed', '2026-05-14T11:00:00.000Z');
-    expect(result).toEqual({ kind: 'err', error: { kind: 'NetworkError', reason: 'offline' } });
-  });
-});
-
-describe('deleteShoppingList', () => {
-  it('calls deleteDoc on shoppingLists/{id}', async () => {
-    await deleteShoppingList('list-1');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1');
-    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
-  });
-
-  it('returns success on delete', async () => {
-    const result = await deleteShoppingList('list-1');
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on Firestore error', async () => {
-    mockDeleteDoc.mockRejectedValue(Object.assign(new Error('err'), { code: 'permission-denied' }));
-    const result = await deleteShoppingList('list-1');
-    expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
   });
 });

@@ -1,14 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Shop-day adapter (issue #629). The load-bearing claims: the week read is a
-// RANGE OVER DOC IDS (no field index), the list contract is skip-invalid, and
-// both writes cross the boundary as a Result rather than throwing (Rule 10).
+/**
+ * Shop-day reads (issue #629) — what the two contract nets do not hold (#928, #939).
+ *
+ * `saveShoppingDay` and `deleteShoppingDay` moved to
+ * `tests/writerContract.test.ts`, which pins the date-keyed path and the whole
+ * payload with `toEqual` and the classified `Failure` on three Firestore codes.
+ * The delivered id set, the inclusive range ends, the days either side of it and
+ * the corrupt-document skip moved to the `subscribeShoppingDaysInRange` row of
+ * `tests/subscriptionContract.emulator.test.ts`, which seeds them against a real
+ * emulator. Both are stronger than the mocked versions that used to be here.
+ *
+ * Two claims neither net can make survive:
+ *
+ *   1. THE RANGE IS OVER DOCUMENT IDS, not over the `date` FIELD. This is the
+ *      load-bearing half of #629 — a `documentId()` range needs no index, while
+ *      the field range that reads identically from outside needs one that
+ *      `firestore.indexes.json` does not have. The emulator row cannot tell them
+ *      apart: its fixtures set `date` to the document id, as production does, so
+ *      both queries deliver exactly the same set. The constraint is the only
+ *      place the difference is visible.
+ *   2. THE DELIVERED DOCUMENT. The contract net normalises the row to a list of
+ *      dates; nothing there would notice a projection that dropped `slot` or
+ *      `setBy`.
+ *
+ * Plus the STREAM path and its arity (`forwardsRawError: true` here against
+ * `false` on `subscribeMembers` — #928 finding B2-009), which no emulator row
+ * drives.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   mockUnsubscribe,
   mockOnSnapshot,
-  mockSetDoc,
-  mockDeleteDoc,
   mockDoc,
   mockCollection,
   mockQuery,
@@ -18,8 +40,6 @@ const {
 } = vi.hoisted(() => ({
   mockUnsubscribe: vi.fn(),
   mockOnSnapshot: vi.fn(),
-  mockSetDoc: vi.fn(),
-  mockDeleteDoc: vi.fn(),
   mockDoc: vi.fn(() => 'mock-doc-ref'),
   mockCollection: vi.fn(() => 'mock-collection-ref'),
   mockQuery: vi.fn(() => 'mock-query'),
@@ -32,6 +52,8 @@ vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
 }));
 
+// The SDK boundary (UT-B3). `setDoc`/`deleteDoc` are declared because the module
+// imports them; the writers answer to writerContract.test.ts.
 vi.mock('firebase/firestore', () => ({
   getFirestore: mockGetFirestore,
   collection: mockCollection,
@@ -40,19 +62,35 @@ vi.mock('firebase/firestore', () => ({
   onSnapshot: mockOnSnapshot,
   query: mockQuery,
   where: mockWhere,
-  setDoc: mockSetDoc,
-  deleteDoc: mockDeleteDoc,
+  setDoc: vi.fn(),
+  deleteDoc: vi.fn(),
 }));
 
-import {
-  subscribeShoppingDaysInRange,
-  saveShoppingDay,
-  deleteShoppingDay,
-} from '../src/shoppingDaySync.js';
+import { subscribeShoppingDaysInRange } from '../src/shoppingDaySync.js';
 import type { ShoppingDayDoc } from '@salt/domain/schemas';
 
-type SnapCallback = (snap: { docs: Array<{ id: string; data: () => unknown }> }) => void;
+type SnapDoc = { id: string; data: () => unknown };
+type SnapCallback = (snap: QuerySnapshotDouble) => void;
 type ErrorCallback = (err: Error & { code?: string }) => void;
+
+/**
+ * As much of a `QuerySnapshot` as the parse loop reads — BOTH halves of it.
+ * `subscribeCollection` asks which documents changed (#939) and re-parses only
+ * those, so a double carrying `docs` alone lies about the SDK and fails on
+ * `snap.docChanges is not a function` rather than on any behaviour.
+ */
+interface QuerySnapshotDouble {
+  docs: SnapDoc[];
+  docChanges: () => { type: 'added'; doc: SnapDoc; oldIndex: number; newIndex: number }[];
+}
+
+/** Every document reported as `added` — which is what a real FIRST snapshot says. */
+function firstSnapshot(docs: SnapDoc[]): QuerySnapshotDouble {
+  return {
+    docs,
+    docChanges: () => docs.map((doc, i) => ({ type: 'added', doc, oldIndex: -1, newIndex: i })),
+  };
+}
 
 const DAY: ShoppingDayDoc = {
   date: '2026-08-15',
@@ -62,87 +100,67 @@ const DAY: ShoppingDayDoc = {
   setAt: '2026-08-10T09:00:00.000Z',
 };
 
-function snapDoc(id: string, data: unknown) {
-  return { id, data: () => data };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
-  mockSetDoc.mockResolvedValue(undefined);
-  mockDeleteDoc.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('subscribeShoppingDaysInRange', () => {
   it('ranges over doc ids, so no field index is needed', () => {
-    const unsub = subscribeShoppingDaysInRange(
+    subscribeShoppingDaysInRange(
       '2026-08-10',
       '2026-08-16',
       () => {},
       () => {},
     );
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingDays');
-    expect(mockWhere).toHaveBeenCalledWith('__name__', '>=', '2026-08-10');
-    expect(mockWhere).toHaveBeenCalledWith('__name__', '<=', '2026-08-16');
-    expect(unsub).toBe(mockUnsubscribe);
+
+    // The whole constraint list, in order: exactly two bounds, both inclusive,
+    // both on `documentId()` (which the mock renders as `__name__`). A third
+    // constraint, a strict comparison, or a swap to the `date` field all change
+    // this value — and the last of those is invisible to the emulator row,
+    // because the id and the field carry the same string in production.
+    expect(mockWhere.mock.calls).toEqual([
+      ['__name__', '>=', '2026-08-10'],
+      ['__name__', '<=', '2026-08-16'],
+    ]);
   });
 
-  it('delivers the valid docs in the range', () => {
-    const onDays = vi.fn();
-    subscribeShoppingDaysInRange('2026-08-10', '2026-08-16', onDays, () => {});
-    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({ docs: [snapDoc(DAY.date, DAY)] });
-    expect(onDays).toHaveBeenCalledWith([DAY]);
+  it('delivers each day in the range exactly as it was stored', () => {
+    const delivered: ShoppingDayDoc[][] = [];
+    subscribeShoppingDaysInRange(
+      '2026-08-10',
+      '2026-08-16',
+      (days) => delivered.push(days),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
+      firstSnapshot([{ id: DAY.date, data: () => DAY }]),
+    );
+
+    // Whole-object equality: the emulator row compares dates, so a projection
+    // that dropped `slot` or `setBy` would be invisible to it.
+    expect(delivered).toEqual([[DAY]]);
   });
 
-  it('skips an invalid doc and still returns the valid subset', () => {
-    // List-read contract: one corrupt doc must not blank the planner week.
-    const onDays = vi.fn();
-    const onError = vi.fn();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    subscribeShoppingDaysInRange('2026-08-10', '2026-08-16', onDays, onError);
-    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
-      docs: [snapDoc('bad', { date: 'whenever', slot: 'noon' }), snapDoc(DAY.date, DAY)],
-    });
-    expect(onDays).toHaveBeenCalledWith([DAY]);
-    expect(onError).not.toHaveBeenCalled();
-  });
+  it('classifies a stream error and forwards the raw one alongside it', () => {
+    const calls: unknown[][] = [];
+    subscribeShoppingDaysInRange(
+      '2026-08-10',
+      '2026-08-16',
+      () => {},
+      (...args) => calls.push(args),
+    );
 
-  it('surfaces a stream-level error as a classified DomainError', () => {
-    const onError = vi.fn();
-    subscribeShoppingDaysInRange('2026-08-10', '2026-08-16', () => {}, onError);
     const err = Object.assign(new Error('nope'), { code: 'permission-denied' });
     (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(err);
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, err);
-  });
-});
 
-describe('saveShoppingDay', () => {
-  it('keys the doc by the date', async () => {
-    const result = await saveShoppingDay(DAY);
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingDays', '2026-08-15');
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...DAY });
-    expect(result.kind).toBe('ok');
-  });
-
-  it('returns a Failure rather than throwing', async () => {
-    mockSetDoc.mockRejectedValue(Object.assign(new Error('nope'), { code: 'unavailable' }));
-    const result = await saveShoppingDay(DAY);
-    expect(result.kind).toBe('err');
-  });
-});
-
-describe('deleteShoppingDay', () => {
-  it('deletes the date-keyed doc', async () => {
-    const result = await deleteShoppingDay('2026-08-15');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingDays', '2026-08-15');
-    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
-    expect(result.kind).toBe('ok');
-  });
-
-  it('returns a Failure rather than throwing', async () => {
-    mockDeleteDoc.mockRejectedValue(Object.assign(new Error('nope'), { code: 'unavailable' }));
-    const result = await deleteShoppingDay('2026-08-15');
-    expect(result.kind).toBe('err');
+    // TWO arguments — see the header (#928 finding B2-009).
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, err]]);
   });
 });

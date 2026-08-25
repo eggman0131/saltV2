@@ -1,10 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
-// Retention (issue #696). A chat attached to a recipe has the same lifetime as
-// the recipe, so it is written with a far-future `expiresAt` and the per-project
-// TTL policy — which stays exactly as configured — never sweeps it. General
-// kitchen chats keep tidying themselves away after a fortnight.
+// Retention (issues #696, #939). Every chat is written with a finite `expiresAt`
+// and the length is the whole of the policy: a fortnight for a general kitchen
+// chat, eighteen months for one attached to a recipe. The longer window is #696 —
+// the recipe page lists every conversation about a dish, and a fortnightly sweep
+// would empty that list for the recipes you have lived with longest — sized in
+// #939 to survive a dish cooked once a year.
+//
+// What #939 removed was the `9999-12-31` sentinel that window replaced. A chat
+// claims its recipe as soon as it produces one, so "never" was the majority case
+// and the collection had no bound at all. THE ASSERTION BELOW IS THAT THE WINDOW
+// IS FINITE as much as that it is long: a test that only checked "later than a
+// fortnight" would pass on the sentinel again.
+//
+// None of this is enforced yet — `expiresAt` is an ISO string and a Firestore TTL
+// policy only acts on a `Timestamp`. See the constants in the source.
 
 const { mockSetDoc, mockDoc, mockGetFirestore } = vi.hoisted(() => ({
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
@@ -28,7 +39,9 @@ vi.mock('firebase/firestore', () => ({
 
 import { saveChatSession } from '../src/chatSessionSubscription.js';
 
-const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * DAY_MS;
+const EIGHTEEN_MONTHS_MS = 540 * DAY_MS;
 
 function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
   return {
@@ -54,29 +67,30 @@ beforeEach(() => {
   mockSetDoc.mockResolvedValue(undefined);
 });
 
+// The two windows, and the fact that each is bounded at BOTH ends. The upper
+// bound is what the sentinel would fail (UT-D1: one table, two rows, each naming
+// itself).
+const WINDOWS = [
+  { name: 'a general kitchen chat', recipeId: null, ttlMs: FOURTEEN_DAYS_MS },
+  { name: 'a chat attached to a recipe', recipeId: 'recipe-1', ttlMs: EIGHTEEN_MONTHS_MS },
+] as const;
+
 describe('saveChatSession — expiry', () => {
-  it('keeps a recipe-attached chat for good', async () => {
-    const result = await saveChatSession(makeSession({ recipeId: 'recipe-1' }));
-
-    expect(result.kind).toBe('ok');
-    // Far enough away that no plausible sweep reaches it, and a value a human
-    // reading the document recognises as "never" rather than as a date.
-    expect(new Date(writtenDoc().expiresAt).getUTCFullYear()).toBe(9999);
-  });
-
-  it('still sweeps a general chat after a fortnight', async () => {
+  it.each(WINDOWS)('$name expires $ttlMs ms from the write', async ({ recipeId, ttlMs }) => {
     const before = Date.now();
-    await saveChatSession(makeSession({ recipeId: null }));
+    const result = await saveChatSession(makeSession({ recipeId }));
     const after = Date.now();
 
+    expect(result.kind).toBe('ok');
     const expiry = new Date(writtenDoc().expiresAt).getTime();
-    expect(expiry).toBeGreaterThanOrEqual(before + FOURTEEN_DAYS_MS);
-    expect(expiry).toBeLessThanOrEqual(after + FOURTEEN_DAYS_MS);
+    expect(expiry).toBeGreaterThanOrEqual(before + ttlMs);
+    expect(expiry).toBeLessThanOrEqual(after + ttlMs);
   });
 
   it('overwrites whatever expiry the caller passed in', async () => {
     // The caller's `expiresAt` is never authoritative — the adapter owns it, which
-    // is what lets a general chat that later claims a recipe stop expiring.
+    // is what moves a general chat onto the eighteen-month window the moment it
+    // claims a recipe, whatever expiry the document it was read from carried.
     await saveChatSession(
       makeSession({ recipeId: 'recipe-1', expiresAt: '2026-01-02T00:00:00.000Z' }),
     );

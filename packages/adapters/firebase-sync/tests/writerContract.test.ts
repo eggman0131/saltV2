@@ -68,6 +68,9 @@
  * asserts the recorded ops with `toEqual`, never membership. `doc()` is mocked
  * to return its path segments joined, so one assertion covers the primitive
  * (set vs update vs delete), the target document, and the payload at once.
+ * `writeBatch`/`commit` record themselves in that same log, so the assertion
+ * also covers whether the writes went out atomically — see the recorder below
+ * for why the writes on their own could not say.
  *
  * That is what makes the table catch the transforms, which are the parts of
  * these writers that are not boilerplate and the parts a consolidation would
@@ -117,10 +120,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // One shared log of every Firestore write the module under test issues, and one
 // switch that makes the next write reject. `doc()` returns its segments joined,
 // so an op's `path` IS the document the write landed on.
+//
+// It records the BATCH PRIMITIVE as well as the writes, because the writes alone
+// cannot tell you which primitive produced them: `batch.set(p, d)` and a bare
+// `setDoc(p, d)` land the same `{op:'set', path, data}` in this log, and
+// `commit()` is where the rejection is thrown rather than where a write is
+// recorded. Two writers — `deleteShoppingListItems` and `moveShoppingListItems`,
+// the only two in `src/` that call `writeBatch` — depend on atomicity for their
+// correctness (a half-applied move is a duplicate on one list and a hole in the
+// other), and without these markers rewriting either as a loop of standalone
+// `deleteDoc`/`setDoc` calls left this whole file green. So `writeBatch()` logs
+// `{op:'batch'}` and a successful `commit()` logs `{op:'commit'}`, uniformly for
+// every writer: one batch, its writes between the pair, one commit. Two batches
+// where there should be one, or none where there should be one, now reads off
+// the `toEqual` directly.
 
 interface WriteOp {
-  op: 'set' | 'update' | 'delete';
-  path: string;
+  op: 'set' | 'update' | 'delete' | 'batch' | 'commit';
+  /** Absent on `batch`/`commit`: the primitive targets no single document. */
+  path?: string;
   data?: unknown;
   options?: unknown;
 }
@@ -152,13 +170,19 @@ const h = vi.hoisted(() => {
       refuse();
       ops.push({ op: 'delete', path });
     }),
-    writeBatch: vi.fn(() => ({
-      set: (path: string, data: unknown) => ops.push({ op: 'set', path, data }),
-      delete: (path: string) => ops.push({ op: 'delete', path }),
-      commit: vi.fn(async () => {
-        refuse();
-      }),
-    })),
+    writeBatch: vi.fn(() => {
+      ops.push({ op: 'batch' });
+      return {
+        set: (path: string, data: unknown) => ops.push({ op: 'set', path, data }),
+        delete: (path: string) => ops.push({ op: 'delete', path }),
+        // `refuse()` first: a commit that rejected applied nothing, so it must
+        // not leave a `commit` in the log.
+        commit: vi.fn(async () => {
+          refuse();
+          ops.push({ op: 'commit' });
+        }),
+      };
+    }),
     // A field transform is a sentinel object in the payload, so the ops
     // assertion sees `increment(2)` as a value and a writer that stopped using
     // one goes red (#726 — a read-modify-write would silently lose ticks).
@@ -206,8 +230,12 @@ import { AI_MODEL_DEFAULTS, type AppSettings } from '@salt/domain/schemas';
 // assertions below name the exact value rather than a wildcard.
 const NOW = '2026-08-24T09:00:00.000Z';
 const NOW_MS = Date.parse(NOW);
-const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
-const NEVER_EXPIRES = '9999-12-31T23:59:59.999Z';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * DAY_MS;
+// Eighteen months, the window a recipe-attached chat gets since #939. It replaced
+// a `9999-12-31` sentinel: the reason a chat about a dish outlives a general one
+// is unchanged, but "longer" and "never" are not the same claim.
+const EIGHTEEN_MONTHS_MS = 540 * DAY_MS;
 
 const AISLE: Aisle = { id: 'a-1', name: 'Dairy', order: 0 };
 const RECIPE = emptyRecipe('r-1', NOW);
@@ -642,10 +670,14 @@ const writerCases: WriterCase[] = [
   {
     name: 'deleteShoppingListItems',
     run: () => barrel.deleteShoppingListItems('list-1', ['item-1', 'item-2']),
-    // One batched commit, not two round trips.
+    // One batched commit, not two round trips — and the `batch`/`commit` pair
+    // is what says so. Without them the same two deletes are recorded by two
+    // standalone `deleteDoc` calls.
     ops: [
+      { op: 'batch' },
       { op: 'delete', path: 'shoppingLists/list-1/items/item-1' },
       { op: 'delete', path: 'shoppingLists/list-1/items/item-2' },
+      { op: 'commit' },
     ],
     onSuccess: 'success(undefined)',
     onFailure: 'failure',
@@ -654,13 +686,16 @@ const writerCases: WriterCase[] = [
   {
     name: 'moveShoppingListItems',
     run: () => barrel.moveShoppingListItems('list-1', 'list-2', [LIST_ITEM, LIST_ITEM_2]),
-    // Delete-then-set per item, all in one batch: a move is atomic or it is a
-    // duplicate on one list and a hole in the other.
+    // Delete-then-set per item, all in ONE batch — a single `batch`/`commit`
+    // pair around all four writes: a move is atomic or it is a duplicate on one
+    // list and a hole in the other. A batch per item would read as four pairs.
     ops: [
+      { op: 'batch' },
       { op: 'delete', path: 'shoppingLists/list-1/items/item-1' },
       { op: 'set', path: 'shoppingLists/list-2/items/item-1', data: LIST_ITEM },
       { op: 'delete', path: 'shoppingLists/list-1/items/item-2' },
       { op: 'set', path: 'shoppingLists/list-2/items/item-2', data: LIST_ITEM_2 },
+      { op: 'commit' },
     ],
     onSuccess: 'success(undefined)',
     onFailure: 'failure',
@@ -697,7 +732,7 @@ const writerCases: WriterCase[] = [
   {
     name: 'saveChatSession',
     // recipeId null → the ordinary 14-day TTL branch (#696). The recipe-attached
-    // branch, which must never expire, has its own test below.
+    // branch, which gets a longer window rather than none, has its own test below.
     run: () => barrel.saveChatSession(CHAT_SESSION),
     ops: [
       {
@@ -1043,7 +1078,11 @@ describe('writer contract — table coverage', () => {
 
   it('every row issues at least one write', () => {
     for (const c of writerCases) {
-      expect(c.ops.length, `${c.name} declares no write`).toBeGreaterThan(0);
+      // Counted on `path`, so a row made of nothing but `batch`/`commit`
+      // markers cannot satisfy this vacuously — a batch that touches no
+      // document is not a write.
+      const writes = c.ops.filter((o) => o.path !== undefined);
+      expect(writes.length, `${c.name} declares no write`).toBeGreaterThan(0);
     }
   });
 
@@ -1092,7 +1131,7 @@ describe('writer contract — table coverage', () => {
 // ─── The rows ───────────────────────────────────────────────────────────────
 
 describe.each(writerCases)('$name', (c) => {
-  it(`writes ${JSON.stringify(c.ops.map((o) => `${o.op} ${o.path}`))} and resolves to ${c.onSuccess}`, async () => {
+  it(`writes ${JSON.stringify(c.ops.map((o) => (o.path === undefined ? o.op : `${o.op} ${o.path}`)))} and resolves to ${c.onSuccess}`, async () => {
     const result = await c.run();
 
     expect(h.ops).toEqual(c.ops);
@@ -1153,7 +1192,7 @@ describe.each(writerCases)('$name', (c) => {
 });
 
 // ─── The transforms a single row cannot hold ────────────────────────────────
-// Two writers branch on their input. Each row above takes one branch; these
+// Some writers branch on their input, and a row can only take one branch. These
 // take the other, so neither is left to a wildcard.
 
 describe('saveShoppingListItem — the trace stamp (#362)', () => {
@@ -1176,17 +1215,36 @@ describe('saveShoppingListItem — the trace stamp (#362)', () => {
   });
 });
 
-describe('saveChatSession — the expiry stamp (#696)', () => {
-  it('a recipe-attached chat is written so it never expires', async () => {
+describe('saveChatSession — the expiry stamp (#696, #939)', () => {
+  it('a recipe-attached chat is written to last eighteen months, not for ever', async () => {
     await barrel.saveChatSession({ ...CHAT_SESSION, recipeId: 'r-1' });
 
     expect(h.ops).toEqual([
       {
         op: 'set',
         path: 'chatSessions/chat-1',
-        data: { ...CHAT_SESSION, recipeId: 'r-1', expiresAt: NEVER_EXPIRES },
+        data: {
+          ...CHAT_SESSION,
+          recipeId: 'r-1',
+          expiresAt: new Date(NOW_MS + EIGHTEEN_MONTHS_MS).toISOString(),
+        },
       },
     ]);
+  });
+});
+
+describe('deleteShoppingListItems — the empty selection', () => {
+  // Migrated from shoppingListItemSubscription.test.ts when #928's replacement
+  // of that file was completed (#939). The row above deletes two items; this is
+  // the other branch of the same loop, and it is the one the shopping page hits
+  // whenever "clear checked" is pressed with nothing checked.
+  it('commits an empty batch and still succeeds when no items were selected', async () => {
+    const result = await barrel.deleteShoppingListItems('list-1', []);
+
+    // A batch opened and committed with nothing between it: the writer does not
+    // short-circuit on an empty selection, and Firestore is content with that.
+    expect(h.ops).toEqual([{ op: 'batch' }, { op: 'commit' }]);
+    expect(result).toEqual({ kind: 'ok', value: undefined });
   });
 });
 
