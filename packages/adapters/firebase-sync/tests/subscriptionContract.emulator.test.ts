@@ -207,8 +207,32 @@ import { subscribeWeatherForecast } from '../src/weatherSync.js';
 // `beforeEach` (#319/#122) — but do not read that as this file's flake defence,
 // because it measurably is not. Per-block and per-test shapes both hit
 // #122 about once a run, so the number of client rebuilds is not what drives it.
-// What drives it is one specific write pattern, and the note on the
-// corrupt-document row below records the measurement and the fix.
+// The note on the corrupt-document row below records one write pattern that
+// reproduced it on demand, and removing that pattern was worth doing — but it is
+// NOT the whole cause, and the row's claim that it is has now been falsified.
+//
+// CI run 32845375930 hit #122 on `'subscribeBatch' (document) > delivers the
+// document after it is written` — a row that issues ONE write under an attached
+// listener, the shape the corrupt row was rewritten INTO. So the back-to-back
+// pair is a trigger, not the trigger.
+//
+// What that run did settle is what the error is. gRPC reported
+// `RESOURCE_EXHAUSTED: Received message larger than max (1650553701 vs
+// 17825792)`, and 1650553701 is 0x62617365 — the four ASCII bytes `base`. The
+// client is not being sent a 1.65 GB message; it is reading a length prefix out
+// of the middle of a payload string (`…/databases/…`), which is a FRAMING
+// DESYNC in the message deframer, downstream of anything this suite writes. That
+// also explains the silence: Firestore treats `resource-exhausted` as retryable,
+// so it goes to maximum backoff (60 s) rather than surfacing on `onError`, and
+// the row simply stops receiving inside its 15 s budget with nothing reported.
+//
+// Diagnose there. Two facts bound the search: the SDK's node build always uses
+// `GrpcConnection` (`newConnection` has no long-polling branch at all), so no
+// `experimentalForceLongPolling` setting can move this; and 12 consecutive full
+// runs against an emulator on plain loopback did not reproduce it once, while CI
+// reaches the emulator through docker's userspace port proxy — an extra hop that
+// re-segments the stream. `grpcFlowControlWindow` (Firestore settings, node
+// only, default 256 KB) is the one knob that reaches the deframer.
 //
 // This suite has NO retries and must not gain any (see vitest.emulator.config.ts
 // and docs/unit-test-spec.md UT-G3). If it flakes, the fix is here or in the

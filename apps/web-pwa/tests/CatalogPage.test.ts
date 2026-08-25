@@ -337,6 +337,40 @@ describe('CatalogPage — approving', () => {
     });
     expect(vi.mocked(approveCanonItems)).toHaveBeenCalledWith(['lemon']);
   });
+
+  // Both halves of the act commit after the undo window lapses, and since #931
+  // either half can come back as a `Failure` rather than throwing. The page owes
+  // the person ONE message for the act they performed, whichever half refused —
+  // which half it was is not a distinction they can act on.
+  it('says the approval was not recorded when the canon write is refused', async () => {
+    vi.mocked(approveCanonItems).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+    renderCatalog();
+    await fireEvent.click(await screen.findByTestId('catalog-filter-needs-review'));
+    await fireEvent.click(screen.getByTestId('catalog-row-approve'));
+
+    lastToast().opts?.onDismiss?.();
+
+    await waitFor(() => expect(lastToast().message).toBe('Failed to record some approvals.'));
+    expect(lastToast().variant).toBe('destructive');
+  });
+
+  it('says the approval was not recorded when a form write is refused', async () => {
+    vi.mocked(confirmProductForm).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+    renderCatalog();
+    await fireEvent.click(await screen.findByTestId('catalog-filter-needs-review'));
+    await fireEvent.click(screen.getByTestId('catalog-row-approve'));
+
+    lastToast().opts?.onDismiss?.();
+
+    await waitFor(() => expect(lastToast().message).toBe('Failed to record some approvals.'));
+    expect(lastToast().variant).toBe('destructive');
+  });
 });
 
 describe('CatalogPage — deleting', () => {
