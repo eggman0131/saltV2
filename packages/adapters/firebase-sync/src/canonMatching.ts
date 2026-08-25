@@ -3,6 +3,7 @@ import type { MatchOrCreateInput, MatchOrCreateResult } from '@salt/domain';
 import type { CanonicaliseRecipeIngredientsInput } from '@salt/domain/schemas';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // The CF returns the Result envelope from matchOrCreate verbatim; the client
 // just forwards it. Transport-level failures (auth, network) become a fresh
@@ -24,7 +25,7 @@ export async function callMatchOrCreate(
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   try {
     const fn = httpsCallable<MatchOrCreateInput & { traceparent?: string }, WireResult>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'matchOrCreateCanon',
     );
     const res = await fn(traceparent ? { ...input, traceparent } : input);
@@ -44,7 +45,7 @@ export async function callCanonicaliseRecipeIngredients(
     const fn = httpsCallable<
       CanonicaliseRecipeIngredientsInput & { traceparent?: string },
       WireBatchResult
-    >(getFunctions(undefined, 'europe-west2'), 'canonicaliseRecipeIngredients');
+    >(getFunctions(undefined, FUNCTIONS_REGION), 'canonicaliseRecipeIngredients');
     const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
@@ -62,7 +63,7 @@ export async function callRegenerateCanonIcon(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<{ canonId: string; hint?: string }, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'regenerateCanonIcon',
     );
     await fn(hint && hint.trim() ? { canonId, hint: hint.trim() } : { canonId });

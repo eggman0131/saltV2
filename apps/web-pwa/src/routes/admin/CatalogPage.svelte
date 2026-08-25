@@ -236,7 +236,7 @@
         if (form) forms.push(form);
       }
     }
-    await approveCanonItems(canonIds);
+    const approved = await approveCanonItems(canonIds);
     const results = await Promise.all(
       forms.map((f) =>
         confirmProductForm(f, {
@@ -248,8 +248,11 @@
         }),
       ),
     );
-    if (results.some((r) => r.kind !== 'ok')) {
-      addToast('Failed to confirm some forms.', 'destructive');
+    // One message for both halves: the act the person performed was "approve
+    // these records", and which half of it failed to reach Firestore is not a
+    // distinction they can act on.
+    if (approved.kind !== 'ok' || results.some((r) => r.kind !== 'ok')) {
+      addToast('Failed to record some approvals.', 'destructive');
     }
   }
 

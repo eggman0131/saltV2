@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { GenerateGuidedPlanInput, GenerateGuidedPlanOutput } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // generateGuidedPlan (issue #751, Phase 1). Sends only the recipe ID — the flow
 // reads the recipe server-side via the Admin SDK — and receives the AUTHORED
@@ -20,7 +21,7 @@ export async function callGenerateGuidedPlan(
 ): Promise<ReadResult<GenerateGuidedPlanOutput, DomainError>> {
   try {
     const fn = httpsCallable<GenerateGuidedPlanInput, GenerateGuidedPlanOutput>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'generateGuidedPlan',
     );
     const res = await fn(input);

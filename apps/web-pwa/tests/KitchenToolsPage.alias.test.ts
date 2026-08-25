@@ -51,7 +51,7 @@ vi.mock('@salt/firebase-sync', () => ({
     toolSink.push = onTools;
     return () => {};
   }),
-  upsertKitchenTool: vi.fn(async () => undefined),
+  upsertKitchenTool: vi.fn(async () => ({ kind: 'ok' as const, value: undefined })),
   deleteKitchenTool: vi.fn(async () => ({ kind: 'ok', value: undefined })),
 }));
 

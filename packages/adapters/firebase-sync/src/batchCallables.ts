@@ -6,6 +6,7 @@ import {
   type ProposeScheduleOutput,
 } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // proposeSchedule (issue #812, phase 2 of epic #778). Sends the recipe id, the time
 // the bake must be finished by, and the household's quiet hours — the flow reads
@@ -37,7 +38,7 @@ export async function callProposeSchedule(
 ): Promise<ReadResult<ProposeScheduleOutput, DomainError>> {
   try {
     const fn = httpsCallable<ProposeScheduleInput, ProposeScheduleOutput>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'proposeSchedule',
       { timeout: PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS },
     );

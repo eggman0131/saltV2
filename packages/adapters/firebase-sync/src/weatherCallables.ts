@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { WeatherForecast } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Browser → refreshWeatherForecast callable wrapper (issue #382, Phase 2).
 // CLAUDE.md Rule 2: the Firebase SDK is only touched here. web-pwa consumes this
@@ -36,7 +37,7 @@ export async function callRefreshWeatherForecast(
     const fn = httpsCallable<
       { force: boolean; traceparent?: string },
       RefreshWeatherForecastResult
-    >(getFunctions(undefined, 'europe-west2'), 'refreshWeatherForecast');
+    >(getFunctions(undefined, FUNCTIONS_REGION), 'refreshWeatherForecast');
     // Only attach `traceparent` when present so old-shape calls stay byte-for-byte
     // identical to Phase 2 (the wire field is optional on the schema).
     const res = await fn(traceparent ? { force, traceparent } : { force });

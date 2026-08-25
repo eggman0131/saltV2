@@ -1,5 +1,3 @@
-import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
-import { getApp } from 'firebase/app';
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure, ErrorCode } from '@salt/shared-types';
@@ -11,8 +9,9 @@ import {
   type DescribeEquipmentSubjectInput,
   type DescribeEquipmentSubjectOutput,
 } from '@salt/domain/schemas';
-import { classifyFirestoreError } from './firestoreErrors.js';
 import { classifyCallableError } from './callableErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Equipment pictograms (issue #877) — the read side of the server-owned
 // `equipmentIcons` collection, plus the one callable that writes it.
@@ -39,22 +38,18 @@ export function subscribeEquipmentIcons(
   onIcons: (icons: Map<string, EquipmentIconDoc>) => void,
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, EQUIPMENT_ICONS_COLLECTION),
-    (snap) => {
-      const byItemId = new Map<string, EquipmentIconDoc>();
-      for (const d of snap.docs) {
-        const result = EquipmentIconSchema.safeParse(d.data());
-        if (result.success) {
-          byItemId.set(d.id, result.data);
-        } else {
-          console.error(`[EquipmentIconSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onIcons(byItemId);
+  return subscribeCollection(
+    {
+      path: [EQUIPMENT_ICONS_COLLECTION],
+      schema: EquipmentIconSchema,
+      label: 'EquipmentIconSchema',
+      // Keyed by the DOCUMENT id — the equipment item it belongs to, which the
+      // icon document itself does not carry as a field.
+      project: (icon, id): [string, EquipmentIconDoc] => [id, icon],
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    (entries) => onIcons(new Map(entries)),
+    onError,
   );
 }
 
@@ -74,7 +69,7 @@ export async function callDrawEquipmentIcon(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<DrawEquipmentIconInput, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'drawEquipmentIcon',
     );
     await fn(input);
@@ -118,7 +113,7 @@ export async function callDescribeEquipmentSubject(
 ): Promise<ReadResult<string, DomainError>> {
   try {
     const fn = httpsCallable<DescribeEquipmentSubjectInput, DescribeEquipmentSubjectOutput>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'describeEquipmentSubject',
     );
     const res = await fn(input);

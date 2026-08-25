@@ -336,8 +336,19 @@ This document defines the repeatable pattern for domain modules:
 - adapters implementing infrastructure ports
 - UI calling domain, not infrastructure
 
-Canon is the worked example. The same pattern applies to recipe, shopping,
-members, mealPlan, and productForm.
+Canon is the worked example, and what generalises from it is the **boundary
+discipline**, not the folder tree: §3's boundary rule and §7's derived rules hold for
+every module, with the module's own `index.ts` as its only cross-module surface. The
+**shape varies** — canon's `entities/ports/commands/queries` is its full form, not a
+floor, and most modules carry fewer of those subfolders or none at all; the lightweight
+variants written up below are what that looks like in practice.
+
+The list of modules is the `packages/domain/src/` directory listing itself, minus the
+three names the boundary lint excludes — `schemas/`, `coordinators/` and
+`__boundary_tests__/` — which is where that lint derives its own rules from rather than
+from a hand-maintained copy (issue #914). The write-ups below cover the modules whose
+shape needed explaining; a module with no entry here is not an exception, only
+unremarkable.
 
 The `weather` module is a lightweight variant — pure classification utilities
 (`weatherIcon`, `classifyEatingMood`, `temperatureBand`, `weatherSeverity`,
@@ -394,8 +405,8 @@ already in hand and free to tidy. Flat structure, no `entities/`, `ports/`,
 read internally (CLAUDE.md Rule 1): `endsAt` and `nowMs` are both injected by
 the caller.
 
-The `personalView` module — the projections behind "Kitchen" — is a lightweight
-variant like the three above, and its history is the useful lesson here, because
+The `personalView` module — the projections behind "Kitchen" — is another
+lightweight variant, and its history is the useful lesson here, because
 it has been **deleted and re-created**, and both moves were right.
 
 It began as four projections behind "Mine" (#634); #682 cut the page back to
@@ -444,7 +455,7 @@ cooking it — filtering by chef would blank the screen on exactly the
 evenings someone else has it covered. Same date-key and first-week-wins
 rules as `upcomingChefDays`, for the same reasons.
 
-The `memory` module is a lightweight variant like the four above: one file,
+The `memory` module is a lightweight variant in the same mould: one file,
 `parseChatCommand`, which reads a chat composer line as the app's one chat
 command — `/remember <text>` — by string comparison, not a classifier, so
 capture is free, instant and costs no model call. No `entities/`, `ports/`,

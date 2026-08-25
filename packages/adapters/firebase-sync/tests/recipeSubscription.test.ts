@@ -1,52 +1,95 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/**
+ * The recipe module's reads — what the two contract nets do not hold (#928, #939).
+ *
+ * Gone from this file, because they are held harder elsewhere:
+ *   • the collection target, the unsubscribe, the delivered id set and the
+ *     corrupt-document skip — `tests/subscriptionContract.emulator.test.ts`,
+ *     the `subscribeRecipes` row, against a real emulator;
+ *   • `saveRecipe` / `deleteRecipe` — `tests/writerContract.test.ts`, which pins
+ *     the exact op, path and payload and the classified `Failure` on three
+ *     Firestore codes.
+ *
+ * What is left is what neither net can see:
+ *
+ *   1. THE DELIVERED DOCUMENT. The contract net normalises every collection row
+ *      to a list of ids (its own `projection` field says so: a per-document
+ *      transform is invisible to it, and only canon declares one). Its recipe
+ *      fixture is deliberately minimal — empty `ingredients`, empty `steps` — so
+ *      nothing there would notice a parse that dropped the nested quantity union
+ *      off a real recipe. The fixture below is a populated one and the assertion
+ *      is whole-object equality.
+ *   2. THE STREAM PATH, and that it forwards the RAW error alongside the
+ *      classified one. `forwardsRawError: true` here, against `false` on
+ *      `subscribeMembers` (#928 finding B2-009) — an asymmetry no emulator row
+ *      exercises, because provoking a stream error would mean revoking a rule
+ *      mid-listen.
+ *   3. `loadRecipe`, a one-shot `getDoc`. `writerContract.test.ts` classifies it
+ *      as a `'read'` and covers no reads; the subscription net covers no
+ *      one-shots. The single-document read contract — `null` for absent,
+ *      `StorageError`/`corruption` for a document that fails its schema — lives
+ *      only here.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const {
-  mockUnsubscribe,
-  mockOnSnapshot,
-  mockSetDoc,
-  mockDeleteDoc,
-  mockGetDoc,
-  mockDoc,
-  mockCollection,
-  mockGetFirestore,
-} = vi.hoisted(() => ({
-  mockUnsubscribe: vi.fn(),
-  mockOnSnapshot: vi.fn(),
-  mockSetDoc: vi.fn(),
-  mockDeleteDoc: vi.fn(),
-  mockGetDoc: vi.fn(),
-  mockDoc: vi.fn(() => 'mock-doc-ref'),
-  mockCollection: vi.fn(() => 'mock-collection-ref'),
-  mockGetFirestore: vi.fn(() => 'mock-db'),
-}));
+const { mockUnsubscribe, mockOnSnapshot, mockGetDoc, mockDoc, mockCollection, mockGetFirestore } =
+  vi.hoisted(() => ({
+    mockUnsubscribe: vi.fn(),
+    mockOnSnapshot: vi.fn(),
+    mockGetDoc: vi.fn(),
+    mockDoc: vi.fn(() => 'mock-doc-ref'),
+    mockCollection: vi.fn(() => 'mock-collection-ref'),
+    mockGetFirestore: vi.fn(() => 'mock-db'),
+  }));
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
 }));
 
+// The SDK boundary (UT-B3). `setDoc`/`deleteDoc` are declared because the module
+// imports them; the writers answer to writerContract.test.ts.
 vi.mock('firebase/firestore', () => ({
   getFirestore: mockGetFirestore,
   collection: mockCollection,
   doc: mockDoc,
   onSnapshot: mockOnSnapshot,
-  setDoc: mockSetDoc,
-  deleteDoc: mockDeleteDoc,
+  setDoc: vi.fn(),
+  deleteDoc: vi.fn(),
   getDoc: mockGetDoc,
 }));
 
-import {
-  subscribeRecipes,
-  loadRecipe,
-  saveRecipe,
-  deleteRecipe,
-} from '../src/recipeSubscription.js';
+import { subscribeRecipes, loadRecipe } from '../src/recipeSubscription.js';
 import type { Recipe } from '@salt/domain';
 import { emptyRecipe } from '@salt/domain';
 
 type SnapDoc = { id: string; data: () => unknown };
-type CollectionCallback = (snap: { docs: SnapDoc[] }) => void;
+type CollectionCallback = (snap: QuerySnapshotDouble) => void;
 type ErrorCallback = (err: Error & { code?: string }) => void;
 
+/**
+ * As much of a `QuerySnapshot` as the parse loop reads — BOTH halves of it.
+ *
+ * `subscribeCollection` asks a snapshot which documents actually changed (#939)
+ * and re-parses only those, so a double carrying `docs` alone is a double that
+ * lies about the SDK: the code under test can no longer tell a first snapshot
+ * from an update, and every test built on it dies on
+ * `snap.docChanges is not a function` — an error about the fixture wearing the
+ * costume of a behaviour failure (UT-H1).
+ */
+interface QuerySnapshotDouble {
+  docs: SnapDoc[];
+  docChanges: () => { type: 'added'; doc: SnapDoc; oldIndex: number; newIndex: number }[];
+}
+
+/** Every document reported as `added` — which is what a real FIRST snapshot says. */
+function firstSnapshot(docs: SnapDoc[]): QuerySnapshotDouble {
+  return {
+    docs,
+    docChanges: () => docs.map((doc, i) => ({ type: 'added', doc, oldIndex: -1, newIndex: i })),
+  };
+}
+
+// A recipe with the nested shapes a minimal fixture cannot exercise: an
+// ingredient group, a parsed quantity union, and a display string.
 const RECIPE: Recipe = {
   ...emptyRecipe('recipe-1', '2026-06-11T10:00:00.000Z'),
   title: 'Round-trip Recipe',
@@ -80,44 +123,42 @@ const RECIPE: Recipe = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
-  mockSetDoc.mockResolvedValue(undefined);
-  mockDeleteDoc.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { onLine: true });
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('subscribeRecipes', () => {
-  it('targets the recipes collection and returns the unsubscribe', () => {
-    const unsub = subscribeRecipes(
-      () => {},
-      () => {},
-    );
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'recipes');
-    expect(unsub).toBe(mockUnsubscribe);
-  });
-
-  it('maps valid docs and skips+logs invalid ones (list-read contract)', () => {
+  it('delivers a fully-populated recipe exactly as it was stored', () => {
     const onRecipes = vi.fn();
     subscribeRecipes(onRecipes, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as CollectionCallback)({
-      docs: [
-        { id: 'recipe-1', data: () => RECIPE },
-        { id: 'bad', data: () => ({ id: 'bad', schemaVersion: 1 }) },
-      ],
-    });
+
+    (mockOnSnapshot.mock.calls[0][1] as CollectionCallback)(
+      firstSnapshot([{ id: 'recipe-1', data: () => RECIPE }]),
+    );
+
+    // Whole-object equality: the emulator row sees ids only, so a parse that
+    // dropped `parsed.quantity` or flattened a group would be invisible to it.
     const [received] = onRecipes.mock.calls[0] as [Recipe[]];
-    expect(received).toHaveLength(1);
-    expect(received[0]).toEqual(RECIPE);
-    expect(console.error).toHaveBeenCalled();
+    expect(received).toEqual([RECIPE]);
   });
 
-  it('classifies stream-level errors', () => {
-    const onError = vi.fn();
-    subscribeRecipes(() => {}, onError);
+  it('classifies a stream error and forwards the raw one alongside it', () => {
+    const calls: unknown[][] = [];
+    subscribeRecipes(
+      () => {},
+      (...args) => calls.push(args),
+    );
+
     const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
     (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
-    // onError forwards the raw error (real stack) alongside the classified kind.
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
+
+    // TWO arguments — the classified kind for the caller to branch on, and the
+    // original error so a reporting call site can send the real stack. Asserted
+    // as the argument list because the arity is the point (#928 B2-009).
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
   });
 });
 
@@ -147,36 +188,6 @@ describe('loadRecipe', () => {
   it('returns failure (never throws) on a Firestore error', async () => {
     mockGetDoc.mockRejectedValue(Object.assign(new Error('e'), { code: 'unavailable' }));
     const result = await loadRecipe('recipe-1');
-    expect(result.kind).toBe('err');
-  });
-});
-
-describe('saveRecipe', () => {
-  it('writes to recipes/{id} keyed by recipe.id', async () => {
-    const result = await saveRecipe(RECIPE);
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'recipes', 'recipe-1');
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...RECIPE });
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure (never throws) on a Firestore error', async () => {
-    mockSetDoc.mockRejectedValue(Object.assign(new Error('e'), { code: 'permission-denied' }));
-    const result = await saveRecipe(RECIPE);
-    expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
-  });
-});
-
-describe('deleteRecipe', () => {
-  it('deletes recipes/{id}', async () => {
-    const result = await deleteRecipe('recipe-1');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'recipes', 'recipe-1');
-    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure (never throws) on a Firestore error', async () => {
-    mockDeleteDoc.mockRejectedValue(Object.assign(new Error('e'), { code: 'unavailable' }));
-    const result = await deleteRecipe('recipe-1');
-    expect(result.kind).toBe('err');
+    expect(result).toEqual({ kind: 'err', error: { kind: 'NetworkError', reason: 'offline' } });
   });
 });

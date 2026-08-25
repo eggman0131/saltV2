@@ -1,4 +1,4 @@
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { MealPlanConfig, MealPlanTemplate, MealPlanWeek } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
@@ -9,6 +9,7 @@ import {
   MealPlanWeekSchema,
 } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Meal planning sync (issue #169). Three Firestore docs, all single-document
 // reads: config + template are singletons, a week is one dated doc. A corrupt
@@ -24,22 +25,17 @@ export function subscribeMealPlanConfig(
   onConfig: (config: MealPlanConfig | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, CONFIG_COLLECTION, SINGLETON_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onConfig(null);
-        return;
-      }
-      const result = MealPlanConfigSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onConfig(result.data as MealPlanConfig);
+  return subscribeDocument(
+    {
+      path: [CONFIG_COLLECTION, SINGLETON_DOC_ID],
+      schema: MealPlanConfigSchema,
+      label: 'MealPlanConfigSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (config) => onConfig(config as MealPlanConfig | null),
+    onError,
   );
 }
 
@@ -47,22 +43,17 @@ export function subscribeMealPlanTemplate(
   onTemplate: (template: MealPlanTemplate | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, TEMPLATE_COLLECTION, SINGLETON_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onTemplate(null);
-        return;
-      }
-      const result = MealPlanTemplateSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onTemplate(result.data as MealPlanTemplate);
+  return subscribeDocument(
+    {
+      path: [TEMPLATE_COLLECTION, SINGLETON_DOC_ID],
+      schema: MealPlanTemplateSchema,
+      label: 'MealPlanTemplateSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (template) => onTemplate(template as MealPlanTemplate | null),
+    onError,
   );
 }
 
@@ -71,22 +62,18 @@ export function subscribeMealPlanWeek(
   onWeek: (week: MealPlanWeek | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, WEEKS_COLLECTION, startDate),
-    (snap) => {
-      if (!snap.exists()) {
-        onWeek(null);
-        return;
-      }
-      const result = MealPlanWeekSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onWeek(result.data as MealPlanWeek);
+  return subscribeDocument(
+    {
+      // One dated document, not a singleton — the week IS the key.
+      path: [WEEKS_COLLECTION, startDate],
+      schema: MealPlanWeekSchema,
+      label: 'MealPlanWeekSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (week) => onWeek(week as MealPlanWeek | null),
+    onError,
   );
 }
 

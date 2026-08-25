@@ -12,6 +12,7 @@ import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { connectAuthEmulatorOnce } from './auth.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Tracks which app instances have had their emulator transports wired up.
 // Keyed to the app instance (not a module-global boolean) so that a torn-down
@@ -137,7 +138,7 @@ export function initFirebase(
         ? initializeFirestore(app, emulatorTransportSettings(useEmulators, _env))
         : getFirestore(app);
     connectFirestoreEmulator(db, '127.0.0.1', firestorePort);
-    connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', functionsPort);
+    connectFunctionsEmulator(getFunctions(app, FUNCTIONS_REGION), '127.0.0.1', functionsPort);
     connectAuthEmulatorOnce(getAuth(app));
     emulatorConnectedApps.add(app);
   }

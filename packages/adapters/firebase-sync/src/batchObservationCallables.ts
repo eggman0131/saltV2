@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { SetObservationImageUploadInput } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // The observation photo (issue #812, phase 4 of epic #778). The browser reads a
 // local photo, base64-encodes it, and hands it to an AUTH-GATED CALLABLE which
@@ -27,7 +28,7 @@ export async function callSetObservationImageUpload(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<SetObservationImageUploadInput, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'setObservationImageUpload',
     );
     await fn({

@@ -1,4 +1,4 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
 import type { ProductForm } from '@salt/domain';
@@ -7,6 +7,8 @@ import { success, failure } from '@salt/shared-types';
 import { ProductFormSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 import { classifyCallableError } from './callableErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 const COLLECTION = 'productForms';
 
@@ -16,28 +18,27 @@ export function subscribeProductForms(
   // DomainError so the service report site can send the REAL stack to PostHog.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: ProductForm[] = [];
-      for (const d of snap.docs) {
-        const result = ProductFormSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data as ProductForm);
-        } else {
-          console.error(`[ProductFormSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onItems(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: ProductFormSchema,
+      label: 'ProductFormSchema',
+      project: (form) => form as ProductForm,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onItems,
+    onError,
   );
 }
 
-export async function upsertProductForm(item: ProductForm): Promise<void> {
-  const db = getFirestore(getApp());
-  await setDoc(doc(db, COLLECTION, item.id), { ...item });
+export async function upsertProductForm(item: ProductForm): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await setDoc(doc(db, COLLECTION, item.id), { ...item });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 export async function deleteProductForm(id: string): Promise<ReadResult<void, DomainError>> {
@@ -61,7 +62,7 @@ export async function callRegenerateProductFormIcon(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const fn = httpsCallable<{ formId: string; hint?: string }, { ok: true }>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'regenerateProductFormIcon',
     );
     await fn(hint && hint.trim() ? { formId, hint: hint.trim() } : { formId });

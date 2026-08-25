@@ -3,7 +3,7 @@ import type { ProductForm } from '@salt/domain';
 
 vi.mock('@salt/firebase-sync', () => ({
   subscribeProductForms: vi.fn(),
-  upsertProductForm: vi.fn().mockResolvedValue(undefined),
+  upsertProductForm: vi.fn().mockResolvedValue({ kind: 'ok' as const, value: undefined }),
   deleteProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callRegenerateProductFormIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));

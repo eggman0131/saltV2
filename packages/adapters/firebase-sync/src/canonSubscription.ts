@@ -1,10 +1,11 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { CanonItem } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { CanonItemSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 const COLLECTION = 'canonItems';
 
@@ -16,36 +17,37 @@ export function subscribeCanonItems(
   // existing two-arg callers stay source-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: CanonItem[] = [];
-      for (const d of snap.docs) {
-        const result = CanonItemSchema.safeParse(d.data());
-        if (result.success) {
-          // The client never uses embeddings — they're server-only since #410.
-          // Drop any inline vector still on an un-migrated doc so the in-memory
-          // canon store stays lean and a client-side edit can't write one back
-          // (see upsertCanonItem).
-          valid.push({ ...result.data, embedding: null } as CanonItem);
-        } else {
-          console.error(`[CanonItemSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onItems(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: CanonItemSchema,
+      label: 'CanonItemSchema',
+      // The client never uses embeddings — they're server-only since #410. Drop
+      // any inline vector still on an un-migrated doc so the in-memory canon
+      // store stays lean and a client-side edit can't write one back (see
+      // upsertCanonItem). The only per-subscription transform in the package,
+      // and the reason `project` exists on the descriptor at all: a shared parse
+      // loop without one would have dropped it silently.
+      project: (item) => ({ ...item, embedding: null }) as CanonItem,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onItems,
+    onError,
   );
 }
 
-export async function upsertCanonItem(item: CanonItem): Promise<void> {
-  const db = getFirestore(getApp());
-  // Never write embeddings from the client (#410): vectors are server-only, in
-  // the canonEmbeddings collection. Strip it so a client edit can't reintroduce a
-  // vector inline; the CF embedding branch backfills canonEmbeddings on the write.
-  const { embedding: _embedding, ...rest } = item;
-  await setDoc(doc(db, COLLECTION, item.id), { ...rest });
+export async function upsertCanonItem(item: CanonItem): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    // Never write embeddings from the client (#410): vectors are server-only, in
+    // the canonEmbeddings collection. Strip it so a client edit can't reintroduce a
+    // vector inline; the CF embedding branch backfills canonEmbeddings on the write.
+    const { embedding: _embedding, ...rest } = item;
+    await setDoc(doc(db, COLLECTION, item.id), { ...rest });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 export async function deleteCanonItem(id: string): Promise<ReadResult<void, DomainError>> {

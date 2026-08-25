@@ -4,7 +4,7 @@ import type { EquipmentManifest } from '@salt/domain';
 
 vi.mock('@salt/firebase-sync', () => ({
   subscribeEquipmentManifest: vi.fn(),
-  saveEquipmentManifest: vi.fn().mockResolvedValue(undefined),
+  saveEquipmentManifest: vi.fn().mockResolvedValue({ kind: 'ok' as const, value: undefined }),
   callIdentifyEquipment: vi.fn(),
   callPopulateEquipmentEntry: vi.fn(),
   // Pictograms (issue #877) ride the same init lifecycle. Defaulted to a no-op
@@ -63,7 +63,7 @@ describe('equipmentService — subscription-fed store', () => {
   beforeEach(() => {
     __resetEquipmentServiceForTest();
     vi.clearAllMocks();
-    fs.saveEquipmentManifest.mockResolvedValue(undefined);
+    fs.saveEquipmentManifest.mockResolvedValue({ kind: 'ok' as const, value: undefined });
   });
 
   afterEach(() => {
@@ -113,7 +113,7 @@ describe('equipmentService — hydration guard', () => {
   beforeEach(() => {
     __resetEquipmentServiceForTest();
     vi.clearAllMocks();
-    fs.saveEquipmentManifest.mockResolvedValue(undefined);
+    fs.saveEquipmentManifest.mockResolvedValue({ kind: 'ok' as const, value: undefined });
   });
 
   afterEach(() => {
@@ -152,7 +152,7 @@ describe('equipmentService — mutations after hydration', () => {
   beforeEach(() => {
     __resetEquipmentServiceForTest();
     vi.clearAllMocks();
-    fs.saveEquipmentManifest.mockResolvedValue(undefined);
+    fs.saveEquipmentManifest.mockResolvedValue({ kind: 'ok' as const, value: undefined });
   });
 
   afterEach(() => {

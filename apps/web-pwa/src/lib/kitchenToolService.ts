@@ -13,7 +13,13 @@ import {
 } from '@salt/domain';
 import type { CreateKitchenToolInput, UpdateKitchenToolInput } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
-import { success, failure, type DomainError, type Result } from '@salt/shared-types';
+import {
+  success,
+  failure,
+  type DomainError,
+  type ReadResult,
+  type Result,
+} from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
@@ -132,6 +138,13 @@ export const toolIcons: Readable<ToolIconLookup> = derived(_kitchenTools, lookup
 // content that already said the word, because resolution happens at display time —
 // there is nothing to backfill and nothing to reprocess.
 
+// The write half of every vocabulary edit (#931), the twin of canonService's
+// `commitCanonItemUpdate`: the persistence outcome comes back, so a command that
+// produced a valid tool still answers `err` when the document never landed.
+async function commitKitchenTool(tool: KitchenToolDoc): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await upsertKitchenTool(tool));
+}
+
 export async function addKitchenTool(
   input: CreateKitchenToolInput,
 ): Promise<Result<KitchenToolDoc, DomainError>> {
@@ -139,8 +152,9 @@ export async function addKitchenTool(
   // label: the command refuses a collision rather than letting a full-document
   // write replace a curated tool with a blank one.
   const result = createKitchenTool(input, getKitchenToolsSnapshot(), new Date().toISOString());
-  if (result.kind === 'ok') await upsertKitchenTool(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitKitchenTool(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 export async function editKitchenTool(
@@ -148,8 +162,9 @@ export async function editKitchenTool(
   input: UpdateKitchenToolInput,
 ): Promise<Result<KitchenToolDoc, DomainError>> {
   const result = updateKitchenTool(tool, input, new Date().toISOString());
-  if (result.kind === 'ok') await upsertKitchenTool(result.value);
-  return result;
+  if (result.kind !== 'ok') return result;
+  const written = await commitKitchenTool(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 /**
@@ -196,13 +211,12 @@ export async function regenerateKitchenToolIcon(
   // was already open, which is an expected race and not a defect (§7.6).
   if (!tool) return failure({ kind: 'NotFound', resource: 'kitchenTool', id });
   const { iconHint: _stale, ...rest } = tool;
-  await upsertKitchenTool({
+  return commitKitchenTool({
     ...rest,
     thumbnail: null,
     ...(hint?.trim() ? { iconHint: hint.trim() } : {}),
     iconRequestedAt: Date.now(),
   });
-  return success(undefined);
 }
 
 /** Hide a tool's icon: sets `thumbnail` to the shared "hidden" sentinel so the
@@ -215,8 +229,8 @@ export async function hideKitchenToolIcon(
     thumbnail: CANON_ICON_HIDDEN,
     updatedAt: new Date().toISOString(),
   };
-  await upsertKitchenTool(hidden);
-  return success(hidden);
+  const written = await commitKitchenTool(hidden);
+  return written.kind === 'err' ? written : success(hidden);
 }
 
 /** Un-hide a tool's icon. It goes through the regenerate path because clearing

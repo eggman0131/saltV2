@@ -129,8 +129,12 @@ async function applyAndSave(
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
   if (result.kind !== 'ok') return result;
   _equipment.set(result.value);
-  await saveEquipmentManifest(result.value);
-  return result;
+  // The store is updated first and deliberately left updated on a refused write:
+  // the manifest subscription is the authority and will correct the optimistic
+  // value on its next snapshot. What changes with #931 is that the caller now
+  // HEARS the refusal instead of catching a raw Firestore rejection.
+  const written = await saveEquipmentManifest(result.value);
+  return written.kind === 'err' ? written : result;
 }
 
 // ─── Equipment commands ───────────────────────────────────────────────────────
@@ -165,8 +169,8 @@ export async function removeEquipmentItems(
     working = result.value;
   }
   _equipment.set(working);
-  await saveEquipmentManifest(working);
-  return { kind: 'ok', value: working };
+  const written = await saveEquipmentManifest(working);
+  return written.kind === 'err' ? written : { kind: 'ok', value: working };
 }
 
 export async function renameEquipmentItem(
@@ -222,8 +226,8 @@ export async function captureEquipmentItem(
   }
 
   _equipment.set(working);
-  await saveEquipmentManifest(working);
-  return { kind: 'ok', value: { itemId, manifest: working } };
+  const written = await saveEquipmentManifest(working);
+  return written.kind === 'err' ? written : { kind: 'ok', value: { itemId, manifest: working } };
 }
 
 // ─── Accessory commands ───────────────────────────────────────────────────────
@@ -445,8 +449,10 @@ export function getEquipmentSnapshot(): EquipmentManifest | null {
   return get(_equipment);
 }
 
-export async function seedEquipmentManifest(manifest: EquipmentManifest): Promise<void> {
+export async function seedEquipmentManifest(
+  manifest: EquipmentManifest,
+): Promise<ReadResult<void, DomainError>> {
   _equipment.set(manifest);
   _isLoadingEquipment.set(false);
-  await saveEquipmentManifest(manifest);
+  return saveEquipmentManifest(manifest);
 }

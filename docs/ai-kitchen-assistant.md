@@ -80,17 +80,32 @@ authoritative count and the place to argue for a fifth — not this doc.
   differences CLAUDE.md records: the deterministic-id collections additionally
   permit `resource == null`, and `kitchenTimers` deliberately does not, because
   its document id *is* the uid.
-- Retention ~2 weeks via an `expiresAt` timestamp + a **Firestore TTL policy**
-  (configured once per project via console/gcloud — infra, not rules). Each write
-  bumps `expiresAt` to now + 14 days — **except a recipe-attached chat** (`recipeId`
-  set), which is stamped with a far-future `expiresAt` instead: issue #707 lists it
-  permanently on the recipe's "Chef chats" card, so it must survive the TTL sweep
-  rather than expire like a general kitchen-assistant chat.
-- **TTL setup (one-off, both projects):** In the Firebase console (or via
-  `gcloud firestore fields ttls update`), enable the TTL policy on the
-  `chatSessions` collection for the `expiresAt` field. This must be applied to
-  both the staging and production Firestore projects. The policy is infra, not
-  code — it does not live in `firestore.rules` or any deployed artefact.
+- Retention via an `expiresAt` stamp that every write bumps: **14 days** for a
+  general kitchen chat, **18 months** for a recipe-attached one (`recipeId` set).
+  Issue #707 lists a recipe chat on that recipe's "Chef chats" card, so a
+  fortnightly sweep would empty the card for the dishes you have lived with
+  longest — but the exemption is a longer window, not an exemption from expiry.
+  Between #696 and #939 it was `9999-12-31`, i.e. never; since a chat claims its
+  recipe as soon as it produces one, that put the majority of sessions (52 of
+  staging's 76) beyond any sweep and left the collection unbounded. Eighteen
+  months is sized to survive an annually-cooked dish; any turn of the conversation
+  restamps it.
+- **NOTHING SWEEPS THESE TODAY, on any project.** `expiresAt` is written as an
+  ISO-8601 **string**, and a Firestore TTL policy only expires documents whose TTL
+  field holds a **`Timestamp`** — other types are skipped silently. Measured
+  2026-08-25: 42 of staging's 76 chat sessions are past their own recorded expiry
+  and all 42 are still present. So the two windows above are the retention
+  *policy*; the *mechanism* does not exist yet, and enabling a TTL policy in a
+  console changes nothing while the field is a string.
+- **What making it real would take (not done, needs a decision):** write
+  `expiresAt` as a `Timestamp`. That is a shape change on live per-user documents,
+  and `ChatSessionSchema.expiresAt` is `z.string()` while the realtime
+  subscription *skips* documents that fail validation — so a naive swap makes
+  every existing chat disappear from the list rather than error. It would also
+  arm the sweep against those 42 already-past documents at once. Then, per
+  project (dev, staging, prod), enable the TTL policy on `chatSessions.expiresAt`
+  via the Firebase console or `gcloud firestore fields ttls update`; that policy
+  is infra and lives in no deployed artefact in this repo.
 
 ## Components
 

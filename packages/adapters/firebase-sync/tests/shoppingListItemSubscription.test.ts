@@ -1,70 +1,91 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/**
+ * Shopping-list item reads — what the two contract nets do not hold (#928, #939).
+ *
+ * All six writers moved to `tests/writerContract.test.ts`: `saveShoppingListItem`
+ * (both branches of the `traceContext` stamp, #362), `deleteShoppingListItem`,
+ * the two batched forms and the empty-batch case. The subcollection path, the
+ * unsubscribe, the delivered id set, another list's items as a decoy and the
+ * corrupt-document skip moved to the `subscribeShoppingListItems` row of
+ * `tests/subscriptionContract.emulator.test.ts`.
+ *
+ * What is left is what neither net can see: THE DELIVERED ITEM. The contract net
+ * normalises every collection row to a list of ids — its own `projection` field
+ * says as much — so nothing there notices what happens to the item's fields, and
+ * this is the schema in the package with the most to lose:
+ *
+ *   • `sources[]` is a discriminated union with an optional label,
+ *   • `originalText` is optional precisely so pre-#528 documents still PARSE
+ *     (the list read skips what fails, so a required field would take every
+ *     legacy row off the live list rather than merely losing its wording),
+ *   • `matchState` falls back rather than refusing an unknown future value,
+ *   • `sources` defaults rather than refusing its absence.
+ *
+ * Every one of those is a back-compat decision about production data, and every
+ * one of them is invisible to a row that compares ids. They are a table here
+ * rather than seven copied bodies (UT-D1).
+ *
+ * Plus the STREAM path and its arity (`forwardsRawError: true`, against `false`
+ * on `subscribeMembers` — #928 finding B2-009), and `listShoppingListItems`, the
+ * one-shot `getDocs` that `writerContract.test.ts` classifies as a `'read'` and
+ * neither net covers.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const {
-  mockUnsubscribe,
-  mockOnSnapshot,
-  mockSetDoc,
-  mockDeleteDoc,
-  mockGetDocs,
-  mockDoc,
-  mockCollection,
-  mockGetFirestore,
-  mockWriteBatch,
-  mockBatchDelete,
-  mockBatchSet,
-  mockBatchCommit,
-} = vi.hoisted(() => {
-  const mockBatchDelete = vi.fn();
-  const mockBatchSet = vi.fn();
-  const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
-  const mockWriteBatch = vi.fn(() => ({
-    delete: mockBatchDelete,
-    set: mockBatchSet,
-    commit: mockBatchCommit,
-  }));
-  return {
+const { mockUnsubscribe, mockOnSnapshot, mockGetDocs, mockDoc, mockCollection, mockGetFirestore } =
+  vi.hoisted(() => ({
     mockUnsubscribe: vi.fn(),
     mockOnSnapshot: vi.fn(),
-    mockSetDoc: vi.fn(),
-    mockDeleteDoc: vi.fn(),
     mockGetDocs: vi.fn(),
     mockDoc: vi.fn(() => 'mock-doc-ref'),
     mockCollection: vi.fn(() => 'mock-collection-ref'),
     mockGetFirestore: vi.fn(() => 'mock-db'),
-    mockWriteBatch,
-    mockBatchDelete,
-    mockBatchSet,
-    mockBatchCommit,
-  };
-});
+  }));
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
 }));
 
+// The SDK boundary (UT-B3). The write primitives are declared because the module
+// imports them; the writers answer to writerContract.test.ts.
 vi.mock('firebase/firestore', () => ({
   getFirestore: mockGetFirestore,
   collection: mockCollection,
   doc: mockDoc,
   onSnapshot: mockOnSnapshot,
-  setDoc: mockSetDoc,
-  deleteDoc: mockDeleteDoc,
+  setDoc: vi.fn(),
+  deleteDoc: vi.fn(),
   getDocs: mockGetDocs,
-  writeBatch: mockWriteBatch,
+  writeBatch: vi.fn(),
 }));
 
 import {
   subscribeShoppingListItems,
   listShoppingListItems,
-  saveShoppingListItem,
-  deleteShoppingListItem,
-  deleteShoppingListItems,
-  moveShoppingListItems,
 } from '../src/shoppingListItemSubscription.js';
 import type { ShoppingListItem } from '@salt/domain';
 
-type SnapCallback = (snap: { docs: Array<{ data: () => Record<string, unknown> }> }) => void;
+type SnapDoc = { id: string; data: () => unknown };
+type SnapCallback = (snap: QuerySnapshotDouble) => void;
 type ErrorCallback = (err: Error & { code?: string }) => void;
+
+/**
+ * As much of a `QuerySnapshot` as the parse loop reads — BOTH halves of it.
+ * `subscribeCollection` asks which documents changed (#939) and re-parses only
+ * those, so a double carrying `docs` alone lies about the SDK and fails on
+ * `snap.docChanges is not a function` rather than on any behaviour.
+ */
+interface QuerySnapshotDouble {
+  docs: SnapDoc[];
+  docChanges: () => { type: 'added'; doc: SnapDoc; oldIndex: number; newIndex: number }[];
+}
+
+/** Every document reported as `added` — which is what a real FIRST snapshot says. */
+function firstSnapshot(docs: SnapDoc[]): QuerySnapshotDouble {
+  return {
+    docs,
+    docChanges: () => docs.map((doc, i) => ({ type: 'added', doc, oldIndex: -1, newIndex: i })),
+  };
+}
 
 const ITEM_1: ShoppingListItem = {
   id: 'item-1',
@@ -97,250 +118,192 @@ const ITEM_2: ShoppingListItem = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
-  mockSetDoc.mockResolvedValue(undefined);
-  mockDeleteDoc.mockResolvedValue(undefined);
   mockGetDocs.mockResolvedValue({ docs: [] });
-  mockBatchCommit.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { onLine: true });
 });
 
-describe('subscribeShoppingListItems', () => {
-  it('targets shoppingLists/{listId}/items subcollection', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** One stored document, and what the subscriber must end up holding. */
+interface DeliveryCase {
+  name: string;
+  /** The document id the snapshot carries. Not always a field of the data. */
+  docId: string;
+  stored: Record<string, unknown>;
+  assert: (items: ShoppingListItem[]) => void;
+}
+
+const deliveryCases: DeliveryCase[] = [
+  {
+    name: 'a manual item arrives exactly as it was stored',
+    docId: 'item-1',
+    stored: {
+      id: 'item-1',
+      rawText: 'heinz baked beans 4 tins',
+      notes: '',
+      sources: [{ kind: 'manual' }],
+      canonId: null,
+      matchState: 'pending',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '2026-05-14T10:00:00.000Z',
+      updatedAt: '2026-05-14T10:00:00.000Z',
+    },
+    assert: (items) => expect(items).toEqual([ITEM_1]),
+  },
+  {
+    name: 'a recipe source keeps its optional label',
+    docId: 'item-r',
+    stored: {
+      id: 'item-r',
+      rawText: 'flour',
+      notes: '',
+      sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 4, label: 'Bread' }],
+      canonId: 'canon-flour',
+      matchState: 'matched',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '2026-05-14T10:00:00.000Z',
+      updatedAt: '2026-05-14T10:00:00.000Z',
+    },
+    assert: (items) =>
+      expect(items[0]!.sources).toEqual([
+        { kind: 'recipe', recipeId: 'recipe-1', servings: 4, label: 'Bread' },
+      ]),
+  },
+  {
+    name: 'a recipe source without a label keeps none',
+    docId: 'item-r',
+    stored: {
+      id: 'item-r',
+      rawText: 'eggs',
+      notes: '',
+      sources: [{ kind: 'recipe', recipeId: 'recipe-2', servings: 2 }],
+      canonId: null,
+      matchState: 'pending',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '',
+      updatedAt: '',
+    },
+    assert: (items) =>
+      expect(items[0]!.sources).toEqual([{ kind: 'recipe', recipeId: 'recipe-2', servings: 2 }]),
+  },
+  {
+    name: 'a product-form item keeps its originalText (#528)',
+    docId: 'item-lime',
+    stored: {
+      id: 'item-lime',
+      rawText: 'lime juice',
+      notes: '',
+      sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2, label: 'Ceviche' }],
+      canonId: 'canon-lime',
+      matchState: 'matched',
+      amount: 3,
+      unit: 'count',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '2026-07-17T10:00:00.000Z',
+      updatedAt: '2026-07-17T10:00:00.000Z',
+      originalText: ['juice of 2 limes', 'zest of 1 lime'],
+    },
+    assert: (items) =>
+      expect(items[0]!.originalText).toEqual(['juice of 2 limes', 'zest of 1 lime']),
+  },
+  {
+    name: 'a pre-#528 item without originalText is delivered, not skipped',
+    docId: 'item-lime-old',
+    // The field is optional precisely so this document still parses: the
+    // subscription SKIPS what fails, so a required field would make every
+    // pre-#528 row silently vanish from the live list rather than merely lose
+    // its wording.
+    stored: {
+      id: 'item-lime-old',
+      rawText: 'lime juice',
+      notes: '',
+      sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2 }],
+      canonId: 'canon-lime',
+      matchState: 'matched',
+      amount: 3,
+      unit: 'count',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '2026-07-01T10:00:00.000Z',
+      updatedAt: '2026-07-01T10:00:00.000Z',
+    },
+    assert: (items) => {
+      expect(items.map((i) => i.id)).toEqual(['item-lime-old']);
+      expect(items[0]!.originalText).toBeUndefined();
+    },
+  },
+  {
+    name: 'an unknown matchState falls back to pending',
+    docId: 'item-x',
+    stored: {
+      id: 'item-x',
+      rawText: 'x',
+      notes: '',
+      sources: [],
+      canonId: null,
+      matchState: 'unknown_future_value',
+      checked: false,
+      schemaVersion: 1,
+      createdAt: '',
+      updatedAt: '',
+    },
+    assert: (items) => expect(items[0]!.matchState).toBe('pending'),
+  },
+  {
+    name: 'missing sources default to an empty array',
+    docId: 'item-bare',
+    stored: { id: 'item-bare', rawText: 'x' },
+    assert: (items) => expect(items[0]!.sources).toEqual([]),
+  },
+];
+
+describe('subscribeShoppingListItems — the delivered item', () => {
+  it.each(deliveryCases)('$name', ({ docId, stored, assert }) => {
+    const delivered: ShoppingListItem[][] = [];
+    subscribeShoppingListItems(
+      'list-1',
+      (items) => delivered.push(items),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+      firstSnapshot([{ id: docId, data: () => stored }]),
+    );
+
+    expect(delivered).toHaveLength(1);
+    assert(delivered[0]!);
+  });
+});
+
+describe('subscribeShoppingListItems — the stream-error path', () => {
+  it('classifies a stream error and forwards the raw one alongside it', () => {
+    const calls: unknown[][] = [];
     subscribeShoppingListItems(
       'list-1',
       () => {},
-      () => {},
+      (...args) => calls.push(args),
     );
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1', 'items');
-  });
 
-  it('returns the unsubscribe function from onSnapshot', () => {
-    const unsub = subscribeShoppingListItems(
-      'list-1',
-      () => {},
-      () => {},
-    );
-    expect(unsub).toBe(mockUnsubscribe);
-  });
-
-  it('calls onItems with mapped items', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-1',
-            rawText: 'heinz baked beans 4 tins',
-            notes: '',
-            sources: [{ kind: 'manual' }],
-            canonId: null,
-            matchState: 'pending',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '2026-05-14T10:00:00.000Z',
-            updatedAt: '2026-05-14T10:00:00.000Z',
-          }),
-        },
-      ],
-    });
-
-    expect(onItems).toHaveBeenCalledWith([ITEM_1]);
-  });
-
-  it('maps recipe SourceRef with optional label', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-r',
-            rawText: 'flour',
-            notes: '',
-            sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 4, label: 'Bread' }],
-            canonId: 'canon-flour',
-            matchState: 'matched',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '2026-05-14T10:00:00.000Z',
-            updatedAt: '2026-05-14T10:00:00.000Z',
-          }),
-        },
-      ],
-    });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    expect(items[0]!.sources).toEqual([
-      { kind: 'recipe', recipeId: 'recipe-1', servings: 4, label: 'Bread' },
-    ]);
-  });
-
-  it('maps recipe SourceRef without optional label', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-r',
-            rawText: 'eggs',
-            notes: '',
-            sources: [{ kind: 'recipe', recipeId: 'recipe-2', servings: 2 }],
-            canonId: null,
-            matchState: 'pending',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '',
-            updatedAt: '',
-          }),
-        },
-      ],
-    });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    const src = items[0]!.sources[0]!;
-    expect(src.kind).toBe('recipe');
-    if (src.kind === 'recipe') {
-      expect(src.label).toBeUndefined();
-    }
-  });
-
-  it('maps a product-form item with optional originalText', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-lime',
-            rawText: 'lime juice',
-            notes: '',
-            sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2, label: 'Ceviche' }],
-            canonId: 'canon-lime',
-            matchState: 'matched',
-            amount: 3,
-            unit: 'count',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '2026-07-17T10:00:00.000Z',
-            updatedAt: '2026-07-17T10:00:00.000Z',
-            originalText: ['juice of 2 limes', 'zest of 1 lime'],
-          }),
-        },
-      ],
-    });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    expect(items[0]!.originalText).toEqual(['juice of 2 limes', 'zest of 1 lime']);
-  });
-
-  it('maps a product-form item WITHOUT originalText (pre-#528 docs must not be skipped)', () => {
-    // The field is optional precisely so this doc still parses: the subscription
-    // SKIPS invalid docs, so a required field would make every pre-#528 row
-    // silently vanish from the live list rather than merely lose its wording.
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-lime-old',
-            rawText: 'lime juice',
-            notes: '',
-            sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2 }],
-            canonId: 'canon-lime',
-            matchState: 'matched',
-            amount: 3,
-            unit: 'count',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '2026-07-01T10:00:00.000Z',
-            updatedAt: '2026-07-01T10:00:00.000Z',
-          }),
-        },
-      ],
-    });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    expect(items).toHaveLength(1);
-    expect(items[0]!.id).toBe('item-lime-old');
-    expect(items[0]!.originalText).toBeUndefined();
-  });
-
-  it('defaults unknown matchState to pending', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({
-      docs: [
-        {
-          data: () => ({
-            id: 'item-x',
-            rawText: 'x',
-            notes: '',
-            sources: [],
-            canonId: null,
-            matchState: 'unknown_future_value',
-            checked: false,
-            schemaVersion: 1,
-            createdAt: '',
-            updatedAt: '',
-          }),
-        },
-      ],
-    });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    expect(items[0]!.matchState).toBe('pending');
-  });
-
-  it('defaults missing sources to empty array', () => {
-    const onItems = vi.fn();
-    subscribeShoppingListItems('list-1', onItems, () => {});
-
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
-    snapCb({ docs: [{ data: () => ({ id: 'x', rawText: 'x' }) }] });
-
-    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
-    expect(items[0]!.sources).toEqual([]);
-  });
-
-  it('calls onError with classified DomainError on permission-denied', () => {
-    const onError = vi.fn();
-    subscribeShoppingListItems('list-1', () => {}, onError);
-
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
     const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
-    errCb(raw);
+    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
 
-    // onError forwards the raw error (real stack) alongside the classified kind.
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
+    // TWO arguments — see the header (#928 finding B2-009).
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
   });
 });
 
 describe('listShoppingListItems', () => {
-  it('targets shoppingLists/{listId}/items subcollection', async () => {
-    mockGetDocs.mockResolvedValue({ docs: [] });
-    await listShoppingListItems('list-1');
-    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1', 'items');
-  });
-
-  it('returns success with mapped items', async () => {
+  it('reads the items subcollection of one list and returns them mapped', async () => {
     mockGetDocs.mockResolvedValue({
       docs: [
         {
+          id: ITEM_2.id,
           data: () => ({
             id: 'item-2',
             rawText: 'oat milk',
@@ -358,119 +321,19 @@ describe('listShoppingListItems', () => {
     });
 
     const result = await listShoppingListItems('list-1');
+
+    expect(mockCollection).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1', 'items');
     expect(result).toEqual({ kind: 'ok', value: [ITEM_2] });
   });
 
-  it('returns failure on Firestore error', async () => {
+  it('returns a Failure (never throws) on a Firestore error', async () => {
     mockGetDocs.mockRejectedValue(Object.assign(new Error('err'), { code: 'unauthenticated' }));
+
     const result = await listShoppingListItems('list-1');
+
     expect(result).toEqual({
       kind: 'err',
       error: { kind: 'AuthError', reason: 'unauthenticated' },
     });
-  });
-});
-
-describe('saveShoppingListItem', () => {
-  it('writes to shoppingLists/{listId}/items/{itemId}', async () => {
-    await saveShoppingListItem('list-1', ITEM_1);
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1', 'items', 'item-1');
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...ITEM_1 });
-  });
-
-  it('returns success on write', async () => {
-    const result = await saveShoppingListItem('list-1', ITEM_1);
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on Firestore error', async () => {
-    mockSetDoc.mockRejectedValue(Object.assign(new Error('err'), { code: 'permission-denied' }));
-    const result = await saveShoppingListItem('list-1', ITEM_1);
-    expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
-  });
-
-  // Distributed-trace correlation (issue #362, Phase 5): when the browser passes a
-  // W3C traceparent, it is stamped onto the doc as `traceContext` so the
-  // onShoppingListItemWrite trigger can continue the browser-rooted trace.
-  it('stamps traceContext on the doc when a traceparent is supplied', async () => {
-    const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
-    await saveShoppingListItem('list-1', ITEM_1, traceparent);
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', {
-      ...ITEM_1,
-      traceContext: traceparent,
-    });
-  });
-
-  it('writes no traceContext field when no traceparent is supplied (back-compat)', async () => {
-    await saveShoppingListItem('list-1', ITEM_1);
-    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...ITEM_1 });
-    const written = mockSetDoc.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    expect(written).not.toHaveProperty('traceContext');
-  });
-});
-
-describe('deleteShoppingListItem', () => {
-  it('calls deleteDoc on shoppingLists/{listId}/items/{itemId}', async () => {
-    await deleteShoppingListItem('list-1', 'item-1');
-    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'shoppingLists', 'list-1', 'items', 'item-1');
-    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
-  });
-
-  it('returns success on delete', async () => {
-    const result = await deleteShoppingListItem('list-1', 'item-1');
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on Firestore error', async () => {
-    mockDeleteDoc.mockRejectedValue(Object.assign(new Error('err'), { code: 'unavailable' }));
-    const result = await deleteShoppingListItem('list-1', 'item-1');
-    expect(result).toEqual({ kind: 'err', error: { kind: 'NetworkError', reason: 'offline' } });
-  });
-});
-
-describe('deleteShoppingListItems', () => {
-  it('batches deletes for all itemIds', async () => {
-    await deleteShoppingListItems('list-1', ['item-1', 'item-2']);
-    expect(mockWriteBatch).toHaveBeenCalledWith('mock-db');
-    expect(mockBatchDelete).toHaveBeenCalledTimes(2);
-  });
-
-  it('returns success on batch commit', async () => {
-    const result = await deleteShoppingListItems('list-1', ['item-1', 'item-2']);
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns success with empty itemIds (no-op batch)', async () => {
-    const result = await deleteShoppingListItems('list-1', []);
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on batch error', async () => {
-    mockBatchCommit.mockRejectedValueOnce(
-      Object.assign(new Error('err'), { code: 'permission-denied' }),
-    );
-    const result = await deleteShoppingListItems('list-1', ['item-1']);
-    expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
-  });
-});
-
-describe('moveShoppingListItems', () => {
-  it('batches deletes from source and sets on target', async () => {
-    await moveShoppingListItems('list-src', 'list-tgt', [ITEM_1]);
-    expect(mockWriteBatch).toHaveBeenCalledWith('mock-db');
-    expect(mockBatchDelete).toHaveBeenCalledTimes(1);
-    expect(mockBatchSet).toHaveBeenCalledTimes(1);
-    expect(mockBatchSet).toHaveBeenCalledWith(expect.anything(), { ...ITEM_1 });
-  });
-
-  it('returns success on batch commit', async () => {
-    const result = await moveShoppingListItems('list-src', 'list-tgt', [ITEM_1]);
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-  });
-
-  it('returns failure on batch error', async () => {
-    mockBatchCommit.mockRejectedValueOnce(Object.assign(new Error('err'), { code: 'unavailable' }));
-    const result = await moveShoppingListItems('list-src', 'list-tgt', [ITEM_1]);
-    expect(result).toEqual({ kind: 'err', error: { kind: 'NetworkError', reason: 'offline' } });
   });
 });

@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.15)
+# Salt 2.0 — UI Primitives Specification (v0.2.16)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -51,7 +51,7 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Framework     | Svelte 5 `^5.55.0` (runes: `$state`, `$derived`, `$effect`, `$props`, `$bindable`)                                       |
 | Styling       | Tailwind CSS + shadcn token scheme                                                                                       |
-| Animations    | tailwindcss-animate (registered by preset — see §3.3)                                                                    |
+| Animations    | tw-animate-css (imported by `src/salt.css` — see §3.3)                                                                   |
 | Headless      | bits-ui ≥ 1.0.0; melt-ui ≥ 1.0.0-svelte5 (fallback only)                                                                 |
 | Variants      | class-variance-authority (CVA)                                                                                           |
 | Class merging | tailwind-merge + clsx via `cn()`                                                                                         |
@@ -89,8 +89,8 @@ Entry points (exact):
 | Import path                           | Contents                                                            |
 | ------------------------------------- | ------------------------------------------------------------------- |
 | `@salt/ui-components`                 | Stable primitive components + re-exports of tokens + `cn` + `useId` |
-| `@salt/ui-components/tokens`          | TS token constants (generated from Tailwind preset)                 |
-| `@salt/ui-components/tailwind-preset` | Tailwind preset object (default export)                             |
+| `@salt/ui-components/tokens`          | TS token constants (generated from `src/salt.css`)                  |
+| `@salt/ui-components/styles.css`      | The design-system stylesheet — tokens, base layer, component classes |
 
 > **Headless factories:** `create<Primitive>State()` factories + context keys live in the per-primitive `src/headless/<Primitive>.headless.svelte.ts` files, imported directly by each primitive. The old aggregating `@salt/ui-components/headless` barrel (and the `@salt/ui-components/test` placeholder) were removed as dead surface in #491 — nothing consumed either subpath.
 
@@ -118,17 +118,9 @@ export type { ButtonProps } from './primitives/Button/Button.types';
 // ... one per primitive
 ```
 
-**Headless barrel (`src/headless.ts`):**
+**Tokens barrel (`src/tokens.ts`):** namespaced re-exports of the token groups (`colors`, `radius`, `motion`, `elevation`, `zIndex`, `typography`) — no default export. Content is generated from `src/salt.css` (§3.3) — never hand-edited.
 
-```ts
-export { createDialogState, DIALOG_CONTEXT } from './headless/Dialog.headless.svelte';
-export { createPopoverState, POPOVER_CONTEXT } from './headless/Popover.headless.svelte';
-// ... only primitives with a headless layer
-```
-
-**Tokens barrel (`src/tokens.ts`):** default export of the preset object plus named exports of token groups (`colors`, `radius`, `motion`, `elevation`, `zIndex`, `typography`). Content is generated from the Tailwind preset — never hand-edited.
-
-**Test barrel (`src/test.ts`):** `renderPrimitive`, `axeCheck`, `pressKey` helpers. Not listed in package `exports` for app consumers — only for internal tests.
+There is no `src/headless.ts` and no `src/test.ts`: both were removed as dead surface in #491, per the note above.
 
 No deep imports. No side-effect imports in any barrel.
 
@@ -146,7 +138,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.15).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.16).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -265,10 +257,8 @@ All interactive primitives must:
 ```
 src/
   index.ts                       ← primitive + helper + type barrel
-  headless.ts                    ← headless barrel
   tokens.ts                      ← token barrel (generated)
-  test.ts                        ← test helpers barrel
-  tailwind-preset.ts             ← Tailwind preset default export
+  salt.css                       ← design-system entry — see §3.3
   lib/
     cn.ts                        ← see §3.5
     useId.ts                     ← see §3.5
@@ -315,54 +305,25 @@ tests/
   there; anything it does not is imported from its own file by its siblings. See §9
   (v0.2.15) for why the per-component `index.ts` was removed.
 - `.ts` files have no default exports.
-- No side-effect imports in any barrel (`src/index.ts`, `src/headless.ts`, etc.).
+- No side-effect imports in any barrel (`src/index.ts`, `src/tokens.ts`).
 
 ---
 
 ## 3.3 Tailwind + Token Ownership
 
-**`src/tailwind-preset.ts` is the single source of truth for design tokens.**
+**`src/salt.css` is the design-system entry and the single source of truth for the runtime tokens.** It is the Tailwind v4 CSS-first file that replaced the v3 JS preset (`tailwind-preset.ts`), the per-app `tailwind.config.ts` and the `@config` directive in the v4 migration (#323). Which shapes inside it the tooling parses is recorded in its own header comment, beside the code, and is not restated here.
 
-`src/tokens/*.ts` and `src/tokens.ts` are generated from the preset by `scripts/generate-tokens.ts` and checked in. Regeneration is idempotent. Do not hand-edit files under `src/tokens/`.
+The palette above it is [design.md](design.md): its YAML frontmatter is the source of truth for the colour roles, and `scripts/check-theme.ts` (`pnpm --filter @salt/ui-components theme:check`) fails with a diff when the two disagree. **A token change starts in `design.md`, not in CSS.**
 
-The preset exports CSS variables on `:root` and `.dark`, plus Tailwind theme extensions that reference them:
+`src/tokens/*.ts` and `src/tokens.ts` are generated from `salt.css` by `scripts/generate-tokens.ts` and checked in. Regeneration is idempotent. Do not hand-edit files under `src/tokens/`.
 
-```ts
-// src/tailwind-preset.ts (shape, not full content)
-export default {
-  darkMode: 'class',
-  theme: {
-    extend: {
-      colors: {
-        background: 'hsl(var(--salt-background) / <alpha-value>)',
-        foreground: 'hsl(var(--salt-foreground) / <alpha-value>)',
-        // ... every semantic color from §4.1
-      },
-      borderRadius: {/* from §4.1 */},
-      transitionDuration: {/* from §4.1 */},
-      transitionTimingFunction: {/* from §4.1 */},
-      boxShadow: {/* from §4.1 */},
-      zIndex: {/* from §4.1 */},
-    },
-  },
-  plugins: [
-    // salt-focus-ring utility (§4.2)
-    // base layer: CSS vars on :root and .dark
-  ],
-};
+Apps consume the design system by importing the stylesheet. There is no preset to register and no per-app Tailwind config:
+
+```css
+@import '@salt/ui-components/styles.css';
 ```
 
-Apps must import the preset:
-
-```ts
-import salt from '@salt/ui-components/tailwind-preset';
-export default {
-  presets: [salt],
-  content: [/* app globs */],
-};
-```
-
-The preset registers `tailwindcss-animate` as a plugin so `animate-in` / `animate-out` / `data-[state=open]:*` animation utilities are available to all consumers without per-app configuration.
+`salt.css` imports `tw-animate-css`, so `animate-in` / `animate-out` / `data-[state=open]:*` utilities are available to every consumer without per-app configuration.
 
 ---
 
@@ -371,7 +332,7 @@ The preset registers `tailwindcss-animate` as a plugin so `animate-in` / `animat
 - bits-ui ≥ 1.0.0 (Svelte 5 support).
 - melt-ui ≥ 1.0.0-svelte5.
 - melt-ui only when bits-ui lacks the primitive.
-- Version pins live in root `package.json` — not in the preset.
+- Version pins live in `package.json` — not in the design-system stylesheet.
 
 ---
 
@@ -1853,6 +1814,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-24 | v0.2.16 | §3.3 Tailwind + Token Ownership, plus §1.1 Animations, §1.3 Package Surface, §3.1 Folder Structure, §3.2 Export Rules and §3.4: the spec stops describing a **Tailwind v3 preset that has not existed since #323**. §3.3 named `src/tailwind-preset.ts` as the single source of truth for tokens, printed its shape, and told apps to register it as a `presets: [salt]` entry — but the CSS-first `src/salt.css` replaced all of it, `@salt/ui-components/tailwind-preset` is not in `package.json`'s `exports` map, and the animation utilities come from `tw-animate-css` imported by the stylesheet rather than `tailwindcss-animate` registered by a preset. §3.3 now points at `salt.css` for the parse contract (its header comment carries it, so this file does not repeat it) and at `design.md`'s frontmatter as the palette of record that `check-theme.ts` diffs against. The **#491 dead names go with it, everywhere they are named**: `headless.ts` and `test.ts` were removed as dead surface in #491 and §1.3 already said so in prose, yet the same section still printed a `src/headless.ts` barrel and a `src/test.ts` barrel below the note, §3.1's tree still listed both files and §3.2's side-effect bullet still cited `src/headless.ts` as an example barrel. All four are struck, and §1.3 states outright that neither file exists. §1.3's tokens-barrel line is corrected in the same pass: `src/tokens.ts` has **no default export** and never carried a preset object — it is six `export * as` lines generated from `salt.css`. Documentation only — no primitive contract changed, so nothing to re-stamp. Issue #921. |
 | 2026-08-24 | v0.2.15 | §3.1 Folder Structure, §3.2 Export Rules, §3.6 Canonical Patterns: the **per-component `index.ts` local barrel is struck**. §3.1 put one in every `primitives/<Primitive>/` directory and §3.6 made Button's the last step of the worked example — but the same document ends §1.3 with **"No deep imports."**, and `package.json`'s `exports` map publishes only `.`, `./tokens` and `./styles.css`, so nothing outside the package could reach a local barrel even if it wanted to. The spec was prescribing a surface its own rules made unreachable. Re-measured on this branch over all 1,565 first-party `.ts` / `.js` / `.svelte` files: **0 import sites anywhere resolve to one**, and all **155** `from` specifiers on `src/index.ts` name a leaf file directly — not one of the 209 public names routed through a barrel. So the 40 files re-exported 223 names by a path no code took. 31 of those names (30 `*Variants` CVA factories, plus `Textarea`, which the package barrel republishes as `TextArea`) are not on the public surface at all; each is still exported by its own `.variants.ts` / `.svelte` file, which is where its siblings already import it from. **#491 is the precedent, and §1.3 records it**: the aggregating `headless` barrel and the `test` placeholder were removed as dead surface because nothing consumed either subpath. §3.2's local-barrel bullet is replaced by the positive rule it leaves behind — a component becomes public by being named on `src/index.ts`, leaf file by leaf file, so the package surface is exactly what that one file says it is — and §3.6's `src/primitives/Button/index.ts` block becomes the two lines Button actually occupies there. The public surface does not move by a single name: `src/index.ts` is byte-identical and all 209 exports remain. No primitive contract changed; nothing is re-stamped. Issue #923. |
 | 2026-08-24 | v0.2.14 | §3.8 Provenance Header Convention: the scan surface becomes **all of `src/`** (minus `src/__boundary_tests__/`) instead of the three directories `headless`, `primitives`, `lib` that existed when it was written — `layout/` and `templates/` had been outside the CI gate since they were created, and 13 layout files had never been stamped at all. And the header now names **a real document in `docs/design/`**, checked by resolving it, instead of the literal `SPEC.md`: no such file has ever existed in this repo (this document was split into `ui-spec-v02.md` … `ui-spec-v11.md`), yet 170 of 223 source files cited it and the shape-only regex passed every one. The multi-citation form already in use (`a.md §1 v0.1; b.md §2 v0.2 (note)`) is written down rather than left to the two files that had guessed it. All 170 headers are re-pointed at the document their version already identified — a `v0.4` header was always an ui-spec-v04.md header — and the 13 unstamped layout files are stamped against ui-spec-v04 §13/§16, which is where they are specified (§0 of that document says so). No primitive contract changed; nothing is re-stamped for behaviour. Issue #919.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 2026-08-16 | v0.2.13 | §4.1 Tokens: the semantic colour list gains **`destructive-container`, `on-destructive-container`** — the destructive counterpart to the sage `secondary-container` pair already listed above it, and the surface a _removed_ change is tinted with in the recipe review gate where an addition gets the sage one. The values are not new: they are `design.md`'s long-standing `error-container` / `on-error-container` (light `#ffdad6` / `#93000a`), which PR #832 plumbed through to `salt.css` and `tokens/colors.ts` for the first time. This row records that plumbing in the spec — the code shipped without it because #832's governing issue forbade amending the UI spec in that diff. Naming follows `secondary-container` exactly, including its asymmetry: the CSS variable is `--salt-on-destructive-container` while the Tailwind utility is `destructive-container-foreground`. No primitive contract changed, so nothing is re-stamped. Issue #833.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
