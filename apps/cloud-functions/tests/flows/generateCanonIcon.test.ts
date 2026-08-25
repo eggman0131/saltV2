@@ -53,6 +53,10 @@ beforeEach(() => {
   mockResolveModel.mockImplementation(async () => 'gemini-2.5-flash-image');
 });
 
+// Source of truth for every character below: `buildIconPrompt` in
+// `src/flows/generateCanonIcon.ts`, whose closing clause is the exported `STYLE`
+// constant (`UK` is the sentence after the subject). Change either and update
+// these literals by hand in the same commit.
 const PROMPT_NO_HINT =
   'Generate a cute cartoon icon of milk. The item is as commonly sold in a UK supermarket. Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only milk and nothing else. Flat vector cartoon illustration. A single centered subject filling most of the frame. Thick, uniform, rounded dark outline. Soft cheerful limited pastel colour palette. Simple minimal friendly shapes, low detail. Plain solid off-white background. No border or frame around the image; the subject sits directly on the plain background. No faces, no eyes, no facial expressions on any object. No caption text, no separate labels, and no lettering added under, beside, or around the subject; any text must be part of the depicted item itself (such as wording printed on a tin or jar). No drop shadows, no background gradients. Square composition, app sticker / emoji style.';
 

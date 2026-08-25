@@ -67,7 +67,9 @@ function promptText(): string {
   return mockGenerate.mock.calls[0]![0].prompt[1].text as string;
 }
 
-// The complete prompt for a tool with no hint, character for character.
+// The complete prompt for a tool with no hint, character for character. It twins
+// `buildKitchenToolIconPrompt` in `src/flows/kitchenToolIconPrompt.ts`, whose
+// style clause is the exported `KIT_STYLE_ANCHORS` constant.
 const PROMPT_NO_HINT =
   'Generate a cute cartoon icon of Mixing bowl, one generic piece of kitchen equipment as found in a home kitchen. Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only Mixing bowl and nothing else. Flat vector cartoon illustration. A single centered subject filling most of the frame. Thick, uniform, rounded dark outline. Soft cheerful limited pastel colour palette. Simple minimal friendly shapes, low detail. Plain solid off-white background. No border or frame around the image; the subject sits directly on the plain background. No faces, no eyes, no facial expressions on any object. No caption text, no separate labels, and no lettering added under, beside, or around the subject; any text must be part of the depicted item itself (such as wording printed on a tin or jar). No drop shadows, no background gradients. Square composition, app sticker / emoji style. Absolutely no lettering anywhere in the picture, including on the object itself: no brand name, no wordmark, no logo, no model number, no measurement markings, no letters, digits or symbols on the handle, the body, the blade, the rim or any display panel — leave every badge, panel and screen blank. Draw the object alone: no hands, no people, no food, no ingredients, no liquid, no worktop, no chopping surface, no kitchen scene, and nothing beside it for scale.';
 

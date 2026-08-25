@@ -75,7 +75,9 @@ function promptText(): string {
 }
 
 // The complete prompt on the DEGRADED path — no brief, so the item's name is the
-// subject. Character for character.
+// subject. Character for character. It twins `buildEquipmentIconPrompt` in
+// `src/flows/equipmentIconPrompt.ts`, whose style clause is the exported
+// `EQUIPMENT_STYLE_ANCHORS` constant.
 const PROMPT_NO_BRIEF =
   'Generate a cute cartoon icon of Kenwood Chef KVC3100S, one piece of kitchen equipment. Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only this one item and nothing else. Flat vector cartoon illustration. A single centered subject filling most of the frame. Thick, uniform, rounded dark outline. Soft cheerful limited pastel colour palette. Simple minimal friendly shapes, low detail. Plain solid off-white background. No border or frame around the image; the subject sits directly on the plain background. No faces, no eyes, no facial expressions on any object. No caption text, no separate labels, and no lettering added under, beside, or around the subject; any text must be part of the depicted item itself (such as wording printed on a tin or jar). No drop shadows, no background gradients. Square composition, app sticker / emoji style. Absolutely no lettering anywhere in the picture, including on the object itself: no brand name, no wordmark, no logo, no model number, no letters, digits or symbols on the body, the lid, the controls, the dials, the buttons or any display panel — leave every panel, badge and screen blank. Draw the object alone: no hands, no people, no food, no ingredients, no worktop, no wall, no kitchen scene, no cable trailing off the frame, and nothing beside it for scale.';
 
