@@ -38,16 +38,16 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // Generic copy — what a notification says when the recipe could not be read.
 const FALLBACK_COPY = { title: 'Timer finished', body: 'A cook timer just finished.' } as const;
 
-// Appended to a fallback web push when the recipient has NO Pushover devices at
-// all. It rides the notification rather than sitting in the app because the app
-// is exactly where they are not looking — they are at a hob, holding a pan, and
-// the alert they just got is the degraded one.
-//
-// It repeats on every timer, deliberately, and that is safe for one reason: it
-// STOPS the moment they install Pushover, because they stop taking the fallback
-// path at all. The nag and the problem end together, so it can never become
-// background noise for someone who has nothing left to fix.
-const PUSHOVER_NUDGE = 'This alert may be late — install Pushover in Settings for on-time timers.';
+// NO install nudge rides the fallback push (#988, option 3 of 3). There used to
+// be a per-notification line here — "install Pushover in Settings for on-time
+// timers" — appended when a non-Apple device took the fallback because the
+// member had no Pushover devices. The standalone kitchen timer (#842) shipped
+// without it, and #988 asked whether to extend it there; the decision was to
+// carry it NOWHERE instead: a repeated upsell on every degraded timer wears out,
+// and the /settings Pushover readout already names this exact state — the
+// empty-devices warning there is the ONE place the install advice lives now.
+// If a shared fan-out (#987) or a new dispatcher tempts you to re-add a
+// per-notification nudge, that is re-opening #988, not restoring an oversight.
 
 // The live recipe, or null on absolutely any failure (missing, corrupt, or a read
 // that threw). Never throws — a name we cannot fetch must never cost us the
@@ -250,16 +250,10 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
           const isApple = isApplePushEndpoint(data.endpoint);
           if (!isApple && pushoverDelivered) continue;
 
-          // Nudge ONLY the degraded path: a non-Apple device taking the fallback
-          // because this member has no Pushover devices at all. An Apple device
-          // is on its best channel already and has nothing to fix, and any other
-          // non-delivery ('unavailable') may well belong to someone who already
-          // has Pushover — telling them to install it would be nonsense.
-          const nudge = !isApple && pushoverOutcome === 'no-devices';
           const result = await sendWebPush(
             { subject, publicKey, privateKey },
             { endpoint: data.endpoint, keys: data.keys },
-            nudge ? { ...payload, body: `${payload.body}\n${PUSHOVER_NUDGE}` } : payload,
+            payload,
           );
           if (result === 'sent') {
             webPushDelivered += 1;

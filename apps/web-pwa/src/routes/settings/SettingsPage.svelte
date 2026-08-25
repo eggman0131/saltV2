@@ -55,8 +55,11 @@
   // not. Devices are matched by a `<firstname>-` prefix and nothing enforces the
   // naming, so an empty match is a real misconfiguration that would otherwise
   // only show up as "my timers stopped working" weeks later — this line is what
-  // makes it findable. `null` = still loading or nothing to say; the card simply
-  // omits the line rather than guessing.
+  // makes it findable. Since #988 it is also the ONE place the install-Pushover
+  // advice lives: no timer notification carries a per-timer nudge any more, so
+  // the copy below must cover never-installed as well as misnamed. `null` =
+  // still loading or nothing to say; the card simply omits the line rather than
+  // guessing.
   let pushoverDevices = $state<readonly string[] | null>(null);
 
   $effect(() => {
@@ -193,8 +196,8 @@
             <Text muted>Pushover: {pushoverDevices.join(', ')}</Text>
           {:else}
             <Text class="text-sm text-destructive">
-              No Pushover device matched your name, so cook timers won't reach you. In the Pushover
-              app, name your device {'<firstname>'}-phone (or -tablet, or -spare).
+              No Pushover device matched your name, so your timers may run late or go missing.
+              Install Pushover, then name your device {'<firstname>'}-phone (or -tablet, or -spare).
             </Text>
           {/if}
         </div>

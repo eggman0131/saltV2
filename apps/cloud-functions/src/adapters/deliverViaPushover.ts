@@ -9,15 +9,14 @@ import { sendPushover } from './sendPushover.js';
 // `onBatchStageDispatch` is deliberately not a caller — it is web-push only.
 
 // Why the timer did not reach Pushover, which is not the same question as whether
-// it delivered. Only ONE non-delivery means "this person has no Pushover", and it
-// is the only one that earns the cook timer's install nudge; the rest are our
-// problem, or a passing one, and telling someone to install an app they already
-// have would be worse than saying nothing. The nudge itself is the CALLER's, not
-// this function's — see onCookTimerDispatch.
+// it delivered. Only ONE non-delivery means "this person has no Pushover"; the
+// rest are our problem, or a passing one. Nothing acts on the distinction any
+// more (#988 dropped the install nudge — see onCookTimerDispatch), but the states
+// are logged differently and mean different things, so the type keeps them apart.
 export type PushoverOutcome =
   // Sent. No web-push fallback for non-Apple devices.
   | 'delivered'
-  // The account answered and nothing matched `<firstname>-`. The nudge case.
+  // The account answered and nothing matched `<firstname>-`.
   | 'no-devices'
   // Not provisioned here, suppressed in non-production, a resolution blip, or a
   // failed send — all cases where they may well have Pushover already.
@@ -39,8 +38,8 @@ export interface PushoverDelivery {
 
 export async function deliverViaPushover(d: PushoverDelivery): Promise<PushoverOutcome> {
   if (!d.token || !d.user) {
-    // Not provisioned in this environment — web push covers everyone. NOT the
-    // nudge case: this is our missing config, not their missing app.
+    // Not provisioned in this environment — web push covers everyone. NOT
+    // 'no-devices': this is our missing config, not their missing app.
     logger.warn(`${d.name}: Pushover not provisioned`, d.context);
     return 'unavailable';
   }

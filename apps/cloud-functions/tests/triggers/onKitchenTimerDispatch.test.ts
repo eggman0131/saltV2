@@ -387,8 +387,8 @@ describe('onKitchenTimerDispatch', () => {
 // timer. These cases pin what that move must preserve: the three-way outcome
 // mapping and the Apple-always / fallback-only routing it decides, the deep link
 // and link title that are this kind's own — and, as its own assertion, that the
-// install nudge stays COOK-ONLY (Behavior Contract clause 9; #988 is where that
-// may deliberately change, not here).
+// fallback push stays unmodified on 'no-devices' (#988 dropped the install nudge
+// everywhere; the advice lives once in /settings).
 describe('onKitchenTimerDispatch — Pushover fan-out', () => {
   const ANDROID = 'https://fcm.googleapis.com/fcm/send/a';
   const APPLE = 'https://web.push.apple.com/i';
@@ -447,12 +447,12 @@ describe('onKitchenTimerDispatch — Pushover fan-out', () => {
     });
   });
 
-  it('never appends the install nudge — that is cook-only', async () => {
+  it('never appends an install nudge — the fallback push is unmodified (#988)', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
 
     await onKitchenTimerDispatch(req());
 
-    // The exact same 'no-devices' outcome that nudges a cook timer's fallback.
+    // The 'no-devices' outcome that once nudged a cook timer's fallback (#988).
     const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
     expect(payload['body']).toBe('Your kitchen timer just finished.');
     expect(payload['body']).not.toContain('install Pushover');
