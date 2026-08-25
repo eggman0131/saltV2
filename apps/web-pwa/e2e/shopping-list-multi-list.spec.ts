@@ -151,6 +151,16 @@ test.describe('shopping list — multi-list', () => {
   test('move item to second list removes it from source', async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // The first list is SETUP here, not the subject — creating one through the
+    // UI stays covered by the tests in this file where it IS the subject.
+    // Seeded before boot so the default lands in the config listener's first
+    // snapshot instead of the post-attach update the emulator's forced
+    // long-polling transport drops permanently often enough to have made this
+    // the suite's #2 flake (see `seedShoppingListBeforeBoot`, NF-C4).
+    const firstList = await seedShoppingListBeforeBoot('Weekly shop');
+    const firstListUrl = `/#/shopping/${firstList.id}`;
+
     await gotoAndSignIn(page, email);
 
     // Seed an aisle + a canon item the entry will match by exact name, so the
@@ -165,7 +175,16 @@ test.describe('shopping list — multi-list', () => {
       aisleId: condiments!.id,
     });
 
-    const firstListUrl = await createFirstList(page);
+    // Settle gate on the config listener's first snapshot — a wait that always
+    // terminates, because the doc predates the listener (NF-A3).
+    await expect
+      .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
+      .not.toBeNull();
+
+    await page.goto(firstListUrl);
+    await expect(page).toHaveURL(new RegExp(`#/shopping/${firstList.id}$`), {
+      timeout: SYNC_TIMEOUT,
+    });
 
     // Add an item
     await page.getByTestId('shopping-item-input').fill('soy sauce');
