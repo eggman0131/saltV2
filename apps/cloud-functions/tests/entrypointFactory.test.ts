@@ -95,12 +95,111 @@ describe('callables go through the entrypoint factory', () => {
   });
 });
 
+const WRAPPER = /\b(withFirestoreTrigger|withTaskTrigger)\s*[<(]/;
+
+/**
+ * The body of the `export function` declaration whose signature starts at
+ * `signatureStart` (the `<` or `(` that follows its name), by matching braces from
+ * its opening `{`. Returns undefined for any shape this scanner does not
+ * understand — the SAFE direction: an export it cannot read is simply not excused,
+ * which fails loudly rather than widening the allowance in silence.
+ */
+function bodyOfExportedFunction(code: string, signatureStart: number): string | undefined {
+  let cursor = signatureStart;
+  // Step over a generic parameter list first, so a `(` or `{` written inside one
+  // is not mistaken for the parameter list or for the body.
+  if (code[cursor] === '<') {
+    let angle = 0;
+    for (; cursor < code.length; cursor += 1) {
+      if (code[cursor] === '<') angle += 1;
+      else if (code[cursor] === '>') {
+        angle -= 1;
+        if (angle === 0) {
+          cursor += 1;
+          break;
+        }
+      }
+    }
+  }
+  const close = (open: number, opener: string, closer: string): number => {
+    let depth = 0;
+    for (let i = open; i < code.length; i += 1) {
+      if (code[i] === opener) depth += 1;
+      else if (code[i] === closer) {
+        depth -= 1;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  };
+
+  const paramsOpen = code.indexOf('(', cursor);
+  if (paramsOpen === -1) return undefined;
+  const paramsClose = close(paramsOpen, '(', ')');
+  if (paramsClose === -1) return undefined;
+  const bodyOpen = code.indexOf('{', paramsClose);
+  if (bodyOpen === -1) return undefined;
+  const bodyClose = close(bodyOpen, '{', '}');
+  return bodyClose === -1 ? undefined : code.slice(bodyOpen, bodyClose + 1);
+}
+
+/**
+ * LOCAL trigger facades, derived from the tree. A file under `triggers/` that
+ * exports a function whose body calls the wrapper IS an entrypoint facade: it
+ * applies the wrapper on behalf of every call site, exactly as `tracedCallable.ts`
+ * does for callables. A registration reaching the wrapper through one of these is
+ * wrapped, and the scan below must see that.
+ *
+ * Derived rather than named here (UT-E1): `timerWriteTrigger` (#987) is the first,
+ * and a hand-written allowance would have to be extended by whoever writes the
+ * second — which is precisely the maintenance this file exists to remove.
+ *
+ * Scoped to each exported function's OWN BODY, never to the file. A file-scoped
+ * match reads "this file mentions the wrapper somewhere" and hands the excuse to
+ * every name the file exports — which would enrol the pure predicates that live
+ * beside a registration (`iconNeedsGeneration`, `kitNeedsInference`) and this
+ * file's own `timerKey`. The cost is not cosmetic: `onCanonItemWritten.ts` CALLS
+ * `iconNeedsGeneration`, so with those names in the list, deleting its
+ * `withFirestoreTrigger` wrapper — the exact regression this file exists to catch
+ * — would leave the scan below green. The liveness anchor cannot see that: an
+ * over-broad list is non-empty by construction.
+ */
+function localTriggerFacades(): string[] {
+  return sources()
+    .filter(({ file }) => file.startsWith('triggers/') && file !== TRIGGER_FACTORY_FILE)
+    .flatMap(({ code }) =>
+      [...code.matchAll(/export\s+function\s+(\w+)\s*[<(]/g)]
+        .filter((m) =>
+          WRAPPER.test(bodyOfExportedFunction(code, (m.index ?? 0) + m[0].length - 1) ?? ''),
+        )
+        .map((m) => m[1] as string),
+    );
+}
+
 describe('triggers go through the entrypoint factory', () => {
+  it('derives local trigger facades from the tree rather than a hand-written list', () => {
+    // The liveness anchor (UT-E2). A derivation that silently collapsed to nothing
+    // would make the scan below excuse nobody — which looks like a pass — while a
+    // facade-registered trigger sails through unwrapped. If the last local facade
+    // is ever inlined away, this expectation goes with it, deliberately by hand.
+    expect(localTriggerFacades()).toContain('timerWriteTrigger');
+
+    // The other half of live: not too WIDE either. `timerKey` is exported from the
+    // same file and is a pure key-builder; it can only appear here if the scoping
+    // has slipped back to the file, which would start excusing whatever an
+    // ordinary trigger file happens to call. Named because it is that file's own
+    // sibling export — no list to maintain elsewhere.
+    expect(localTriggerFacades()).not.toContain('timerKey');
+  });
+
   it('wraps every Firestore and Cloud Tasks trigger in an entrypoint facade', () => {
+    const facades = localTriggerFacades();
+    const viaFacade = new RegExp(`\\b(?:${facades.join('|')})\\s*[<(]`);
+
     const offenders = sources()
       .filter(({ file }) => file !== TRIGGER_FACTORY_FILE)
       .filter(({ code }) => /\b(onDocumentWritten|onTaskDispatched)\s*(<[^>]+>)?\s*\(/.test(code))
-      .filter(({ code }) => !/\b(withFirestoreTrigger|withTaskTrigger)\s*[<(]/.test(code))
+      .filter(({ code }) => !WRAPPER.test(code) && !viaFacade.test(code))
       .map(({ file }) => file);
 
     expect(offenders).toEqual([]);

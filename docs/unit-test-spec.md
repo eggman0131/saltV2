@@ -47,8 +47,9 @@ does, and precisely what it must not fail on.
   **Evidence:** 1,565 of 10,796 assertions (14.5%) are `toHaveBeenCalled*`. In `firebase-sync` it is
   36% — the package with the worst coverage (51.3% lines, #941's coverage run) and three #913
   refactors landing on it.
-  `onCookTimerWrite.test.ts` is 11 assertions out of 11; `onKitchenTimerWrite.test.ts` 18 of 20.
-  Neither would notice if the trigger wrote the wrong document.
+  `onCookTimerWrite.test.ts` was 11 assertions out of 11; `onKitchenTimerWrite.test.ts` 18 of 20 —
+  neither would have noticed if the trigger wrote the wrong document. Fixed in #987, which deleted
+  both in favour of `timerWrite.test.ts`'s table-driven behavioural net.
   _Verify:_ in the changed file, every `it(` body must contain an `expect` that is not
   `toHaveBeenCalled*`. `grep -c 'toHaveBeenCalled' <file>` against `grep -c 'expect(' <file>` is the
   smell test; a ratio near 1.0 is a block.
