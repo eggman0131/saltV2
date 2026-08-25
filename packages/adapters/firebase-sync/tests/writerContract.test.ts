@@ -1153,7 +1153,7 @@ describe.each(writerCases)('$name', (c) => {
 });
 
 // ─── The transforms a single row cannot hold ────────────────────────────────
-// Two writers branch on their input. Each row above takes one branch; these
+// Some writers branch on their input, and a row can only take one branch. These
 // take the other, so neither is left to a wildcard.
 
 describe('saveShoppingListItem — the trace stamp (#362)', () => {
@@ -1187,6 +1187,19 @@ describe('saveChatSession — the expiry stamp (#696)', () => {
         data: { ...CHAT_SESSION, recipeId: 'r-1', expiresAt: NEVER_EXPIRES },
       },
     ]);
+  });
+});
+
+describe('deleteShoppingListItems — the empty selection', () => {
+  // Migrated from shoppingListItemSubscription.test.ts when #928's replacement
+  // of that file was completed (#939). The row above deletes two items; this is
+  // the other branch of the same loop, and it is the one the shopping page hits
+  // whenever "clear checked" is pressed with nothing checked.
+  it('commits an empty batch and still succeeds when no items were selected', async () => {
+    const result = await barrel.deleteShoppingListItems('list-1', []);
+
+    expect(h.ops).toEqual([]);
+    expect(result).toEqual({ kind: 'ok', value: undefined });
   });
 });
 
