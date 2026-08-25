@@ -1,20 +1,13 @@
-import { getFirestore, FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
+import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
-import { CanonItemSchema, DevSettingsSchema, type CanonItemDoc } from '@salt/domain/schemas';
-import { flushServerObservability } from '@salt/observability/server';
+import { CanonItemSchema, type CanonItemDoc } from '@salt/domain/schemas';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
-import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
-import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
-import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
-import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
+import { iconWriteTrigger } from './iconWriteTrigger.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -22,7 +15,7 @@ import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntry
 // key must be bound to its runtime.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 // Bound so server error reporting (posthog-node) can read POSTHOG_API_KEY at
-// runtime — this trigger now reports embedding/icon/devSettings-read failures.
+// runtime — this trigger reports embedding/icon/devSettings-read failures.
 // Optional like elsewhere: when unset, reporting no-ops and the logger still
 // emits.
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
@@ -33,6 +26,10 @@ const ICON_STORAGE_PREFIX = 'canon-icons';
  * Embedding branch: generate the name embedding if absent, writing it to the
  * server-only `canonEmbeddings/{id}` collection (issue #410) rather than inline
  * on this client-subscribed doc.
+ *
+ * CANON-ONLY, and the reason this trigger is the only icon family with an
+ * `alongside` branch: product forms and kitchen tools are matched on label/matcher
+ * TEXT, never on a vector, so there is nothing to embed.
  *
  * Idempotency guard (two cheap checks): skip if an INLINE vector is still present
  * (an un-migrated doc — already embedded, and the match adapter reads it via its
@@ -64,165 +61,10 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
   } catch (err) {
     logger.error('onCanonItemWritten: embedding failed', { id, err });
     // Additive: an embedding flow failure (AI/Genkit) is unexpected → report it
-    // to PostHog alongside the logger. Best-effort, never throws. The handler's
+    // to PostHog alongside the logger. Best-effort, never throws. The entrypoint's
     // finally flushes before the function returns.
     reportServerError(err);
   }
-}
-
-/**
- * Edge-trigger decision for the icon branch. The trigger fires on EVERY write to
- * the doc, so generation must start only on the write that *transitions* the item
- * into "needs an icon" — never merely because the thumbnail currently happens to
- * be null. Otherwise an unrelated write landing while a generation is still in
- * flight re-enters and starts a *duplicate* generation, because `thumbnail` stays
- * null until the first one finishes. (Since issue #410 the embedding write lands
- * in a separate collection and no longer re-fires this trigger; the guard still
- * matters for OTHER concurrent canon-doc writes — a match synonym-append or a
- * traceContext stamp landing mid-generation.)
- *
- * Generate when:
- *   - create (no prior doc) with a null thumbnail
- *   - thumbnail just went non-null → null (manual regenerate, or user cleared)
- *   - the `iconRequestedAt` nonce changed — covers a forced regenerate of an item
- *     whose thumbnail was *already* null (see regenerateCanonIcon)
- * Skip when the thumbnail was already null before this write and stayed null: the
- * write that first set it null already owns the in-flight generation.
- *
- * `thumbnail !== null` (a real URL, or the CANON_ICON_HIDDEN "hidden" sentinel)
- * always skips: already generated, or the user opted out forever.
- */
-function iconNeedsGeneration(before: DocumentSnapshot | undefined, after: CanonItemDoc): boolean {
-  if (after.thumbnail !== null) return false; // real URL or "hidden" sentinel → skip
-  if (!before?.exists) return true; // create → generate
-  const prev = before.data();
-  if ((prev?.['thumbnail'] ?? null) !== null) return true; // just cleared → generate
-  // Already null and still null: only an explicit regenerate (nonce bump) re-fires;
-  // any other field change (rename, aisle, traceContext stamp…) must not start a
-  // duplicate.
-  return prev?.['iconRequestedAt'] !== after.iconRequestedAt;
-}
-
-/**
- * Icon branch (issue #148): generate the Tier-1 pictogram when this write
- * transitions the item into "needs an icon" (see iconNeedsGeneration). Independent
- * of the embedding guard, so each `.update()` only touches its own field and the
- * trigger self-terminates once both are set.
- *
- * Trade-off of edge-triggering: a generation that *fails* leaves `thumbnail` null
- * but no longer self-heals on the next unrelated write — the regenerate callable
- * (which bumps `iconRequestedAt`) is the retry path.
- */
-async function maybeGenerateIcon(
-  id: string,
-  item: CanonItemDoc,
-  before: DocumentSnapshot | undefined,
-): Promise<void> {
-  if (!iconNeedsGeneration(before, item)) return;
-
-  // E2E (FUNCTIONS_AI_FAKE): skip icon generation entirely. The real image model
-  // and the Storage upload (which authenticates via the GCE metadata server) are
-  // not emulator-safe and hang the trigger; no e2e spec asserts a generated icon.
-  // Unreachable in production (the flag is never set there).
-  if (aiFakeEnabled()) return;
-
-  const name = item.name.trim();
-  if (!name) return;
-
-  // Per-environment kill-switch (issue #238). Checked only once the cheap
-  // in-memory guards pass (i.e. we would otherwise generate). Turning it off
-  // stops EVERY generation path — create, the update self-heal, and the manual
-  // regenerate callable (which routes through this trigger). Re-enabling does
-  // not backfill: items written while off keep thumbnail null and regenerate
-  // only when next written.
-  if (!(await isCanonIconGenerationEnabled())) return;
-
-  // Optional one-shot user steer written by the regenerate callable.
-  const hint = item.iconHint?.trim();
-
-  try {
-    // No outer withAiTimeout (issue #915). The flow owns its budget — 60s + 1
-    // retry, sized for an image generation — and the wrapper that used to sit
-    // here imposed the house 20s default on top of it, so a drawing that took
-    // longer than 20s was cut short and retried whole. This is the nested-budget
-    // disagreement the equipment paths already cite as the thing not to copy.
-    const { imageBase64 } = await generateCanonIconFlow({ name, ...(hint ? { hint } : {}) });
-    const raw = Buffer.from(imageBase64, 'base64');
-    // Background removal, then framing. The model centres its subject only
-    // loosely — measured 55–72% of the frame across production icons — so
-    // without the second step every icon lands at its own apparent size and all
-    // of them read small inside their tile. `contentMax: 108` (84% of the 128px
-    // frame) is tuned for a ~40px row tile, deliberately larger than the weather
-    // set's 92px default: those are watermarks, these are scanned in a list. Not
-    // pushed higher because the match-reveal sage lift reads through the margin
-    // that remains (ui-spec-v04 §14.5.3).
-    const webp = await normalizeIconFraming(await removeFlatBackground(raw), { contentMax: 108 });
-    const url = await uploadCanonIcon(id, webp);
-    // Set the icon and clear the one-shot hint in the same write.
-    await getFirestore()
-      .collection('canonItems')
-      .doc(id)
-      .update({ thumbnail: url, iconHint: FieldValue.delete() });
-  } catch (err) {
-    // Leave thumbnail null so a later write retries; never block the trigger.
-    logger.error('onCanonItemWritten: icon generation failed', { id, err });
-    // Additive: icon generation chains an AI flow, image processing and a Storage
-    // upload — a throw here is unexpected. Report it to PostHog alongside the
-    // logger. Best-effort, never throws; the handler's finally flushes.
-    reportServerError(err);
-  }
-}
-
-/**
- * Reads the per-environment canon-icon kill-switch (issue #238) from
- * `devSettings/singleton`. Fails OPEN: a missing doc, an unexpected shape, or a
- * read error all default to ENABLED, so an environment that never configured the
- * switch keeps the greenfield behaviour and a transient read glitch never
- * silently halts generation.
- */
-async function isCanonIconGenerationEnabled(): Promise<boolean> {
-  try {
-    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
-    if (!snap.exists) return true;
-    const parsed = DevSettingsSchema.safeParse(snap.data());
-    if (!parsed.success) {
-      // Expected validation fallback (a doc that doesn't match the schema, e.g.
-      // a partially-written settings doc): NOT reported — this is a
-      // ValidationError-class "expected" outcome, suppressed per policy. The
-      // fail-open default + the warn log are the contract.
-      logger.warn('onCanonItemWritten: invalid devSettings doc, defaulting to enabled');
-      return true;
-    }
-    return parsed.data.canonIconGenerationEnabled;
-  } catch (err) {
-    logger.warn('onCanonItemWritten: devSettings read failed, defaulting to enabled', { err });
-    // A read THROW (vs a shape mismatch above) is a StorageError-class failure.
-    // Non-critical (we fail open), but genuinely unexpected, so report it
-    // additively — best-effort, never throws.
-    reportServerError(err, 'StorageError');
-    return true;
-  }
-}
-
-/**
- * Uploads the icon to Storage and returns its public download URL.
- *
- * We deliberately use the Firebase Storage download endpoint
- * (`/v0/b/<bucket>/o/<path>?alt=media`) rather than the raw GCS URL
- * (`storage.googleapis.com/<bucket>/<path>`): only the former is governed by
- * `storage.rules` (which grant public read on `canon-icons/`), so no object
- * ACL / `makePublic()` is needed — that path is the raw-GCS IAM model and
- * throws on buckets with uniform bucket-level access (the default). The same
- * URL shape works against the Storage emulator (just a different host).
- */
-async function uploadCanonIcon(id: string, webp: Buffer): Promise<string> {
-  const bucket = getStorage().bucket();
-  const path = `${ICON_STORAGE_PREFIX}/${id}.webp`;
-  await bucket.file(path).save(webp, {
-    contentType: 'image/webp',
-    metadata: { cacheControl: 'public, max-age=31536000, immutable' },
-  });
-  return buildStorageDownloadUrl(bucket.name, path);
 }
 
 export const onCanonItemWritten = onDocumentWritten(
@@ -245,42 +87,18 @@ export const onCanonItemWritten = onDocumentWritten(
     concurrency: 1,
     memory: '1GiB',
   },
-  withFirestoreTrigger<{ id: string }>(async (event) => {
-    const after = event.data?.after;
-    if (!after?.exists) return;
-
-    const parsed = CanonItemSchema.safeParse(after.data());
-    if (!parsed.success) {
-      logger.error('onCanonItemWritten: invalid doc shape, skipping', {
-        id: event.params.id,
-        error: parsed.error.message,
-      });
-      return;
-    }
-
-    const id = event.params.id;
-    // Distributed-trace correlation (issue #362, Phase 5). The
-    // onShoppingListItemWrite trigger stamped its browser-rooted W3C traceparent
-    // onto this canon doc as traceContext when it wrote the match; continuing it
-    // here nests the icon + embedding work under the SAME trace ("Add item …" →
-    // canon-match → icon) instead of re-rooting. Env-gated and degrades safely
-    // (absent/malformed → normal root trace, never throws — Rule 10). Reading
-    // traceContext is a no-op for the icon/embedding idempotency guards (they key
-    // off thumbnail/iconRequestedAt/embedding), so a bare traceContext-only
-    // re-fire of this trigger cannot loop into duplicate generation.
-    const traceContext = parsed.data.traceContext;
-    try {
-      // Two independently-guarded side-effects. allSettled so a failure in one
-      // branch never rejects the handler (which would retry both). The icon branch
-      // is edge-triggered on before→after, so it needs the prior snapshot.
-      await Promise.allSettled([
-        maybeGenerateEmbedding(id, parsed.data),
-        maybeGenerateIcon(id, parsed.data, event.data?.before),
-      ]);
-    } finally {
-      // The branch catches above report best-effort to posthog-node, which
-      // batches; flush before the function freezes so a report is not stranded.
-      // Non-throwing + no-op when uninitialised, so it is always safe to call.
-    }
-  }, traceContextFromWrittenDoc),
+  // Distributed-trace correlation (issue #362, Phase 5) comes from the shared
+  // entrypoint: the onShoppingListItemWrite trigger stamped its browser-rooted
+  // W3C traceparent onto this canon doc as `traceContext` when it wrote the
+  // match, and continuing it here nests the icon + embedding work under the SAME
+  // trace ("Add item …" → canon-match → icon) instead of re-rooting.
+  iconWriteTrigger<CanonItemDoc>({
+    name: 'onCanonItemWritten',
+    collection: 'canonItems',
+    storagePrefix: ICON_STORAGE_PREFIX,
+    schema: CanonItemSchema,
+    subjectOf: (item) => item.name,
+    draw: (name, hint) => generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
+    alongside: maybeGenerateEmbedding,
+  }),
 );

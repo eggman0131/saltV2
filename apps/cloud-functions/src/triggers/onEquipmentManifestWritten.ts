@@ -3,7 +3,6 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import {
-  DevSettingsSchema,
   EquipmentManifestSchema,
   EQUIPMENT_ICONS_COLLECTION,
   EQUIPMENT_MANIFEST_COLLECTION,
@@ -13,6 +12,7 @@ import {
 import { describeEquipmentSubjectFlow } from '../flows/describeEquipmentSubject.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { isIconGenerationEnabled } from './iconWriteTrigger.js';
 import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 
 // Equipment pictogram BRIEFS (issue #877).
@@ -136,37 +136,6 @@ async function maybeAuthorBrief(item: EquipmentItemDoc): Promise<void> {
   }
 }
 
-/**
- * Per-environment kill switch (issue #238), reused rather than duplicated:
- * `canonIconGenerationEnabled` covers this pipeline too — same house style, same
- * cost profile — and a second switch is a second thing to remember to flip
- * alongside the first (the decision already taken in #871).
- *
- * FAILS OPEN, matching `onCanonItemWritten`: a missing doc, an unexpected shape
- * or a read error all default to ENABLED, so an environment that never configured
- * the switch keeps working and a transient glitch never silently halts the app.
- */
-async function isIconGenerationEnabled(): Promise<boolean> {
-  try {
-    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
-    if (!snap.exists) return true;
-    const parsed = DevSettingsSchema.safeParse(snap.data());
-    if (!parsed.success) {
-      // A shape mismatch is an EXPECTED validation outcome, suppressed per the
-      // error-reporting policy. The fail-open default and the warn are the contract.
-      logger.warn('onEquipmentManifestWritten: invalid devSettings doc, defaulting to enabled');
-      return true;
-    }
-    return parsed.data.canonIconGenerationEnabled;
-  } catch (err) {
-    logger.warn('onEquipmentManifestWritten: devSettings read failed, defaulting to enabled', {
-      err,
-    });
-    reportServerError(err, 'StorageError');
-    return true;
-  }
-}
-
 export const onEquipmentManifestWritten = onDocumentWritten(
   {
     document: `${EQUIPMENT_MANIFEST_COLLECTION}/${EQUIPMENT_MANIFEST_DOC_ID}`,
@@ -207,7 +176,7 @@ export const onEquipmentManifestWritten = onDocumentWritten(
     // emulator-safe here and no e2e spec asserts a generated brief.
     // Unreachable in production — the flag is never set there.
     if (aiFakeEnabled()) return;
-    if (!(await isIconGenerationEnabled())) return;
+    if (!(await isIconGenerationEnabled('onEquipmentManifestWritten'))) return;
 
     // Sequential, not parallel: nineteen concurrent Gemini calls from one
     // invocation is a rate-limit shape for no gain, and the whole point of the
