@@ -16,8 +16,11 @@ vi.mock('firebase-functions/v2/tasks', () => ({
   onTaskDispatched: (_opts: unknown, handler: unknown) => handler,
 }));
 
+// Key-aware, so a case can unprovision ONE secret. Blanking them all would take
+// VAPID down with Pushover and the routing under test would vanish entirely.
+const mockSecrets: Record<string, string> = {};
 vi.mock('firebase-functions/params', () => ({
-  defineSecret: () => ({ value: () => 'test-vapid-private' }),
+  defineSecret: (name: string) => ({ value: () => mockSecrets[name] ?? 'test-vapid-private' }),
 }));
 
 vi.mock('firebase-functions', () => ({
@@ -220,6 +223,7 @@ beforeEach(() => {
   mockResolveTargets.mockResolvedValue({ kind: 'send', devices: ['daniel-phone'] });
   // The deep link is derived from the runtime's project id — no new config, but
   // it does mean the tests must stand one up.
+  for (const key of Object.keys(mockSecrets)) delete mockSecrets[key];
   vi.stubEnv('GCLOUD_PROJECT', 's2-prod-e46bd');
   // VAPID keys and the Pushover credentials are provided via the mocked
   // defineSecret (.value() → a test string), so the handler treats both sinks as
@@ -657,6 +661,31 @@ describe('onCookTimerDispatch — total non-delivery', () => {
 
     await (onCookTimerDispatch as unknown as Function)(req());
 
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+});
+
+// The one Pushover outcome the cases above leave unpinned, and the one #987
+// Phase 4's shared fan-out must not lose: OUR missing configuration, which is a
+// different thing from their missing app. It is 'unavailable', so every device
+// falls back — and it earns no nudge, because there is nothing for them to fix.
+describe('onCookTimerDispatch — Pushover not provisioned', () => {
+  beforeEach(() => {
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+    mockSecrets['PUSHOVER_APP_TOKEN'] = '';
+    mockSubsDocs = [subDoc(makeSub('pixel', ANDROID_ENDPOINT)), subDoc(makeSub('ipad'))];
+  });
+
+  it('falls back to every device without nudging, and does not report', async () => {
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(mockSendWebPush.mock.calls.map((c) => (c[1] as { endpoint: string }).endpoint)).toEqual([
+      `${ANDROID_ENDPOINT}pixel`,
+      `${APPLE_ENDPOINT}ipad`,
+    ]);
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe("Shepherd's pie");
     expect(mockReport).not.toHaveBeenCalled();
   });
 });

@@ -4,8 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { KitchenTimersSchema, PushSubscriptionSchema } from '@salt/domain/schemas';
 import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
-import { sendPushover } from '../adapters/sendPushover.js';
-import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
+import { deliverViaPushover } from '../adapters/deliverViaPushover.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { KITCHEN_TIMER_REGION, type KitchenTimerTaskPayload } from './kitchenTimerTypes.js';
 import { withTaskTrigger } from './triggerEntrypoint.js';
@@ -67,69 +66,6 @@ function kitchenDeepLink(): string | undefined {
   const projectId = process.env['GCLOUD_PROJECT'] ?? process.env['GCP_PROJECT'] ?? '';
   if (!projectId) return undefined;
   return `https://${projectId}.web.app${KITCHEN_URL}`;
-}
-
-// Why the timer did not reach Pushover, which is not the same question as whether
-// it delivered — the same three-way distinction the cook timer draws, and it has
-// to be redrawn here rather than imported because onCookTimerDispatch keeps its
-// copy module-local (and is out of scope to touch).
-type PushoverOutcome = 'delivered' | 'no-devices' | 'unavailable';
-
-async function deliverViaPushover(
-  uid: string,
-  timerId: string,
-  payload: { readonly title: string; readonly body: string },
-): Promise<PushoverOutcome> {
-  const token = pushoverAppToken.value();
-  const user = pushoverUserKey.value();
-  if (!token || !user) {
-    // Not provisioned in this environment — web push covers everyone.
-    logger.warn('onKitchenTimerDispatch: Pushover not provisioned', { timerId });
-    return 'unavailable';
-  }
-
-  const targets = await resolvePushoverTargets({ token, user }, uid);
-
-  switch (targets.kind) {
-    case 'suppressed':
-      // Non-production and not the test-device owner, or the emulator. Expected.
-      return 'unavailable';
-
-    case 'unresolved':
-      // Operational blip (network / member read). Logged inside the resolver; not
-      // reported, because an offline wobble is not the unexpected (§7.6).
-      logger.warn('onKitchenTimerDispatch: Pushover targets unresolved', {
-        timerId,
-        reason: targets.reason,
-      });
-      return 'unavailable';
-
-    case 'no-devices':
-      // Nothing matched `<firstname>-`, so we send NOTHING rather than let
-      // Pushover fail open and broadcast one person's eggs to the whole family.
-      // WARN, not report: a member who has simply not installed Pushover lands
-      // here on every timer and falls back to web push below.
-      logger.warn('onKitchenTimerDispatch: no Pushover device matched', {
-        timerId,
-        firstName: targets.firstName,
-      });
-      return 'no-devices';
-
-    case 'send': {
-      // Spread rather than assign: under exactOptionalPropertyTypes an absent deep
-      // link must be an absent PROPERTY, not an explicit undefined.
-      const link = kitchenDeepLink();
-      const result = await sendPushover({ token, user }, targets.devices, {
-        title: payload.title,
-        body: payload.body,
-        ...(link ? { url: link, urlTitle: 'Go to the kitchen' } : {}),
-      });
-      if (result === 'failed') {
-        logger.warn('onKitchenTimerDispatch: Pushover send failed', { timerId });
-      }
-      return result === 'sent' ? 'delivered' : 'unavailable';
-    }
-  }
 }
 
 export const onKitchenTimerDispatch = onTaskDispatched<KitchenTimerTaskPayload>(
@@ -238,7 +174,16 @@ export const onKitchenTimerDispatch = onTaskDispatched<KitchenTimerTaskPayload>(
 
       // (g) PUSHOVER FIRST — it is the primary channel, and whether it delivered
       // decides the web-push fan-out below.
-      const pushoverOutcome = await deliverViaPushover(uid, timerId, payload);
+      const pushoverOutcome = await deliverViaPushover({
+        name: 'onKitchenTimerDispatch',
+        token: pushoverAppToken.value(),
+        user: pushoverUserKey.value(),
+        ownerUid: uid,
+        context: { timerId },
+        link: kitchenDeepLink(),
+        linkTitle: 'Go to the kitchen',
+        payload,
+      });
       const pushoverDelivered = pushoverOutcome === 'delivered';
 
       // (h) WEB PUSH, ROUTED PER DEVICE, on the cook timer's rule: an Apple

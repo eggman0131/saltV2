@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { KitchenTimerDoc, KitchenTimersDoc, PushSubscriptionDoc } from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the standalone kitchen-timer
@@ -11,8 +11,11 @@ vi.mock('firebase-functions/v2/tasks', () => ({
   onTaskDispatched: (_opts: unknown, handler: unknown) => handler,
 }));
 
+// Key-aware, so a case can unprovision ONE secret. Blanking them all would take
+// VAPID down with Pushover and the fan-out under test would vanish entirely.
+const mockSecrets: Record<string, string> = {};
 vi.mock('firebase-functions/params', () => ({
-  defineSecret: () => ({ value: () => 'test-secret' }),
+  defineSecret: (name: string) => ({ value: () => mockSecrets[name] ?? 'test-secret' }),
 }));
 
 vi.mock('firebase-functions', () => ({
@@ -158,6 +161,7 @@ beforeEach(() => {
   mockSendWebPush.mockResolvedValue('sent');
   mockSendPushover.mockResolvedValue('sent');
   mockResolveTargets.mockResolvedValue({ kind: 'send', devices: ['daniel-phone'] });
+  for (const key of Object.keys(mockSecrets)) delete mockSecrets[key];
 });
 
 describe('onKitchenTimerDispatch', () => {
@@ -374,5 +378,83 @@ describe('onKitchenTimerDispatch', () => {
     await expect(onKitchenTimerDispatch(req())).resolves.toBeUndefined();
     expect(mockReport).toHaveBeenCalled();
     expect(mockFlush).toHaveBeenCalled();
+  });
+});
+
+// ─── The Pushover fan-out, pinned ahead of #987 Phase 4 ───────────────────────
+//
+// Phase 4 replaces this file's `deliverViaPushover` with one shared with the cook
+// timer. These cases pin what that move must preserve: the three-way outcome
+// mapping and the Apple-always / fallback-only routing it decides, the deep link
+// and link title that are this kind's own — and, as its own assertion, that the
+// fallback push stays unmodified on 'no-devices' (#988 dropped the install nudge
+// everywhere; the advice lives once in /settings).
+describe('onKitchenTimerDispatch — Pushover fan-out', () => {
+  const ANDROID = 'https://fcm.googleapis.com/fcm/send/a';
+  const APPLE = 'https://web.push.apple.com/i';
+  const pushedTo = () =>
+    mockSendWebPush.mock.calls.map((call) => (call[1] as { endpoint: string }).endpoint);
+
+  beforeEach(() => {
+    // The deep link is derived from the runtime's project id.
+    vi.stubEnv('GCLOUD_PROJECT', 's2-prod-e46bd');
+    mockSubsDocs = [androidSub(), appleSub()];
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // 'delivered' is the ONLY outcome that suppresses the non-Apple fallback. An
+  // Apple endpoint is sent to in every row, because Pushover may well have
+  // reached a different device entirely.
+  it.each([
+    ['a delivered send', { kind: 'send', devices: ['daniel-phone'] }, 'sent', [APPLE]],
+    ['a failed send', { kind: 'send', devices: ['daniel-phone'] }, 'failed', [ANDROID, APPLE]],
+    ['no matching device', { kind: 'no-devices', firstName: 'Daniel' }, 'sent', [ANDROID, APPLE]],
+    ['an unresolved lookup', { kind: 'unresolved', reason: 'network' }, 'sent', [ANDROID, APPLE]],
+    ['suppression outside production', { kind: 'suppressed' }, 'sent', [ANDROID, APPLE]],
+  ])('fans web push out after %s', async (_case, targets, send, endpoints) => {
+    mockResolveTargets.mockResolvedValue(targets);
+    mockSendPushover.mockResolvedValue(send as 'sent' | 'failed');
+
+    await onKitchenTimerDispatch(req());
+
+    expect(pushedTo()).toEqual(endpoints);
+  });
+
+  it('fans web push out to every device when Pushover is not provisioned here', async () => {
+    mockSecrets['PUSHOVER_APP_TOKEN'] = '';
+
+    await onKitchenTimerDispatch(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(pushedTo()).toEqual([ANDROID, APPLE]);
+  });
+
+  it('links Pushover back to the kitchen, absolute and under its own title', async () => {
+    await onKitchenTimerDispatch(req());
+
+    const [, devices, message] = mockSendPushover.mock.calls[0]!;
+    expect(devices).toEqual(['daniel-phone']);
+    expect(message).toEqual({
+      title: 'Eggs',
+      body: 'Your kitchen timer just finished.',
+      // Absolute: a native client opens this, so there is no origin to resolve a
+      // path against. `/#/mine` — no id to reconstruct anything from.
+      url: 'https://s2-prod-e46bd.web.app/#/mine',
+      urlTitle: 'Go to the kitchen',
+    });
+  });
+
+  it('never appends an install nudge — the fallback push is unmodified (#988)', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
+
+    await onKitchenTimerDispatch(req());
+
+    // The 'no-devices' outcome that once nudged a cook timer's fallback (#988).
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe('Your kitchen timer just finished.');
+    expect(payload['body']).not.toContain('install Pushover');
   });
 });
