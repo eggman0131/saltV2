@@ -46,10 +46,13 @@ export function logRejection(label: string, id: string, error: unknown): void {
  * What one document came to: the projected value, or nothing because the schema
  * refused it (and `logRejection` has already said so).
  *
- * A refusal is a VALUE rather than an absence because `subscribeCollection` has
- * to keep the rejects (issue #939): its cache is indexed by the position
- * Firestore reports, and a skipped document that left no slot behind would shift
- * every index after it.
+ * A refusal is a VALUE rather than an absence so that `subscribeCollection` can
+ * CACHE one (issue #939). Its per-snapshot cache is keyed by document id and
+ * falls through to `parseDocument` on a miss, so a refusal recorded as `undefined`
+ * would be indistinguishable from a document never seen: a corrupt document would
+ * be re-parsed and re-logged on every snapshot for as long as it sat in the
+ * collection. `{ok: false}` is what makes "already refused, and already said so"
+ * a thing the cache can hold.
  */
 export type ParseOutcome<T> = { readonly ok: true; readonly value: T } | { readonly ok: false };
 

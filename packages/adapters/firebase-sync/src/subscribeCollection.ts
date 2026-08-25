@@ -93,9 +93,24 @@ export interface CollectionRead<TParsed, TDelivered> {
  * oldest out) — and both would fail silently and permanently. Walking `snap.docs`
  * makes the delivered order *identical to a full re-read by construction*, costs
  * two Map operations per document (single-digit µs at N = 500, against the
- * 10.6 ms of parsing it removes), handles a document leaving a `limit` window
- * with no removal branch at all, and degrades the only way worth degrading: if
- * `docChanges()` ever under-reports, a document is re-parsed, never lost.
+ * 10.6 ms of parsing it removes), and handles a document leaving a `limit`
+ * window with no removal branch at all.
+ *
+ * WHAT THE CACHE RESTS ON is that `snap.docs` can never carry content `snap
+ * .docChanges()` did not mention — not on `docChanges()` being merely a hint. It
+ * is worth being exact, because the failure it would cause is invisible: a
+ * MISSED MODIFICATION would serve the stale cached parse indefinitely, not
+ * re-parse it. (A missed ADD is harmless — no cache entry, so it is parsed; so
+ * is a missed REMOVAL — absent from `snap.docs`, so it is dropped.) The
+ * invariant holds in the pinned SDK, `@firebase/firestore@4.17.0`: in
+ * `View.computeDocChanges` (`src/core/view.ts`) `newDocumentSet` is only updated
+ * inside `if (changeApplied)`, and every branch that sets `changeApplied` also
+ * records a change — so the two are written together or not at all. Metadata-only
+ * changes cannot produce a counterexample either: `QueryListener.onViewSnapshot`
+ * strips `ChangeType.Metadata` before raising, and a snapshot with nothing left
+ * raises no event. And a fresh listener always starts from
+ * `ViewSnapshot.fromInitialDocuments`, which reports every document as `added`,
+ * so the first snapshot on a new subscription parses the lot.
  *
  * OBJECT IDENTITY IS NOW STABLE across snapshots. An unchanged document is
  * delivered as the same object it was delivered as last time, where before every

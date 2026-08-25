@@ -371,6 +371,32 @@ describe('subscribeMyCookSessions — a refused document stays refused (#939)', 
     expect(live.ids()).toEqual([A.id, B.id]);
   });
 
+  it('re-parses the refused document, and logs it again, when it changes and is still corrupt', () => {
+    const live = attach(WITH_CORRUPT);
+    parseSpy.mockClear();
+    errorSpy.mockClear();
+
+    // Edited, still invalid: `schemaVersion` is `z.literal(1)` and this is 3. The
+    // cached refusal is keyed on the id, so a write to that id must invalidate it
+    // — a cache that kept the refusal because the id had already failed once
+    // would never notice the document being repaired.
+    const STILL_CORRUPT: StoredDoc = {
+      id: CORRUPT.id,
+      data: { id: CORRUPT.id, schemaVersion: 3 },
+    };
+    live.deliver([row(A), STILL_CORRUPT, row(B)]);
+
+    expect(parseSpy).toHaveBeenCalledTimes(1);
+    expect(parseSpy.mock.calls[0]?.[0]).toEqual(STILL_CORRUPT.data);
+    // The second line is the point: a document that is corrupt again is a fresh
+    // fact about a fresh write, not the same one repeated per snapshot.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toBe(
+      `[CookSessionSchema] Document ${CORRUPT.id} failed validation`,
+    );
+    expect(live.ids()).toEqual([A.id, B.id]);
+  });
+
   it('re-parses the refused document, and delivers it, once it is written valid', () => {
     const live = attach(WITH_CORRUPT);
     parseSpy.mockClear();

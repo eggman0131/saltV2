@@ -89,7 +89,8 @@ describe('saveChatSession — expiry', () => {
 
   it('overwrites whatever expiry the caller passed in', async () => {
     // The caller's `expiresAt` is never authoritative — the adapter owns it, which
-    // is what lets a general chat that later claims a recipe stop expiring.
+    // is what moves a general chat onto the eighteen-month window the moment it
+    // claims a recipe, whatever expiry the document it was read from carried.
     await saveChatSession(
       makeSession({ recipeId: 'recipe-1', expiresAt: '2026-01-02T00:00:00.000Z' }),
     );
