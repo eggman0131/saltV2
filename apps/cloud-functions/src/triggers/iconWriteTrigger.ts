@@ -1,0 +1,341 @@
+import { getFirestore, FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import { logger } from 'firebase-functions';
+import { DevSettingsSchema } from '@salt/domain/schemas';
+import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
+import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
+import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
+import { aiFakeEnabled } from '../ai/fakeModel.js';
+import { reportServerError } from '../observability/reportServerError.js';
+import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
+
+// The Tier-1 pictogram pipeline, once (issue #989).
+//
+// Three triggers draw Tier-1 pictograms — canon items (#148), product forms
+// (#871) and kitchen tools (#882) — and they were one file copied three times:
+// the same edge-trigger decision, the same fail-open kill switch, the same
+// draw → background-removal → framing → upload → write-back chain. They differ
+// on five mechanical axes and nothing else: the collection, the Storage prefix,
+// the document schema, which field the picture is OF, and which flow draws it.
+// They are now DECLARATIONS over this module, and a fifth icon family is a
+// descriptor rather than a file.
+//
+// The copies had already drifted, which is the argument for doing it: three dead
+// `withAiTimeout` imports left by #915 and a dead flush import plus an empty
+// `finally` left by #920 sat in these files for two issues, because nothing
+// checks an import nobody calls.
+//
+// WHAT THIS DOES NOT ABSORB:
+//
+//  • `onEquipmentManifestWritten` authors text briefs and reconciles orphans; it
+//    draws nothing. It shares exactly one thing with the three — the kill-switch
+//    reader — and imports that alone.
+//  • Canon's embedding branch. It is genuinely canon-only, so it stays in
+//    `onCanonItemWritten.ts` and arrives here as the optional `alongside`
+//    descriptor field. What lives here is only the `Promise.allSettled` pairing,
+//    two lines of composition that belong beside the branch they pair with.
+//
+// Registration stays at each call site, deliberately: `memory`, `region`,
+// `concurrency` and `timeoutSeconds` must be pinned in a literal options object
+// at the `onDocumentWritten` call, because these modules are evaluated before
+// index.ts's `setGlobalOptions` runs and a pin hoisted in here would not apply.
+// `tests/functionMemoryPin.test.ts` scans for exactly that.
+
+/**
+ * The framing target for every Tier-1 pictogram: 84% of the 128px frame.
+ *
+ * Tuned for the ~40px row tile, and deliberately larger than
+ * `normalizeIconFraming`'s own 92px default, which is the weather set's
+ * watermark value — those are watermarks, these are scanned in a list. Not
+ * pushed higher because the match-reveal sage lift reads through the margin that
+ * remains (ui-spec-v04 §14.5.3). Named once here rather than written out per
+ * family: a form icon sits in the same tile as a canon icon, right above one in
+ * the same list, so any difference between them would read as two icon sets.
+ */
+export const ICON_CONTENT_MAX = 108;
+
+/**
+ * All this module needs of a drawable document — the tri-state `thumbnail`
+ * contract every icon family shares, field for field.
+ *
+ * `null` = not drawn yet, an https URL = a real icon, the CANON_ICON_HIDDEN
+ * "hidden" sentinel = the user opted out and it is never drawn again.
+ */
+export interface IconDocument {
+  readonly thumbnail: string | null;
+  /** Transient one-shot steer, consumed and cleared by the write that sets the icon. */
+  readonly iconHint?: string | undefined;
+  /** Regenerate nonce (epoch ms) — see `iconNeedsGeneration`. */
+  readonly iconRequestedAt?: number | undefined;
+}
+
+/**
+ * Structural stand-in for the family's zod schema. Deliberately structural
+ * rather than `z.ZodType`: `cloud-functions` does not depend on `zod` directly
+ * (the schemas arrive through `@salt/domain/schemas`), and adding a dependency
+ * to name a type would be an issue-first layer change for nothing. Same shape as
+ * `timerWriteTrigger.ts`'s.
+ */
+export interface IconDocumentSchema<TDoc> {
+  safeParse(
+    value: unknown,
+  ):
+    | { readonly success: true; readonly data: TDoc }
+    | { readonly success: false; readonly error: { readonly message: string } };
+}
+
+/**
+ * Edge-trigger decision, shared by every icon family. The trigger fires on EVERY
+ * write to the document, so generation must start only on the write that
+ * *transitions* the document into "needs an icon" — never merely because the
+ * thumbnail currently happens to be null. Otherwise an unrelated write landing
+ * while a drawing is still in flight re-enters and starts a *duplicate*, because
+ * `thumbnail` stays null until the first one finishes. That hazard is real in
+ * every family: a canon-match synonym append or a traceContext stamp, the admin
+ * catalog saving a form field-by-field on blur, a matcher added to a tool whose
+ * picture is still being drawn.
+ *
+ * Generate when:
+ *   - create (no prior doc) with a null thumbnail
+ *   - thumbnail just went non-null → null (manual regenerate, or user cleared)
+ *   - the `iconRequestedAt` nonce changed — covers a forced regenerate of a
+ *     document whose thumbnail was *already* null
+ * Skip when the thumbnail was already null before this write and stayed null:
+ * the write that first set it null already owns the in-flight generation.
+ *
+ * `thumbnail !== null` (a real URL, or the "hidden" sentinel) always skips:
+ * already drawn, or the user opted out forever. That is also what makes a
+ * seeding script safe — it writes each document with its thumbnail ALREADY set,
+ * so the trigger sees the create and skips rather than redrawing the whole
+ * vocabulary at the seeder's expense.
+ *
+ * `prev?.['thumbnail'] ?? null` reads a MISSING key as "already null", so the
+ * schema default arriving on the parsed `after` is never mistaken for a
+ * just-cleared icon — otherwise the first unrelated edit to every document
+ * written before its family had icons would fire a generation at once.
+ */
+export function iconNeedsGeneration(
+  before: DocumentSnapshot | undefined,
+  after: IconDocument,
+): boolean {
+  if (after.thumbnail !== null) return false; // real URL or "hidden" sentinel → skip
+  if (!before?.exists) return true; // create → generate
+  const prev = before.data();
+  if ((prev?.['thumbnail'] ?? null) !== null) return true; // just cleared → generate
+  // Already null and still null: only an explicit regenerate (nonce bump)
+  // re-fires; any other field change (rename, aisle, matchers, a traceContext
+  // stamp…) must not start a duplicate.
+  return prev?.['iconRequestedAt'] !== after.iconRequestedAt;
+}
+
+/**
+ * Reads the per-environment icon kill-switch (issue #238) from
+ * `devSettings/singleton`. ONE flag, `canonIconGenerationEnabled`, covers every
+ * pictogram family — same pipeline, same model, same cost profile, so a second
+ * flag would only be a second thing to remember to flip alongside the first (the
+ * decision taken in #871 and re-taken in #877 and #882).
+ *
+ * FAILS OPEN: a missing doc, an unexpected shape, or a read error all default to
+ * ENABLED, so an environment that never configured the switch keeps the default
+ * behaviour and a transient read glitch never silently halts generation.
+ *
+ * Read PER INVOCATION and deliberately not cached: caching would move a flip's
+ * effect from the next invocation to the next cold start, in the one operational
+ * control that exists to stop spend in a hurry. It is a single `get` on a hot
+ * path, and it happens only once the cheap in-memory guards have passed.
+ *
+ * `name` is the calling function's deployed name, so the two log lines stay
+ * grepable per trigger.
+ */
+export async function isIconGenerationEnabled(name: string): Promise<boolean> {
+  try {
+    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
+    if (!snap.exists) return true;
+    const parsed = DevSettingsSchema.safeParse(snap.data());
+    if (!parsed.success) {
+      // Expected validation fallback (a doc that doesn't match the schema, e.g. a
+      // partially-written settings doc): NOT reported — a ValidationError-class
+      // "expected" outcome, suppressed per policy. The fail-open default and the
+      // warn log are the contract.
+      logger.warn(`${name}: invalid devSettings doc, defaulting to enabled`);
+      return true;
+    }
+    return parsed.data.canonIconGenerationEnabled;
+  } catch (err) {
+    logger.warn(`${name}: devSettings read failed, defaulting to enabled`, { err });
+    // A read THROW (vs the shape mismatch above) is a StorageError-class failure.
+    // Non-critical (we fail open), but genuinely unexpected, so report it
+    // additively — best-effort, never throws.
+    reportServerError(err, 'StorageError');
+    return true;
+  }
+}
+
+/**
+ * Uploads a pictogram to Storage and returns its public download URL.
+ *
+ * We deliberately use the Firebase Storage download endpoint
+ * (`/v0/b/<bucket>/o/<path>?alt=media`) rather than the raw GCS URL
+ * (`storage.googleapis.com/<bucket>/<path>`): only the former is governed by
+ * `storage.rules` (which grant public read on each icon prefix), so no object
+ * ACL / `makePublic()` is needed — that path is the raw-GCS IAM model and throws
+ * on buckets with uniform bucket-level access (the default). The same URL shape
+ * works against the Storage emulator (just a different host).
+ *
+ * `prefix` stays per family rather than shared, and that is load-bearing: the
+ * weekly orphan sweep joins each prefix against its OWN collection (the SWEEPS
+ * table in maintenance/storageSweepTargets.ts), and one prefix serving several
+ * collections could not tell a live object from a stranded one.
+ *
+ * A regeneration reuses the same object path; the `iconRequestedAt` nonce on the
+ * document is what busts the browser cache in front of it.
+ */
+export async function uploadIcon(prefix: string, id: string, webp: Buffer): Promise<string> {
+  const bucket = getStorage().bucket();
+  const path = `${prefix}/${id}.webp`;
+  await bucket.file(path).save(webp, {
+    contentType: 'image/webp',
+    metadata: { cacheControl: 'public, max-age=31536000, immutable' },
+  });
+  return buildStorageDownloadUrl(bucket.name, path);
+}
+
+/** The five axes an icon family differs on, plus the name its logs are grepped by. */
+export interface IconTriggerDescriptor<TDoc extends IconDocument> {
+  /** The deployed function name, used as the log prefix. */
+  readonly name: string;
+  /** The collection the finished icon is written back to. */
+  readonly collection: string;
+  /** This family's Storage prefix — distinct per family; see `uploadIcon`. */
+  readonly storagePrefix: string;
+  /** Parses the written document. Kept whole so schema defaults and back-compat run. */
+  readonly schema: IconDocumentSchema<TDoc>;
+  /** The field the picture is OF: a canon item's name, a form's or a tool's label. */
+  readonly subjectOf: (doc: TDoc) => string;
+  /**
+   * Runs this family's Genkit flow. A closure rather than the flow itself
+   * because "family" is not one-to-one with "flow": three flows serve four
+   * families (product forms draw through the CANON flow, since a form IS a
+   * grocery) and the two flows name their subject differently — `name` for
+   * groceries, `label` for kitchen tools.
+   *
+   * NO `withAiTimeout` here or at any caller (issue #915). The flow owns its
+   * budget — 60s + 1 retry, sized for an image generation — and a wrapper here
+   * would impose the house 20s default on top of it, so a drawing that took
+   * longer than 20s would be cut short and retried whole. That is the
+   * nested-budget disagreement the equipment paths already cite as the thing not
+   * to copy.
+   */
+  readonly draw: (subject: string, hint?: string) => Promise<{ imageBase64: string }>;
+  /**
+   * A SECOND, independently-guarded side-effect on the same write. Only canon
+   * has one (its name embedding), and it stays in that trigger's own file; this
+   * field is how it is paired with the icon branch under `Promise.allSettled`,
+   * so a failure in either can never reject the handler and retry both.
+   */
+  readonly alongside?: (id: string, doc: TDoc) => Promise<void>;
+}
+
+/**
+ * Icon branch: draw the pictogram when this write transitions the document into
+ * "needs an icon" (see `iconNeedsGeneration`).
+ *
+ * Trade-off of edge-triggering: a generation that *fails* leaves `thumbnail`
+ * null but no longer self-heals on the next unrelated write — the regenerate
+ * path (which bumps `iconRequestedAt`) is the retry.
+ */
+async function maybeGenerateIcon<TDoc extends IconDocument>(
+  descriptor: IconTriggerDescriptor<TDoc>,
+  id: string,
+  doc: TDoc,
+  before: DocumentSnapshot | undefined,
+): Promise<void> {
+  const { name, collection, storagePrefix, subjectOf, draw } = descriptor;
+
+  if (!iconNeedsGeneration(before, doc)) return;
+
+  // E2E (FUNCTIONS_AI_FAKE): skip generation entirely. The real image model and
+  // the Storage upload (which authenticates via the GCE metadata server) are not
+  // emulator-safe and hang the trigger; no e2e spec asserts a generated icon.
+  // Unreachable in production (the flag is never set there).
+  if (aiFakeEnabled()) return;
+
+  // The subject is the document's own human-facing name — "Baked Beans", "Lime
+  // juice", "Mixing bowl". It needs no decoration: prompting "lime (lime juice)"
+  // invites the model to draw both, and a tool's matchers are alternative
+  // phrasings rather than subjects, so naming them would ask for several tools
+  // in one frame.
+  const subject = subjectOf(doc).trim();
+  if (!subject) return;
+
+  // Per-environment kill-switch, checked only once the cheap in-memory guards
+  // pass (i.e. we would otherwise generate).
+  if (!(await isIconGenerationEnabled(name))) return;
+
+  // Optional one-shot steer from whoever judged the last drawing wrong.
+  const hint = doc.iconHint?.trim();
+
+  try {
+    const { imageBase64 } = await draw(subject, hint);
+    const raw = Buffer.from(imageBase64, 'base64');
+    // Background removal, then framing. The model centres its subject only
+    // loosely — measured 55–72% of the frame across production icons — so
+    // without the second step every icon lands at its own apparent size and all
+    // of them read small inside their tile.
+    const webp = await normalizeIconFraming(await removeFlatBackground(raw), {
+      contentMax: ICON_CONTENT_MAX,
+    });
+    const url = await uploadIcon(storagePrefix, id, webp);
+    // Set the icon and clear the one-shot hint in the same write. A PARTIAL
+    // update, never a full-document set: a curator may well have been editing the
+    // document while the picture was being drawn, and LWW at document level would
+    // throw their edit away.
+    await getFirestore()
+      .collection(collection)
+      .doc(id)
+      .update({ thumbnail: url, iconHint: FieldValue.delete() });
+  } catch (err) {
+    // Leave thumbnail null so a later regenerate retries; never block the
+    // trigger. Drawing chains an AI flow, image processing and a Storage upload,
+    // so a throw here is unexpected: report it additively alongside the logger,
+    // best-effort and never throwing (Rule 10). The entrypoint's finally flushes.
+    logger.error(`${name}: icon generation failed`, { id, err });
+    reportServerError(err);
+  }
+}
+
+export function iconWriteTrigger<TDoc extends IconDocument>(
+  descriptor: IconTriggerDescriptor<TDoc>,
+) {
+  const { name, schema, alongside } = descriptor;
+
+  return withFirestoreTrigger<{ id: string }>(async (event) => {
+    const after = event.data?.after;
+    if (!after?.exists) return;
+
+    const parsed = schema.safeParse(after.data());
+    if (!parsed.success) {
+      // Trigger boundary: log and return — there is no caller to surface a
+      // Failure to (Zod conventions, root CLAUDE.md).
+      logger.error(`${name}: invalid doc shape, skipping`, {
+        id: event.params.id,
+        error: parsed.error.message,
+      });
+      return;
+    }
+
+    const id = event.params.id;
+    // The icon branch is edge-triggered on before→after, so it needs the prior
+    // snapshot. Reading `traceContext` is a no-op for its idempotency guard (it
+    // keys off thumbnail/iconRequestedAt), so a bare traceContext-only re-fire
+    // cannot loop into a duplicate generation.
+    const icon = maybeGenerateIcon(descriptor, id, parsed.data, event.data?.before);
+    if (!alongside) {
+      await icon;
+      return;
+    }
+    // Two independently-guarded side-effects. allSettled so a failure in one
+    // branch never rejects the handler, which would retry both.
+    await Promise.allSettled([alongside(id, parsed.data), icon]);
+  }, traceContextFromWrittenDoc);
+}

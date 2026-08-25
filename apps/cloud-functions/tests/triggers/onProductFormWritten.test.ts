@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import type { ProductFormDoc } from '@salt/domain/schemas';
-import { iconNeedsGeneration } from '../../src/triggers/onProductFormWritten.js';
+import { iconNeedsGeneration } from '../../src/triggers/iconWriteTrigger.js';
 
 // The edge-trigger guard is the whole correctness story of this trigger: it fires
 // on EVERY write to the form, and the admin catalog saves field-by-field on blur,
 // so "generate whenever the thumbnail happens to be null" would start a fresh
 // image generation on each keystroke-blur while the first one is still in flight.
 // These pin the transitions, not the states.
+//
+// The predicate itself moved to `triggers/iconWriteTrigger.ts` in #989 — it is
+// one function over all four icon families now. These nine cases stay exactly as
+// written and keep exercising it through the shape that produced the hazard: a
+// product form, whose admin catalog is the surface that saves on every blur.
 
 function form(overrides: Partial<ProductFormDoc> = {}): ProductFormDoc {
   return {
@@ -31,7 +36,7 @@ function snapshot(data: Record<string, unknown> | null): DocumentSnapshot {
   } as unknown as DocumentSnapshot;
 }
 
-describe('onProductFormWritten — iconNeedsGeneration', () => {
+describe('iconWriteTrigger — iconNeedsGeneration, exercised on a product form', () => {
   it('generates on create', () => {
     expect(iconNeedsGeneration(undefined, form())).toBe(true);
     expect(iconNeedsGeneration(snapshot(null), form())).toBe(true);
