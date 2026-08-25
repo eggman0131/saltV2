@@ -1,34 +1,24 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
-import { setActiveSpanName } from '@salt/observability/server';
-import { ai } from '../genkit.js';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
-import { loadCanonIconSeed } from './assets/canonIconSeed.js';
-import { resolveModel } from '../ai/resolveModel.js';
-import { parseDataUrl } from './dataUrl.js';
+import { defineIconFlow } from './defineIconFlow.js';
 import { buildEquipmentIconPrompt } from './equipmentIconPrompt.js';
 
 // Equipment-pictogram generation (issue #877) — the expensive IMAGE step, second
 // half of the pair whose first half is describeEquipmentSubject.
 //
-// Reference-conditioned off the same committed red-apple seed as the canon and
-// weather families, by the same mechanism: the model copies ONLY the rendering
-// style of the seed, never its subject. The prompt is built in
-// equipmentIconPrompt.ts, which imports the locked canon `STYLE` verbatim and
-// appends the equipment prohibitions last.
+// The generation body is `defineIconFlow` (issue #989), shared with the canon
+// and kitchen-tool families: same committed red-apple seed, same budget, same
+// media-null contract. What is this family's own is below — its name (a
+// `resolveModel` registry key, #935), its input schema and its prompt builder.
 //
-// generateCanonIconFlow is deliberately NOT reused. It hardcodes the UK-supermarket
-// steer ("The item is as commonly sold in a UK supermarket.") into every prompt,
-// which is the wrong direction for an appliance, and its name-only prompt cannot
-// render a specific model anyway — which is the entire premise of this feature.
-
-// Image generation is far slower than text (~5–8s, occasionally more). The canon
-// icon budget, matched deliberately rather than inherited: this is the same model
-// doing the same job at the same size. The caller is the Draw callable, whose
-// function timeout is raised to suit — it is the ONLY wrapper around this call,
-// so there is no outer race that can pre-empt this budget (the canon path's
-// nested-budget disagreement is not copied here).
-const ICON_GEN_TIMEOUT_MS = 60_000;
+// generateCanonIconFlow is deliberately NOT reused, and that is a statement about
+// the PROMPT rather than the pipeline. Canon hardcodes the UK-supermarket steer
+// into every prompt, which is the wrong direction for an appliance, and its
+// name-only prompt cannot render a specific model anyway — which is the entire
+// premise of this feature. See equipmentIconPrompt.ts.
+//
+// The caller is the Draw callable, whose function timeout is raised to suit; it
+// is the ONLY wrapper around this call, so there is no outer race that can
+// pre-empt the factory's budget.
 
 export const GenerateEquipmentIconInputSchema = z.object({
   // The item's name. Used for the span label and as the degraded fallback
@@ -41,45 +31,11 @@ export const GenerateEquipmentIconInputSchema = z.object({
   brief: z.string().optional(),
 });
 
-// Raw generated image bytes, base64-encoded (Genkit flow outputs must be
-// JSON-serialisable). The caller decodes to a Buffer before background removal.
-export const GenerateEquipmentIconOutputSchema = z.object({
-  imageBase64: z.string(),
-  contentType: z.string(),
+export const generateEquipmentIconFlow = defineIconFlow({
+  name: 'generateEquipmentIcon',
+  inputSchema: GenerateEquipmentIconInputSchema,
+  // The NAME, not the brief: the span label wants the thing a person would
+  // recognise in a trace, and the brief is a paragraph.
+  subjectOf: ({ name }) => name,
+  promptOf: ({ name, brief }) => buildEquipmentIconPrompt(name, brief),
 });
-
-export const generateEquipmentIconFlow = ai.defineFlow(
-  {
-    name: 'generateEquipmentIcon',
-    inputSchema: GenerateEquipmentIconInputSchema,
-    outputSchema: GenerateEquipmentIconOutputSchema,
-  },
-  async ({ name, brief }) => {
-    setActiveSpanName(`generateEquipmentIcon: ${name}`);
-    const seed = loadCanonIconSeed();
-
-    const modelId = await resolveModel('image', 'generateEquipmentIcon');
-    const imageModel = googleAI.model(modelId);
-
-    const result = await withAiTimeout(
-      'generateEquipmentIcon',
-      () =>
-        ai.generate({
-          model: imageModel,
-          prompt: [
-            { media: { url: seed.url, contentType: seed.contentType } },
-            { text: buildEquipmentIconPrompt(name, brief) },
-          ],
-        }),
-      { timeoutMs: ICON_GEN_TIMEOUT_MS, retries: 1 },
-    );
-
-    const media = result.media;
-    if (!media?.url) {
-      throw new Error('generateEquipmentIcon: model returned no image');
-    }
-
-    const { base64, contentType } = parseDataUrl(media.url, 'generateEquipmentIcon');
-    return { imageBase64: base64, contentType };
-  },
-);
