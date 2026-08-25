@@ -95,12 +95,44 @@ describe('callables go through the entrypoint factory', () => {
   });
 });
 
+const WRAPPER = /\b(withFirestoreTrigger|withTaskTrigger)\s*[<(]/;
+
+/**
+ * LOCAL trigger facades, derived from the tree. A file under `triggers/` that
+ * exports a function whose body calls the wrapper IS an entrypoint facade: it
+ * applies the wrapper on behalf of every call site, exactly as `tracedCallable.ts`
+ * does for callables. A registration reaching the wrapper through one of these is
+ * wrapped, and the scan below must see that.
+ *
+ * Derived rather than named here (UT-E1): `timerWriteTrigger` (#987) is the first,
+ * and a hand-written allowance would have to be extended by whoever writes the
+ * second — which is precisely the maintenance this file exists to remove.
+ */
+function localTriggerFacades(): string[] {
+  return sources()
+    .filter(({ file }) => file.startsWith('triggers/') && file !== TRIGGER_FACTORY_FILE)
+    .filter(({ code }) => WRAPPER.test(code))
+    .flatMap(({ code }) => [...code.matchAll(/export\s+function\s+(\w+)\s*[<(]/g)])
+    .map((m) => m[1] as string);
+}
+
 describe('triggers go through the entrypoint factory', () => {
+  it('derives local trigger facades from the tree rather than a hand-written list', () => {
+    // The liveness anchor (UT-E2). A derivation that silently collapsed to nothing
+    // would make the scan below excuse nobody — which looks like a pass — while a
+    // facade-registered trigger sails through unwrapped. If the last local facade
+    // is ever inlined away, this expectation goes with it, deliberately by hand.
+    expect(localTriggerFacades()).toContain('timerWriteTrigger');
+  });
+
   it('wraps every Firestore and Cloud Tasks trigger in an entrypoint facade', () => {
+    const facades = localTriggerFacades();
+    const viaFacade = new RegExp(`\\b(?:${facades.join('|')})\\s*[<(]`);
+
     const offenders = sources()
       .filter(({ file }) => file !== TRIGGER_FACTORY_FILE)
       .filter(({ code }) => /\b(onDocumentWritten|onTaskDispatched)\s*(<[^>]+>)?\s*\(/.test(code))
-      .filter(({ code }) => !/\b(withFirestoreTrigger|withTaskTrigger)\s*[<(]/.test(code))
+      .filter(({ code }) => !WRAPPER.test(code) && !viaFacade.test(code))
       .map(({ file }) => file);
 
     expect(offenders).toEqual([]);
