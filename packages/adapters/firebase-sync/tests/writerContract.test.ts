@@ -206,8 +206,12 @@ import { AI_MODEL_DEFAULTS, type AppSettings } from '@salt/domain/schemas';
 // assertions below name the exact value rather than a wildcard.
 const NOW = '2026-08-24T09:00:00.000Z';
 const NOW_MS = Date.parse(NOW);
-const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
-const NEVER_EXPIRES = '9999-12-31T23:59:59.999Z';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * DAY_MS;
+// Eighteen months, the window a recipe-attached chat gets since #939. It replaced
+// a `9999-12-31` sentinel: the reason a chat about a dish outlives a general one
+// is unchanged, but "longer" and "never" are not the same claim.
+const EIGHTEEN_MONTHS_MS = 540 * DAY_MS;
 
 const AISLE: Aisle = { id: 'a-1', name: 'Dairy', order: 0 };
 const RECIPE = emptyRecipe('r-1', NOW);
@@ -697,7 +701,7 @@ const writerCases: WriterCase[] = [
   {
     name: 'saveChatSession',
     // recipeId null → the ordinary 14-day TTL branch (#696). The recipe-attached
-    // branch, which must never expire, has its own test below.
+    // branch, which gets a longer window rather than none, has its own test below.
     run: () => barrel.saveChatSession(CHAT_SESSION),
     ops: [
       {
@@ -1176,15 +1180,19 @@ describe('saveShoppingListItem — the trace stamp (#362)', () => {
   });
 });
 
-describe('saveChatSession — the expiry stamp (#696)', () => {
-  it('a recipe-attached chat is written so it never expires', async () => {
+describe('saveChatSession — the expiry stamp (#696, #939)', () => {
+  it('a recipe-attached chat is written to last eighteen months, not for ever', async () => {
     await barrel.saveChatSession({ ...CHAT_SESSION, recipeId: 'r-1' });
 
     expect(h.ops).toEqual([
       {
         op: 'set',
         path: 'chatSessions/chat-1',
-        data: { ...CHAT_SESSION, recipeId: 'r-1', expiresAt: NEVER_EXPIRES },
+        data: {
+          ...CHAT_SESSION,
+          recipeId: 'r-1',
+          expiresAt: new Date(NOW_MS + EIGHTEEN_MONTHS_MS).toISOString(),
+        },
       },
     ]);
   });
