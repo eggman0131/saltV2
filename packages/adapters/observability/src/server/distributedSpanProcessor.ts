@@ -44,19 +44,13 @@ import {
   type ReadableSpanLike,
   type SpanProcessorLike,
   SERVICE_NAME,
-  boolAttr,
-  hrTimeToNanos,
-  intAttr,
-  parentSpanId,
+  DISTRIBUTED_OTLP_PATH,
+  collectAttributes,
   postOtlpSpan,
   strAttr,
-  toWireSpanKind,
+  toOtlpSpan,
 } from './otlpWire.js';
 import { genkitCompletionPreview, genkitPromptPreview } from './genkitContent.js';
-
-// Distributed-tracing ingestion endpoint — the only thing that differs from the
-// AI leg (`/i/v0/ai/otel`).
-const DISTRIBUTED_OTLP_PATH = '/i/v1/traces';
 
 // Genkit tags its AI flow/model/embedder spans with `genkit:*` attributes; the AI
 // leg keys off the same prefix. The human-readable flow roots that
@@ -97,20 +91,6 @@ export function shouldShipDistributed(span: ReadableSpanLike): boolean {
   return hasGenkitAttribute(span) || instrumentationScopeName(span) === SERVICE_NAME;
 }
 
-// Encode a span attribute value as OTLP/JSON. Only scalar types map cleanly;
-// objects/arrays/null/undefined are dropped (the distributed view wants
-// structural metadata, not serialised blobs — and a JSON.stringify of arbitrary
-// genkit:input/output would re-ship the same bulky payloads the AI leg already
-// caps). int64s ride as strings to dodge JS number precision loss.
-function encodeAttr(key: string, value: unknown): Attribute | null {
-  if (typeof value === 'string') return strAttr(key, value);
-  if (typeof value === 'boolean') return boolAttr(key, value);
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Number.isInteger(value) ? intAttr(key, value) : strAttr(key, String(value));
-  }
-  return null;
-}
-
 /** A Genkit model/embedder action span carries an extractable prompt/response. */
 function genkitSubtype(attrs: Readonly<Record<string, unknown>>): string {
   const v = attrs['genkit:metadata:subtype'];
@@ -138,39 +118,20 @@ function appendContentPreviews(
 }
 
 /**
- * Map a finished span to an OTLP span verbatim (no namespace remap). Forwards the
- * span's live name (which setActiveSpanName may have set to a human-readable
- * descriptor — that IS the value for the end-to-end trace view), ids, timing and
- * its scalar attributes, and maps the span's API-enum kind onto the OTLP wire enum
- * (shared toWireSpanKind — the SAME mapping the browser leg uses, #1011). Never
- * returns null — the distributed endpoint keeps every span.
+ * Map a finished span to an OTLP span verbatim (no namespace remap). The encoding
+ * and the envelope are the SHARED mechanism (src/shared/otlpWire.ts), identical to
+ * the browser leg; what stays HERE is this leg's POLICY — Genkit's bulky
+ * `genkit:input`/`genkit:output` blobs are dropped (they are the AI leg's concern,
+ * which remaps + caps them into the LLM view), and model/embedder spans gain a
+ * short content preview instead. Never returns null — the distributed endpoint
+ * keeps every span it is handed.
  */
 export function toDistributedOtlpSpan(span: ReadableSpanLike): OtlpSpan {
-  const ctx = span.spanContext();
   const attrs = span.attributes ?? {};
-  const attributes: Attribute[] = [];
-  for (const [key, value] of Object.entries(attrs)) {
-    // Genkit's bulky `genkit:input`/`genkit:output` blobs are the AI leg's
-    // concern (it remaps + caps them into the LLM view); the distributed/
-    // structural view keeps only name/timing/kind + our own scalar attrs.
-    if (key.startsWith(GENKIT_ATTR_PREFIX)) continue;
-    const encoded = encodeAttr(key, value);
-    if (encoded) attributes.push(encoded);
-  }
+  const attributes = collectAttributes(attrs, (key) => !key.startsWith(GENKIT_ATTR_PREFIX));
   // ...plus a short prompt/response preview on AI spans (see above).
   appendContentPreviews(attrs, attributes);
-  const out: OtlpSpan = {
-    traceId: ctx.traceId,
-    spanId: ctx.spanId,
-    name: span.name,
-    kind: toWireSpanKind(span.kind),
-    startTimeUnixNano: hrTimeToNanos(span.startTime),
-    endTimeUnixNano: hrTimeToNanos(span.endTime),
-    attributes,
-  };
-  const parent = parentSpanId(span);
-  if (parent) out.parentSpanId = parent; // omitted on root (no empty string)
-  return out;
+  return toOtlpSpan(span, attributes);
 }
 
 // ── Export pipeline ────────────────────────────────────────────────────────────

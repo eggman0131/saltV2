@@ -25,6 +25,11 @@ import { SpanKind } from '@opentelemetry/api';
 // silently leave the EU data region). Mirrors init.ts and the server leg.
 export const DEFAULT_POSTHOG_HOST = 'https://eu.i.posthog.com';
 
+// PostHog's distributed-tracing OTLP/JSON ingestion path. ONE value for the two
+// distributed legs (server `distributedSpanProcessor`, browser exporter) — the AI
+// leg has its own (`/i/v0/ai/otel`), which is the only difference between them.
+export const DISTRIBUTED_OTLP_PATH = '/i/v1/traces';
+
 // ── Structural OTel types (no `@opentelemetry/sdk-trace-*` dependency) ─────────
 
 /** OTel HrTime: [epoch seconds, nanos-within-second]. */
@@ -151,6 +156,72 @@ export function hrTimeToNanos(t: HrTime): string {
 /** `span.parentSpanId` (OTel 1.x) or `span.parentSpanContext.spanId` (2.x). */
 export function parentSpanId(span: ReadableSpanLike): string | undefined {
   return span.parentSpanId ?? span.parentSpanContext?.spanId ?? undefined;
+}
+
+// ── Span → OTLP mapping MECHANISM (issue #1007) ───────────────────────────────
+// Both distributed legs encoded attributes and built the span envelope with their
+// own verbatim copy of this code. They live here now, so a change to how a float
+// or an int64 is encoded cannot land on one leg and not the other — the whole
+// reason src/shared/ exists. Only per-runtime POLICY stays out: which attributes
+// a leg keeps (the server strips `genkit:*`) and what it appends (the server's
+// AI content previews).
+
+/**
+ * Encode one span attribute value as OTLP/JSON. Only scalar types map cleanly:
+ * strings and booleans ride typed, integers ride as `intValue` STRINGS (int64
+ * exceeds JS number precision), other finite numbers ride as `stringValue`.
+ * Non-finite numbers, objects, arrays, null and undefined are DROPPED (returns
+ * null) — the trace views want structural metadata, not serialised blobs.
+ */
+export function encodeAttr(key: string, value: unknown): Attribute | null {
+  if (typeof value === 'string') return strAttr(key, value);
+  if (typeof value === 'boolean') return boolAttr(key, value);
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Number.isInteger(value) ? intAttr(key, value) : strAttr(key, String(value));
+  }
+  return null;
+}
+
+/**
+ * Encode a span's attribute bag, in insertion order, dropping whatever
+ * `encodeAttr` cannot represent. `keep` is the per-leg policy hook: omit it to
+ * encode everything (browser), or pass a predicate to filter by key first (the
+ * server drops `genkit:*`).
+ */
+export function collectAttributes(
+  attrs: Readonly<Record<string, unknown>>,
+  keep?: (key: string) => boolean,
+): Attribute[] {
+  const attributes: Attribute[] = [];
+  for (const [key, value] of Object.entries(attrs ?? {})) {
+    if (keep && !keep(key)) continue;
+    const encoded = encodeAttr(key, value);
+    if (encoded) attributes.push(encoded);
+  }
+  return attributes;
+}
+
+/**
+ * Build the OTLP span envelope from a finished span plus its ALREADY-ENCODED
+ * attributes: ids from `spanContext()`, the span's live name (which
+ * setActiveSpanName may have rewritten to a human-readable descriptor — that IS
+ * the value for the trace view), the API→wire kind mapping, nanosecond times, and
+ * `parentSpanId` OMITTED on a root span (never an empty string).
+ */
+export function toOtlpSpan(span: ReadableSpanLike, attributes: Attribute[]): OtlpSpan {
+  const ctx = span.spanContext();
+  const out: OtlpSpan = {
+    traceId: ctx.traceId,
+    spanId: ctx.spanId,
+    name: span.name,
+    kind: toWireSpanKind(span.kind),
+    startTimeUnixNano: hrTimeToNanos(span.startTime),
+    endTimeUnixNano: hrTimeToNanos(span.endTime),
+    attributes,
+  };
+  const parent = parentSpanId(span);
+  if (parent) out.parentSpanId = parent;
+  return out;
 }
 
 // Wrap one OR MORE OTLP spans in the resourceSpans → scopeSpans → spans envelope
