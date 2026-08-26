@@ -12,6 +12,7 @@ import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
 import { deliverViaPushover } from '../adapters/deliverViaPushover.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
+import { timerDeliveryStamp } from './timerDeliveryRetention.js';
 import { withTaskTrigger } from './triggerEntrypoint.js';
 
 // Cloud Task handler that actually sends the cook-timer push (issue #544). Fires
@@ -160,7 +161,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
           alreadyDelivered = true;
           return;
         }
-        tx.set(ledgerRef, { deliveredAt: Date.now(), sessionId, timerId });
+        tx.set(ledgerRef, { ...timerDeliveryStamp(), sessionId, timerId });
       });
       if (alreadyDelivered) return;
 

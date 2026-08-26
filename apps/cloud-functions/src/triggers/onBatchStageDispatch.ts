@@ -7,6 +7,7 @@ import { sendWebPush } from '../adapters/sendWebPush.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { BATCH_STAGE_REGION, type BatchStageTaskPayload } from './batchStageTypes.js';
 import { withTaskTrigger } from './triggerEntrypoint.js';
+import { timerDeliveryStamp } from './timerDeliveryRetention.js';
 
 // Cloud Task handler that sends a batch stage reminder (issue #812, phase 3 of epic
 // #778). Fires at the `plannedStartAt` of a stage enqueued by `onBatchWritten` —
@@ -130,7 +131,7 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
           alreadyDelivered = true;
           return;
         }
-        tx.set(ledgerRef, { deliveredAt: Date.now(), batchId, stageId });
+        tx.set(ledgerRef, { ...timerDeliveryStamp(), batchId, stageId });
       });
       if (alreadyDelivered) return;
 

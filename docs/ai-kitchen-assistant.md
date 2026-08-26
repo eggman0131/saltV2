@@ -90,22 +90,23 @@ authoritative count and the place to argue for a fifth — not this doc.
   staging's 76) beyond any sweep and left the collection unbounded. Eighteen
   months is sized to survive an annually-cooked dish; any turn of the conversation
   restamps it.
-- **NOTHING SWEEPS THESE TODAY, on any project.** `expiresAt` is written as an
-  ISO-8601 **string**, and a Firestore TTL policy only expires documents whose TTL
-  field holds a **`Timestamp`** — other types are skipped silently. Measured
-  2026-08-25: 42 of staging's 76 chat sessions are past their own recorded expiry
-  and all 42 are still present. So the two windows above are the retention
-  *policy*; the *mechanism* does not exist yet, and enabling a TTL policy in a
-  console changes nothing while the field is a string.
-- **What making it real would take (not done, needs a decision):** write
-  `expiresAt` as a `Timestamp`. That is a shape change on live per-user documents,
-  and `ChatSessionSchema.expiresAt` is `z.string()` while the realtime
-  subscription *skips* documents that fail validation — so a naive swap makes
-  every existing chat disappear from the list rather than error. It would also
-  arm the sweep against those 42 already-past documents at once. Then, per
-  project (dev, staging, prod), enable the TTL policy on `chatSessions.expiresAt`
-  via the Firebase console or `gcloud firestore fields ttls update`; that policy
-  is infra and lives in no deployed artefact in this repo.
+- **The wire type is a `Timestamp`, and it has to be** (#1008). A Firestore TTL
+  policy only expires a document whose TTL field holds a **`Timestamp`** — a
+  string is skipped silently — and `expiresAt` was an ISO-8601 string from #206
+  until #1008, so the windows above were retention *policy* with no *mechanism*
+  behind them (measured 2026-08-25: 42 of staging's 76 sessions past their own
+  recorded expiry, all still present). `firebase-sync` now converts at the wire in
+  both directions: `ChatSessionSchema.expiresAt` stays a string, because
+  `packages/domain` imports no Firebase types.
+- **The read path accepts both shapes, permanently.** The realtime subscription
+  *skips* documents that fail validation, so a read that demanded a `Timestamp`
+  would make every unmigrated chat disappear from the list rather than error —
+  and a stale client can write a string long after a migration has run. Tolerance
+  here is not transitional.
+- **Enabling the sweep is a deliberate per-project act, not a deploy.** The policy
+  is infra and lives in no deployed artefact; the documents already written need
+  converting first. Procedure, and what is expected to be swept versus kept:
+  [docs/runbooks/ttl-policies.md](runbooks/ttl-policies.md).
 
 ## Components
 

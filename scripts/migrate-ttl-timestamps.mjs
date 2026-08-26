@@ -2,10 +2,12 @@
 // One-off: convert the TTL fields Firestore's TTL machinery silently skips into
 // the `Timestamp`s it acts on (issue #1008; the cause issue is #985).
 //
-//   node scripts/migrate-ttl-timestamps.mjs --project dev     --collection chatSessions --dry-run
-//   node scripts/migrate-ttl-timestamps.mjs --project dev     --collection chatSessions --apply
-//   node scripts/migrate-ttl-timestamps.mjs --project staging --collection chatSessions --apply
-//   node scripts/migrate-ttl-timestamps.mjs --project prod    --collection chatSessions --apply --confirm production
+//   node scripts/migrate-ttl-timestamps.mjs --project dev     --collection chatSessions    --dry-run
+//   node scripts/migrate-ttl-timestamps.mjs --project dev     --collection chatSessions    --apply
+//   node scripts/migrate-ttl-timestamps.mjs --project staging --collection timerDeliveries --apply
+//   node scripts/migrate-ttl-timestamps.mjs --project prod    --collection chatSessions    --apply --confirm production
+//
+// Two collections, one script: run it once per collection per project.
 //
 // Writing to prod requires `--confirm production` AS A FLAG. There is no
 // interactive prompt at all, deliberately: plenty of shells that look
@@ -18,16 +20,20 @@
 // A TTL policy (`gcloud firestore fields ttls update`) only expires a document
 // whose TTL field holds a `Timestamp`; a string, number or absent field is
 // skipped in silence. `chatSessions.expiresAt` was written as an ISO-8601
-// string from #206 until #1008, so every policy ever enabled was a no-op. The
-// write paths now produce `Timestamp`s; this script converts the documents
-// already written. Run it per project AFTER deploying the #1008 functions and
+// string from #206 until #1008, and `timerDeliveries` carried an epoch-ms
+// `deliveredAt` and no expiry field at all, so every policy ever enabled was a
+// no-op. The write paths now produce `Timestamp`s; this script converts the
+// documents already written. Run it per project AFTER deploying the #1008 functions and
 // PWA (a stale client re-writes a string; the tolerant read absorbs that, and a
 // re-run converts it) and BEFORE enabling the policy — the procedure lives in
 // docs/runbooks/ttl-policies.md.
 //
 // It converts the TYPE and never the instant: each recorded expiry string
 // becomes the `timestampValue` of the same moment, echoed verbatim (an ISO-8601
-// UTC string is already valid RFC 3339, which is what the REST API takes). The
+// UTC string is already valid RFC 3339, which is what the REST API takes).
+// `timerDeliveries` additionally GAINS an `expiresAt`, because it never had one
+// — derived from each doc's own `deliveredAt` rather than from the day the
+// migration runs, so an old ledger doc is not granted a fresh fortnight. The
 // 31 pre-#939 sentinel docs (`9999-12-31T23:59:59.999Z`) convert verbatim too —
 // within Firestore's Timestamp range, still effectively unexpiring until their
 // next conversational turn restamps them, exactly as #939 designed. A migration
@@ -42,11 +48,14 @@
 //
 // Chat sessions are last-write-wins per WHOLE document (CLAUDE.md → Data model
 // conventions) and are being written by live clients while this runs. Every
-// write here is a REST `PATCH` carrying `updateMask.fieldPaths=<ttl field>` and
-// a body holding nothing but that field, so a concurrent full-doc client write
-// is never clobbered and this script never touches `messages` — the fattest
-// field in the app. (The read is masked to the TTL field for the same reason:
-// there is no cause to pull message history over the wire at all.)
+// write here is a REST `PATCH` carrying `updateMask.fieldPaths=<ttl fields>`
+// and a body holding nothing but those fields, so a concurrent full-doc client
+// write is never clobbered and this script never touches `messages` — the
+// fattest field in the app. (The read is masked to the same fields for the same
+// reason: there is no cause to pull message history over the wire at all.)
+// `timerDeliveries` is server-owned and client-denied, but it takes the same
+// treatment: the ids the dedupe depends on are never rewritten, only the two
+// time fields are.
 //
 // ─── Auth ────────────────────────────────────────────────────────────────────
 //
@@ -78,6 +87,14 @@ const ENVIRONMENTS = {
   },
 };
 
+// The `timerDeliveries` retention window, restated from
+// apps/cloud-functions/src/triggers/timerDeliveryRetention.ts. Deliberately a
+// copy: this script is plain node run from the repo root and resolves nothing
+// from apps/cloud-functions (same reason it uses REST rather than the Admin
+// SDK), and a one-off migration must keep converting old documents exactly as
+// it did the day it ran even if the live window is later retuned.
+const TIMER_DELIVERY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+
 // One entry per collection with a TTL field to convert. `fields` lists what the
 // masked read fetches and the masked write patches; `plan` inspects one raw
 // REST document and returns either the exact fields to write or the reason it
@@ -101,7 +118,47 @@ const COLLECTIONS = {
       return { write: { expiresAt: { timestampValue: iso } }, detail: iso };
     },
   },
-  // timerDeliveries lands with Phase 2 of #1008.
+  timerDeliveries: {
+    fields: ['deliveredAt', 'expiresAt'],
+    plan(doc) {
+      const delivered = doc.fields?.deliveredAt;
+      const expires = doc.fields?.expiresAt;
+      // Both already right → nothing to do. `deliveredAt` alone is not enough:
+      // the TTL policy acts on `expiresAt`, and a doc written before #1008 has
+      // no such field at all.
+      if (delivered?.timestampValue !== undefined && expires?.timestampValue !== undefined) {
+        return { skip: null };
+      }
+      // Every ledger doc ever written carries an epoch-ms `deliveredAt`
+      // (`integerValue` — Firestore encodes a whole number that way, as a
+      // STRING). A converted one carries a timestamp; either is a usable base
+      // for the expiry, and anything else is not this script's business.
+      let deliveredMs;
+      if (delivered?.integerValue !== undefined) deliveredMs = Number(delivered.integerValue);
+      else if (delivered?.timestampValue !== undefined) {
+        deliveredMs = Date.parse(delivered.timestampValue);
+      } else if (delivered === undefined) {
+        return { skip: 'has no deliveredAt field at all' };
+      } else {
+        return { skip: `deliveredAt holds ${Object.keys(delivered)[0] ?? 'nothing'}` };
+      }
+      if (!Number.isFinite(deliveredMs)) {
+        return { skip: 'deliveredAt does not parse as an instant' };
+      }
+      const deliveredIso = new Date(deliveredMs).toISOString();
+      // The expiry is DERIVED from the delivery instant, not from today: a
+      // ledger doc's retention is measured from when it was written, so a
+      // migration run months late must not extend the life of every old doc.
+      const expiresIso = new Date(deliveredMs + TIMER_DELIVERY_RETENTION_MS).toISOString();
+      return {
+        write: {
+          deliveredAt: { timestampValue: deliveredIso },
+          expiresAt: { timestampValue: expiresIso },
+        },
+        detail: `delivered ${deliveredIso} → expires ${expiresIso}`,
+      };
+    },
+  },
 };
 
 // ─── Arguments ────────────────────────────────────────────────────────────────

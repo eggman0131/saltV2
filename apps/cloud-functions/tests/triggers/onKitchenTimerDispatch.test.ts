@@ -101,11 +101,29 @@ const mockDb = {
   runTransaction: async (fn: (tx: unknown) => Promise<void>) =>
     fn({ get: async () => mockLedgerSnap, set: mockTxSet }),
 };
+// The slice of firebase-admin's `Timestamp` the ledger claim uses (#1008):
+// `fromMillis` at the write site, `toMillis` in the offset assertion below.
+class FakeTimestamp {
+  private readonly ms: number;
+  constructor(ms: number) {
+    this.ms = ms;
+  }
+  static fromMillis(ms: number): FakeTimestamp {
+    return new FakeTimestamp(ms);
+  }
+  toMillis(): number {
+    return this.ms;
+  }
+}
+
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => mockDb,
+  Timestamp: FakeTimestamp,
 }));
 
 const { onKitchenTimerDispatch } = await import('../../src/triggers/onKitchenTimerDispatch.js');
+const { TIMER_DELIVERY_RETENTION_MS } =
+  await import('../../src/triggers/timerDeliveryRetention.js');
 
 const UID = 'uid-1';
 const TIMER_ID = 'k1';
@@ -260,7 +278,23 @@ describe('onKitchenTimerDispatch', () => {
     expect(mockLedgerCollection).toBe('timerDeliveries');
     // The uid is in the key because a timer id is only unique within one member.
     expect(mockLedgerDocId).toBe(`kitchen_${UID}_${TIMER_ID}_${ENDS_AT_MS}`);
-    expect(mockTxSet).toHaveBeenCalled();
+    expect(mockTxSet).toHaveBeenCalledWith(expect.anything(), {
+      // Timestamps, not numbers: the TTL policy on `expiresAt` acts on nothing
+      // else (#1008), and `deliveredAt` converts alongside it.
+      deliveredAt: expect.any(FakeTimestamp),
+      expiresAt: expect.any(FakeTimestamp),
+      uid: UID,
+      timerId: TIMER_ID,
+    });
+    // The ledger must outlive any possible duplicate dispatch, and the offset
+    // is the single shared constant — a site that drifted goes red here.
+    const payload = mockTxSet.mock.calls[0]![1] as {
+      deliveredAt: FakeTimestamp;
+      expiresAt: FakeTimestamp;
+    };
+    expect(payload.expiresAt.toMillis() - payload.deliveredAt.toMillis()).toBe(
+      TIMER_DELIVERY_RETENTION_MS,
+    );
   });
 
   it('sends nothing on a duplicate dispatch — Cloud Tasks is at-least-once', async () => {

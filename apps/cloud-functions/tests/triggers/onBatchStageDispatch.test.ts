@@ -83,11 +83,29 @@ const mockDb = {
   runTransaction: async (fn: (tx: unknown) => Promise<void>) =>
     fn({ get: async () => mockLedgerSnap, set: mockTxSet }),
 };
+// The slice of firebase-admin's `Timestamp` the ledger claim uses (#1008):
+// `fromMillis` at the write site, `toMillis` in the offset assertion below.
+class FakeTimestamp {
+  private readonly ms: number;
+  constructor(ms: number) {
+    this.ms = ms;
+  }
+  static fromMillis(ms: number): FakeTimestamp {
+    return new FakeTimestamp(ms);
+  }
+  toMillis(): number {
+    return this.ms;
+  }
+}
+
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => mockDb,
+  Timestamp: FakeTimestamp,
 }));
 
 const { onBatchStageDispatch } = await import('../../src/triggers/onBatchStageDispatch.js');
+const { TIMER_DELIVERY_RETENTION_MS } =
+  await import('../../src/triggers/timerDeliveryRetention.js');
 
 const BATCH_ID = 'batch-1';
 const STAGE_ID = 'shape';
@@ -236,10 +254,22 @@ describe('onBatchStageDispatch — the exactly-once ledger', () => {
     expect(mockLedgerCollection).toBe('timerDeliveries');
     expect(mockLedgerDocId).toBe(`batch_${BATCH_ID}_${STAGE_ID}_${Date.parse(PLANNED_START)}`);
     expect(mockTxSet).toHaveBeenCalledWith(expect.anything(), {
-      deliveredAt: expect.any(Number),
+      // Timestamps, not numbers: the TTL policy on `expiresAt` acts on nothing
+      // else (#1008), and `deliveredAt` converts alongside it.
+      deliveredAt: expect.any(FakeTimestamp),
+      expiresAt: expect.any(FakeTimestamp),
       batchId: BATCH_ID,
       stageId: STAGE_ID,
     });
+    // The ledger must outlive any possible duplicate dispatch, and the offset
+    // is the single shared constant — a site that drifted goes red here.
+    const payload = mockTxSet.mock.calls[0]![1] as {
+      deliveredAt: FakeTimestamp;
+      expiresAt: FakeTimestamp;
+    };
+    expect(payload.expiresAt.toMillis() - payload.deliveredAt.toMillis()).toBe(
+      TIMER_DELIVERY_RETENTION_MS,
+    );
   });
 
   it('no-ops on a duplicate dispatch (ledger doc already present)', async () => {
