@@ -39,6 +39,16 @@ import { STYLE } from './generateCanonIcon.js';
 // House-style additions for the equipment family. Prohibitions only — nothing
 // here names or implies a subject. Appended AFTER `STYLE`, and nothing may be
 // appended after this.
+//
+// PAIRED with KIT_STYLE_ANCHORS (kitchenToolIconPrompt.ts). The shared skeleton
+// — "Absolutely no lettering anywhere… no brand name, no wordmark, no logo, no
+// model number… Draw the object alone… and nothing beside it for scale" — is
+// deliberately the same wording in both. What differs is the part enumerations,
+// and that differs on purpose: an appliance keeps its body, lid, controls,
+// dials, buttons and display panels blank and its cable out of shot, where a
+// hand tool's list runs handle/blade/rim/measurement-markings instead. The
+// divergence is per-family tailoring, not drift (#894 B4-008) — do not converge
+// the two wordings.
 export const EQUIPMENT_STYLE_ANCHORS =
   'Absolutely no lettering anywhere in the picture, including on the object itself: no brand name, no wordmark, no logo, no model number, no letters, digits or symbols on the body, the lid, the controls, the dials, the buttons or any display panel — leave every panel, badge and screen blank. Draw the object alone: no hands, no people, no food, no ingredients, no worktop, no wall, no kitchen scene, no cable trailing off the frame, and nothing beside it for scale.';
 

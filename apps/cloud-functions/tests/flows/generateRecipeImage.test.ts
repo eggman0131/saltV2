@@ -244,7 +244,7 @@ describe('generateRecipeImage flow', () => {
     expect(RECIPE_IMAGE_STYLE_ANCHORS).toContain('shallow depth of field');
     expect(RECIPE_IMAGE_STYLE_ANCHORS).toContain('rustic ceramic or worn crockery');
     expect(RECIPE_IMAGE_STYLE_ANCHORS).toContain(
-      'Absolutely no text, no captions, no watermark, no logos, no hands, no people.',
+      'Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people.',
     );
     // The fallback owns the dish-reading guess and must not smuggle anchors in.
     expect(RECIPE_IMAGE_DISH_READING_FALLBACK).not.toContain('no hands, no people');
