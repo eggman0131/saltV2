@@ -55,8 +55,9 @@ describe('OTLP wire parity — browser vs server distributed leg', () => {
     expect(toBrowserOtlpSpan(asBrowserSpan(span))).toEqual(toDistributedOtlpSpan(span));
   });
 
-  // Known pre-existing cross-leg drift — see #1011. Un-fail when #1011 settles the wire semantics.
-  it.fails('produces an identical OtlpSpan when kind is absent (both default INTERNAL)', () => {
+  // #1011 settled the fallback: a span carrying no numeric kind maps to the OTLP
+  // wire's SPAN_KIND_INTERNAL (1) on BOTH legs, via the shared toWireSpanKind.
+  it('produces an identical OtlpSpan when kind is absent (both default INTERNAL)', () => {
     const span = sharedSpan({ kind: undefined });
     const browser = toBrowserOtlpSpan(asBrowserSpan(span));
     expect(browser.kind).toBe(1);

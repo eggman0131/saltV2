@@ -162,8 +162,9 @@ describe('exporter OTLP body shape (shared buildOtlpBody)', () => {
     expect(out.attributes).toHaveLength(4);
   });
 
-  // Known pre-existing cross-leg drift — see #1011. Un-fail when #1011 settles the wire semantics.
-  it.fails('defaults kind to INTERNAL (1) when the span omits it', () => {
+  // #1011: the `@opentelemetry/api` enum has no "unspecified" member, so an absent
+  // kind and API INTERNAL (0) BOTH map to the OTLP wire's SPAN_KIND_INTERNAL (1).
+  it('defaults kind to the OTLP wire INTERNAL (1) when the span omits it', () => {
     const fake = {
       name: 'Author recipe',
       attributes: {},
