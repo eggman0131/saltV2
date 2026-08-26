@@ -297,6 +297,31 @@ describe('distributedSpanProcessor', () => {
     }
   });
 
+  // The two SpanProcessor lifecycle hooks the OTel SDK calls on us. Nothing
+  // exercised them before, so a hook that drained the wrong thing — or threw —
+  // would have gone unnoticed; both must simply drain the in-flight exports.
+  it('forceFlush and shutdown both drain the in-flight exports', async () => {
+    process.env['POSTHOG_API_KEY'] = 'phc_test';
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      distributedSpanProcessor.onEnd(
+        fakeSpan({ name: 'canon.matchOrCreate', scope: 'salt-cloud-functions' }),
+      );
+      await expect(distributedSpanProcessor.forceFlush()).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      distributedSpanProcessor.onEnd(
+        fakeSpan({ name: 'canon.matchOrCreate', scope: 'salt-cloud-functions' }),
+      );
+      await expect(distributedSpanProcessor.shutdown()).resolves.toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+  });
+
   it('stamps the recorded server environment onto the exported span resource', async () => {
     process.env['POSTHOG_API_KEY'] = 'phc_test';
     setServerEnvironment('staging');
