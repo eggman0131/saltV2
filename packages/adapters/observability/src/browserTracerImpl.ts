@@ -33,7 +33,6 @@
 import {
   trace,
   context,
-  SpanKind,
   SpanStatusCode,
   type Span,
   type Tracer,
@@ -53,6 +52,7 @@ import {
   intAttr,
   strAttr,
   boolAttr,
+  toWireSpanKind,
   type Attribute,
   type OtlpSpan,
 } from './shared/otlpWire.js';
@@ -95,8 +95,10 @@ function encodeAttr(key: string, value: unknown): Attribute | null {
 }
 
 // Map a finished browser ReadableSpan → the shared OtlpSpan shape verbatim.
-// Forwards name, ids, timing, kind and scalar attributes; omits parentSpanId on a
-// root span (no empty string). Exported for the unit test.
+// Forwards name, ids, timing and scalar attributes, maps the span's API-enum kind
+// onto the OTLP wire enum (shared toWireSpanKind — the SAME mapping the server leg
+// uses, #1011), and omits parentSpanId on a root span (no empty string). Exported
+// for the unit test.
 export function toBrowserOtlpSpan(span: ReadableSpan): OtlpSpan {
   const ctx = span.spanContext();
   const attributes: Attribute[] = [];
@@ -108,7 +110,7 @@ export function toBrowserOtlpSpan(span: ReadableSpan): OtlpSpan {
     traceId: ctx.traceId,
     spanId: ctx.spanId,
     name: span.name,
-    kind: typeof span.kind === 'number' ? span.kind : SpanKind.INTERNAL,
+    kind: toWireSpanKind(span.kind),
     startTimeUnixNano: hrTimeToNanos(span.startTime),
     endTimeUnixNano: hrTimeToNanos(span.endTime),
     attributes,

@@ -183,9 +183,13 @@ describe('toDistributedOtlpSpan', () => {
     expect(out.parentSpanId).toBeUndefined();
   });
 
-  it('defaults kind to INTERNAL when the span omits it', () => {
-    expect(toDistributedOtlpSpan(fakeSpan({})).kind).toBe(1);
-    expect(toDistributedOtlpSpan(fakeSpan({ kind: 2 })).kind).toBe(2);
+  // Kind is no longer forwarded raw (#1011): the API enum is 0-based and the OTLP
+  // wire enum is 1-based, so it is explicitly mapped. The full table, the fallback
+  // and the parity with the browser leg are pinned in spanKindWire.test.ts; this
+  // keeps just the one assertion that this mapper applies the mapping at all.
+  it('maps the span kind onto the OTLP wire enum, and an absent kind to INTERNAL', () => {
+    expect(toDistributedOtlpSpan(fakeSpan({ kind: 1 })).kind).toBe(2); // API SERVER
+    expect(toDistributedOtlpSpan(fakeSpan({})).kind).toBe(1); // wire INTERNAL
   });
 
   it('encodes start/end as OTLP nanosecond strings without precision loss', () => {

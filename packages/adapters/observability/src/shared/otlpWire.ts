@@ -12,9 +12,14 @@
 // RUNTIME-NEUTRAL (CLAUDE.md): NO process.env, NO Node built-ins, NO posthog-js,
 // NO browser globals beyond pure data. The OTel types are declared STRUCTURALLY
 // (no @opentelemetry/sdk-trace-* dependency), matching the rest of this package.
+// The ONE import is `@opentelemetry/api`'s `SpanKind` enum — pure data, no runtime
+// of its own, and already a dependency of BOTH subpaths — so the API→wire span-kind
+// mapping below can name the API's kinds instead of re-declaring their numbers.
 // Server-specific code (the POST helper, which reads process.env + Node fetch, and
 // the server SERVICE_NAME) stays in src/server/otlpWire.ts, which re-exports
 // everything here so existing server imports keep working unchanged.
+
+import { SpanKind } from '@opentelemetry/api';
 
 // EU region baked in as the default; host overridable via env only (never to
 // silently leave the EU data region). Mirrors init.ts and the server leg.
@@ -85,7 +90,55 @@ export const boolAttr = (key: string, v: boolean): Attribute => ({
   value: { boolValue: v },
 });
 
+// ── Span kind: OTel JS API enum → OTLP wire enum (issue #1011) ────────────────
+// These are TWO DIFFERENT enumerations of the same six concepts and they do NOT
+// agree on the numbers. The OTLP protobuf reserves 0 for "unspecified", so its
+// kinds start at 1; the JS API enum has no unspecified member and starts at 0:
+//
+//   `@opentelemetry/api` SpanKind │ OTLP `Span.SpanKind` (the wire)
+//   ──────────────────────────────┼────────────────────────────────
+//   (no member)                   │ 0  SPAN_KIND_UNSPECIFIED
+//   INTERNAL = 0                  │ 1  SPAN_KIND_INTERNAL
+//   SERVER   = 1                  │ 2  SPAN_KIND_SERVER
+//   CLIENT   = 2                  │ 3  SPAN_KIND_CLIENT
+//   PRODUCER = 3                  │ 4  SPAN_KIND_PRODUCER
+//   CONSUMER = 4                  │ 5  SPAN_KIND_CONSUMER
+//
+// Both distributed legs used to forward `span.kind` RAW, which shipped every span
+// one kind too low: INTERNAL arrived as UNSPECIFIED, SERVER as INTERNAL, CLIENT as
+// SERVER. That does not look like corrupt data downstream — it looks like a
+// plausible but WRONG service graph, because tracing backends key topology maps and
+// parent/child rendering off span kind. Hence the fix is a behaviour change, taken
+// deliberately (#1011).
+//
+// Stated as an explicit switch and NEVER as `apiKind + 1`: the offset is a
+// coincidence of two independently-defined enums, not a rule, and arithmetic hides
+// which concept maps to which. Best-effort, never throws (Rule 10) — an
+// unrecognised kind maps to INTERNAL rather than failing an export. API `INTERNAL`
+// (0) and "no kind at all" therefore BOTH land on wire 1, which is intended.
 export const SPAN_KIND_INTERNAL = 1;
+const SPAN_KIND_SERVER = 2;
+const SPAN_KIND_CLIENT = 3;
+const SPAN_KIND_PRODUCER = 4;
+const SPAN_KIND_CONSUMER = 5;
+
+/** Map a span's `@opentelemetry/api` kind onto the OTLP wire kind. */
+export function toWireSpanKind(apiKind: number | undefined): number {
+  switch (apiKind) {
+    case SpanKind.INTERNAL:
+      return SPAN_KIND_INTERNAL;
+    case SpanKind.SERVER:
+      return SPAN_KIND_SERVER;
+    case SpanKind.CLIENT:
+      return SPAN_KIND_CLIENT;
+    case SpanKind.PRODUCER:
+      return SPAN_KIND_PRODUCER;
+    case SpanKind.CONSUMER:
+      return SPAN_KIND_CONSUMER;
+    default:
+      return SPAN_KIND_INTERNAL;
+  }
+}
 
 /** HrTime → OTLP nanosecond string (BigInt: epoch-ns exceeds Number precision). */
 export function hrTimeToNanos(t: HrTime): string {
