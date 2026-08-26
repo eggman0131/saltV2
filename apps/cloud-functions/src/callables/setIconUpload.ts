@@ -1,5 +1,4 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
 import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import {
@@ -10,8 +9,7 @@ import {
 } from '@salt/domain/schemas';
 import { makeCallable } from '../tracedCallable.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
-import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
-import { reportFlowError } from '../observability/reportServerError.js';
+import { ICON_CONTENT_MAX, uploadIcon } from '../imaging/iconStorage.js';
 
 // Your own picture in place of a generated pictogram (issue #892, Phase 2).
 //
@@ -35,11 +33,12 @@ import { reportFlowError } from '../observability/reportServerError.js';
 // discriminated input serves all four.
 //
 // ─── The framing is the point, not a nicety ─────────────────────────────────
-// `normalizeIconFraming` with `contentMax: 108` is what stops a column of icons
-// ragging between apparent sizes. It measures the subject's ALPHA bounding box,
-// which on an opaque photograph is the whole crop — so a square crop lands 108×108
-// and sits at the same apparent size as the drawn pictograms either side of it.
-// (ui-spec-v11 §1.1 records that arithmetic; it is why the crop is square.)
+// `normalizeIconFraming` with the shared `ICON_CONTENT_MAX` is what stops a
+// column of icons ragging between apparent sizes. It measures the subject's
+// ALPHA bounding box, which on an opaque photograph is the whole crop — so a
+// square crop lands 108×108 and sits at the same apparent size as the drawn
+// pictograms either side of it. (ui-spec-v11 §1.1 records that arithmetic; it is
+// why the crop is square.)
 //
 // `removeFlatBackground` is deliberately NOT run. Its edge flood-fill is keyed to
 // the flat generated fill colour and is documented as safe only because the house
@@ -67,11 +66,6 @@ const TARGETS: Record<IconUploadFamily, { collection: string; prefix: string }> 
   kitchenTool: { collection: KITCHEN_TOOLS_COLLECTION, prefix: 'kit-icons' },
   equipment: { collection: EQUIPMENT_ICONS_COLLECTION, prefix: 'equipment-icons' },
 };
-
-// The canon value, tuned for the 40px row tile (docs/canon-icons.md → Generation
-// pipeline step 3). Shared with every generated pictogram on purpose: an upload
-// that framed differently would read as a second icon set.
-const CONTENT_MAX = 108;
 
 // region/memory pinned inline (issue #883): this module is imported at the top of
 // index.ts, so its onCall is built before setGlobalOptions runs. 512MiB is the
@@ -109,18 +103,8 @@ export const setIconUpload = makeCallable({
     // stores, so an uploaded pictogram is byte-normalised identically to a drawn
     // one.
     const raw = Buffer.from(imageBase64, 'base64');
-    const webp = await normalizeIconFraming(raw, { contentMax: CONTENT_MAX });
-
-    const bucket = getStorage().bucket();
-    const path = `${prefix}/${id}.webp`;
-    await bucket.file(path).save(webp, {
-      contentType: 'image/webp',
-      // `immutable`, matching every generated icon on these four prefixes. The
-      // nonce below is what makes a replacement visible; a short max-age here
-      // would diverge from the drawn path for no gain.
-      metadata: { cacheControl: 'public, max-age=31536000, immutable' },
-    });
-    const url = buildStorageDownloadUrl(bucket.name, path);
+    const webp = await normalizeIconFraming(raw, { contentMax: ICON_CONTENT_MAX });
+    const url = await uploadIcon(prefix, id, webp);
 
     // Partial update: the picture and the cache-bust nonce, nothing else. A
     // whole-document write from a function would clobber whatever somebody

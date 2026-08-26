@@ -1,19 +1,13 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
 import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
-import { logger } from 'firebase-functions';
-import {
-  DevSettingsSchema,
-  DrawEquipmentIconInputSchema,
-  EQUIPMENT_ICONS_COLLECTION,
-} from '@salt/domain/schemas';
+import { DrawEquipmentIconInputSchema, EQUIPMENT_ICONS_COLLECTION } from '@salt/domain/schemas';
 import { makeCallable } from '../tracedCallable.js';
 import { generateEquipmentIconFlow } from '../flows/generateEquipmentIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
-import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
-import { reportFlowError } from '../observability/reportServerError.js';
+import { ICON_CONTENT_MAX, uploadIcon } from '../imaging/iconStorage.js';
+import { isIconGenerationEnabled } from '../triggers/iconWriteTrigger.js';
 
 // Draw (and hide) an equipment pictogram (issue #877).
 //
@@ -50,49 +44,6 @@ const ICON_STORAGE_PREFIX = 'equipment-icons';
  */
 const ICON_HIDDEN = 'hidden';
 
-/**
- * The same kill switch the brief trigger reads (`canonIconGenerationEnabled`,
- * issue #238) — one switch for one pipeline. Same FAIL-OPEN posture: a missing,
- * malformed or unreadable settings doc leaves generation enabled.
- */
-async function isIconGenerationEnabled(): Promise<boolean> {
-  try {
-    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
-    if (!snap.exists) return true;
-    const parsed = DevSettingsSchema.safeParse(snap.data());
-    if (!parsed.success) {
-      logger.warn('drawEquipmentIcon: invalid devSettings doc, defaulting to enabled');
-      return true;
-    }
-    return parsed.data.canonIconGenerationEnabled;
-  } catch (err) {
-    logger.warn('drawEquipmentIcon: devSettings read failed, defaulting to enabled', { err });
-    return true;
-  }
-}
-
-/**
- * Uploads the pictogram and returns its public download URL.
- *
- * `immutable` cacheControl, chosen rather than inherited: canon writes its icons
- * immutable and relies on `CanonIcon`'s `?v=` cache-bust (fed here from
- * `iconRequestedAt`), while recipe heroes use `max-age=3600` instead. Equipment
- * has a redraw path that reuses the SAME object path, so it needs the same pair
- * canon uses — immutable bytes plus a version nonce — not a short max-age.
- *
- * The Firebase download endpoint, not the raw GCS URL: only that form is governed
- * by `storage.rules`, which is what grants public read on `equipment-icons/`.
- */
-async function uploadEquipmentIcon(itemId: string, webp: Buffer): Promise<string> {
-  const bucket = getStorage().bucket();
-  const path = `${ICON_STORAGE_PREFIX}/${itemId}.webp`;
-  await bucket.file(path).save(webp, {
-    contentType: 'image/webp',
-    metadata: { cacheControl: 'public, max-age=31536000, immutable' },
-  });
-  return buildStorageDownloadUrl(bucket.name, path);
-}
-
 // region/memory are pinned inline (not via setGlobalOptions) because this module
 // is imported at the top of index.ts and its onCall is built before
 // setGlobalOptions runs — the same reason the triggers pin theirs.
@@ -126,7 +77,9 @@ export const drawEquipmentIcon = makeCallable({
       return { ok: true } as const;
     }
 
-    if (!(await isIconGenerationEnabled())) {
+    // The same kill switch the brief trigger reads (`canonIconGenerationEnabled`,
+    // issue #238) — one switch for one pipeline, via the one shared reader.
+    if (!(await isIconGenerationEnabled('drawEquipmentIcon'))) {
       // Refuse honestly rather than returning ok on a draw that will never
       // happen. The client surfaces this as a toast.
       throw new HttpsError('failed-precondition', 'Icon generation is disabled.');
@@ -156,10 +109,9 @@ export const drawEquipmentIcon = makeCallable({
     });
     const webp = await normalizeIconFraming(
       await removeFlatBackground(Buffer.from(imageBase64, 'base64')),
-      // The canon value, tuned for the 40px row tile.
-      { contentMax: 108 },
+      { contentMax: ICON_CONTENT_MAX },
     );
-    const url = await uploadEquipmentIcon(input.itemId, webp);
+    const url = await uploadIcon(ICON_STORAGE_PREFIX, input.itemId, webp);
 
     // The write-back, in a transaction for ONE reason: a rename can land while
     // the image is generating (~10 s), and the brief trigger will have

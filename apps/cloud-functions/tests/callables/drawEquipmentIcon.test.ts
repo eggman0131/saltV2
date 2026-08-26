@@ -172,18 +172,20 @@ describe('drawEquipmentIcon callable', () => {
     expect(mockSave).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT report a devSettings read throw (the drift Phase 2 deliberately flips)', async () => {
-    // The consolidated reader in triggers/iconWriteTrigger.ts reports a read
-    // THROW as a StorageError (#989 Behavior Contract clause 5); this callable's
-    // local copy drifted and never did. Phase 2 of #1006 swaps the callable onto
-    // the shared reader, and THIS is the one assertion that flips: it becomes
-    // `toHaveBeenCalledWith(boom, 'StorageError')`.
-    mockDevSettingsGet.mockRejectedValueOnce(new Error('firestore unavailable'));
+  it('reports a devSettings read throw as a StorageError while still failing open', async () => {
+    // The one stated behavior change of #1006 (Behavior Contract clause 8).
+    // Phase 1 pinned the local reader's drift: a read throw warned and failed
+    // open but was never reported, unlike the four consolidated sites (#989
+    // clause 5). Phase 2 swapped this callable onto the shared reader in
+    // triggers/iconWriteTrigger.ts, so the throw is now reported additively —
+    // the fail-open draw itself is unchanged.
+    const boom = new Error('firestore unavailable');
+    mockDevSettingsGet.mockRejectedValueOnce(boom);
 
     const result = await call({ action: 'draw', itemId: ITEM_ID, brief: BRIEF });
 
     expect(result).toEqual({ ok: true });
-    expect(mockReport).not.toHaveBeenCalled();
+    expect(mockReport).toHaveBeenCalledWith(boom, 'StorageError');
   });
 
   it.each([
