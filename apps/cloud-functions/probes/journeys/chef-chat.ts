@@ -96,7 +96,12 @@ export const chefChat: Journey = {
         ],
         createdAt: now,
         updatedAt: now,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        // A Date, not an ISO string: the harness encodes it as a Firestore
+        // `timestampValue`, the one shape the TTL policy sweeps (#1008) — a
+        // string here would make probe leftovers the docs the policy never
+        // touches. Reads decode it back to a string, so the schema round-trip
+        // below still holds.
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       });
       assert(result.errorStatus === null, `session write refused: ${result.errorStatus ?? ''}`);
     });
