@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { attachAiOtlpSpanProcessor } from '../src/server/attachAiOtlpProcessor.js';
+import { attachAiOtlpSpanProcessor } from '../src/server/attachSpanProcessor.js';
 import { aiOtlpSpanProcessor } from '../src/server/aiOtlpSpanProcessor.js';
 
 // ---------------------------------------------------------------------------

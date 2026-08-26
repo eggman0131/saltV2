@@ -23,10 +23,14 @@ import { getServerEnvironment } from './serverEnvironment.js';
 // `from './otlpWire.js'` import (types, encoders, builders, host) keeps resolving.
 export {
   DEFAULT_POSTHOG_HOST,
+  DISTRIBUTED_OTLP_PATH,
   SPAN_KIND_INTERNAL,
   strAttr,
   intAttr,
   boolAttr,
+  encodeAttr,
+  collectAttributes,
+  toOtlpSpan,
   hrTimeToNanos,
   parentSpanId,
   buildOtlpBody,

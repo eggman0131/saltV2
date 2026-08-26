@@ -25,16 +25,17 @@ export {
 } from './init.js';
 export type { ObservabilitySpan, StartSpanOptions } from './init.js';
 
-// AI-OTLP span processor: attached to the Genkit-owned OTel provider by the CF
-// entrypoint after enableFirebaseTelemetry() resolves; ships Genkit's AI spans
-// to PostHog LLM observability as real traces (#356).
-export { attachAiOtlpSpanProcessor } from './attachAiOtlpProcessor.js';
-
-// Distributed-tracing span processor: attached ALONGSIDE the AI processor on the
-// same Genkit-owned provider; ships EVERY finished span to PostHog's
-// distributed-tracing endpoint (/i/v1/traces) so a CF invocation renders as one
-// coherent end-to-end trace correlated by trace_id to the AI generations.
-export { attachDistributedSpanProcessor } from './attachDistributedProcessor.js';
+// The two span-processor attach helpers, one implementation (issue #1007).
+// attachAiOtlpSpanProcessor ships Genkit's AI spans to PostHog LLM observability
+// as real traces (#356); attachDistributedSpanProcessor is attached ALONGSIDE it
+// on the same Genkit-owned provider and ships EVERY finished span to PostHog's
+// distributed-tracing endpoint (/i/v1/traces), so a CF invocation renders as one
+// coherent end-to-end trace correlated by trace_id to the AI generations. Both
+// are called by the CF entrypoint after enableFirebaseTelemetry() resolves.
+export {
+  attachAiOtlpSpanProcessor,
+  attachDistributedSpanProcessor,
+} from './attachSpanProcessor.js';
 
 // cf-path match logger. Exported under both the posthog-specific name and a
 // runtime-neutral alias (createServerObservabilityMatchLoggingAdapter) so call

@@ -122,6 +122,61 @@ describe('exporter OTLP body shape (shared buildOtlpBody)', () => {
     expect(attrKeys).not.toContain('obj'); // non-scalar dropped
   });
 
+  it('encodes attribute VALUES exactly as the shared wire shape (int64 string, float→string, drops)', () => {
+    // Value-level characterisation (issue #1007 Phase 1): the shape test above
+    // asserts key presence only, which would stay green if the encoding of a
+    // float or an int changed. Lock the exact wire values before the encoding
+    // moves into src/shared/otlpWire.ts.
+    const fake = {
+      name: 'Add item: tinned tomatoes',
+      attributes: {
+        'import.outcome': 'ok', // string → stringValue
+        count: 3, // integer → intValue, STRING-typed (int64 precision)
+        ratio: 0.5, // non-integer finite → stringValue
+        flag: true, // boolean → boolValue
+        nan: NaN, // non-finite → dropped
+        inf: Infinity, // non-finite → dropped
+        negInf: -Infinity, // non-finite → dropped
+        missing: null, // dropped
+        undef: undefined, // dropped
+        obj: { nested: 1 }, // non-scalar → dropped
+        arr: [1, 2], // non-scalar → dropped
+      },
+      startTime: [1_700_000_000, 0],
+      endTime: [1_700_000_001, 0],
+      kind: 1,
+      parentSpanId: undefined,
+      spanContext: () => ({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16) }),
+    } as unknown as ReadableSpan;
+
+    const out = toBrowserOtlpSpan(fake);
+    expect(out.attributes).toContainEqual({ key: 'import.outcome', value: { stringValue: 'ok' } });
+    expect(out.attributes).toContainEqual({ key: 'count', value: { intValue: '3' } });
+    expect(out.attributes).toContainEqual({ key: 'ratio', value: { stringValue: '0.5' } });
+    expect(out.attributes).toContainEqual({ key: 'flag', value: { boolValue: true } });
+    const keys = out.attributes.map((a) => a.key);
+    for (const dropped of ['nan', 'inf', 'negInf', 'missing', 'undef', 'obj', 'arr']) {
+      expect(keys).not.toContain(dropped);
+    }
+    // Nothing beyond the four encodable attributes survives.
+    expect(out.attributes).toHaveLength(4);
+  });
+
+  // #1011: the `@opentelemetry/api` enum has no "unspecified" member, so an absent
+  // kind and API INTERNAL (0) BOTH map to the OTLP wire's SPAN_KIND_INTERNAL (1).
+  it('defaults kind to the OTLP wire INTERNAL (1) when the span omits it', () => {
+    const fake = {
+      name: 'Author recipe',
+      attributes: {},
+      startTime: [1_700_000_000, 0],
+      endTime: [1_700_000_001, 0],
+      kind: undefined,
+      parentSpanId: undefined,
+      spanContext: () => ({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16) }),
+    } as unknown as ReadableSpan;
+    expect(toBrowserOtlpSpan(fake).kind).toBe(1);
+  });
+
   it('wraps spans in the resourceSpans → scopeSpans envelope with service.name=salt-web-pwa', () => {
     const span: OtlpSpan = {
       traceId: 'a'.repeat(32),

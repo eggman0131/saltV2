@@ -48,12 +48,10 @@ import {
 } from '@opentelemetry/sdk-trace-web';
 import {
   buildOtlpBody,
-  hrTimeToNanos,
-  intAttr,
-  strAttr,
-  boolAttr,
-  toWireSpanKind,
-  type Attribute,
+  collectAttributes,
+  toOtlpSpan,
+  DEFAULT_POSTHOG_HOST,
+  DISTRIBUTED_OTLP_PATH,
   type OtlpSpan,
 } from './shared/otlpWire.js';
 import {
@@ -65,10 +63,6 @@ import {
 
 // Browser emitter identity — distinct from the server's `salt-cloud-functions`.
 const SERVICE_NAME = 'salt-web-pwa';
-// EU default; overridable via env only (never to silently leave the EU region).
-const DEFAULT_POSTHOG_HOST = 'https://eu.i.posthog.com';
-// PostHog's distributed-tracing OTLP/JSON ingestion path — same as the server leg.
-const DISTRIBUTED_OTLP_PATH = '/i/v1/traces';
 // Cap human-readable span names so family-shared content (host/title) stays bounded.
 const MAX_SPAN_NAME = 80;
 
@@ -82,42 +76,13 @@ let tracer: Tracer | null = null;
 
 // ── OTLP/JSON exporter ─────────────────────────────────────────────────────────
 
-// Encode a span attribute value as OTLP/JSON. Only scalar types map cleanly;
-// objects/arrays/null/undefined are dropped. Mirrors the server distributed leg
-// (distributedSpanProcessor.encodeAttr) so both legs encode attributes identically.
-function encodeAttr(key: string, value: unknown): Attribute | null {
-  if (typeof value === 'string') return strAttr(key, value);
-  if (typeof value === 'boolean') return boolAttr(key, value);
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Number.isInteger(value) ? intAttr(key, value) : strAttr(key, String(value));
-  }
-  return null;
-}
-
-// Map a finished browser ReadableSpan → the shared OtlpSpan shape verbatim.
-// Forwards name, ids, timing and scalar attributes, maps the span's API-enum kind
-// onto the OTLP wire enum (shared toWireSpanKind — the SAME mapping the server leg
-// uses, #1011), and omits parentSpanId on a root span (no empty string). Exported
-// for the unit test.
+// Map a finished browser ReadableSpan → the shared OtlpSpan shape verbatim. The
+// encoding and the envelope are the SHARED mechanism (src/shared/otlpWire.ts), so
+// this leg cannot drift from the server distributed leg; the browser's policy is
+// simply "encode every attribute" — it has no genkit blobs to strip. Exported for
+// the unit test (deliberately NOT re-exported from the default barrel, #813).
 export function toBrowserOtlpSpan(span: ReadableSpan): OtlpSpan {
-  const ctx = span.spanContext();
-  const attributes: Attribute[] = [];
-  for (const [key, value] of Object.entries(span.attributes ?? {})) {
-    const encoded = encodeAttr(key, value);
-    if (encoded) attributes.push(encoded);
-  }
-  const out: OtlpSpan = {
-    traceId: ctx.traceId,
-    spanId: ctx.spanId,
-    name: span.name,
-    kind: toWireSpanKind(span.kind),
-    startTimeUnixNano: hrTimeToNanos(span.startTime),
-    endTimeUnixNano: hrTimeToNanos(span.endTime),
-    attributes,
-  };
-  const parent = span.parentSpanId;
-  if (parent) out.parentSpanId = parent;
-  return out;
+  return toOtlpSpan(span, collectAttributes(span.attributes ?? {}));
 }
 
 // A custom SpanExporter that POSTs a batch of OTLP/JSON spans to PostHog using the
