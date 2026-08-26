@@ -187,6 +187,22 @@ const h = vi.hoisted(() => {
     // assertion sees `increment(2)` as a value and a writer that stopped using
     // one goes red (#726 — a read-modify-write would silently lose ticks).
     increment: vi.fn((n: number) => ({ __increment: n })),
+    // The slice of the SDK's `Timestamp` the writers use. A real instance in the
+    // payload would defeat `toEqual`'s exactness; this one compares by its
+    // stored millis, so an expected `Timestamp.fromDate(...)` names the exact
+    // instant and a writer that regressed to an ISO string goes red (#1008).
+    Timestamp: class FakeTimestamp {
+      private readonly ms: number;
+      constructor(ms: number) {
+        this.ms = ms;
+      }
+      static fromDate(date: Date): FakeTimestamp {
+        return new FakeTimestamp(date.getTime());
+      }
+      toDate(): Date {
+        return new Date(this.ms);
+      }
+    },
     noop: vi.fn(),
   };
 });
@@ -217,6 +233,7 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: h.deleteDoc,
   writeBatch: h.writeBatch,
   increment: h.increment,
+  Timestamp: h.Timestamp,
 }));
 
 // The public surface, which is also what the coverage guard partitions (UT-A3).
@@ -738,7 +755,12 @@ const writerCases: WriterCase[] = [
       {
         op: 'set',
         path: 'chatSessions/chat-1',
-        data: { ...CHAT_SESSION, expiresAt: new Date(NOW_MS + FOURTEEN_DAYS_MS).toISOString() },
+        // A `Timestamp`, not an ISO string: the TTL policy acts on nothing
+        // else (#1008). Same frozen instant.
+        data: {
+          ...CHAT_SESSION,
+          expiresAt: h.Timestamp.fromDate(new Date(NOW_MS + FOURTEEN_DAYS_MS)),
+        },
       },
     ],
     onSuccess: 'success(undefined)',
@@ -1226,7 +1248,7 @@ describe('saveChatSession — the expiry stamp (#696, #939)', () => {
         data: {
           ...CHAT_SESSION,
           recipeId: 'r-1',
-          expiresAt: new Date(NOW_MS + EIGHTEEN_MONTHS_MS).toISOString(),
+          expiresAt: h.Timestamp.fromDate(new Date(NOW_MS + EIGHTEEN_MONTHS_MS)),
         },
       },
     ]);

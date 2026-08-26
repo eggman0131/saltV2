@@ -151,7 +151,10 @@ export const authRules: Journey = {
     const sessionId = ctx.id('chat');
     const sessionPath = `chatSessions/${sessionId}`;
     const now = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    // A Date, not an ISO string: both the REST harness and the Admin SDK store
+    // it as a Firestore `Timestamp`, so probe leftovers are swept by the TTL
+    // policy instead of being the one class of doc it skips (#1008).
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     ctx.track('chatSessions', sessionId);
 

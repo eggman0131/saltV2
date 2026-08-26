@@ -102,11 +102,29 @@ const mockDb = {
   runTransaction: async (fn: (tx: unknown) => Promise<void>) =>
     fn({ get: async () => mockLedgerSnap, set: mockTxSet }),
 };
+// The slice of firebase-admin's `Timestamp` the ledger claim uses (#1008):
+// `fromMillis` at the write site, `toMillis` in the offset assertion below.
+class FakeTimestamp {
+  private readonly ms: number;
+  constructor(ms: number) {
+    this.ms = ms;
+  }
+  static fromMillis(ms: number): FakeTimestamp {
+    return new FakeTimestamp(ms);
+  }
+  toMillis(): number {
+    return this.ms;
+  }
+}
+
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => mockDb,
+  Timestamp: FakeTimestamp,
 }));
 
 const { onCookTimerDispatch } = await import('../../src/triggers/onCookTimerDispatch.js');
+const { TIMER_DELIVERY_RETENTION_MS } =
+  await import('../../src/triggers/timerDeliveryRetention.js');
 
 const STEP_ID = 'step-1';
 const ENDS_AT = '2026-07-24T10:00:00.000Z';
@@ -268,10 +286,22 @@ describe('onCookTimerDispatch', () => {
 
     expect(mockLedgerDocId).toBe(`${SESSION_ID}_adhoc-7_${Date.parse(ENDS_AT)}`);
     expect(mockTxSet).toHaveBeenCalledWith(expect.anything(), {
-      deliveredAt: expect.any(Number),
+      // Timestamps, not numbers: the TTL policy on `expiresAt` acts on nothing
+      // else (#1008), and `deliveredAt` converts alongside it.
+      deliveredAt: expect.any(FakeTimestamp),
+      expiresAt: expect.any(FakeTimestamp),
       sessionId: SESSION_ID,
       timerId: 'adhoc-7',
     });
+    // The ledger must outlive any possible duplicate dispatch, and the offset
+    // is the single shared constant — a site that drifted goes red here.
+    const payload = mockTxSet.mock.calls[0]![1] as {
+      deliveredAt: FakeTimestamp;
+      expiresAt: FakeTimestamp;
+    };
+    expect(payload.expiresAt.toMillis() - payload.deliveredAt.toMillis()).toBe(
+      TIMER_DELIVERY_RETENTION_MS,
+    );
   });
 
   it("prefers the timer's OWN label over the step's description", async () => {

@@ -8,6 +8,7 @@ import { deliverViaPushover } from '../adapters/deliverViaPushover.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { KITCHEN_TIMER_REGION, type KitchenTimerTaskPayload } from './kitchenTimerTypes.js';
 import { withTaskTrigger } from './triggerEntrypoint.js';
+import { timerDeliveryStamp } from './timerDeliveryRetention.js';
 
 // Cloud Task handler that sends a standalone kitchen-timer push (issue #842).
 // Fires at the `endsAt` of a timer enqueued by onKitchenTimerWrite — "Eggs" at
@@ -129,7 +130,7 @@ export const onKitchenTimerDispatch = onTaskDispatched<KitchenTimerTaskPayload>(
           alreadyDelivered = true;
           return;
         }
-        tx.set(ledgerRef, { deliveredAt: Date.now(), uid, timerId });
+        tx.set(ledgerRef, { ...timerDeliveryStamp(), uid, timerId });
       });
       if (alreadyDelivered) return;
 

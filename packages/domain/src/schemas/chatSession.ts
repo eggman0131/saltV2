@@ -28,6 +28,9 @@ export const ChatSessionSchema = z.object({
   messages: z.array(MessageSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // ISO-8601 here, but a Firestore `Timestamp` on the wire (issue #1008 — the
+  // TTL machinery acts on nothing else). firebase-sync converts in both
+  // directions at the boundary, so the domain stays Firebase-free (Hard rule 1).
   expiresAt: z.string(),
 });
 
