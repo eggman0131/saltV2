@@ -1,4 +1,4 @@
-import { STYLE } from './generateCanonIcon.js';
+import { SEED_NEGATIVES, STYLE } from './generateCanonIcon.js';
 
 // Kitchen-tool pictogram prompt builder (issue #882).
 //
@@ -75,7 +75,7 @@ export const KIT_STYLE_ANCHORS =
  * (flows/assets/canonIconSeed.ts) and carry over from the canon prompt unchanged.
  */
 export function buildKitchenToolIconPrompt(label: string, hint?: string): string {
-  const base = `Generate a cute cartoon icon of ${label}, one generic piece of kitchen equipment as found in a home kitchen. Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only ${label} and nothing else. ${STYLE} ${KIT_STYLE_ANCHORS}`;
+  const base = `Generate a cute cartoon icon of ${label}, one generic piece of kitchen equipment as found in a home kitchen. Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. ${SEED_NEGATIVES} Draw only ${label} and nothing else. ${STYLE} ${KIT_STYLE_ANCHORS}`;
   const trimmed = hint?.trim();
   return trimmed ? `${base} Additional guidance for this item: ${trimmed}` : base;
 }

@@ -1,4 +1,4 @@
-import { STYLE } from './generateCanonIcon.js';
+import { SEED_NEGATIVES, STYLE } from './generateCanonIcon.js';
 
 // Equipment-pictogram prompt builder (issue #877).
 //
@@ -77,5 +77,5 @@ export function buildEquipmentIconPrompt(name: string, brief?: string): string {
     ? `Generate a cute cartoon icon of one piece of kitchen equipment. Draw exactly this: ${trimmedBrief}`
     : `Generate a cute cartoon icon of ${name}, one piece of kitchen equipment.`;
 
-  return `${subject} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only this one item and nothing else. ${STYLE} ${EQUIPMENT_STYLE_ANCHORS}`;
+  return `${subject} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. ${SEED_NEGATIVES} Draw only this one item and nothing else. ${STYLE} ${EQUIPMENT_STYLE_ANCHORS}`;
 }

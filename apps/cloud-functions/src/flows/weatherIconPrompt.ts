@@ -1,5 +1,5 @@
 import type { WeatherIconId } from '@salt/domain';
-import { STYLE } from './generateCanonIcon.js';
+import { SEED_NEGATIVES, STYLE } from './generateCanonIcon.js';
 
 // Weather-icon prompt builder (issue #387). Produces the per-icon text prompt
 // for the OFFLINE, one-off weather-icon generator
@@ -98,5 +98,5 @@ export const WEATHER_ICON_IDS = Object.keys(SCENES) as WeatherIconId[];
  */
 export function buildWeatherIconPrompt(iconId: WeatherIconId): string {
   const scene = SCENES[iconId];
-  return `Generate a cute cartoon weather icon. ${WEATHER_INTRO} ${scene} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only this weather scene and nothing else. ${WEATHER_STYLE}`;
+  return `Generate a cute cartoon weather icon. ${WEATHER_INTRO} ${scene} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. ${SEED_NEGATIVES} Draw only this weather scene and nothing else. ${WEATHER_STYLE}`;
 }
