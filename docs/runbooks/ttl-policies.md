@@ -6,7 +6,10 @@ policy is applied by anything in this repository.** A TTL policy is per-project
 infrastructure — it lives in no deployed artefact, no CI job applies it, and
 nothing notices if it is missing. This file is the procedure.
 
-Run it once per project, in order: **deploy → migrate → enable → verify**.
+Run it once per project, in order: **deploy → migrate → count → enable →
+verify**. Enabling is the one irreversible act in the whole procedure, so it is
+deliberately its own step per project — dev, then staging, then prod — and no
+command in this file arms more than one project per invocation.
 
 ## Why this exists
 
@@ -63,6 +66,9 @@ first; re-run the migration later if you find stragglers — it is idempotent.
 skipped rather than mishandled — but enabling first means a policy that appears
 to be doing nothing, which is exactly the failure mode this whole issue is about.
 
+**Count before you enable.** The baseline is only meaningful between the two
+(Step 3), and once a policy is armed there is no way back to a "before" number.
+
 ---
 
 ## Step 1 — deploy
@@ -75,6 +81,11 @@ shape; the PWA carries the `Timestamp` chat write and the tolerant read.
 
 Once per collection per project. It needs your `gcloud` account
 (`gcloud auth login`) and nothing else.
+
+**The script has never been executed anywhere** — not on dev, not on staging,
+not in an emulator. The `--dry-run` on dev below is genuinely its first run, and
+the first time the `PATCH` path runs at all is the dev `--apply`. Read the
+dry-run output rather than skimming it.
 
 ```bash
 # Preview first — reads only, writes nothing, and prints every document it would touch.
@@ -103,50 +114,120 @@ history is neither read nor rewritten. The script is **idempotent**: a document
 already holding `Timestamp`s is counted and skipped, so re-running is free and is
 how you mop up after a stale client.
 
-## Step 3 — enable the two policies
+## Step 3 — take the baseline count
 
-Once per project. This is the step that arms the sweep.
+**After that project's Step 2, and before its Step 4.** This is the number you
+will watch drain, and there is exactly one moment it can be taken.
 
-```bash
-for P in s2-dev-eggman s2-stage-ccb22 s2-prod-e46bd; do
-  gcloud firestore fields ttls update expiresAt \
-    --collection-group=chatSessions --enable-ttl --project="$P"
-  gcloud firestore fields ttls update expiresAt \
-    --collection-group=timerDeliveries --enable-ttl --project="$P"
-done
-```
+Before Step 2 has run, the count is **0 on every project** — and for the wrong
+reason. The filter compares against a `timestampValue`, and a document still
+holding a string does not match it at all. A 0 here reads as "nothing to sweep"
+while being the very silent skip this whole issue exists to kill. After Step 2 it
+means what it says.
 
-Do them one project at a time in practice — dev, then staging, then prod once
-you have seen staging drain. Confirm what is armed:
+Firestore aggregation over the REST API, as the same `gcloud` identity. One
+project, one collection per invocation:
 
 ```bash
-gcloud firestore fields ttls list --project="$P"
-```
-
-The policy takes a few minutes to build before it begins expiring documents.
-
-## Step 4 — verify
-
-The honest check is a count of documents past their own expiry, before and after.
-Firestore aggregation over the REST API, as the same `gcloud` identity:
-
-```bash
-P=s2-stage-ccb22
+P=s2-dev-eggman     # then s2-stage-ccb22, then s2-prod-e46bd — one at a time
+C=chatSessions      # and again with timerDeliveries
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 curl -s -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H 'Content-Type: application/json' \
   "https://firestore.googleapis.com/v1/projects/$P/databases/(default)/documents:runAggregationQuery" \
   -d '{"structuredAggregationQuery":{"aggregations":[{"count":{},"alias":"n"}],
-       "structuredQuery":{"from":[{"collectionId":"chatSessions"}],
+       "structuredQuery":{"from":[{"collectionId":"'"$C"'"}],
        "where":{"fieldFilter":{"field":{"fieldPath":"expiresAt"},"op":"LESS_THAN",
        "value":{"timestampValue":"'"$NOW"'"}}}}}}'
 ```
 
-Expect the count to fall to (near) zero over the following 24–72 hours, and to
-stay there. Note the filter compares against a `timestampValue`: an unconverted
-string document does not match it at all, which is a second way to see that the
-migration did its job. Swap `chatSessions` for `timerDeliveries` for the ledger.
+On `s2-stage-ccb22` expect roughly **42** for `chatSessions` and all **23** for
+`timerDeliveries` once Step 2 has been applied there. Write the numbers down —
+they are the "before" that Step 5 compares against.
+
+## Step 4 — enable the policies, one project at a time
+
+This is the step that arms the sweep, and the only irreversible act in the
+procedure: within 24–72 hours Firestore permanently deletes every matching
+document, with no trigger, no tombstone and no undo short of a restore from a
+backup. Each substep below is its own gate — run one, then stop.
+
+### Step 4a — dev
+
+Gate: dev deployed (Step 1), dev migrated (Step 2), dev baseline recorded
+(Step 3).
+
+```bash
+P=s2-dev-eggman
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=chatSessions --enable-ttl --project="$P"
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=timerDeliveries --enable-ttl --project="$P"
+gcloud firestore fields ttls list --project="$P"
+```
+
+The policy takes a few minutes to build before it begins expiring documents.
+
+### Step 4b — staging, then soak
+
+Gate: **dev armed and seen to drain**, staging deployed and migrated, staging
+baseline recorded. Then the same two commands with `P=s2-stage-ccb22`:
+
+```bash
+P=s2-stage-ccb22
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=chatSessions --enable-ttl --project="$P"
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=timerDeliveries --enable-ttl --project="$P"
+gcloud firestore fields ttls list --project="$P"
+```
+
+**Then wait.** Watch staging's count with Step 5 over the next 24–72 hours until
+it drains to near zero and stays there, and confirm the 31 sentinels are still
+present. That soak is the only evidence the policy sweeps what is expected and
+nothing else, and it is what stands between prod and an irreversible delete.
+
+### Step 4c — production
+
+Gate: **staging drained and the sentinels confirmed still present**, prod
+deployed and migrated, prod baseline recorded, and a current prod export in hand
+(`scripts/export-prod-firestore.mjs`). Only then:
+
+```bash
+P=s2-prod-e46bd
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=chatSessions --enable-ttl --project="$P"
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=timerDeliveries --enable-ttl --project="$P"
+gcloud firestore fields ttls list --project="$P"
+```
+
+## Step 5 — verify
+
+Re-run the Step 3 count for the project you just armed, on both collections.
+Expect it to fall to (near) zero over the following 24–72 hours, and to stay
+there. Note the filter compares against a `timestampValue`: an unconverted string
+document does not match it at all, which is a second way to see that the
+migration did its job.
+
+## Step 6 — abort: disarm a policy
+
+The reverse of Step 4, one collection and one project per invocation:
+
+```bash
+P=s2-stage-ccb22
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=chatSessions --disable-ttl --project="$P"
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=timerDeliveries --disable-ttl --project="$P"
+gcloud firestore fields ttls list --project="$P"
+```
+
+**`--disable-ttl` stops future expiry only. It does not bring back a document
+that has already been swept** — that deletion is permanent, fires no trigger, and
+the only route back is a restore from a backup. Disarming is how you stop a sweep
+that is going wrong, not how you undo one that has already run.
 
 ## Gotchas
 
