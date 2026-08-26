@@ -44,13 +44,13 @@ import {
   type ReadableSpanLike,
   type SpanProcessorLike,
   SERVICE_NAME,
-  SPAN_KIND_INTERNAL,
   boolAttr,
   hrTimeToNanos,
   intAttr,
   parentSpanId,
   postOtlpSpan,
   strAttr,
+  toWireSpanKind,
 } from './otlpWire.js';
 import { genkitCompletionPreview, genkitPromptPreview } from './genkitContent.js';
 
@@ -140,9 +140,10 @@ function appendContentPreviews(
 /**
  * Map a finished span to an OTLP span verbatim (no namespace remap). Forwards the
  * span's live name (which setActiveSpanName may have set to a human-readable
- * descriptor — that IS the value for the end-to-end trace view), ids, timing,
- * kind and its scalar attributes. Never returns null — the distributed endpoint
- * keeps every span.
+ * descriptor — that IS the value for the end-to-end trace view), ids, timing and
+ * its scalar attributes, and maps the span's API-enum kind onto the OTLP wire enum
+ * (shared toWireSpanKind — the SAME mapping the browser leg uses, #1011). Never
+ * returns null — the distributed endpoint keeps every span.
  */
 export function toDistributedOtlpSpan(span: ReadableSpanLike): OtlpSpan {
   const ctx = span.spanContext();
@@ -162,7 +163,7 @@ export function toDistributedOtlpSpan(span: ReadableSpanLike): OtlpSpan {
     traceId: ctx.traceId,
     spanId: ctx.spanId,
     name: span.name,
-    kind: typeof span.kind === 'number' ? span.kind : SPAN_KIND_INTERNAL,
+    kind: toWireSpanKind(span.kind),
     startTimeUnixNano: hrTimeToNanos(span.startTime),
     endTimeUnixNano: hrTimeToNanos(span.endTime),
     attributes,

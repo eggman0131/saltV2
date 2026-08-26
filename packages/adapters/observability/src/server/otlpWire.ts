@@ -30,6 +30,7 @@ export {
   hrTimeToNanos,
   parentSpanId,
   buildOtlpBody,
+  toWireSpanKind,
 } from '../shared/otlpWire.js';
 export type {
   HrTime,
