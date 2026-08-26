@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { attachDistributedSpanProcessor } from '../src/server/attachDistributedProcessor.js';
+import { attachDistributedSpanProcessor } from '../src/server/attachSpanProcessor.js';
 import { distributedSpanProcessor } from '../src/server/distributedSpanProcessor.js';
 
 // ---------------------------------------------------------------------------
