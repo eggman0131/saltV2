@@ -31,6 +31,23 @@ The success condition is a clean tree when Daniel comes back: every issue merged
 - **The git guard is real.** `scripts/git-guard.mjs` refuses `git push …main`, `git push --no-verify`, and bare `git stash` / `stash pop` / `stash clear` — the stash stack is shared across every worktree and concurrent agent. Land things with `gh pr merge`. Set work aside with a WIP commit, never a stash.
 - **/run is the worker.** Do not reimplement the phase loop. Point each worker at `.claude/commands/run.md` and give it the overrides in **Dispatch**. Two copies of that loop will drift within a month.
 - **GitHub through the `gh` CLI throughout.** There is no GitHub MCP server in this repo. Two harness traps, and every brief you write carries both: plain `gh issue view` / `gh pr view` exit 0 with **empty stdout** in a non-TTY session — use the `--json` forms or `gh api`, and treat empty comment output as a failed fetch, never as "no comments" — and every `gh` call needs the sandbox disabled.
+- **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; for a non-git command that needs a directory, `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would have let each part through unprompted — a compound command led by `cd` is the single largest source of permission stops in this command, and every one of them blocks the fleet on a human. This applies to every brief you write, not just your own calls.
+
+## Reporting — five moments, and silence in between
+
+You are unattended, so everything you say is read later, out of order, by someone catching up. Narration is worthless to that reader and it is what makes a campaign unreadable: the last run spoke **68 times in 88 minutes**, median 144 characters, mostly "checking main's health" / "confirmed" / "waiting on #1021" — and closed with four messages in three minutes that all said the campaign had finished.
+
+Speak at exactly five moments, and at no others:
+
+1. **Dispatch** — the plan, once: order, what runs concurrently, the ledger number.
+2. **An issue reaching a terminal state** — merged, or parked. One message per issue, after you have confirmed it, not while you are confirming it.
+3. **A decision taken outside the envelope** — what you decided and why, in the two or three sentences it actually needs.
+4. **A full stop** — what broke and what a human must do.
+5. **The close** — see **Finish**.
+
+Between those, work silently. No "checking…", no "spawning…", no "confirmed", no progress ping for a step whose outcome you do not yet have. Wait until you know, then say the thing once.
+
+Each message: the state in one line, then the decision or the recommendation. **Never restate what an earlier message already said** — reasoning, evidence and measurements belong in the ledger comment, and the message links the ledger rather than reproducing it. If you find yourself writing a paragraph you have already written, you are writing the ledger into the terminal; cut it and post it to the ledger.
 
 ## Models
 
@@ -283,13 +300,23 @@ Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose
 > GATES: <green | red>
 > ```
 
-Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3. A **blocking** item still open after round 2 parks the branch (see the envelope), or — if you adjudicate it as safe to ship — gets a filed issue before the merge. Everything else joins the ledger's should-fix list and is filed by nobody.
+Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3. A **blocking** item still open after round 2 parks the branch (see the envelope), or — if you adjudicate it as safe to ship — gets a filed issue before the merge. Everything else joins the should-fix list, which is filed as one issue at **Finish**.
 
 **You adjudicate, not the reviewer.** A rejection is a position, not a veto; you decide, record the decision in the ledger, and move on. Reviewer-wins is a deadlock and this command runs unattended.
 
-**Do not file an issue per should-fix.** Collect them — one line each, with the PR number — and put the whole list in the ledger's closing comment for Daniel to triage. Notes are dropped entirely.
+**should-fix findings go to one issue per campaign, not one issue each and not a comment on a closed ledger.** Collect them — one line each, with the PR number — and at **Finish** file a single issue:
 
-This is deliberate and it is a reversal: filing them automatically produced seventeen open issues from a single five-issue campaign, overwhelmingly test-coverage and doc-accuracy suggestions, none of which was ever actioned. A backlog nobody triaged is not a record, it is noise with a tracking number — and writing each one cost a full issue body. The two exceptions that still get `gh issue create` at the time, because they are structural rather than taste:
+```
+gh issue create --title "campaign follow-ups: <slug> (#<ledger>)" --body-file <checklist>
+```
+
+Body is a `- [ ]` checklist, one line per finding, PR number on each line. Notes are dropped entirely. File it even when the list is short; skip it only when the list is empty.
+
+This is a correction to a rule that lost its own output. The previous version said to put the list in the ledger's closing comment — but **Finish** closes the ledger when nothing is parked, so the list landed in a closed issue and left no trace anywhere a human looks. Campaign #1040 lost seven that way, two of them live prod risks.
+
+That rule's stated grounds were also wrong, and the record is checkable: it claimed campaign #1009's seventeen filed follow-ups were "never actioned". Most were closed within a day — and #1021, #1023 and #1030, the entire contents of campaign #1040, were three of them. Filing is the mechanism that feeds the next campaign. One issue per campaign rather than seventeen is the concession to noise; not filing at all is not.
+
+Two findings still get their own `gh issue create` at the time rather than waiting for the list, because they are structural rather than taste:
 
 - **`BLOCKED: oversized`** — the split proposal, as described in **Dispatch**.
 - **a blocking finding you adjudicated as real but chose not to hold the queue for** — that is a known defect shipping to main, and it needs a number before the merge, not after the campaign.
@@ -373,18 +400,15 @@ On a full stop: leave every branch pushed and every worktree intact, write the s
 
 When the queue is empty:
 
-1. Final ledger comment, and set the body's table to its terminal state:
+1. **File the should-fix issue first**, before anything closes — `campaign follow-ups: <slug> (#<ledger>)`, a `- [ ]` checklist, one line and one PR number per finding (see **Review**). Skip only if the list is empty. Its number goes in the closing comment below, so the ledger points at it rather than containing it.
+2. Final ledger comment, and set the body's table to its terminal state:
    ```
    ## Campaign complete
    **Landed:** #a (PR #1), #b (PR #2)
    **Parked:** #c — [reason, what a human needs to decide, branch name]
-   **Issues filed:** #d, #e — [only oversized-splits and shipped-known-defects; see Review]
+   **Issues filed:** #f follow-ups; #d, #e — [oversized-splits and shipped-known-defects; see Review]
    **Decisions taken:** [one line each]
-
-   **Should-fix, not filed** — Daniel's triage, one line each:
-   - PR #1: [finding]
-   - PR #2: [finding]
    ```
-   Close the ledger issue only if nothing is parked. A parked issue is unfinished business and the open ledger is where it lives.
-2. `TaskStop` any watchdog still running; `git worktree prune`; confirm no campaign worktrees remain, and that every remaining remote branch is one you deliberately parked (labelled `status: on-hold`, reason on the PR).
-3. Report: landed, parked with reasons, issues filed, and the should-fix list. One read, no digging. If everything landed, say so in a sentence and stop — a clean campaign does not need a report longer than its ledger.
+   Close the ledger issue only if nothing is parked. A parked issue is unfinished business and the open ledger is where it lives. Nothing that must outlive the campaign may live only in this comment — the ledger closes, the follow-ups issue does not.
+3. `TaskStop` any watchdog still running; `git worktree prune`; confirm no campaign worktrees remain, and that every remaining remote branch is one you deliberately parked (labelled `status: on-hold`, reason on the PR).
+4. Report **once**, and stop. Landed, parked with reasons, the follow-ups issue number, and — if there is one — the single finding worth Daniel's attention, with your recommendation. Everything else is in the ledger and the follow-ups issue; do not reproduce either. A clean campaign is a sentence. Do not follow this message with a second one that says the same thing in different words: the last run closed with four.

@@ -23,6 +23,7 @@ Two things dominate what a run costs: re-deriving context the issue already hold
 - **CLAUDE.md is binding.** Layer map, hard rules, data-model and Zod conventions, dependency pinning. A phase that can only be delivered by breaking one of them is a pause condition, not a judgment call.
 - **No bodges.** If the phase as specified can only be built by contorting the code, stop and raise the spec question. The cleanest, most maintainable code wins over a delivered phase.
 - **Flag the simpler path.** If a rule change or a different shape would be materially *simpler and more maintainable* (not merely easier or lazier), say so — in `DECISIONS` if you proceeded, as a pause if it changes the design.
+- **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would each have run unprompted — and when you are a campaign worker, a permission stop blocks on a human who is not watching.
 - Everything else: make the call, record it, continue.
 
 ---
