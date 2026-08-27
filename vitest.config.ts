@@ -14,6 +14,9 @@ export default defineConfig({
       'packages/ui-components/vitest.config.ts',
       'apps/web-pwa/vitest.config.ts',
       'apps/cloud-functions/vitest.config.ts',
+      // `scripts/` is outside the layer map and outside `coverage.include`
+      // below, so this project adds suites without moving any threshold (#1021).
+      'scripts/vitest.config.ts',
     ],
     coverage: {
       provider: 'v8',
