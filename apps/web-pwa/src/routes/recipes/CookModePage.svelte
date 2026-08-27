@@ -1,79 +1,68 @@
 <script lang="ts">
-  import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
+  import { Button, CanonIcon, Icon } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
-  import { push } from 'svelte-spa-router';
-  import { goBack } from '../../lib/nav.js';
-  import { trackUsageEvent } from '@salt/observability';
-  import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
-    cookSessionEnded,
-    isLoadingCookSession,
-    initCookSessionSync,
     persistCookSession,
-    removeCookSession,
     getCookSessionSnapshot,
   } from '../../lib/cookSessionService.js';
-  import { auth } from '../../lib/auth.svelte.js';
-  import { canonItems } from '../../lib/canonService.js';
-  import { productForms } from '../../lib/productFormService.js';
-  // The kit pictogram lookup (issue #882). The ONE shared lookup, subscribed
-  // app-wide in App.svelte — deliberately NOT folded into the local
-  // `thumbnailFor`/`iconVersionFor` pair below, which resolves canon items for
-  // INGREDIENTS and knows nothing about the tool vocabulary.
-  import { toolIcons } from '../../lib/kitchenToolService.js';
-  import { addToast } from '../../lib/toastStore.js';
-  import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
-  import { primeChime } from '../../lib/chime.js';
+  // The session lifecycle — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — shared with guided cook (issue #994), because both
+  // screens are the same cook on the same session document.
+  import { createCookLifecycle } from '../../lib/cookLifecycle.svelte.js';
+  // The step timers — projection, tick, start/dismiss/progress and the sheet — also
+  // shared with guided cook (issue #994), because they are the same timers on that
+  // same document. The defaults and the push floor it runs on live in
+  // `$lib/timerDefaults`, which it imports rather than this page.
+  import { createCookTimers } from '../../lib/cookTimers.svelte.js';
+  // The ingredient picture and the press-and-hold "add to the list" — shared with
+  // guided cook (issue #994), because both screens draw the same rows.
   import {
-    AD_HOC_TIMER_LABEL,
-    AD_HOC_TIMER_MINUTES,
-    shouldNotifyFor,
-  } from '../../lib/timerDefaults.js';
+    ingredientIcons,
+    ingredientLabel,
+    addIngredientToShoppingList,
+  } from '../../lib/cookIngredientIcons.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
-  import {
-    addItemToDefaultList,
-    deleteItemFromList,
-  } from '../../lib/shoppingListService.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
-  // The gesture-owned pager — spring, pointer/wheel/keyboard, element measurement —
-  // lives in `$lib/deck`, and the pure viewport arithmetic it runs on lives in
-  // `$lib/cookDeck` (issue #556). What stays in this component is the only part that
-  // knows these sections are recipe STEPS.
-  import { createDeck } from '../../lib/deck.svelte.js';
-  import { sectionMinHeight, fadeHeightFor, PEEK_MAX_PX } from '../../lib/cookDeck.js';
+  // The step deck — element registry, the pager, the probe, the peek, advancing and
+  // where it lands on entry — lives in `$lib/stepDeck` (issue #994), shared with the
+  // guided cook. Under it: the gesture-owned pager in `$lib/deck` (spring,
+  // pointer/wheel/keyboard, element measurement) and the pure viewport arithmetic in
+  // `$lib/cookDeck` (issue #556), whose numbers the markup below still reads.
+  import { createStepDeck } from '../../lib/stepDeck.svelte.js';
+  import { sectionMinHeight, PEEK_MAX_PX } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
+  // The regions this screen draws byte-for-byte the same way the guided cook does
+  // (issue #994). Composition, not a design-system primitive: they are app-level
+  // arrangements of `@salt/ui-components` parts with exactly two call sites, and
+  // promoting one into the package would need a ui-spec of its own.
+  //
+  // The one that carries a per-mode difference is `CookStepCollapsed`, and it takes
+  // that difference as two class props written out below — never as a mode flag.
+  import CookLoadingOrphan from './CookLoadingOrphan.svelte';
+  import CookTimeline from './CookTimeline.svelte';
+  import CookRecipeChangedBanner from './CookRecipeChangedBanner.svelte';
+  import CookTimersBar from './CookTimersBar.svelte';
+  import CookStepCollapsed from './CookStepCollapsed.svelte';
+  import CookStepKit from './CookStepKit.svelte';
+  import CookStepTimer from './CookStepTimer.svelte';
+  import CookStepDoneControls from './CookStepDoneControls.svelte';
   // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
   // every timestamp they need is passed in from here rather than read there.
   import {
-    makeFreshSession as buildFreshSession,
-    withStepDone,
     withIngredientChecked,
     withAllIngredientsChecked,
     withGroupChecked,
-    withTimerStarted,
-    withTimerDismissed,
     firstUseByStep as groupIngredientsByFirstUse,
     kitByStep as groupKitByStep,
-    firstIncompleteStepId,
     miseProgress,
+    progressOver,
     hasRecipeChanged,
-    formatClock,
-    timerProgress,
-    isCheckInTimerId,
-    resolveIngredientProductForm,
-    isCanonIconRenderable,
   } from '@salt/domain';
-  import type {
-    CookActiveTimerDoc,
-    CookSessionDoc,
-    IngredientDoc,
-    IngredientGroupDoc,
-    StepDoc,
-  } from '@salt/domain/schemas';
+  import type { IngredientDoc, IngredientGroupDoc } from '@salt/domain/schemas';
 
   // Cook mode (cooking mode, Phase 1). The first FULL-VIEWPORT page in the app: it
   // owns its own `fixed inset-0` container rather than living inside the app shell,
@@ -100,95 +89,19 @@
   }
   let { params }: Props = $props();
 
-  // Recipe + identity, derived exactly as RecipeViewPage does.
-  const recipe = $derived($recipes.find((r) => r.id === params.id) ?? null);
-  const uid = $derived(auth.user?.uid ?? null);
-  // Deterministic session id — one session per user per recipe.
-  const sessionId = $derived(uid ? `${params.id}_${uid}` : null);
+  // ─── Session lifecycle ─────────────────────────────────────────────────────────
+  // Subscribe, bootstrap, ended-elsewhere, orphan, restart, finish, close and the
+  // keep-awake lock — all of it in `$lib/cookLifecycle`, shared verbatim with the
+  // guided cook (issue #994). No ready-guard: plain cook mode has nothing to wait
+  // for beyond the session itself.
+  const lifecycle = createCookLifecycle({ recipeId: () => params.id });
 
-  // ─── Subscription lifecycle ────────────────────────────────────────────────────
-  // Re-subscribe whenever the session id changes (uid resolves, or the route param
-  // changes). The effect's cleanup disposes the previous subscription.
-  let unsub: (() => void) | null = null;
-  $effect(() => {
-    const sid = sessionId;
-    if (!sid) return;
-    unsub?.();
-    unsub = initCookSessionSync(sid);
-    return () => {
-      unsub?.();
-      unsub = null;
-    };
-  });
-
-  // ─── Session bootstrap ─────────────────────────────────────────────────────────
-  // Once the recipe and the session subscription have both resolved and there is no
-  // session yet, create a fresh one stamping the live recipe's `updatedAt` as the
-  // baseline. Guarded so it runs once per absent session.
-  let bootstrapping = $state(false);
-
-  function makeFreshSession(): CookSessionDoc {
-    return buildFreshSession({
-      id: sessionId!,
-      ownerUid: uid!,
-      recipeId: params.id,
-      recipeUpdatedAtAtStart: recipe!.updatedAt,
-      nowIso: new Date().toISOString(),
-    });
-  }
-
-  async function createFreshSession(): Promise<void> {
-    if (!sessionId || !uid || !recipe) return;
-    bootstrapping = true;
-    const result = await persistCookSession(makeFreshSession());
-    bootstrapping = false;
-    if (result.kind !== 'ok') addToast('Failed to start cooking.', 'destructive');
-    // Bootstrap only — a Restart mid-cook re-persists a session but is the same
-    // cook, not a new start (issue #684).
-    else trackUsageEvent('cook.started', { recipe_id: params.id });
-  }
-
-  $effect(() => {
-    if (!uid || !recipe || !sessionId) return;
-    if ($isLoadingCookSession || bootstrapping) return;
-    if ($cookSession) return; // already have one
-    // A null store means "no session yet" ONLY when nothing has ended one. A cook
-    // finished on another device, and the gap between a local Complete / Restart
-    // clearing the store and its navigation, both read as null here — bootstrapping
-    // into either would write the session straight back and resurrect the delete.
-    // (`completing` / `restarting` are declared with their handlers further down.)
-    if ($cookSessionEnded || completing || restarting) return;
-    void createFreshSession();
-  });
-
-  // ─── Ended on another device ───────────────────────────────────────────────────
-  // The document vanished while we were cooking it: someone hit Finish or Restart on
-  // another device. Tell the cook and return to the recipe, rather than leaving a
-  // session on screen that no longer exists anywhere. Runs once.
-  let endedElsewhere = $state(false);
-  $effect(() => {
-    if (!$cookSessionEnded || endedElsewhere) return;
-    endedElsewhere = true;
-    addToast('This cook was finished on another device.');
-    push(`/recipes/${params.id}`);
-  });
-
-  // ─── Deleted-recipe orphan handling ────────────────────────────────────────────
-  // If the recipe resolves to null AFTER the recipes store has loaded, it was
-  // deleted elsewhere. Alert the cook, delete the orphaned session, and bounce to
-  // the recipe list. Runs once.
-  let orphaned = $state(false);
-  $effect(() => {
-    if ($isLoadingRecipes) return; // still loading — not an orphan yet
-    if (recipe !== null) return;
-    if (orphaned) return;
-    orphaned = true;
-    void handleOrphan();
-  });
-
-  async function handleOrphan(): Promise<void> {
-    if (sessionId) await removeCookSession(sessionId);
-  }
+  const recipe = $derived(lifecycle.recipe);
+  const { wakeLockSupported, handleRestart, handleComplete, handleClose, toggleWakeLock } =
+    lifecycle;
+  const restarting = $derived(lifecycle.restarting);
+  const completing = $derived(lifecycle.completing);
+  const keepAwake = $derived(lifecycle.keepAwake);
 
   // ─── Mise-en-place ticking ─────────────────────────────────────────────────────
   const checkedIds = $derived(new Set($cookSession?.checkedIngredientIds ?? []));
@@ -395,27 +308,11 @@
   // Two stages share this page's header/banner/footer shell; only the scroll region
   // swaps. `mise` is Stage 1 (tick ingredients); `steps` is this phase — one
   // full-viewport guided step at a time on a vertical spring-settled scroll. Default
-  // is mise.
-  let stage = $state<'mise' | 'steps'>('mise');
+  // is mise, and the one-shot resume that opens a half-cooked recipe straight into
+  // the steps belongs to the shared lifecycle above.
+  const stage = $derived(lifecycle.stage);
 
-  // One-shot resume: when the session first resolves already carrying step progress,
-  // open straight into steps so reopening a half-cooked recipe drops you back where
-  // you were (land-on-first-incomplete below finds the exact step). A plain-boolean
-  // guard (not $state) keeps this from re-firing as the session updates.
-  let stageInitialised = false;
-  $effect(() => {
-    if (stageInitialised) return;
-    const s = $cookSession;
-    if (!s) return;
-    stageInitialised = true;
-    if (s.completedStepIds.length > 0) stage = 'steps';
-  });
-
-  const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
-  const completedStepCount = $derived(
-    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
-  );
   const showTimeline = $derived(stage === 'steps' && totalSteps > 0);
 
   // First-use ingredients per step. The recipe stamps `firstUsedInStepId` on each
@@ -455,548 +352,97 @@
     expandedChipId = id;
   }
 
-  // ─── Canon icons ────────────────────────────────────────────────────────────────
-  // Ingredients already carry a `canonId` from canonicalisation, and canon items
-  // already carry a generated icon — so cook mode can show the picture for free.
-  // Worth it here more than anywhere: mise en place is scanned at a glance with your
-  // hands full, and a picture is faster to find in a list than a word. Canon sync is
-  // app-wide (App.svelte), so this is a read of an already-live store, not a new
-  // subscription.
+  // ─── The step deck ─────────────────────────────────────────────────────────────
+  // All of it — the element registry, the gesture-owned pager, the probe that says
+  // which step the footer acts on, the bottom fade, ticking, the peek, the
+  // pending-scroll handshake that advances, and where the deck lands on entry — is in
+  // `$lib/stepDeck` (issue #994), shared verbatim with the guided cook.
   //
-  // Lookup mirrors ShoppingListPage's `thumbnailFor`/`iconVersionFor` exactly,
-  // including the `iconRequestedAt ?? updatedAt` cache-bust — a regenerated icon
-  // reuses its Storage URL, so without the nonce the browser serves the stale image.
-  const canonIconMap = $derived(
-    new Map(
-      $canonItems.map((ci) => [
-        ci.id,
-        { thumbnail: ci.thumbnail, version: ci.iconRequestedAt ?? ci.updatedAt },
-      ]),
-    ),
-  );
-
-  // A line that names a PRODUCT FORM shows the form's own picture (issue #871):
-  // "lime juice" is a bottle or a squeezed half, not a whole lime, and mise en
-  // place is exactly where that distinction earns its keep — you are looking for
-  // the thing itself, with your hands full.
+  // NOTHING here is passed differently by the two screens. Both hand it the live
+  // recipe's steps, the lifecycle's stage, and a way to open or close a peek — there
+  // is no parameter that says which mode is asking, because the deck is the same deck
+  // on the same steps of the same session document. What the guided cook has that this
+  // does not is derived in ITS page, off `currentStep` below.
   //
-  // Guarded on the parent inside `resolveIngredientProductForm`: a form counts
-  // only when it belongs to the canon item this ingredient actually matched.
-  //
-  // FALLS BACK when the form has no renderable icon of its own — not generated
-  // yet, or hidden. That is not a nicety: generation is edge-triggered, so every
-  // form that existed before this shipped has a null thumbnail until it is
-  // regenerated, and preferring the form unconditionally would blank an icon that
-  // shows a picture today. `isCanonIconRenderable` is the same tri-state
-  // read-boundary guard the tiles themselves use.
-  function formIconFor(
-    ingredient: IngredientDoc,
-  ): { thumbnail: string; version: string | number | undefined } | null {
-    const form = resolveIngredientProductForm(
-      ingredient.parsed?.item,
-      ingredient.canonId,
-      $productForms,
-    );
-    if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
-    return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
-  }
-
-  // Tri-state thumbnail. null (→ bare tile) for ingredients that never matched a
-  // canon item, which is also what an unmatched row shows on the shopping list.
-  function thumbnailFor(ingredient: IngredientDoc): string | null {
-    const form = formIconFor(ingredient);
-    if (form) return form.thumbnail;
-    if (!ingredient.canonId) return null;
-    return canonIconMap.get(ingredient.canonId)?.thumbnail ?? null;
-  }
-
-  function iconVersionFor(ingredient: IngredientDoc): string | number | undefined {
-    const form = formIconFor(ingredient);
-    if (form) return form.version;
-    if (!ingredient.canonId) return undefined;
-    return canonIconMap.get(ingredient.canonId)?.version;
-  }
-
-  // Alt text for the icon. The parsed item name ("plum tomatoes") beats the raw line
-  // ("400g tinned plum tomatoes, drained") for a screen reader announcing a picture.
-  function ingredientLabel(ingredient: IngredientDoc): string {
-    return ingredient.parsed?.item ?? ingredient.rawText;
-  }
-
-  // ─── Ran out of something? Hold it (issue #714) ──────────────────────────────────
-  // Both cook surfaces that name an ingredient — the mise row and the step's first-use
-  // chip — answer a press-and-hold by putting that ingredient on the shopping list.
-  // It's the one thing a cook wants mid-recipe that cook mode otherwise makes you
-  // leave the page for, and holding is the only gesture spare: a tap already toggles
-  // the mise row and expands the chip, and a fling already pages the deck.
-  //
-  // The NAME only — `ingredientLabel`, the same string the canon icon is labelled with
-  // — never `IngredientText`'s rendering. "400g tinned plum tomatoes, drained" is what
-  // this recipe needs; what you have to buy is tomatoes, in whatever size the shop
-  // sells. The server's canon-match trigger takes it from there and files it under an
-  // aisle, exactly as it would a typed entry.
-  //
-  // Targets the DEFAULT list, not whichever list the shopping page was last on — the
-  // household has one list it shops from, and cook mode has no list context of its own.
-  async function addIngredientToShoppingList(ingredient: IngredientDoc): Promise<void> {
-    const name = ingredientLabel(ingredient);
-    const result = await addItemToDefaultList(name);
-    if (result.kind !== 'ok') {
-      // No list to add to is the expected shape of failure here, and it is not the
-      // cook's mistake — say what happened and move on. Anything else already
-      // reported itself through the service's gate.
-      const message =
-        result.error.kind === 'NotFound'
-          ? "You haven't made a shopping list yet"
-          : `Couldn't add ${name} to the shopping list`;
-      addToast(message, result.error.kind === 'NotFound' ? 'default' : 'destructive');
-      return;
-    }
-    const { itemId, listId, listName } = result.value;
-    addToast(`Added ${name} to ${listName}`, 'success', {
-      action: {
-        label: 'Undo',
-        onClick: () => void deleteItemFromList(listId, itemId),
-      },
-    });
-  }
-
-  // Set a step's completion — whole-document LWW via the service (there is no
-  // field-level write). Completion is never a gate: the footer ticks the step you're
-  // on, a done step can be unticked from its expanded view, and earlier steps are
-  // never force re-ticked.
-  function setStepDone(id: string, done: boolean): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    const next = withStepDone(s, id, done);
-    // Identity means the step was already in that state — skip the write.
-    if (next === s) return;
-    void persistCookSession(next);
-  }
-
-  // Land-on-first-incomplete. Fires only when the stage flips to `steps`; it reads
-  // completion from a NON-reactive snapshot so completion changes never move the
-  // scroll on their own — the only thing that advances the view is the cook tapping
-  // the footer (`handleStepDone` / `handleSkipToNext`), or their own swipe. Completed
-  // steps stay above, collapsed but scrollable back and re-openable. Degrades to a
-  // plain scroll (or top-of-list) if the anchor or scrollIntoView isn't available.
-  const stepEls = new Map<string, HTMLElement>();
-  function stepAnchor(node: HTMLElement, id: string) {
-    stepEls.set(id, node);
-    return {
-      destroy() {
-        if (stepEls.get(id) === node) stepEls.delete(id);
-      },
-    };
-  }
-
-  // ─── The pager ─────────────────────────────────────────────────────────────────
-  // The deck is not a native scroller: `$lib/deck` owns the drag, the fling, the
-  // wheel, the arrow keys and the spring that settles them, and it is the thing that
-  // holds the viewport and column elements. All this component tells it is which
-  // elements are the sections — everything about what a "step" IS stays here.
-  //
-  // No threshold overrides: cook mode's sections ARE the screen, which is the case
-  // the defaults in `$lib/cookDeck` were tuned for. The peek — how much of the next
-  // step stays on screen — comes from there too (`sectionMinHeight`, `PEEK_MAX_PX`):
-  // it replaces both the old "Next" strip and the scrollbar we gave up by owning the
-  // gesture, and it is the ONLY thing telling the cook there is more below.
-  const deck = createDeck({
-    sections: () =>
-      (recipe?.steps ?? [])
-        .map((step) => stepEls.get(step.id))
-        .filter((el): el is HTMLElement => el !== undefined),
-  });
-
-  // Where the deck must sit for a given step to be parked at the top of the viewport.
-  function stepStop(id: string): number | null {
-    const el = stepEls.get(id);
-    return el ? deck.offsetOf(el) : null;
-  }
-
-  // ─── The step the footer acts on ───────────────────────────────────────────────
-  // The single primary action lives in the footer, so it has to know which step the
-  // cook is on. That's the step parked at the TOP of the scroller, found by probing
-  // which step's box spans a point just below the top edge.
-  //
-  // Deliberately NOT "the step with the most visible pixels": scroll back to re-read
-  // an earlier step and its collapsed row is only ~56px tall, so a full-height
-  // incomplete step still showing below it wins on area — the footer would go on
-  // offering "Done · next" for a step you aren't looking at, and tapping it would
-  // tick the wrong one.
-  let visibleStepId = $state<string | null>(null);
-  // How far up the bottom fade reaches. Measured in the same probe below, because it
-  // wants to cover the peek exactly and the peek is whatever the current step didn't
-  // need — only layout knows that number.
-  let fadeHeight = $state(0);
-
-  function probeVisibleStep(): void {
-    const root = deck.viewportEl;
-    if (!root) return;
-    const rootRect = root.getBoundingClientRect();
-    const probeY = rootRect.top + 8;
-    for (const step of recipe?.steps ?? []) {
-      const rect = stepEls.get(step.id)?.getBoundingClientRect();
-      if (!rect) continue;
-      if (rect.top <= probeY && rect.bottom > probeY) {
-        visibleStepId = step.id;
-        // Everything below this step's last line IS the next step, so that gap is the
-        // fade — `fadeHeightFor` owns the floor and the cap.
-        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
-        return;
-      }
-    }
-  }
-
-  // The footer follows the deck. Effects run after the DOM update, so the transform is
-  // already applied and the probe measures where things actually are.
-  $effect(() => {
-    void deck.offset;
-    // Re-probe on resize too, now that the fade height comes from here: the timers bar
-    // or the recipe-changed banner appearing re-lays out every section, so the peek the
-    // fade is covering changes without the deck having moved a pixel.
-    void deck.viewportHeight;
-    probeVisibleStep();
-  });
-
-  // ─── Re-reading a step you've already ticked ───────────────────────────────────
-  // Peeking must never change completion. Tapping a collapsed row expands it in
-  // place — still done — and the expanded view carries the only control that ticks
-  // it back ("Mark not done").
+  // The peeked id stays in this file because the markup assigns to it directly, and an
+  // assignment needs a variable rather than a getter — the same seam the timer sheet's
+  // open flag has below.
   let peekedStepId = $state<string | null>(null);
-
-  function peekStep(id: string): void {
-    peekedStepId = id;
-    visibleStepId = id; // you're plainly on it now; don't wait for a scroll event
-  }
-
-  function untickStep(id: string): void {
-    peekedStepId = null;
-    setStepDone(id, false);
-  }
-
-  const currentStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    if (steps.length === 0) return null;
-    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
-    return (
-      steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => s.id === firstIncompleteId) ??
-      steps[steps.length - 1]
-    );
+  const stepDeck = createStepDeck({
+    steps: () => recipe?.steps ?? [],
+    stage: () => lifecycle.stage,
+    setStage: (next) => {
+      lifecycle.stage = next;
+    },
+    setPeeked: (id) => {
+      peekedStepId = id;
+    },
   });
-  const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
-  // "The next outstanding step AFTER this one" — the query has no notion of a
-  // cursor, so the slice is what expresses "after".
-  const nextIncompleteStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    const rest = steps.slice(idx + 1);
-    const nextId = firstIncompleteStepId(rest, completedStepIds);
-    return rest.find((s) => s.id === nextId) ?? null;
-  });
-  const nextIncompleteNumber = $derived(
-    nextIncompleteStep && recipe
-      ? recipe.steps.findIndex((s) => s.id === nextIncompleteStep.id) + 1
-      : 0,
+
+  // Bound to the names the markup already uses.
+  const deck = stepDeck.deck;
+  const {
+    stepAnchor,
+    peekStep,
+    untickStep,
+    handleStepDone,
+    handleResume,
+    jumpToStep,
+    goToSteps,
+    goToMise,
+  } = stepDeck;
+  const completedStepIds = $derived(stepDeck.completedStepIds);
+  // Counted over the RECIPE's step ids, never over the session's completed set —
+  // `progressOver`'s contract, and here it is what makes a cook whose completed
+  // steps were edited away read "Start cooking" again rather than "Continue".
+  const completedStepCount = $derived(
+    progressOver(
+      (recipe?.steps ?? []).map((s) => s.id),
+      completedStepIds,
+    ).checked,
   );
-
-  // ─── Advancing ─────────────────────────────────────────────────────────────────
-  // Finishing a step moves two things at once: the finished step collapses to a row,
-  // and the next one has to come to the top. Animating BOTH is what felt jerky — the
-  // collapse played, and a delayed smooth scroll then played on top of it. So only
-  // one of them animates: the collapse is instant (no min-height transition) and the
-  // travel is left to the spring above.
-  //
-  // It can't run on a timer, because completion round-trips through Firestore — the
-  // collapse lands whenever the listener does. So the scroll is parked here and the
-  // effect below fires it the moment the completion it's waiting on arrives, which is
-  // also the moment the layout it has to measure becomes final.
-  let pendingScroll = $state<{ afterDoneId: string | null; targetId: string } | null>(null);
-
-  // Advancing runs the same spring a swipe does — just seeded with no velocity, since
-  // a button press has none to inherit — so the two settle identically.
-  function alignToTop(id: string): void {
-    const stop = stepStop(id);
-    if (stop !== null) deck.animateTo(stop);
-  }
-
-  $effect(() => {
-    const pending = pendingScroll;
-    if (!pending) return;
-    if (pending.afterDoneId && !completedStepIds.has(pending.afterDoneId)) return;
-    pendingScroll = null;
-    alignToTop(pending.targetId);
-  });
-
-  // Footer primary while cooking: tick the step you're on and bring the next one that
-  // still needs doing to the top. `visibleStepId` moves optimistically so the footer
-  // label doesn't flicker through the intermediate state.
-  function handleStepDone(): void {
-    const step = currentStep;
-    if (!step) return;
-    const next = nextIncompleteStep;
-    setStepDone(step.id, true);
-    if (!next) return;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: step.id, targetId: next.id };
-  }
-
-  // Footer primary when you've scrolled back to an already-done step: return to the
-  // earliest step still outstanding, rather than offering to finish (which would
-  // quietly skip everything left) or to tick the step you're only re-reading. Closing
-  // the peek is local state, so there's no completion to wait on — but the alignment
-  // still goes through the effect so it measures AFTER the peek has collapsed.
-  function handleResume(): void {
-    const next = nextIncompleteStep;
-    if (!next) return;
-    peekedStepId = null;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: null, targetId: next.id };
-  }
-
-  // Timeline jump. Goes through `pendingScroll` rather than animating straight away
-  // because closing an open peek collapses a step and moves everything below it —
-  // measuring before that re-render would aim at where the target used to be.
-  function jumpToStep(id: string): void {
-    peekedStepId = null;
-    visibleStepId = id;
-    pendingScroll = { afterDoneId: null, targetId: id };
-  }
-
-  $effect(() => {
-    if (stage !== 'steps') return;
-    if (!deck.viewportEl || !deck.contentEl) return;
-    const snap = getCookSessionSnapshot();
-    const done = new Set(snap?.completedStepIds ?? []);
-    const steps = recipe?.steps ?? [];
-    const targetId = firstIncompleteStepId(steps, done);
-    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
-    if (!target) return;
-    // Placed, not animated — this is where the deck STARTS, not somewhere it travels to.
-    const landOn = (): void => {
-      const stop = stepStop(target.id);
-      if (stop !== null) deck.place(stop);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(landOn);
-    else landOn();
-  });
-
-  function goToSteps(): void {
-    stage = 'steps';
-  }
-  function goToMise(): void {
-    stage = 'mise';
-  }
+  const fadeHeight = $derived(stepDeck.fadeHeight);
+  const currentStep = $derived(stepDeck.currentStep);
+  const currentStepDone = $derived(stepDeck.currentStepDone);
+  const nextIncompleteStep = $derived(stepDeck.nextIncompleteStep);
+  const nextIncompleteNumber = $derived(stepDeck.nextIncompleteNumber);
 
   // ─── Step timers (Phase 3) ──────────────────────────────────────────────────────
-  // Press-to-start countdowns backed entirely by the Firestore session doc. Starting
-  // a timer writes an `activeTimers` entry with an ABSOLUTE `endsAt` (now +
-  // durationMinutes); every countdown is `endsAt - now`, so a reload or a device
-  // switch reconstructs the correct remaining time with no extra client state (the
-  // resumability mechanism). One live timer per step. `notify` arms the server-side
-  // push path: onCookTimerWrite enqueues a Cloud Task per newly-armed timer and
-  // onCookTimerDispatch sends the notification at endsAt.
+  // All of it — the live projection, the 1s tick, start / dismiss / progress, and the
+  // one sheet all the ways in share — lives in `$lib/cookTimers` (issue #994), shared
+  // verbatim with the guided cook because they are the same timers on the same session
+  // document: a timer started in either mode is live in the other.
   //
-  // A single in-memory 1s interval drives `now`. It only runs while at least one
-  // timer is live (the $effect re-runs when `activeTimers` gains/loses entries) and
-  // is torn down on cleanup — no per-timer intervals, and nothing ticks at rest.
-  const activeTimers = $derived($cookSession?.activeTimers ?? []);
-  // Keyed by STEP, deliberately: this is the "is there a live timer on the step I
-  // am cooking?" lookup, not an identity map (that is `t.id`). Entries with no
-  // step of their own are skipped rather than filed under a null key.
+  // NO `armCheckIns`. Plain cook mode arms no guided check-ins, and that is not a flag
+  // it passes false — it is an argument it does not have. The plan's partway reminders
+  // belong to the screen holding the plan, and this one cannot arm one because it never
+  // supplies the thing that arms them.
   //
-  // So are guided check-ins (issue #751). This page never ARMS one — that belongs
-  // to guided cook, which is the only mode holding the plan — but it shares the
-  // session document with it, so a cook who switches modes mid-braise finds them
-  // here. A check-in carries its step (the push copy names it), and without this
-  // the last entry mentioning a step would win: the inline control would count down
-  // a reminder and its Cancel would call one off instead of the timer.
-  const timerByStep = $derived(
-    new Map(
-      activeTimers.flatMap((t) =>
-        t.stepId === null || isCheckInTimerId(t.id) ? [] : [[t.stepId, t] as const],
-      ),
-    ),
-  );
-
-  let now = $state(Date.now());
-  $effect(() => {
-    if (activeTimers.length === 0) return;
-    if (typeof setInterval !== 'function') return; // SSR / no timers guard
-    const handle = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(handle);
-  });
-
-  // What the bar shows. A guided check-in that has FIRED leaves on its own: it is
-  // a nudge, not a checkpoint, so there is nothing to dismiss (see GuidedCookPage).
-  // Derived off `now` rather than folded into the effect above, which must keep
-  // watching `activeTimers.length` or it would tear its own interval down each tick.
-  const barTimers = $derived(
-    activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
-  );
-
-  // The audible alert is NOT here. It lives in the app-level watcher
-  // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates off this
-  // page — where this component, and any chime it owned, would be unmounted. This
-  // page owns the VISUAL half only: the chips below, which flip to "Finished" off
-  // the same `now`. Do not re-add a chime here; two owners means two honks.
-
-  // The one write that starts a timer — every entry point funnels through it, so
-  // a timer the cook set by hand is indistinguishable from one the recipe
-  // described the moment it is running.
-  function startTimerEntry(entry: {
-    id: string;
-    stepId: string | null;
-    label: string | null;
-    durationMinutes: number;
-  }): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    // Unlock the audio context on this user gesture so the app-level watcher can
-    // play the chime when the timer ends, even on iOS Safari (which blocks audio
-    // not tied to a gesture). Starting a timer is the ONLY gesture guaranteed to
-    // precede a chime, so this stays here even though the chime itself does not.
-    primeChime();
-    // `endsAt` is computed HERE, not in the domain producer, which never reads a
-    // clock. Replacing any existing entry with the same id is the producer's job —
-    // which is also all "adjust a running timer" is: the same id, a fresh `endsAt`,
-    // through the same producer. `notify` re-derives from the duration actually
-    // being started, so a timer stretched over the floor gains its push backstop
-    // and one shortened under it loses it.
-    const endsAt = new Date(Date.now() + entry.durationMinutes * 60_000).toISOString();
-    void persistCookSession(
-      withTimerStarted(s, {
-        ...entry,
-        endsAt,
-        notify: shouldNotifyFor(entry.durationMinutes),
-      }),
-    );
-  }
-
-  function startTimer(step: StepDoc): void {
-    const timer = step.timer;
-    if (!timer) return;
-    // A step timer's identity IS its step id, so there is nothing to mint.
-    startTimerEntry({
-      id: step.id,
-      stepId: step.id,
-      label: timer.description ?? null,
-      durationMinutes: timer.durationMinutes,
-    });
-  }
-
-  function dismissTimer(timerId: string): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    void persistCookSession(withTimerDismissed(s, timerId));
-  }
-
-  // Turns the timer's total run into the elapsed fraction the progress fill draws.
-  // The total is the duration the timer was STARTED for; only a legacy entry
-  // (written before the field existed) falls back to looking its step up in the
-  // LIVE recipe. With neither — a step edited away, or an ad-hoc timer from before
-  // the field — `timerProgress` returns null and the chip renders with no fill
-  // rather than a bogus one.
-  function timerProgressFor(timer: CookActiveTimerDoc): number | null {
-    const durationMinutes =
-      timer.durationMinutes ??
-      (timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes);
-    return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
-  }
-
-  // ─── The timer sheet ────────────────────────────────────────────────────────────
-  // One sheet, three ways in: the pencil beside a step's timer button, the header's
-  // timer button, and a tap on a running chip. What differs between them is only
-  // what the sheet is PREFILLED with and which id the confirm writes to — so the
-  // target is captured on the way in and the sheet itself stays ignorant of steps,
-  // ids and sessions.
-  //
-  // The default ad-hoc timer's name and length are shared with My Kitchen, which
-  // can start the same kind of timer without a cook to hang it on (issue #842) —
-  // one default to remember rather than two. See lib/timerDefaults.ts.
-
-  interface TimerSheetTarget {
-    id: string;
-    stepId: string | null;
-    label: string;
-    durationMinutes: number;
-    running: boolean;
-  }
+  // The sheet's open flag stays here because the markup binds it, and `bind:` needs a
+  // variable it can assign to; everything the sheet is opened WITH is in the factory.
   let timerSheetOpen = $state(false);
-  let timerSheetTarget = $state<TimerSheetTarget | null>(null);
-  const timerSheetPrefill = $derived({
-    label: timerSheetTarget?.label ?? AD_HOC_TIMER_LABEL,
-    durationMinutes: timerSheetTarget?.durationMinutes ?? AD_HOC_TIMER_MINUTES,
+  const timers = createCookTimers({
+    steps: () => recipe?.steps ?? [],
+    showSheet: () => {
+      timerSheetOpen = true;
+    },
   });
 
-  function openTimerSheet(target: TimerSheetTarget): void {
-    timerSheetTarget = target;
-    timerSheetOpen = true;
-  }
-
-  // A step timer, before it starts. Re-read from the LIVE step every time, which is
-  // what makes "reset to the recipe's duration" a thing you already have: cancel,
-  // tap the pencil again.
-  function openStepTimerSheet(step: StepDoc): void {
-    if (!step.timer) return;
-    openTimerSheet({
-      id: step.id,
-      stepId: step.id,
-      label: step.timer.description ?? '',
-      durationMinutes: step.timer.durationMinutes,
-      running: false,
-    });
-  }
-
-  // A timer already counting down. Prefilled with what it was SET for, not what is
-  // left on it — the number in the sheet is the length of the run you are about to
-  // re-start, and confirming re-times it from now.
-  function openRunningTimerSheet(timer: CookActiveTimerDoc): void {
-    const stepDuration =
-      timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes;
-    openTimerSheet({
-      id: timer.id,
-      stepId: timer.stepId,
-      label: timer.label ?? '',
-      // Neither field survives on a legacy entry written before they existed, so
-      // the step's own duration stands in, and the ad-hoc default behind that.
-      durationMinutes: timer.durationMinutes ?? stepDuration ?? AD_HOC_TIMER_MINUTES,
-      running: true,
-    });
-  }
-
-  // A timer for something the recipe never mentioned. Its id is minted here because
-  // it has no step to borrow one from, and `stepId: null` is what keeps it out of
-  // every step's inline slot while leaving it in the persistent bar.
-  function openAdHocTimerSheet(): void {
-    openTimerSheet({
-      id: crypto.randomUUID(),
-      stepId: null,
-      label: AD_HOC_TIMER_LABEL,
-      durationMinutes: AD_HOC_TIMER_MINUTES,
-      running: false,
-    });
-  }
-
-  function confirmTimerSheet(next: { label: string; durationMinutes: number }): void {
-    const target = timerSheetTarget;
-    if (!target) return;
-    startTimerEntry({
-      id: target.id,
-      stepId: target.stepId,
-      // An emptied name is no name — the chip falls back to the step's label, or to
-      // "Timer", exactly as an unlabelled step timer always has.
-      label: next.label === '' ? null : next.label,
-      durationMinutes: next.durationMinutes,
-    });
-  }
+  // Bound to the names the markup already uses.
+  const timerByStep = $derived(timers.timerByStep);
+  const barTimers = $derived(timers.barTimers);
+  const now = $derived(timers.now);
+  const timerSheetPrefill = $derived(timers.sheetPrefill);
+  const timerSheetTarget = $derived(timers.sheetTarget);
+  const {
+    startTimer,
+    dismissTimer,
+    timerProgressFor,
+    openStepTimerSheet,
+    openRunningTimerSheet,
+    openAdHocTimerSheet,
+    confirmTimerSheet,
+  } = timers;
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
@@ -1004,83 +450,8 @@
     hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
   );
 
-  // Restart: discard the current session and start a fresh one against the CURRENT
-  // recipe (new baseline, cleared ticks), staying on the cook page so the user
-  // keeps cooking the updated recipe.
-  let restarting = $state(false);
-  async function handleRestart(): Promise<void> {
-    if (!sessionId || !uid || !recipe || restarting) return;
-    restarting = true;
-    await removeCookSession(sessionId);
-    const result = await persistCookSession(makeFreshSession());
-    restarting = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to restart.', 'destructive');
-      return;
-    }
-    addToast('Started fresh with the updated recipe.', 'success');
-  }
-
-  // ─── Complete / close ──────────────────────────────────────────────────────────
-  // Complete clears the session (delete the doc) and returns to the recipe view.
-  let completing = $state(false);
-  async function handleComplete(): Promise<void> {
-    if (!sessionId || completing) return;
-    completing = true;
-    await removeCookSession(sessionId);
-    // The explicit "Finish cooking" gesture — restarts and closes are not
-    // completions (issue #684).
-    trackUsageEvent('cook.completed', { recipe_id: params.id });
-    // Deliberately left true: removeCookSession clears the store synchronously, and
-    // this flag is what stops the bootstrap effect from creating a replacement
-    // session in the gap before the navigation tears the page down.
-    push(`/recipes/${params.id}`);
-  }
-
-  // Close leaves the session intact so it can be resumed later / on another device.
-  // Back goes where you came from (the recipe, or Mine if you launched it there),
-  // falling back to the recipe view on a cold-launch straight into cook mode.
-  function handleClose(): void {
-    goBack(`/recipes/${params.id}`);
-  }
-
-  // ─── Wake lock ──────────────────────────────────────────────────────────────────
-  const wakeLockSupported = isWakeLockSupported();
-  const wake = wakeLockSupported ? createWakeLock() : null;
-  let keepAwake = $state(false);
-
-  // The icon alone is a quiet affordance — a toast makes the state change explicit,
-  // since nothing else on screen confirms it. The ON path reports what actually
-  // happened rather than assuming: `enable()` resolves false when the browser or OS
-  // refuses the lock, and the toggle must not claim a lock it never got.
-  // Plain `let`, not `$state` — a re-entrancy guard only read inside the handler, so
-  // it needs no reactivity.
-  let togglingWakeLock = false;
-  async function toggleWakeLock(): Promise<void> {
-    if (togglingWakeLock) return;
-    togglingWakeLock = true;
-    try {
-      if (keepAwake) {
-        await wake?.disable();
-        keepAwake = false;
-        addToast('Screen can sleep again', 'success');
-        return;
-      }
-      const acquired = (await wake?.enable()) ?? false;
-      keepAwake = acquired;
-      if (acquired) addToast('Screen will stay awake', 'success');
-      else addToast("Your browser wouldn't let the screen stay awake.", 'destructive');
-    } finally {
-      togglingWakeLock = false;
-    }
-  }
-
-  // Release the lock when leaving cook mode.
-  $effect(() => {
-    return () => {
-      void wake?.disable();
-    };
-  });
+  // Restart, Finish, Close and the keep-awake toggle all live on the shared
+  // lifecycle, bound at the top of this script.
 </script>
 
 <!-- "Click anywhere else" for the expanded first-use chip. On window rather than the
@@ -1103,28 +474,7 @@
 >
   {#if recipe === null}
     <!-- Loading, or the recipe was deleted (orphan handled by the effect above). -->
-    <div class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      {#if $isLoadingRecipes}
-        <Spinner size={20} />
-        <p class="text-sm text-muted-foreground">Loading…</p>
-      {:else}
-        <Icon name="TriangleAlert" size={28} class="text-destructive" />
-        <div class="flex flex-col gap-1" data-testid="cook-mode-orphan">
-          <p class="text-base font-semibold">This recipe was deleted</p>
-          <p class="text-sm text-muted-foreground">
-            The recipe you were cooking no longer exists, so this cook session has been closed.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onclick={() => push('/recipes')}
-          data-testid="cook-mode-orphan-back"
-        >
-          {#snippet leading()}<Icon name="ArrowLeft" size={16} />{/snippet}
-          Back to recipes
-        </Button>
-      {/if}
-    </div>
+    <CookLoadingOrphan />
   {:else}
     <!-- Top bar -->
     <header class="flex shrink-0 items-center gap-3 px-4 py-3 {showTimeline ? '' : 'border-b'}">
@@ -1201,183 +551,33 @@
 
     <!-- Timeline. Its own full-width band directly under the header, which is why the
        header drops its bottom border — the two read as one block rather than as two
-       stacked bars. Replaces both the "n/m done" line and the "Step x of y" label that
-       used to sit on every step: one segment per step, so position and progress are
-       read at a glance instead of counted. Colours are the app's existing meanings —
-       emerald is its success green (feedback sent, "mild" weather), amber its
-       active/selected marker in the meal planner — rather than the teal primary, which
-       is on almost every other control here and so distinguishes nothing.
-
-       Each segment also jumps to its step. Small on purpose: the footer and the swipe
-       are the primary ways to move, this is the shortcut. The row is padded well beyond
-       the bar itself so the hit area is bigger than it looks. -->
+       stacked bars. -->
     {#if showTimeline}
-      <div
-        class="flex shrink-0 items-center gap-1 border-b px-4 py-2"
-        role="group"
-        aria-label="Steps: {completedStepCount} of {totalSteps} done"
-        data-testid="cook-timeline"
-      >
-        {#each recipe.steps as timelineStep, index (timelineStep.id)}
-          {@const stepDone = completedStepIds.has(timelineStep.id)}
-          {@const stepCurrent = currentStep?.id === timelineStep.id}
-          <button
-            type="button"
-            class="py-2 {stepCurrent
-              ? 'flex-[1.6]'
-              : 'flex-1'} transition-[flex] duration-200 motion-reduce:transition-none"
-            onclick={() => jumpToStep(timelineStep.id)}
-            aria-label="Step {index + 1} of {totalSteps}{stepDone ? ', done' : ''}"
-            aria-current={stepCurrent ? 'step' : undefined}
-            data-testid="cook-timeline-step"
-            data-complete={stepDone}
-            data-current={stepCurrent}
-          >
-            <span
-              class="block h-1.5 rounded-full transition-colors {stepCurrent
-                ? 'bg-amber-500'
-                : stepDone
-                  ? 'bg-emerald-600'
-                  : 'bg-muted-foreground/25'}"
-            ></span>
-          </button>
-        {/each}
-      </div>
+      <CookTimeline
+        steps={recipe.steps}
+        {completedStepIds}
+        currentStepId={currentStep?.id ?? null}
+        onJump={jumpToStep}
+      />
     {/if}
 
     <!-- Recipe-changed banner -->
     {#if recipeChanged}
-      <div
-        class="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-        data-testid="cook-mode-recipe-changed"
-      >
-        <Icon name="TriangleAlert" size={16} class="shrink-0 text-amber-500" />
-        <span class="flex-1">This recipe was updated since you started cooking.</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onclick={handleRestart}
-          loading={restarting}
-          disabled={restarting}
-          data-testid="cook-mode-restart"
-        >
-          {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-          Restart
-        </Button>
-      </div>
+      <CookRecipeChangedBanner {restarting} onRestart={handleRestart} />
     {/if}
 
     <!-- Persistent timers bar. Every live/fired timer stays here regardless of stage,
-       scroll position, or which step is in focus — so a timer that fires while the
-       chef is on another step (or on a now-collapsed done step) is always visible and
-       dismissable, and can never be hidden into an un-dismissable state. The per-step
-       control below is the start affordance; this bar is the durable surface. -->
+       scroll position, or which step is in focus. The per-step control below is the
+       start affordance; this bar is the durable surface. -->
     {#if barTimers.length > 0}
-      <div
-        class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
-        data-testid="cook-timers-bar"
-      >
-        <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each barTimers as t (t.id)}
-            {@const remaining = new Date(t.endsAt).getTime() - now}
-            {@const fired = remaining <= 0}
-            {@const checkIn = isCheckInTimerId(t.id)}
-            {@const stepIndex =
-              t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
-            {@const stepLabel =
-              t.label ??
-              (stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null)}
-            {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
-            {@const progress = timerProgressFor(t)}
-            <div
-              class="overflow-hidden rounded-lg border {fired
-                ? 'border-primary bg-primary/10'
-                : 'bg-card'}"
-              data-testid="cook-timer-chip"
-              data-timer-id={t.id}
-              data-fired={fired}
-              data-check-in={checkIn}
-            >
-              <div class="flex items-center gap-3 px-3 py-2">
-                <!-- The chip's body is the way back into the sheet: tap the timer to
-                   re-time it. A BUTTON around the icon, name and clock only — the
-                   Cancel/Dismiss beside it stays its own control, because a button
-                   inside a button is not a thing the DOM has.
-                   A guided check-in is the exception: its `endsAt` is anchored to
-                   the moment its timer started, so re-timing it from now would
-                   detach it from the wait it belongs to. -->
-                {#snippet chipBody()}
-                  <Icon
-                    name={checkIn ? 'Bell' : fired ? 'BellRing' : 'Timer'}
-                    size={18}
-                    class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
-                  />
-                  <!-- Lead with the human timer label ("Simmer the sauce") — the
-                     timer's own, falling back to its step's for a legacy entry; then
-                     "Step N" so an unlabelled timer is still locatable. When a label
-                     leads, the step number stays available as a tooltip so you can
-                     still find the step (#554). -->
-                  <span
-                    class="min-w-0 flex-1 truncate text-sm font-medium {fired
-                      ? 'text-primary'
-                      : 'text-foreground'}"
-                    title={stepLabel ? stepName : undefined}
-                    data-testid="cook-timer-chip-label"
-                  >
-                    {stepLabel ?? stepName}
-                  </span>
-                  <span
-                    class="shrink-0 font-mono text-base tabular-nums {fired
-                      ? 'font-semibold text-primary'
-                      : ''}"
-                    data-testid="cook-timer-chip-time"
-                  >
-                    {fired ? 'Finished' : formatClock(remaining)}
-                  </span>
-                {/snippet}
-                {#if checkIn}
-                  <div class="flex min-w-0 flex-1 items-center gap-3 py-1">
-                    {@render chipBody()}
-                  </div>
-                {:else}
-                  <button
-                    type="button"
-                    class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
-                    onclick={() => openRunningTimerSheet(t)}
-                    data-testid="cook-timer-chip-edit"
-                  >
-                    {@render chipBody()}
-                  </button>
-                {/if}
-                <Button
-                  size="sm"
-                  variant={fired ? 'solid' : 'ghost'}
-                  onclick={() => dismissTimer(t.id)}
-                  data-testid="cook-timer-chip-dismiss"
-                >
-                  {fired ? 'Dismiss' : 'Cancel'}
-                </Button>
-              </div>
-              <!-- Progress fill, flush to the chip's bottom edge (the wrapper clips it
-                 to the rounded corners). Decorative: the mm:ss beside it already
-                 carries the value, so a progressbar role would only double-announce.
-                 The 1s linear transition matches the tick interval, so it glides
-                 rather than stepping once a second. -->
-              {#if progress !== null}
-                <div class="h-1 w-full bg-muted-foreground/15" aria-hidden="true">
-                  <div
-                    class="h-full transition-[width] duration-1000 ease-linear motion-reduce:transition-none {fired
-                      ? 'bg-primary'
-                      : 'bg-amber-500'}"
-                    style="width: {progress * 100}%"
-                    data-testid="cook-timer-chip-progress"
-                  ></div>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
+      <CookTimersBar
+        timers={barTimers}
+        steps={recipe.steps}
+        {now}
+        progressFor={timerProgressFor}
+        onEdit={openRunningTimerSheet}
+        onDismiss={dismissTimer}
+      />
     {/if}
 
     <!-- Stage 1: mise-en-place list / Stage 2: guided steps -->
@@ -1511,9 +711,9 @@
                            instead of ragging in and out. Dims with the tick, as on the
                            shopping list. -->
                         <CanonIcon
-                          thumbnail={thumbnailFor(ingredient)}
+                          thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                           name={ingredientLabel(ingredient)}
-                          version={iconVersionFor(ingredient)}
+                          version={$ingredientIcons.iconVersionFor(ingredient)}
                           dimmed={checked}
                           size={40}
                         />
@@ -1594,29 +794,17 @@
               style="min-height: {collapsed ? 0 : sectionMinHeight(deck.viewportHeight)}px"
             >
               {#if collapsed}
-                <!-- Collapsed / done: compact row, tap to re-read it. Peeking is
-                 NON-destructive — it expands the step, it does not untick it. -->
-                <button
-                  type="button"
-                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-left"
-                  onclick={() => peekStep(step.id)}
-                  aria-expanded="false"
-                  data-testid="cook-step-collapsed"
-                >
-                  <span
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary bg-primary text-primary-foreground"
-                  >
-                    <Icon name="Check" size={18} />
-                  </span>
-                  <span
-                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                  >
-                    Step {i + 1}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground line-through">
-                    {step.text}
-                  </span>
-                </button>
+                <!-- Collapsed / done: compact row, tap to re-read it. Tinted with the
+                 teal primary — plain cook mode's own accent. The guided deck hands
+                 the same component its sage; the two values live at these two call
+                 sites so neither can be changed without seeing the other. -->
+                <CookStepCollapsed
+                  index={i}
+                  text={step.text}
+                  accentClass="border-primary/40 bg-primary/5"
+                  labelClass="text-muted-foreground"
+                  onPeek={() => peekStep(step.id)}
+                />
               {:else}
                 <!-- Expanded: the step being cooked, or a done step being re-read.
                  Fills the screen, arm's-length type. -->
@@ -1698,9 +886,9 @@
                             }}
                           >
                             <CanonIcon
-                              thumbnail={thumbnailFor(ing)}
+                              thumbnail={$ingredientIcons.thumbnailFor(ing)}
                               name={ingredientLabel(ing)}
-                              version={iconVersionFor(ing)}
+                              version={$ingredientIcons.iconVersionFor(ing)}
                               size={40}
                               class="rounded-full"
                             />
@@ -1736,35 +924,7 @@
                      An unresolved label keeps its words and loses only the picture,
                      so the icon kill-switch never costs the cook a piece of kit. -->
                   {#if stepKit.length > 0}
-                    <ul
-                      class="flex flex-wrap items-start gap-2"
-                      aria-label="Kit this step calls for"
-                      data-testid="cook-step-kit"
-                    >
-                      {#each stepKit as entry (entry.label)}
-                        <li class="shrink-0 max-w-full">
-                          <span
-                            class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
-                              entry.label,
-                            )
-                              ? 'pl-1'
-                              : 'pl-4'}"
-                            data-testid="cook-step-kit-chip"
-                          >
-                            {#if $toolIcons.toolIconFor(entry.label)}
-                              <CanonIcon
-                                thumbnail={$toolIcons.toolIconFor(entry.label)}
-                                version={$toolIcons.toolIconVersionFor(entry.label)}
-                                name={entry.label}
-                                size={40}
-                                class="rounded-full"
-                              />
-                            {/if}
-                            <span class="min-w-0 break-words">{entry.label}</span>
-                          </span>
-                        </li>
-                      {/each}
-                    </ul>
+                    <CookStepKit entries={stepKit} />
                   {/if}
 
                   <!-- Phase 3: per-step timer. Press-to-start when idle; live countdown
@@ -1773,158 +933,22 @@
                    persistent bar above keeps this visible even when the step scrolls
                    off or collapses. -->
                   {#if step.timer}
-                    {@const timerEntry = timerByStep.get(step.id)}
-                    <div class="flex flex-col gap-2" data-testid="cook-step-timer">
-                      {#if timerEntry}
-                        {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
-                        {@const progress = timerProgressFor(timerEntry)}
-                        {#if remaining > 0}
-                          <div class="overflow-hidden rounded-lg border bg-card">
-                            <!-- Label INSIDE the bar, leading, exactly as the persistent
-                               chip above does it — "Cook tomato purée · 0:24" is one
-                               object, and hanging the label underneath read as a caption
-                               belonging to the step rather than to the timer. No "Step N"
-                               fallback here (unlike the chip, which can be miles from its
-                               step): an unlabelled timer sitting in its own step needs no
-                               telling which step it is, so the countdown just keeps the
-                               room to itself. -->
-                            <div class="flex items-center gap-3 px-4 py-3">
-                              <Icon name="Timer" size={22} class="shrink-0 text-muted-foreground" />
-                              {#if step.timer.description}
-                                <span
-                                  class="min-w-0 flex-1 truncate text-base"
-                                  data-testid="cook-step-timer-label"
-                                >
-                                  {step.timer.description}
-                                </span>
-                              {/if}
-                              <span
-                                class="{step.timer.description
-                                  ? 'shrink-0'
-                                  : 'flex-1'} font-mono text-2xl tabular-nums"
-                                data-testid="cook-step-timer-countdown"
-                              >
-                                {formatClock(remaining)}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                onclick={() => dismissTimer(timerEntry.id)}
-                                data-testid="cook-step-timer-dismiss"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                            <!-- See the timers-bar chip above: same fill, thicker here
-                             because this card is the step's primary timer surface. -->
-                            {#if progress !== null}
-                              <div class="h-1.5 w-full bg-muted-foreground/15" aria-hidden="true">
-                                <div
-                                  class="h-full bg-amber-500 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
-                                  style="width: {progress * 100}%"
-                                  data-testid="cook-step-timer-progress"
-                                ></div>
-                              </div>
-                            {/if}
-                          </div>
-                        {:else}
-                          <!-- Fired: same row, same order. With a label leading, the
-                             status shortens to "Finished" (as on the chip) so the two
-                             strings aren't fighting over one line; alone, it carries the
-                             whole message and stays "Timer finished". -->
-                          <div
-                            class="flex items-center gap-3 rounded-lg border border-primary bg-primary/10 px-4 py-3"
-                          >
-                            <Icon name="BellRing" size={22} class="shrink-0 text-primary" />
-                            {#if step.timer.description}
-                              <span
-                                class="min-w-0 flex-1 truncate text-base font-medium text-primary"
-                                data-testid="cook-step-timer-label"
-                              >
-                                {step.timer.description}
-                              </span>
-                            {/if}
-                            <span
-                              class="{step.timer.description
-                                ? 'shrink-0'
-                                : 'flex-1'} text-lg font-semibold text-primary"
-                              data-testid="cook-step-timer-countdown"
-                            >
-                              {step.timer.description ? 'Finished' : 'Timer finished'}
-                            </span>
-                            <Button
-                              onclick={() => dismissTimer(timerEntry.id)}
-                              data-testid="cook-step-timer-dismiss"
-                            >
-                              Dismiss
-                            </Button>
-                          </div>
-                        {/if}
-                      {:else}
-                        <!-- Unstarted: the label goes IN the button, never under it — one
-                           ordinary centred button line, in the button's own type. The
-                           whole string truncates as one, and since the label is last it
-                           is the part that gives way; "Start 20 minute timer" always
-                           survives, which is the part you have to be able to read. -->
-                        <!-- The button starts the recipe's timer in ONE tap — that is
-                           the common case and it stays a single tap. The pencil
-                           beside it is the other case: change the name or the time
-                           first. Two controls, because a button that sometimes
-                           starts and sometimes opens a dialog is a button you have
-                           to think about. -->
-                        <div class="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="min-w-0 flex-1"
-                            onclick={() => startTimer(step)}
-                            data-testid="cook-step-timer-start"
-                          >
-                            {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
-                            <span class="min-w-0 truncate">
-                              Start {step.timer.durationMinutes} minute timer{step.timer.description
-                                ? ` (${step.timer.description})`
-                                : ''}
-                            </span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="shrink-0"
-                            onclick={() => openStepTimerSheet(step)}
-                            ariaLabel="Adjust this timer"
-                            title="Adjust this timer"
-                            data-testid="cook-step-timer-adjust"
-                          >
-                            {#snippet leading()}<Icon name="Pencil" size={18} />{/snippet}
-                          </Button>
-                        </div>
-                      {/if}
-                    </div>
+                    <CookStepTimer
+                      timer={step.timer}
+                      entry={timerByStep.get(step.id)}
+                      {now}
+                      progressFor={timerProgressFor}
+                      onStart={() => startTimer(step)}
+                      onAdjust={() => openStepTimerSheet(step)}
+                      onDismiss={dismissTimer}
+                    />
                   {/if}
 
                   {#if done}
-                    <!-- The ONLY control that unticks a step. Reachable solely from a
-                     deliberate peek, so re-reading can't undo your progress. -->
-                    <div class="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => untickStep(step.id)}
-                        data-testid="cook-step-untick"
-                      >
-                        {#snippet leading()}<Icon name="Undo2" size={16} />{/snippet}
-                        Mark not done
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => (peekedStepId = null)}
-                        data-testid="cook-step-collapse"
-                      >
-                        {#snippet leading()}<Icon name="ChevronUp" size={16} />{/snippet}
-                        Collapse
-                      </Button>
-                    </div>
+                    <CookStepDoneControls
+                      onUntick={() => untickStep(step.id)}
+                      onCollapse={() => (peekedStepId = null)}
+                    />
                   {/if}
                 </div>
               {/if}

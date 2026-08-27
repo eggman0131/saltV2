@@ -266,6 +266,7 @@ export {
   firstUseByStep,
   firstIncompleteStepId,
   miseProgress,
+  progressOver,
   guidedPrepBoard,
   guidedMiseProgress,
   guidedPrepCardProgress,

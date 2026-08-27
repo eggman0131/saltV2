@@ -26,7 +26,11 @@ export { checkInTimerId, isCheckInTimerId, isCheckInOf } from './checkInTimerId.
 export { firstUseByStep } from './firstUseByStep.js';
 export { firstIncompleteStepId } from './firstIncompleteStepId.js';
 export { miseProgress } from './miseProgress.js';
-export type { MiseProgress } from './miseProgress.js';
+// The count itself (issue #994, Phase 3) — every "n of m ready" in the app runs
+// through it, so a caller with its own list of ids (my open cooks' completed
+// steps, in personalViewService) asks it directly rather than re-rolling a loop.
+export { progressOver } from './progressOver.js';
+export type { MiseProgress } from './progressOver.js';
 // Guided cook (issue #751, Phase 2) — the same two questions asked of a guided
 // prep list rather than of the recipe's ingredient checklist. Both are now asked
 // of the BOARD (issue #767), which is the whole of what the prep screen shows.
