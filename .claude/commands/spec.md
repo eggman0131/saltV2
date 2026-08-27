@@ -45,7 +45,7 @@ straight on to Step 1 — the point is that I *can* interrupt, not that you stop
 
 ## Step 1 — Architecture read
 
-Read what the feature actually touches. CLAUDE.md is already in your context — don't re-read it. Its **Docs map** is the routing table: open the docs whose *Tracks* globs match the code you expect to change, plus `docs/salt-architecture.md` for anything crossing a layer boundary.
+Read what the feature actually touches. CLAUDE.md is already in your context — don't re-read it. The routing table is `docs-map.md` at the repo root, which is NOT in your context: read it, then open the docs whose *Tracks* globs match the code you expect to change, plus `docs/salt-architecture.md` for anything crossing a layer boundary.
 
 Read the long docs at section granularity. `docs/design/ui-spec-v02.md` is ~1800 lines and `-v04` ~1270 — grep their headings and read the section your change lands in. Whole-file reads are for the short docs.
 

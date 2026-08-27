@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks the "Docs map" section of CLAUDE.md against the repository as it
+// Checks the "Docs map" table in docs-map.md against the repository as it
 // actually is. Three questions, all of them file-system facts rather than
 // judgement, which is exactly why they belong in a script and not in a model:
 //
@@ -24,7 +24,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const mapFile = 'CLAUDE.md';
+// The map lives at the repo root, not in `docs/`, so that every path in it
+// stays repo-root-relative — an agent can open a row's link verbatim, and
+// GitHub renders it. It moved out of CLAUDE.md (which is auto-loaded into every
+// agent and subagent) because it is a lookup table consulted once per task, not
+// a rule that has to be resident.
+const mapFile = 'docs-map.md';
 
 // Docs that must appear in the map. `docs/**` is the whole point of the map;
 // the one file outside it is called out by its own row today, and is listed
@@ -42,11 +47,13 @@ const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, en
   .split('\0')
   .filter(Boolean);
 
-/** The "## Docs map" section: everything up to the next level-2 heading. The
- *  design docs live in a `###` subsection, so they are deliberately included. */
+/** The "Docs map" section: everything up to the next level-2 heading. The
+ *  heading is the H1 of its own file today and was a `##` inside CLAUDE.md
+ *  before the move, so accept either. The design docs live in a `###`
+ *  subsection, so they are deliberately included. */
 function extractSection(markdown) {
   const lines = markdown.split('\n');
-  const start = lines.findIndex((l) => /^##\s+Docs map/.test(l));
+  const start = lines.findIndex((l) => /^#{1,2}\s+Docs map/.test(l));
   if (start === -1) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
@@ -61,7 +68,7 @@ function extractSection(markdown) {
 const source = readFileSync(path.join(repoRoot, mapFile), 'utf8');
 const section = extractSection(source);
 if (!section) {
-  console.error(`${mapFile}: no "## Docs map" section found — the map is the routing source for doc review and for every agent; it cannot go missing.`);
+  console.error(`${mapFile}: no "Docs map" heading found — the map is the routing source for doc review and for every agent; it cannot go missing.`);
   process.exit(1);
 }
 
@@ -137,7 +144,7 @@ for (const { cells, lineNo } of tableRows) {
 for (const file of trackedFiles) {
   if (!REQUIRED_IN_MAP.some((matches) => matches(file))) continue;
   if (linkTargets.has(file)) continue;
-  fail(file, `is not mentioned anywhere in the "Docs map" section of ${mapFile}. \`docs/\` is not auto-loaded, so a doc missing from the map is invisible to every agent — add a row (or a bullet, for a design doc).`);
+  fail(file, `is not mentioned anywhere in ${mapFile}. Neither \`docs/\` nor the map itself is auto-loaded, so a doc missing from the map is invisible to every agent — add a row (or a bullet, for a design doc).`);
 }
 
 // ---------------------------------------------------------------------------

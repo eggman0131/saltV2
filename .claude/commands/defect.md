@@ -41,7 +41,7 @@ Do not propose a fix yet.
 
 ## Step 2 — Root-cause investigation
 
-Trace the symptom to the mechanism in code. Delegate breadth to Explore subagents when the trail crosses files or packages; follow it yourself when it's one module deep. CLAUDE.md's **Docs map** routes you to the doc that owns the area — read it before concluding, since these docs hold the deliberate asymmetries that look like bugs.
+Trace the symptom to the mechanism in code. Delegate breadth to Explore subagents when the trail crosses files or packages; follow it yourself when it's one module deep. The **Docs map** (`docs-map.md`, not auto-loaded) routes you to the doc that owns the area — read it before concluding, since these docs hold the deliberate asymmetries that look like bugs.
 
 Verify the root cause empirically where you can (a probe, or a test that pinpoints it) rather than asserting it. Scope the report to these four, and nothing else:
 

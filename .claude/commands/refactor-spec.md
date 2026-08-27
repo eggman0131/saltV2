@@ -27,7 +27,7 @@ Mixing structural churn with behavior change is the classic way refactors go wro
 
 ## Step 1 — Architecture read
 
-Read the target area and what surrounds it. CLAUDE.md's **Docs map** is the routing table: open the docs whose *Tracks* globs match the code you expect to move, plus `docs/salt-architecture.md` for anything crossing a layer boundary. Delegate breadth to Explore subagents when the target area is wide or its call sites are unknown; read directly when it's one module.
+Read the target area and what surrounds it. The routing table is `docs-map.md` at the repo root, which is not auto-loaded: read it, then open the docs whose *Tracks* globs match the code you expect to move, plus `docs/salt-architecture.md` for anything crossing a layer boundary. Delegate breadth to Explore subagents when the target area is wide or its call sites are unknown; read directly when it's one module.
 
 Note the repo's own trap here: Serena's semantic tools cannot see `.svelte` files, so "what consumes this?" answered by `find_referencing_symbols` alone is a confident, wrong answer for anything with UI call sites. Use `grep` over `**/*.svelte` for those, and treat `pnpm depcruise` / `pnpm typecheck` as the authority on what is actually connected.
 

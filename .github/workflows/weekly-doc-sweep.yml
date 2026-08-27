@@ -116,7 +116,7 @@ jobs:
                 what code cannot say" — decisions, gotchas, external setup,
                 contracts. Duplication is what the map exists to prevent.
 
-            Read `CLAUDE.md`'s "Docs map" section for what each doc is supposed to
+            Read `docs-map.md` for what each doc is supposed to
             cover, then sample the docs against the code they track. You will not
             get through everything in your budget — that is expected and fine.
             Prefer going deep on a few docs over skimming all of them; a shallow
