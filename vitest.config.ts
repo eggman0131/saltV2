@@ -58,6 +58,14 @@ export default defineConfig({
       // figure would hand back four points of hiding room to close a gap of four
       // hundredths, which is the opposite of what the ratchet is for.
       //
+      // Both web-pwa pins were then re-measured for #994, which moved well-covered
+      // code ACROSS the two globs — the cook lifecycle, the timers, the step deck
+      // and the ingredient rows left `src/routes/**` for `src/lib/**` — and lifted
+      // both (73.91/63.24 → 76.08/64.12 and 71.44/63.91 → 73.37/65.6). Measured
+      // once on the finished branch, deliberately not per phase: mid-refactor the
+      // two globs are in motion against each other, so a per-phase re-pin banks a
+      // number that the next phase invalidates.
+      //
       // Areas deliberately unfloored: `packages/shared-types/src` (4 covered
       // lines in total — a pin there is noise, not a signal) and the storybook
       // stories that `include` sweeps up (dev-only, never unit-tested).
@@ -89,8 +97,8 @@ export default defineConfig({
         'packages/adapters/observability/src/**': { lines: 82.58, branches: 77.77 },
         'packages/adapters/firebase-sync/src/**': { lines: 57.82, branches: 63.02 },
         'apps/cloud-functions/src/**': { lines: 79.75, branches: 73.73 },
-        'apps/web-pwa/src/routes/**': { lines: 73.91, branches: 63.24 },
-        'apps/web-pwa/src/lib/**': { lines: 71.44, branches: 63.91 },
+        'apps/web-pwa/src/routes/**': { lines: 76.08, branches: 64.12 },
+        'apps/web-pwa/src/lib/**': { lines: 73.37, branches: 65.6 },
         'apps/web-pwa/src/components/**': { lines: 50.86, branches: 37.67 },
       },
     },

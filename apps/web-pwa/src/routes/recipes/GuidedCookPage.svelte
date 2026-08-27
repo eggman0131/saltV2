@@ -2,73 +2,83 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { goBack } from '../../lib/nav.js';
-  import { trackUsageEvent } from '@salt/observability';
-  import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
-    cookSessionEnded,
-    isLoadingCookSession,
-    initCookSessionSync,
     persistCookSession,
-    removeCookSession,
     getCookSessionSnapshot,
   } from '../../lib/cookSessionService.js';
+  // The session lifecycle — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — shared with plain cook mode (issue #994), because
+  // both screens are the same cook on the same session document.
+  import { createCookLifecycle } from '../../lib/cookLifecycle.svelte.js';
+  // The step timers — projection, tick, start/dismiss/progress and the sheet — also
+  // shared with plain cook mode (issue #994). The plan's check-ins are the one thing
+  // this screen hands it; see the timer section below.
+  import { createCookTimers } from '../../lib/cookTimers.svelte.js';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
-  import { auth } from '../../lib/auth.svelte.js';
-  import { canonItems } from '../../lib/canonService.js';
-  import { productForms } from '../../lib/productFormService.js';
+  // The ingredient picture and the press-and-hold "add to the list" — shared with
+  // plain cook mode (issue #994), because both screens draw the same rows.
+  //
+  // Every row here that names an INGREDIENT uses them: "Also get out", the
+  // amounts under a prep job, a bowl's contents, and a step's loose ingredients
+  // (#761). A prep JOB itself still has none — it is an instruction, not an
+  // ingredient, and has no canon item to picture.
+  import {
+    ingredientIcons,
+    ingredientLabel,
+    addIngredientToShoppingList,
+  } from '../../lib/cookIngredientIcons.js';
   import { toolIcons } from '../../lib/kitchenToolService.js';
-  import { addToast } from '../../lib/toastStore.js';
-  import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
-  import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
-  import {
-    addItemToDefaultList,
-    deleteItemFromList,
-  } from '../../lib/shoppingListService.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
-  import { createDeck } from '../../lib/deck.svelte.js';
+  // The push floor, shared with plain cook mode and My Kitchen (issue #994) so a timer
+  // behaves the same whichever screen started it. A check-in is armed here rather than
+  // in `$lib/cookTimers`, so this page reads the floor for itself.
+  import { shouldNotifyFor } from '../../lib/timerDefaults.js';
+  // The step deck — element registry, pager, probe, peek, advancing and the landing —
+  // shared with plain cook mode (issue #994). The pure viewport arithmetic under it
+  // stays in `$lib/cookDeck`, whose numbers the markup below still reads.
+  import { createStepDeck } from '../../lib/stepDeck.svelte.js';
   import {
     sectionMinHeight,
-    fadeHeightFor,
     fadeFitsLookahead,
     LOOKAHEAD_VEIL_PX,
     PEEK_MAX_PX,
   } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
+  // The regions this screen draws byte-for-byte the same way plain cook mode does
+  // (issue #994). Composition, not a design-system primitive: they are app-level
+  // arrangements of `@salt/ui-components` parts with exactly two call sites, and
+  // promoting one into the package would need a ui-spec of its own.
+  //
+  // The one that carries a per-mode difference is `CookStepCollapsed`, and it takes
+  // that difference as two class props written out below — never as a mode flag.
+  import CookLoadingOrphan from './CookLoadingOrphan.svelte';
+  import CookTimeline from './CookTimeline.svelte';
+  import CookRecipeChangedBanner from './CookRecipeChangedBanner.svelte';
+  import CookTimersBar from './CookTimersBar.svelte';
+  import CookStepCollapsed from './CookStepCollapsed.svelte';
+  import CookStepKit from './CookStepKit.svelte';
+  import CookStepTimer from './CookStepTimer.svelte';
+  import CookStepDoneControls from './CookStepDoneControls.svelte';
   import {
-    makeFreshSession as buildFreshSession,
-    withStepDone,
     withPrepChecked,
-    withTimerStarted,
-    withTimerDismissed,
-    firstIncompleteStepId,
     firstUseByStep,
     kitByStep,
     guidedPrepBoard,
     guidedMiseProgress,
     guidedPrepCardProgress,
+    progressOver,
     prepEntryForContainer,
     prepEntryIngredients,
     looseIngredientsForStep,
     nextStepLookahead,
     hasRecipeChanged,
-    formatClock,
-    timerProgress,
     checkInTimerId,
-    isCheckInTimerId,
-    resolveIngredientProductForm,
-    isCanonIconRenderable,
   } from '@salt/domain';
-  import type {
-    CookActiveTimerDoc,
-    CookSessionDoc,
-    IngredientDoc,
-    StepDoc,
-  } from '@salt/domain/schemas';
+  import type { CookActiveTimerDoc, IngredientDoc } from '@salt/domain/schemas';
 
   // Guided cook (issue #751, Phase 2) — `/recipes/:id/cook/guided`.
   //
@@ -95,13 +105,12 @@
   // A SIBLING PAGE rather than a mode flag on CookModePage, deliberately. What
   // differs is not a slot but the whole mise stage — its data model, its tick
   // field, its progress function, its sections (there are none) and an extra
-  // section of its own — and the shared part (lifecycle, pager) is already
-  // extracted as far as it usefully goes: `initCookSessionSync` /
-  // `persistCookSession` / `getCookSessionSnapshot` in `$lib/cookSessionService`,
-  // `createDeck` in `$lib/deck`, the pure geometry in `$lib/cookDeck`, and the
-  // producers in `@salt/domain/cookSession`. A shell component would be extracting
-  // the residue of three prior extractions. It also buys the thing the issue asks
-  // for outright: normal cook mode is not edited, so it cannot regress.
+  // section of its own. What does NOT differ is shared as code rather than as a
+  // shell component: the session lifecycle in `$lib/cookLifecycle` and the step
+  // timers in `$lib/cookTimers` (issue #994), `createDeck` in `$lib/deck`, the pure
+  // geometry in `$lib/cookDeck`, the timer defaults in `$lib/timerDefaults`, the
+  // ingredient rows in `$lib/cookIngredientIcons`, and the producers in
+  // `@salt/domain/cookSession`.
   //
   // FULL-VIEWPORT, the second such route (ui-spec-v05 §2, amended by this issue).
   // Its obligations are met exactly as CookModePage meets them: the route is
@@ -121,23 +130,24 @@
   }
   let { params }: Props = $props();
 
-  const recipe = $derived($recipes.find((r) => r.id === params.id) ?? null);
-  const uid = $derived(auth.user?.uid ?? null);
-  // Deterministic session id — the SAME one plain cook mode uses.
-  const sessionId = $derived(uid ? `${params.id}_${uid}` : null);
-
-  // ─── Subscription lifecycle ────────────────────────────────────────────────────
-  let unsub: (() => void) | null = null;
-  $effect(() => {
-    const sid = sessionId;
-    if (!sid) return;
-    unsub?.();
-    unsub = initCookSessionSync(sid);
-    return () => {
-      unsub?.();
-      unsub = null;
-    };
+  // ─── Session lifecycle ─────────────────────────────────────────────────────────
+  // The whole of it — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — is plain cook mode's, from `$lib/cookLifecycle`
+  // (issue #994). The ONE thing this screen passes in is the ready-guard: the
+  // opening stage must not be settled until the plan has landed, because until it
+  // does there is no prep board to be past and a session that arrives first would
+  // read as "nothing done yet".
+  const lifecycle = createCookLifecycle({
+    recipeId: () => params.id,
+    ready: () => plan !== undefined,
   });
+
+  const recipe = $derived(lifecycle.recipe);
+  const { wakeLockSupported, handleRestart, handleComplete, handleClose, toggleWakeLock } =
+    lifecycle;
+  const restarting = $derived(lifecycle.restarting);
+  const completing = $derived(lifecycle.completing);
+  const keepAwake = $derived(lifecycle.keepAwake);
 
   // The plan itself. Its store has THREE states — `undefined` not loaded, `null`
   // loaded and there is no plan, a document — and all three matter here: the
@@ -148,64 +158,6 @@
     return initGuidedPlanSync(id);
   });
   const plan = $derived($guidedPlan);
-
-  // ─── Session bootstrap ─────────────────────────────────────────────────────────
-  // Identical to plain cook mode, including the guard: a null store means "no
-  // session yet" ONLY when nothing has ended one (issue #559).
-  let bootstrapping = $state(false);
-
-  function makeFreshSession(): CookSessionDoc {
-    return buildFreshSession({
-      id: sessionId!,
-      ownerUid: uid!,
-      recipeId: params.id,
-      recipeUpdatedAtAtStart: recipe!.updatedAt,
-      nowIso: new Date().toISOString(),
-    });
-  }
-
-  async function createFreshSession(): Promise<void> {
-    if (!sessionId || !uid || !recipe) return;
-    bootstrapping = true;
-    const result = await persistCookSession(makeFreshSession());
-    bootstrapping = false;
-    if (result.kind !== 'ok') addToast('Failed to start cooking.', 'destructive');
-    // The same event plain cook mode fires. A guided cook IS a cook, and #684's
-    // volumetrics count cooks — splitting the event would silently halve the
-    // series the dashboard already plots.
-    else trackUsageEvent('cook.started', { recipe_id: params.id });
-  }
-
-  $effect(() => {
-    if (!uid || !recipe || !sessionId) return;
-    if ($isLoadingCookSession || bootstrapping) return;
-    if ($cookSession) return;
-    if ($cookSessionEnded || completing || restarting) return;
-    void createFreshSession();
-  });
-
-  // ─── Ended on another device ───────────────────────────────────────────────────
-  let endedElsewhere = $state(false);
-  $effect(() => {
-    if (!$cookSessionEnded || endedElsewhere) return;
-    endedElsewhere = true;
-    addToast('This cook was finished on another device.');
-    push(`/recipes/${params.id}`);
-  });
-
-  // ─── Deleted-recipe orphan handling ────────────────────────────────────────────
-  let orphaned = $state(false);
-  $effect(() => {
-    if ($isLoadingRecipes) return;
-    if (recipe !== null) return;
-    if (orphaned) return;
-    orphaned = true;
-    void handleOrphan();
-  });
-
-  async function handleOrphan(): Promise<void> {
-    if (sessionId) await removeCookSession(sessionId);
-  }
 
   // ─── Guided mise en place ──────────────────────────────────────────────────────
   // The whole prep screen as one pure shape (issue #767): the plan's jobs grouped
@@ -279,26 +231,11 @@
   }
 
   // ─── Stages ────────────────────────────────────────────────────────────────────
-  let stage = $state<'mise' | 'steps'>('mise');
+  // Which one this opens on is the lifecycle's one-shot resume, held off by the
+  // ready-guard above until the plan has landed.
+  const stage = $derived(lifecycle.stage);
 
-  // One-shot resume, plain cook mode's rule verbatim: a cook with step progress
-  // opens straight into the steps rather than back on a prep list it is done with.
-  // Waits for the plan as well as the session, because until the plan lands there
-  // is no prep screen to be past.
-  let stageInitialised = false;
-  $effect(() => {
-    if (stageInitialised) return;
-    const s = $cookSession;
-    if (!s || plan === undefined) return;
-    stageInitialised = true;
-    if (s.completedStepIds.length > 0) stage = 'steps';
-  });
-
-  const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
-  const completedStepCount = $derived(
-    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
-  );
   const showTimeline = $derived(stage === 'steps' && totalSteps > 0);
 
   // ─── The plan's notes, by step ─────────────────────────────────────────────────
@@ -334,188 +271,60 @@
   // RECIPE needs got out.
   const kitStartingAtStep = $derived(kitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
-  // ─── Canon icons ───────────────────────────────────────────────────────────────
-  // Every row that names an INGREDIENT uses these: "Also get out", the amounts
-  // under a prep job, a bowl's contents, and a step's loose ingredients (#761). A
-  // prep JOB itself still has none — it is an instruction, not an ingredient, and
-  // has no canon item to picture. Lookup mirrors ShoppingListPage's
-  // `thumbnailFor`/`iconVersionFor`, cache-bust included.
-  const canonIconMap = $derived(
-    new Map(
-      $canonItems.map((ci) => [
-        ci.id,
-        { thumbnail: ci.thumbnail, version: ci.iconRequestedAt ?? ci.updatedAt },
-      ]),
-    ),
-  );
-
-  // A line naming a PRODUCT FORM shows the form's own picture (issue #871) — the
-  // squeezed lime, not the whole one. Same rule as cook mode's mise, for the same
-  // reason: these rows are read while doing something else.
+  // ─── The step deck ─────────────────────────────────────────────────────────────
+  // All of it — the element registry, the gesture-owned pager, the probe that says
+  // which step the footer acts on, the bottom fade, ticking, the peek, the
+  // pending-scroll handshake that advances, and where the deck lands on entry — is in
+  // `$lib/stepDeck` (issue #994), shared verbatim with plain cook mode.
   //
-  // The parent guard lives in `resolveIngredientProductForm`: a form counts only
-  // when it belongs to the canon item this ingredient actually matched.
+  // Verbatim is exact: there is no parameter below that this screen passes
+  // differently. Both hand it the live recipe's steps, the lifecycle's stage and a
+  // way to open or close a peek. What guided mode adds is not a flag into the deck —
+  // it is the look-ahead derived from the PLAN just below, off the deck's own
+  // `currentStep`, on the page that holds the plan.
   //
-  // FALLS BACK when the form has no renderable icon — not generated yet, or
-  // hidden. Generation is edge-triggered, so every form written before this
-  // shipped has a null thumbnail until regenerated; preferring the form
-  // unconditionally would replace a picture that shows today with a bare tile.
-  function formIconFor(
-    ingredient: IngredientDoc,
-  ): { thumbnail: string; version: string | number | undefined } | null {
-    const form = resolveIngredientProductForm(
-      ingredient.parsed?.item,
-      ingredient.canonId,
-      $productForms,
-    );
-    if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
-    return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
-  }
-
-  function thumbnailFor(ingredient: IngredientDoc): string | null {
-    const form = formIconFor(ingredient);
-    if (form) return form.thumbnail;
-    if (!ingredient.canonId) return null;
-    return canonIconMap.get(ingredient.canonId)?.thumbnail ?? null;
-  }
-
-  function iconVersionFor(ingredient: IngredientDoc): string | number | undefined {
-    const form = formIconFor(ingredient);
-    if (form) return form.version;
-    if (!ingredient.canonId) return undefined;
-    return canonIconMap.get(ingredient.canonId)?.version;
-  }
-
-  function ingredientLabel(ingredient: IngredientDoc): string {
-    return ingredient.parsed?.item ?? ingredient.rawText;
-  }
-
-  // Ran out of something? Hold it (issue #714). Same gesture, same target (the
-  // DEFAULT list), same undo — on the rows that actually name an ingredient.
-  async function addIngredientToShoppingList(ingredient: IngredientDoc): Promise<void> {
-    const name = ingredientLabel(ingredient);
-    const result = await addItemToDefaultList(name);
-    if (result.kind !== 'ok') {
-      const message =
-        result.error.kind === 'NotFound'
-          ? "You haven't made a shopping list yet"
-          : `Couldn't add ${name} to the shopping list`;
-      addToast(message, result.error.kind === 'NotFound' ? 'default' : 'destructive');
-      return;
-    }
-    const { itemId, listId, listName } = result.value;
-    addToast(`Added ${name} to ${listName}`, 'success', {
-      action: {
-        label: 'Undo',
-        onClick: () => void deleteItemFromList(listId, itemId),
-      },
-    });
-  }
-
-  // ─── Step completion ───────────────────────────────────────────────────────────
-  // Whole-document LWW through the service. Completion is never a gate, and the
-  // pager is never gated either: "don't move on until the sauce has thickened" is
-  // a sentence the cook reads, not a lock the app enforces.
-  function setStepDone(id: string, done: boolean): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    const next = withStepDone(s, id, done);
-    if (next === s) return;
-    void persistCookSession(next);
-  }
-
-  const stepEls = new Map<string, HTMLElement>();
-  function stepAnchor(node: HTMLElement, id: string) {
-    stepEls.set(id, node);
-    return {
-      destroy() {
-        if (stepEls.get(id) === node) stepEls.delete(id);
-      },
-    };
-  }
-
-  // ─── The pager ─────────────────────────────────────────────────────────────────
-  // No threshold overrides, for the reason cook mode gives: a guided step section
-  // IS the screen, which is the case the defaults in `$lib/cookDeck` were tuned
-  // for. The peek comes from there too.
-  const deck = createDeck({
-    sections: () =>
-      (recipe?.steps ?? [])
-        .map((step) => stepEls.get(step.id))
-        .filter((el): el is HTMLElement => el !== undefined),
-  });
-
-  function stepStop(id: string): number | null {
-    const el = stepEls.get(id);
-    return el ? deck.offsetOf(el) : null;
-  }
-
-  // The step parked at the TOP of the scroller — the one the footer acts on. Not
-  // "the step with the most visible pixels": a collapsed done row is ~56px, so a
-  // full-height step below it would win on area and the footer would tick the
-  // wrong one.
-  let visibleStepId = $state<string | null>(null);
-  let fadeHeight = $state(0);
-
-  function probeVisibleStep(): void {
-    const root = deck.viewportEl;
-    if (!root) return;
-    const rootRect = root.getBoundingClientRect();
-    const probeY = rootRect.top + 8;
-    for (const step of recipe?.steps ?? []) {
-      const rect = stepEls.get(step.id)?.getBoundingClientRect();
-      if (!rect) continue;
-      if (rect.top <= probeY && rect.bottom > probeY) {
-        visibleStepId = step.id;
-        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
-        return;
-      }
-    }
-  }
-
-  $effect(() => {
-    void deck.offset;
-    void deck.viewportHeight;
-    probeVisibleStep();
-  });
-
-  // Peeking must never change completion: tapping a collapsed row expands it in
-  // place, and only the expanded view carries the control that unticks it.
+  // The peeked id stays in this file because the markup assigns to it directly, and an
+  // assignment needs a variable rather than a getter — the same seam the timer sheet's
+  // open flag has below.
   let peekedStepId = $state<string | null>(null);
-
-  function peekStep(id: string): void {
-    peekedStepId = id;
-    visibleStepId = id;
-  }
-
-  function untickStep(id: string): void {
-    peekedStepId = null;
-    setStepDone(id, false);
-  }
-
-  const currentStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    if (steps.length === 0) return null;
-    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
-    return (
-      steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => s.id === firstIncompleteId) ??
-      steps[steps.length - 1]
-    );
+  const stepDeck = createStepDeck({
+    steps: () => recipe?.steps ?? [],
+    stage: () => lifecycle.stage,
+    setStage: (next) => {
+      lifecycle.stage = next;
+    },
+    setPeeked: (id) => {
+      peekedStepId = id;
+    },
   });
-  const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
-  const nextIncompleteStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    const rest = steps.slice(idx + 1);
-    const nextId = firstIncompleteStepId(rest, completedStepIds);
-    return rest.find((s) => s.id === nextId) ?? null;
-  });
-  const nextIncompleteNumber = $derived(
-    nextIncompleteStep && recipe
-      ? recipe.steps.findIndex((s) => s.id === nextIncompleteStep.id) + 1
-      : 0,
+
+  // Bound to the names the markup already uses.
+  const deck = stepDeck.deck;
+  const {
+    stepAnchor,
+    peekStep,
+    untickStep,
+    handleStepDone,
+    handleResume,
+    jumpToStep,
+    goToSteps,
+    goToMise,
+  } = stepDeck;
+  const completedStepIds = $derived(stepDeck.completedStepIds);
+  // Counted over the RECIPE's step ids, never over the session's completed set —
+  // `progressOver`'s contract, and here it is what makes a cook whose completed
+  // steps were edited away read "Start cooking" again rather than "Continue".
+  const completedStepCount = $derived(
+    progressOver(
+      (recipe?.steps ?? []).map((s) => s.id),
+      completedStepIds,
+    ).checked,
   );
+  const fadeHeight = $derived(stepDeck.fadeHeight);
+  const currentStep = $derived(stepDeck.currentStep);
+  const currentStepDone = $derived(stepDeck.currentStepDone);
+  const nextIncompleteStep = $derived(stepDeck.nextIncompleteStep);
+  const nextIncompleteNumber = $derived(stepDeck.nextIncompleteNumber);
 
   // What the plan says about the step BELOW this one (issue #769) — the caption on
   // the gap at the bottom of the screen, in place of plain cook mode's faded first
@@ -534,121 +343,18 @@
     recipe ? nextStepLookahead(recipe, plan?.stepNotes ?? [], currentStep?.id ?? null) : null,
   );
 
-  // ─── Advancing ─────────────────────────────────────────────────────────────────
-  // The scroll is parked here and fired by the effect below the moment the
-  // completion it waits on arrives — which is also the moment the layout it has to
-  // measure becomes final. Only the travel animates; the collapse is instant.
-  let pendingScroll = $state<{ afterDoneId: string | null; targetId: string } | null>(null);
-
-  function alignToTop(id: string): void {
-    const stop = stepStop(id);
-    if (stop !== null) deck.animateTo(stop);
-  }
-
-  $effect(() => {
-    const pending = pendingScroll;
-    if (!pending) return;
-    if (pending.afterDoneId && !completedStepIds.has(pending.afterDoneId)) return;
-    pendingScroll = null;
-    alignToTop(pending.targetId);
-  });
-
-  function handleStepDone(): void {
-    const step = currentStep;
-    if (!step) return;
-    const next = nextIncompleteStep;
-    setStepDone(step.id, true);
-    if (!next) return;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: step.id, targetId: next.id };
-  }
-
-  function handleResume(): void {
-    const next = nextIncompleteStep;
-    if (!next) return;
-    peekedStepId = null;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: null, targetId: next.id };
-  }
-
-  function jumpToStep(id: string): void {
-    peekedStepId = null;
-    visibleStepId = id;
-    pendingScroll = { afterDoneId: null, targetId: id };
-  }
-
-  $effect(() => {
-    if (stage !== 'steps') return;
-    if (!deck.viewportEl || !deck.contentEl) return;
-    const snap = getCookSessionSnapshot();
-    const done = new Set(snap?.completedStepIds ?? []);
-    const steps = recipe?.steps ?? [];
-    const targetId = firstIncompleteStepId(steps, done);
-    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
-    if (!target) return;
-    const landOn = (): void => {
-      const stop = stepStop(target.id);
-      if (stop !== null) deck.place(stop);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(landOn);
-    else landOn();
-  });
-
-  function goToSteps(): void {
-    stage = 'steps';
-  }
-  function goToMise(): void {
-    stage = 'mise';
-  }
-
   // ─── Step timers ───────────────────────────────────────────────────────────────
   // Carried unchanged from plain cook mode, because they are the same timers on the
   // same session document: an `activeTimers` entry with an ABSOLUTE `endsAt`, so a
   // reload or a device switch reconstructs the remaining time with no extra client
-  // state, and a timer started in one mode is live in the other.
+  // state, and a timer started in one mode is live in the other. All of it — the
+  // projection, the 1s tick, start / dismiss / progress and the one sheet — is in
+  // `$lib/cookTimers` (issue #994), shared with CookModePage.
   //
-  // The audible alert is NOT here. It lives in the app-level watcher
-  // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates away.
-  // Do not re-add a chime here; two owners means two honks.
-  const activeTimers = $derived($cookSession?.activeTimers ?? []);
-  // Keyed by STEP: "is there a live timer on the step I am cooking?". A check-in
-  // carries its step so the push copy can name it, so this must ask for the step's
-  // OWN timer rather than the last entry that mentions the step — otherwise the
-  // inline control would count down a reminder and its Cancel would cancel one.
-  const timerByStep = $derived(
-    new Map(
-      activeTimers.flatMap((t) =>
-        t.stepId === null || isCheckInTimerId(t.id) ? [] : [[t.stepId, t] as const],
-      ),
-    ),
-  );
-
-  let now = $state(Date.now());
-  $effect(() => {
-    if (activeTimers.length === 0) return;
-    if (typeof setInterval !== 'function') return;
-    const handle = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(handle);
-  });
-
-  // What the bar shows. A check-in that has FIRED leaves on its own: it is a nudge,
-  // not a checkpoint, so there is nothing to confirm and nothing to dismiss, and a
-  // "Check the heat — Finished" chip sitting over the braise for the next two hours
-  // would be exactly the acknowledgement the issue forbids. The entry stays in the
-  // document (harmless — its key is already in the enqueue diff) and goes when the
-  // timer it hangs off is dismissed. Derived off `now` rather than the effect above,
-  // which must keep watching `activeTimers.length` or it would tear its own interval
-  // down every second.
-  const barTimers = $derived(
-    activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
-  );
-
-  // A delivery-precision floor, not a "will the chef walk away" heuristic — see
-  // CookModePage for the full reasoning. Kept identical so a timer behaves the same
-  // whichever mode started it.
-  const NOTIFY_MIN_MINUTES = 1.5;
+  // What this screen adds, and the ONLY thing it adds, is below: the plan's check-ins,
+  // handed to the factory as the function that arms them. It is a parameter rather
+  // than a mode, which is what makes "check-ins are guided-only" structural — plain
+  // cook mode does not pass one, so it has no way to arm a reminder at all.
 
   // A check-in with nothing typed in it. The editor lets the minutes stand alone,
   // and a reminder that arrives blank is still better than one that silently never
@@ -677,194 +383,45 @@
       endsAt: new Date(startMs + c.atMinutes * 60_000).toISOString(),
       // The same delivery-precision floor the main timer uses — a check-in is the
       // same kind of thing, delivered the same way.
-      notify: c.atMinutes >= NOTIFY_MIN_MINUTES,
+      notify: shouldNotifyFor(c.atMinutes),
     }));
   }
 
-  function startTimerEntry(entry: {
-    id: string;
-    stepId: string | null;
-    label: string | null;
-    durationMinutes: number;
-  }): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    primeChime();
-    // One clock read for the main timer AND its check-ins, so every reminder is
-    // anchored to the same instant the wait started from.
-    const startMs = Date.now();
-    const endsAt = new Date(startMs + entry.durationMinutes * 60_000).toISOString();
-    void persistCookSession(
-      withTimerStarted(
-        s,
-        { ...entry, endsAt, notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES },
-        // Always offered; the producer takes them only when this is a fresh start.
-        // Re-timing a running timer keeps the check-ins already armed, because
-        // their anchor is the original start — see withTimerStarted.
-        checkInEntriesFor(entry.id, entry.stepId, startMs),
-      ),
-    );
-  }
-
-  function startTimer(step: StepDoc): void {
-    const timer = step.timer;
-    if (!timer) return;
-    startTimerEntry({
-      id: step.id,
-      stepId: step.id,
-      label: timer.description ?? null,
-      durationMinutes: timer.durationMinutes,
-    });
-  }
-
-  function dismissTimer(timerId: string): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    void persistCookSession(withTimerDismissed(s, timerId));
-  }
-
-  function timerProgressFor(timer: CookActiveTimerDoc): number | null {
-    const durationMinutes =
-      timer.durationMinutes ??
-      (timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes);
-    return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
-  }
-
-  // ─── The timer sheet ───────────────────────────────────────────────────────────
-  const AD_HOC_TIMER_LABEL = 'Salt Timer';
-  const AD_HOC_TIMER_MINUTES = 10;
-
-  interface TimerSheetTarget {
-    id: string;
-    stepId: string | null;
-    label: string;
-    durationMinutes: number;
-    running: boolean;
-  }
+  // Everything else about a timer is plain cook mode's, from `$lib/cookTimers`. The
+  // sheet's open flag stays here because the markup binds it, and `bind:` needs a
+  // variable it can assign to; everything the sheet is opened WITH is in the factory.
   let timerSheetOpen = $state(false);
-  let timerSheetTarget = $state<TimerSheetTarget | null>(null);
-  const timerSheetPrefill = $derived({
-    label: timerSheetTarget?.label ?? AD_HOC_TIMER_LABEL,
-    durationMinutes: timerSheetTarget?.durationMinutes ?? AD_HOC_TIMER_MINUTES,
+  const timers = createCookTimers({
+    steps: () => recipe?.steps ?? [],
+    showSheet: () => {
+      timerSheetOpen = true;
+    },
+    armCheckIns: checkInEntriesFor,
   });
 
-  function openTimerSheet(target: TimerSheetTarget): void {
-    timerSheetTarget = target;
-    timerSheetOpen = true;
-  }
-
-  function openStepTimerSheet(step: StepDoc): void {
-    if (!step.timer) return;
-    openTimerSheet({
-      id: step.id,
-      stepId: step.id,
-      label: step.timer.description ?? '',
-      durationMinutes: step.timer.durationMinutes,
-      running: false,
-    });
-  }
-
-  function openRunningTimerSheet(timer: CookActiveTimerDoc): void {
-    const stepDuration =
-      timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes;
-    openTimerSheet({
-      id: timer.id,
-      stepId: timer.stepId,
-      label: timer.label ?? '',
-      durationMinutes: timer.durationMinutes ?? stepDuration ?? AD_HOC_TIMER_MINUTES,
-      running: true,
-    });
-  }
-
-  function openAdHocTimerSheet(): void {
-    openTimerSheet({
-      id: crypto.randomUUID(),
-      stepId: null,
-      label: AD_HOC_TIMER_LABEL,
-      durationMinutes: AD_HOC_TIMER_MINUTES,
-      running: false,
-    });
-  }
-
-  function confirmTimerSheet(next: { label: string; durationMinutes: number }): void {
-    const target = timerSheetTarget;
-    if (!target) return;
-    startTimerEntry({
-      id: target.id,
-      stepId: target.stepId,
-      label: next.label === '' ? null : next.label,
-      durationMinutes: next.durationMinutes,
-    });
-  }
+  // Bound to the names the markup already uses.
+  const timerByStep = $derived(timers.timerByStep);
+  const barTimers = $derived(timers.barTimers);
+  const now = $derived(timers.now);
+  const timerSheetPrefill = $derived(timers.sheetPrefill);
+  const timerSheetTarget = $derived(timers.sheetTarget);
+  const {
+    startTimer,
+    dismissTimer,
+    timerProgressFor,
+    openStepTimerSheet,
+    openRunningTimerSheet,
+    openAdHocTimerSheet,
+    confirmTimerSheet,
+  } = timers;
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   const recipeChanged = $derived(
     hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
   );
 
-  let restarting = $state(false);
-  async function handleRestart(): Promise<void> {
-    if (!sessionId || !uid || !recipe || restarting) return;
-    restarting = true;
-    await removeCookSession(sessionId);
-    const result = await persistCookSession(makeFreshSession());
-    restarting = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to restart.', 'destructive');
-      return;
-    }
-    addToast('Started fresh with the updated recipe.', 'success');
-  }
-
-  // ─── Complete / close ──────────────────────────────────────────────────────────
-  let completing = $state(false);
-  async function handleComplete(): Promise<void> {
-    if (!sessionId || completing) return;
-    completing = true;
-    await removeCookSession(sessionId);
-    trackUsageEvent('cook.completed', { recipe_id: params.id });
-    push(`/recipes/${params.id}`);
-  }
-
-  function handleClose(): void {
-    goBack(`/recipes/${params.id}`);
-  }
-
-  // ─── Wake lock ─────────────────────────────────────────────────────────────────
-  const wakeLockSupported = isWakeLockSupported();
-  const wake = wakeLockSupported ? createWakeLock() : null;
-  let keepAwake = $state(false);
-
-  // Plain `let`, not `$state` — a re-entrancy guard only read inside the handler.
-  let togglingWakeLock = false;
-  async function toggleWakeLock(): Promise<void> {
-    if (togglingWakeLock) return;
-    togglingWakeLock = true;
-    try {
-      if (keepAwake) {
-        await wake?.disable();
-        keepAwake = false;
-        addToast('Screen can sleep again', 'success');
-        return;
-      }
-      const acquired = (await wake?.enable()) ?? false;
-      keepAwake = acquired;
-      if (acquired) addToast('Screen will stay awake', 'success');
-      else addToast("Your browser wouldn't let the screen stay awake.", 'destructive');
-    } finally {
-      togglingWakeLock = false;
-    }
-  }
-
-  $effect(() => {
-    return () => {
-      void wake?.disable();
-    };
-  });
+  // Restart, Finish, Close and the keep-awake toggle all live on the shared
+  // lifecycle, bound at the top of this script.
 </script>
 
 <!-- `z-dialog` (50), not a raw z-50: a full-viewport route shares the dialog rung of
@@ -880,28 +437,7 @@
   data-testid="guided-cook-page"
 >
   {#if recipe === null}
-    <div class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      {#if $isLoadingRecipes}
-        <Spinner size={20} />
-        <p class="text-sm text-muted-foreground">Loading…</p>
-      {:else}
-        <Icon name="TriangleAlert" size={28} class="text-destructive" />
-        <div class="flex flex-col gap-1" data-testid="cook-mode-orphan">
-          <p class="text-base font-semibold">This recipe was deleted</p>
-          <p class="text-sm text-muted-foreground">
-            The recipe you were cooking no longer exists, so this cook session has been closed.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onclick={() => push('/recipes')}
-          data-testid="cook-mode-orphan-back"
-        >
-          {#snippet leading()}<Icon name="ArrowLeft" size={16} />{/snippet}
-          Back to recipes
-        </Button>
-      {/if}
-    </div>
+    <CookLoadingOrphan />
   {:else if plan === undefined}
     <!-- The plan's not-loaded state, kept distinct from "there is no plan" so the
        screen below never flashes over a plan one frame from arriving. -->
@@ -1022,155 +558,29 @@
     <!-- Timeline. One segment per step, each a jump to it. Same band, same colours
        and same meanings as plain cook mode — this is the same progress. -->
     {#if showTimeline}
-      <div
-        class="flex shrink-0 items-center gap-1 border-b px-4 py-2"
-        role="group"
-        aria-label="Steps: {completedStepCount} of {totalSteps} done"
-        data-testid="cook-timeline"
-      >
-        {#each recipe.steps as timelineStep, index (timelineStep.id)}
-          {@const stepDone = completedStepIds.has(timelineStep.id)}
-          {@const stepCurrent = currentStep?.id === timelineStep.id}
-          <button
-            type="button"
-            class="py-2 {stepCurrent
-              ? 'flex-[1.6]'
-              : 'flex-1'} transition-[flex] duration-200 motion-reduce:transition-none"
-            onclick={() => jumpToStep(timelineStep.id)}
-            aria-label="Step {index + 1} of {totalSteps}{stepDone ? ', done' : ''}"
-            aria-current={stepCurrent ? 'step' : undefined}
-            data-testid="cook-timeline-step"
-            data-complete={stepDone}
-            data-current={stepCurrent}
-          >
-            <span
-              class="block h-1.5 rounded-full transition-colors {stepCurrent
-                ? 'bg-amber-500'
-                : stepDone
-                  ? 'bg-emerald-600'
-                  : 'bg-muted-foreground/25'}"
-            ></span>
-          </button>
-        {/each}
-      </div>
+      <CookTimeline
+        steps={recipe.steps}
+        {completedStepIds}
+        currentStepId={currentStep?.id ?? null}
+        onJump={jumpToStep}
+      />
     {/if}
 
     <!-- Recipe-changed banner -->
     {#if recipeChanged}
-      <div
-        class="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-        data-testid="cook-mode-recipe-changed"
-      >
-        <Icon name="TriangleAlert" size={16} class="shrink-0 text-amber-500" />
-        <span class="flex-1">This recipe was updated since you started cooking.</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onclick={handleRestart}
-          loading={restarting}
-          disabled={restarting}
-          data-testid="cook-mode-restart"
-        >
-          {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-          Restart
-        </Button>
-      </div>
+      <CookRecipeChangedBanner {restarting} onRestart={handleRestart} />
     {/if}
 
     <!-- Persistent timers bar -->
     {#if barTimers.length > 0}
-      <div
-        class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
-        data-testid="cook-timers-bar"
-      >
-        <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each barTimers as t (t.id)}
-            {@const remaining = new Date(t.endsAt).getTime() - now}
-            {@const fired = remaining <= 0}
-            {@const checkIn = isCheckInTimerId(t.id)}
-            {@const stepIndex =
-              t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
-            {@const stepLabel =
-              t.label ??
-              (stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null)}
-            {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
-            {@const progress = timerProgressFor(t)}
-            <div
-              class="overflow-hidden rounded-lg border {fired
-                ? 'border-primary bg-primary/10'
-                : 'bg-card'}"
-              data-testid="cook-timer-chip"
-              data-timer-id={t.id}
-              data-fired={fired}
-              data-check-in={checkIn}
-            >
-              <div class="flex items-center gap-3 px-3 py-2">
-                <!-- A check-in's chip is NOT a way into the sheet. Its `endsAt` is
-                   anchored to the moment its timer started, and re-timing it from
-                   now would detach it from the wait it belongs to — so it reads as a
-                   row, and the only thing you can do to it is call it off. -->
-                {#snippet chipBody()}
-                  <Icon
-                    name={checkIn ? 'Bell' : fired ? 'BellRing' : 'Timer'}
-                    size={18}
-                    class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
-                  />
-                  <span
-                    class="min-w-0 flex-1 truncate text-sm font-medium {fired
-                      ? 'text-primary'
-                      : 'text-foreground'}"
-                    title={stepLabel ? stepName : undefined}
-                    data-testid="cook-timer-chip-label"
-                  >
-                    {stepLabel ?? stepName}
-                  </span>
-                  <span
-                    class="shrink-0 font-mono text-base tabular-nums {fired
-                      ? 'font-semibold text-primary'
-                      : ''}"
-                    data-testid="cook-timer-chip-time"
-                  >
-                    {fired ? 'Finished' : formatClock(remaining)}
-                  </span>
-                {/snippet}
-                {#if checkIn}
-                  <div class="flex min-w-0 flex-1 items-center gap-3 py-1">
-                    {@render chipBody()}
-                  </div>
-                {:else}
-                  <button
-                    type="button"
-                    class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
-                    onclick={() => openRunningTimerSheet(t)}
-                    data-testid="cook-timer-chip-edit"
-                  >
-                    {@render chipBody()}
-                  </button>
-                {/if}
-                <Button
-                  size="sm"
-                  variant={fired ? 'solid' : 'ghost'}
-                  onclick={() => dismissTimer(t.id)}
-                  data-testid="cook-timer-chip-dismiss"
-                >
-                  {fired ? 'Dismiss' : 'Cancel'}
-                </Button>
-              </div>
-              {#if progress !== null}
-                <div class="h-1 w-full bg-muted-foreground/15" aria-hidden="true">
-                  <div
-                    class="h-full transition-[width] duration-1000 ease-linear motion-reduce:transition-none {fired
-                      ? 'bg-primary'
-                      : 'bg-amber-500'}"
-                    style="width: {progress * 100}%"
-                    data-testid="cook-timer-chip-progress"
-                  ></div>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
+      <CookTimersBar
+        timers={barTimers}
+        steps={recipe.steps}
+        {now}
+        progressFor={timerProgressFor}
+        onEdit={openRunningTimerSheet}
+        onDismiss={dismissTimer}
+      />
     {/if}
 
     <!-- Stage 1: the prep board / Stage 2: the steps with their notes -->
@@ -1383,9 +793,9 @@
                                         {#if checked}<Icon name="Check" size={16} />{/if}
                                       </span>
                                       <CanonIcon
-                                        thumbnail={thumbnailFor(ingredient)}
+                                        thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                                         name={ingredientLabel(ingredient)}
-                                        version={iconVersionFor(ingredient)}
+                                        version={$ingredientIcons.iconVersionFor(ingredient)}
                                         dimmed={checked}
                                         size={32}
                                       />
@@ -1453,9 +863,9 @@
                         {#if checked}<Icon name="Check" size={18} />{/if}
                       </span>
                       <CanonIcon
-                        thumbnail={thumbnailFor(ingredient)}
+                        thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                         name={ingredientLabel(ingredient)}
-                        version={iconVersionFor(ingredient)}
+                        version={$ingredientIcons.iconVersionFor(ingredient)}
                         dimmed={checked}
                         size={40}
                       />
@@ -1543,28 +953,17 @@
                 <!-- A DONE step recedes into sage, so the live step is the only
                    black-on-white thing on the deck. Sage rather than the teal
                    primary because that is what a finished thing goes everywhere
-                   else in Salt — the shopping list floods a ticked row with it. -->
-                <button
-                  type="button"
-                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-secondary/30 bg-secondary/5 px-4 py-3 text-left"
-                  onclick={() => peekStep(step.id)}
-                  aria-expanded="false"
-                  data-testid="cook-step-collapsed"
-                >
-                  <span
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary bg-primary text-primary-foreground"
-                  >
-                    <Icon name="Check" size={18} />
-                  </span>
-                  <span
-                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary"
-                  >
-                    Step {i + 1}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground line-through">
-                    {step.text}
-                  </span>
-                </button>
+                   else in Salt — the shopping list floods a ticked row with it.
+                   Plain cook mode hands the same component its teal; the two
+                   values live at these two call sites so neither can be changed
+                   without seeing the other. -->
+                <CookStepCollapsed
+                  index={i}
+                  text={step.text}
+                  accentClass="border-secondary/30 bg-secondary/5"
+                  labelClass="text-secondary"
+                  onPeek={() => peekStep(step.id)}
+                />
               {:else}
                 <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6">
                   <div class="flex flex-col gap-3">
@@ -1653,9 +1052,9 @@
                                   data-testid="guided-step-container-contents"
                                 >
                                   <CanonIcon
-                                    thumbnail={thumbnailFor(ingredient)}
+                                    thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                                     name={ingredientLabel(ingredient)}
-                                    version={iconVersionFor(ingredient)}
+                                    version={$ingredientIcons.iconVersionFor(ingredient)}
                                     size={32}
                                   />
                                   <span class="min-w-0 flex-1 text-base">
@@ -1681,9 +1080,9 @@
                             <Icon name="Plus" size={17} ariaLabel="Also" />
                           </span>
                           <CanonIcon
-                            thumbnail={thumbnailFor(ingredient)}
+                            thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                             name={ingredientLabel(ingredient)}
-                            version={iconVersionFor(ingredient)}
+                            version={$ingredientIcons.iconVersionFor(ingredient)}
                             size={32}
                           />
                           <span class="min-w-0 flex-1 text-base">
@@ -1756,35 +1155,7 @@
                      docs/ai-kitchen-assistant.md at its narrowest: guided mode shows
                      everything plain cook mode shows, and then some. -->
                   {#if stepKit.length > 0}
-                    <ul
-                      class="flex flex-wrap items-start gap-2"
-                      aria-label="Kit this step calls for"
-                      data-testid="cook-step-kit"
-                    >
-                      {#each stepKit as entry (entry.label)}
-                        <li class="shrink-0 max-w-full">
-                          <span
-                            class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
-                              entry.label,
-                            )
-                              ? 'pl-1'
-                              : 'pl-4'}"
-                            data-testid="cook-step-kit-chip"
-                          >
-                            {#if $toolIcons.toolIconFor(entry.label)}
-                              <CanonIcon
-                                thumbnail={$toolIcons.toolIconFor(entry.label)}
-                                version={$toolIcons.toolIconVersionFor(entry.label)}
-                                name={entry.label}
-                                size={40}
-                                class="rounded-full"
-                              />
-                            {/if}
-                            <span class="min-w-0 break-words">{entry.label}</span>
-                          </span>
-                        </li>
-                      {/each}
-                    </ul>
+                    <CookStepKit entries={stepKit} />
                   {/if}
 
                   <!-- Per-step timer, unchanged from plain cook mode: state derives
@@ -1792,131 +1163,22 @@
                      device switches, and the persistent bar above keeps it visible
                      once this step collapses. -->
                   {#if step.timer}
-                    {@const timerEntry = timerByStep.get(step.id)}
-                    <div class="flex flex-col gap-2" data-testid="cook-step-timer">
-                      {#if timerEntry}
-                        {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
-                        {@const progress = timerProgressFor(timerEntry)}
-                        {#if remaining > 0}
-                          <div class="overflow-hidden rounded-lg border bg-card">
-                            <div class="flex items-center gap-3 px-4 py-3">
-                              <Icon name="Timer" size={22} class="shrink-0 text-muted-foreground" />
-                              {#if step.timer.description}
-                                <span
-                                  class="min-w-0 flex-1 truncate text-base"
-                                  data-testid="cook-step-timer-label"
-                                >
-                                  {step.timer.description}
-                                </span>
-                              {/if}
-                              <span
-                                class="{step.timer.description
-                                  ? 'shrink-0'
-                                  : 'flex-1'} font-mono text-2xl tabular-nums"
-                                data-testid="cook-step-timer-countdown"
-                              >
-                                {formatClock(remaining)}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                onclick={() => dismissTimer(timerEntry.id)}
-                                data-testid="cook-step-timer-dismiss"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                            {#if progress !== null}
-                              <div class="h-1.5 w-full bg-muted-foreground/15" aria-hidden="true">
-                                <div
-                                  class="h-full bg-amber-500 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
-                                  style="width: {progress * 100}%"
-                                  data-testid="cook-step-timer-progress"
-                                ></div>
-                              </div>
-                            {/if}
-                          </div>
-                        {:else}
-                          <div
-                            class="flex items-center gap-3 rounded-lg border border-primary bg-primary/10 px-4 py-3"
-                          >
-                            <Icon name="BellRing" size={22} class="shrink-0 text-primary" />
-                            {#if step.timer.description}
-                              <span
-                                class="min-w-0 flex-1 truncate text-base font-medium text-primary"
-                                data-testid="cook-step-timer-label"
-                              >
-                                {step.timer.description}
-                              </span>
-                            {/if}
-                            <span
-                              class="{step.timer.description
-                                ? 'shrink-0'
-                                : 'flex-1'} text-lg font-semibold text-primary"
-                              data-testid="cook-step-timer-countdown"
-                            >
-                              {step.timer.description ? 'Finished' : 'Timer finished'}
-                            </span>
-                            <Button
-                              onclick={() => dismissTimer(timerEntry.id)}
-                              data-testid="cook-step-timer-dismiss"
-                            >
-                              Dismiss
-                            </Button>
-                          </div>
-                        {/if}
-                      {:else}
-                        <div class="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="min-w-0 flex-1"
-                            onclick={() => startTimer(step)}
-                            data-testid="cook-step-timer-start"
-                          >
-                            {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
-                            <span class="min-w-0 truncate">
-                              Start {step.timer.durationMinutes} minute timer{step.timer.description
-                                ? ` (${step.timer.description})`
-                                : ''}
-                            </span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="shrink-0"
-                            onclick={() => openStepTimerSheet(step)}
-                            ariaLabel="Adjust this timer"
-                            title="Adjust this timer"
-                            data-testid="cook-step-timer-adjust"
-                          >
-                            {#snippet leading()}<Icon name="Pencil" size={18} />{/snippet}
-                          </Button>
-                        </div>
-                      {/if}
-                    </div>
+                    <CookStepTimer
+                      timer={step.timer}
+                      entry={timerByStep.get(step.id)}
+                      {now}
+                      progressFor={timerProgressFor}
+                      onStart={() => startTimer(step)}
+                      onAdjust={() => openStepTimerSheet(step)}
+                      onDismiss={dismissTimer}
+                    />
                   {/if}
 
                   {#if done}
-                    <div class="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => untickStep(step.id)}
-                        data-testid="cook-step-untick"
-                      >
-                        {#snippet leading()}<Icon name="Undo2" size={16} />{/snippet}
-                        Mark not done
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => (peekedStepId = null)}
-                        data-testid="cook-step-collapse"
-                      >
-                        {#snippet leading()}<Icon name="ChevronUp" size={16} />{/snippet}
-                        Collapse
-                      </Button>
-                    </div>
+                    <CookStepDoneControls
+                      onUntick={() => untickStep(step.id)}
+                      onCollapse={() => (peekedStepId = null)}
+                    />
                   {/if}
                 </div>
               {/if}

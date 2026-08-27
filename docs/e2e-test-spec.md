@@ -108,7 +108,7 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
 
 - **NF-C4 (MUST) — Seed through the real adapter, via the bridge.** Create fixtures with the
   `window.__e2e` helpers ([helpers/seed.ts](../apps/web-pwa/e2e/helpers/seed.ts)) so writes go
-  through the real `@salt/firebase-sync` persistence path, not a side-channel. Four sanctioned REST
+  through the real `@salt/firebase-sync` persistence path, not a side-channel. Five sanctioned REST
   back doors exist, all for the same reason: a bridge write depends on the app's own `onSnapshot`
   re-reading it, and a real listener's _first_ snapshot is not subject to the emulator's
   long-polling drop hazard (NF-D1) the way a write-then-read-back is.
@@ -145,9 +145,24 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     to second list" test. (`mealplan.spec.ts`'s list bootstrap is also setup-only, but stays on
     its working `page.reload()` mitigation by #1001's scope decision — it is not a pre-boot
     seeder.)
+  - The **guided plan** seed
+    (`seedGuidedPlan`, [helpers/seed.ts:229-239](../apps/web-pwa/e2e/helpers/seed.ts#L229-L239)):
+    the hazard is the same shape, but *inferred* rather than measured — the guided journey is new
+    (#994) and has no CI failure history to draw on. A plan is one document
+    (`guidedPlans/{recipeId}`, id = the recipe id) whose single-document listener attaches when the
+    recipe view mounts, with the doc absent. Unlike the four above, it has no bridge writer at all:
+    its only real writers are the plan editor and a live model call, and the latter is barred by
+    NF-E4. Writing it before boot is therefore the only route that does not either add a bridge
+    seam for one spec or take a live-model dependency. The encoding is derived from the value
+    rather than spelled out per field, because a plan is two arrays of maps with a third nested
+    inside — see the comment above `toFirestoreFields`.
 
-  Preserve all four orderings. Do not add a fifth back door without the same drop-hazard
-  justification.
+  Preserve all five orderings. Do not add a sixth back door without a drop-hazard justification
+  of the same kind. Four of the five cite recorded CI failure counts; the guided-plan seed argues
+  from shape alone, because a journey that has never run in CI cannot cite a history — that is the
+  bar it must then clear instead, and it is the higher one: it has to show the hazard applies (one
+  document, listener attaches at boot with the doc absent) **and** that no bridge write exists that
+  would make the back door unnecessary. "No measurements yet" on its own is not an argument.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
   baseline. Multi-tab tests that model two users (`page1`/`page2`) MUST use separate
@@ -362,7 +377,7 @@ Isolation & state
 [ ] NF-C1  workers:1 not raised; global clearFirestore coupling respected
 [ ] NF-C2  Per-test identity via uniqueEmail(testId)
 [ ] NF-C3  Self-contained; seeds everything it reads; order-independent
-[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek + aisles + default-shopping-list REST seeds precede their listeners)
+[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek + aisles + default-shopping-list + guided-plan REST seeds precede their listeners)
 [ ] NF-C5  Multi-user tabs use separate contexts, closed in finally
 
 Realtime / cross-tab (if applicable)

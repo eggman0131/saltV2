@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
-import { checkInTimerId, isCheckInOf } from '@salt/domain';
+import {
+  checkInTimerId,
+  emptyIngredientGroup,
+  emptyRecipe,
+  isCheckInOf,
+  newIngredient,
+  newStep,
+} from '@salt/domain';
 import type {
   CookActiveTimerDoc,
   CookSessionDoc,
@@ -21,9 +28,18 @@ import type {
 // differ. The prep BOARD in place of the ingredient checklist (issue #767 — one
 // card per container, ingredients as the tick rows, its own tick field, its own
 // progress, and the "Also get out" remainder that keeps plan drift from hiding an
-// ingredient), and the plan's notes under each step's unmodified words. Everything
-// shared with plain cook mode — the pager, the timers, the wake lock, the bootstrap
-// — is covered there and is the same code path.
+// ingredient), and the plan's notes under each step's unmodified words.
+//
+// AND — since issue #994, Phase 1 — the lifecycle this page shares with plain cook
+// mode, at the bottom of this file. That section used to be a sentence here saying
+// the bootstrap, the pager, the wake lock and the rest were "covered there, same
+// code path". They were not: `CookModePage.svelte` and `GuidedCookPage.svelte` are
+// one page COPIED, so cook mode's suite watches cook mode's copy and nothing
+// watched this one. The copies are byte-identical, which is exactly why a merge of
+// them would have been invisible to the only net that existed. So the lifecycle is
+// mirrored here against THIS page before anything is de-forked. #994's later phases
+// have since landed, and there IS one implementation — so these two suites are now
+// two call sites of the same code, and both must stay green.
 
 const {
   mockAuth,
@@ -90,6 +106,29 @@ const { mockCanonItems, mockProductForms, mockWakeLock, mockChime } = vi.hoisted
   mockChime: { primeChime: vi.fn(), playChime: vi.fn() },
 }));
 
+// UT-B1 WAIVER — 11 `vi.mock` calls against a cap of 5, and the seam cannot be
+// narrowed. Each stands in for a boundary that has no in-process implementation:
+// the router (`push`), the toast host, the signed-in member, the four
+// Firestore-backed stores this screen composes (canon, product forms, recipes, the
+// cook session), the guided plan, the shopping-list write, and the two browser
+// capabilities jsdom does not have (Screen Wake Lock, AudioContext). Mocking one
+// layer further down would put Firebase itself in this file.
+//
+// #994 MOVED that seam rather than shrinking it — the count is unchanged at 11.
+// Only `svelte-spa-router`, `cookSessionService` and `guidedPlanService` are still
+// imports of the page itself. The other eight now arrive through the factories it
+// composes: `auth`, `recipeService`, `wakeLock` and `toastStore` via
+// `$lib/cookLifecycle`, `chime` via `$lib/cookTimers`, and `canonService`,
+// `productFormService` and `shoppingListService` via `$lib/cookIngredientIcons`. A
+// page component's collaborators are its module imports TRANSITIVELY; extracting a
+// factory relocates what a render pulls in, it does not remove any of it. So do not
+// raise this cap to reach a factory — mock the module that factory imports, which
+// is what every line below already does.
+//
+// What keeps that honest is the shape of the fakes: the session service is a
+// working in-memory double that echoes writes back through the store on the real
+// timing (see its note below), so every assertion here is on a persisted payload or
+// on the DOM that came back, never on the fact that a mock was called (UT-A1).
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
@@ -142,6 +181,7 @@ vi.mock('../src/lib/cookSessionService.js', () => ({
 
 import GuidedCookPage from '../src/routes/recipes/GuidedCookPage.svelte';
 import { push } from 'svelte-spa-router';
+import { addToast } from '../src/lib/toastStore.js';
 import {
   initCookSessionSync,
   persistCookSession,
@@ -155,31 +195,32 @@ const RECIPE_ID = 'recipe-1';
 const UID = 'user-1';
 const SESSION_ID = `${RECIPE_ID}_${UID}`;
 const RECIPE_UPDATED_AT = '2026-08-01T10:00:00.000Z';
+const RECIPE_CREATED_AT = '2026-07-01T09:00:00.000Z';
+/** The same recipe, saved again while the cook was mid-dish. */
+const RECIPE_EDITED_AT = '2026-08-02T18:30:00.000Z';
 
+// Built from the real domain constructors (UT-C2) rather than object literals, so
+// a field added to `RecipeSchema` arrives here instead of being silently missing.
+// What each fixture then overrides is exactly what this page needs and a blank
+// recipe does not have: a matched ingredient that knows the step it is first used
+// in, a timed second step, and a save timestamp for the recipe-changed comparison.
 function makeIngredient(over: Partial<IngredientDoc> = {}): IngredientDoc {
   return {
-    id: 'ing-1',
-    rawText: '2 onions',
-    parsed: null,
-    canonId: null,
+    ...newIngredient('ing-1', '2 onions'),
     matchState: 'matched',
-    isOptional: false,
     firstUsedInStepId: 'step-1',
     ...over,
   };
 }
 
 function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
+  const base = emptyRecipe(RECIPE_ID, RECIPE_CREATED_AT);
   return {
-    id: RECIPE_ID,
-    schemaVersion: 1,
-    kind: 'recipe',
+    ...base,
     title: 'Weeknight ragù',
-    description: null,
     ingredients: [
       {
-        id: 'group-1',
-        name: null,
+        ...emptyIngredientGroup('group-1'),
         items: [
           makeIngredient({ id: 'ing-1', rawText: '2 onions', firstUsedInStepId: 'step-1' }),
           makeIngredient({
@@ -191,31 +232,14 @@ function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
       },
     ],
     steps: [
-      { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+      newStep('step-1', 'Soften the onions.'),
       {
-        id: 'step-2',
-        text: 'Simmer the sauce.',
+        ...newStep('step-2', 'Simmer the sauce.'),
         timer: { durationMinutes: 20, description: null },
-        note: null,
       },
     ],
-    metadata: {
-      servings: 2,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      tags: [],
-    },
-    source: null,
-    notes: null,
-    producesCanonId: null,
-    componentRecipeIds: [],
-    kit: [],
-    image: null,
-    createdAt: '2026-07-01T09:00:00.000Z',
+    metadata: { ...base.metadata, servings: 2 },
     updatedAt: RECIPE_UPDATED_AT,
-    createdBy: '',
-    lastEditedBy: '',
     ...over,
   };
 }
@@ -1528,5 +1552,370 @@ describe('GuidedCookPage — product-form icons in the prep list', () => {
     renderGuidedCook();
     await screen.findAllByTestId('guided-prep-row');
     expect(iconSrcs().some((src) => src.startsWith(CANON_ICON))).toBe(true);
+  });
+});
+
+// ─── The lifecycle guided cook shares with plain cook mode (issue #994) ────────
+//
+// Everything below has a twin in `CookModePage.test.ts` and asserts the same
+// behaviours: the bootstrap and its failure, the recipe changing under a cook,
+// restart, the session ending on another device, the deleted-recipe orphan,
+// working through the steps, complete-and-clear, and the wake lock.
+//
+// It is duplication ON PURPOSE, and only for as long as the duplication it guards
+// exists. `GuidedCookPage.svelte` is a COPY of `CookModePage.svelte` — the two
+// lifecycle regions are byte-identical with the comments stripped — so cook mode's
+// suite proves things about cook mode's copy and said nothing about this one. #994
+// merges the copies; a merge is only safe if both sides were watched first, and
+// this section is the second pair of eyes. When there is one implementation these
+// stop being duplicates and become two call sites of it: neither may be deleted,
+// because the parameters differ (the guided ready-guard below is the first of
+// them) and a shared factory is only proven by the pages that consume it.
+//
+// The guided-only difference is pinned by name at the top of the first describe.
+
+describe('GuidedCookPage — settling the stage waits for the plan', () => {
+  // THE ONE LIFECYCLE DIFFERENCE, and the reason it exists: plain cook mode fixes
+  // the opening stage the moment the session resolves (`CookModePage.svelte`, the
+  // one-shot `stageInitialised` effect); guided waits for the plan as well, because
+  // until the plan lands there is no prep screen to be past. Under #994 this
+  // becomes the shared lifecycle factory's ready-guard parameter — the one thing
+  // that is passed in rather than shared — so it is the case that must not go
+  // green by accident on either side.
+  it('opens on the steps for progress that arrives while the plan is still loading', async () => {
+    mockGuidedPlan._set(undefined);
+    mockCookSession._set(makeCookSession());
+    renderGuidedCook();
+    // Neither screen yet: not the prep board, and not the "there is no plan" one.
+    await screen.findByText('Loading the plan…');
+
+    // The other device finishes the prep and ticks a step while this one is still
+    // waiting on the plan document. Decided BEFORE the plan, the stage would have
+    // been fixed on the empty session and this cook would land back on the board.
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    mockGuidedPlan._set(makePlan());
+
+    expect(await screen.findByTestId('cook-steps-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-prep-list')).toBeNull();
+  });
+
+  it('says so when the session could not be started', async () => {
+    mockCookSession._set(null);
+    vi.mocked(persistCookSession).mockImplementationOnce(async (session) => {
+      await Promise.resolve();
+      mockCookSession._set(session);
+      return { kind: 'err' as const, error: { kind: 'NetworkError', reason: 'transient' } };
+    });
+
+    renderGuidedCook();
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Failed to start cooking.', 'destructive'),
+    );
+  });
+});
+
+describe('GuidedCookPage — the recipe changing under an in-progress cook', () => {
+  it('says nothing while the recipe is the one the cook started from', () => {
+    renderGuidedCook();
+    expect(screen.queryByTestId('cook-mode-recipe-changed')).not.toBeInTheDocument();
+  });
+
+  it('warns the cook when the recipe is edited mid-cook', async () => {
+    renderGuidedCook();
+    mockRecipes._set([makeRecipe({ updatedAt: RECIPE_EDITED_AT })]);
+
+    expect(await screen.findByTestId('cook-mode-recipe-changed')).toHaveTextContent(
+      /updated since you started cooking/i,
+    );
+  });
+
+  it('restarting discards the session and re-baselines against the edited recipe', async () => {
+    // Both tick lists are seeded, because a guided restart has to clear BOTH — the
+    // prep ticks are this mode's own list and plain cook mode never writes them, so
+    // a restart that forgot them would look correct in cook mode's suite alone.
+    mockCookSession._set(
+      makeCookSession({ checkedIngredientIds: ['ing-1'], checkedPrepIds: ['ing-2'] }),
+    );
+    renderGuidedCook();
+    mockRecipes._set([makeRecipe({ updatedAt: RECIPE_EDITED_AT })]);
+
+    await userEvent.click(await screen.findByTestId('cook-mode-restart'));
+
+    await waitFor(() => expect(vi.mocked(removeCookSession)).toHaveBeenCalledWith(SESSION_ID));
+    expect(lastPersisted()).toMatchObject({
+      id: SESSION_ID,
+      recipeUpdatedAtAtStart: RECIPE_EDITED_AT,
+      checkedIngredientIds: [],
+      checkedPrepIds: [],
+      completedStepIds: [],
+      activeTimers: [],
+    });
+    expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+      'Started fresh with the updated recipe.',
+      'success',
+    );
+    // The new baseline matches the live recipe, so the warning has nothing left to say.
+    await waitFor(() =>
+      expect(screen.queryByTestId('cook-mode-recipe-changed')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('says so when the restart could not be written', async () => {
+    renderGuidedCook();
+    mockRecipes._set([makeRecipe({ updatedAt: RECIPE_EDITED_AT })]);
+    vi.mocked(persistCookSession).mockImplementationOnce(async () => ({
+      kind: 'err' as const,
+      error: { kind: 'NetworkError', reason: 'transient' },
+    }));
+
+    await userEvent.click(await screen.findByTestId('cook-mode-restart'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Failed to restart.', 'destructive'),
+    );
+    expect(vi.mocked(addToast)).not.toHaveBeenCalledWith(
+      'Started fresh with the updated recipe.',
+      'success',
+    );
+  });
+
+  // Issue #559, the restart half: the discard empties the store before the fresh
+  // session is written, so the bootstrap effect must not race in and write its own.
+  it('restarting opens exactly one fresh session, not two', async () => {
+    renderGuidedCook();
+    mockRecipes._set([makeRecipe({ updatedAt: RECIPE_EDITED_AT })]);
+
+    await userEvent.click(await screen.findByTestId('cook-mode-restart'));
+
+    await waitFor(() => expect(vi.mocked(persistCookSession)).toHaveBeenCalled());
+    expect(vi.mocked(persistCookSession)).toHaveBeenCalledTimes(1);
+    expect(lastPersisted().recipeUpdatedAtAtStart).toBe(RECIPE_EDITED_AT);
+  });
+});
+
+// Issue #559. The session is shared between the two modes and between devices, so
+// finishing the same cook in plain mode on the phone has to close this screen on
+// the tablet — "ended" rather than merely "empty" is the distinction the bootstrap
+// effect needs, or clearing the store would just make this page write it back.
+describe('GuidedCookPage — the cook ending on another device', () => {
+  it('tells the cook and returns to the recipe', async () => {
+    renderGuidedCook();
+    await screen.findByTestId('guided-cook-page');
+
+    mockCookSession._set(null);
+    mockCookSessionEnded._set(true);
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('This cook was finished on another device.'),
+    );
+    expect(vi.mocked(push)).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}`);
+  });
+
+  it('does not answer the deletion by starting the cook over', async () => {
+    renderGuidedCook();
+    await screen.findByTestId('guided-cook-page');
+
+    mockCookSession._set(null);
+    mockCookSessionEnded._set(true);
+
+    await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalled());
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+});
+
+describe('GuidedCookPage — a recipe deleted mid-cook', () => {
+  it('waits for the recipes to load before calling a missing recipe deleted', async () => {
+    mockRecipes._set([]);
+    mockIsLoadingRecipes._set(true);
+    renderGuidedCook();
+
+    // Settle first: the orphan cleanup is fire-and-forget, so asserting it never ran
+    // has to outlive the tick it would have run on.
+    await waitFor(() => expect(screen.getByText('Loading…')).toBeInTheDocument());
+    expect(screen.queryByTestId('cook-mode-orphan')).not.toBeInTheDocument();
+    expect(vi.mocked(removeCookSession)).not.toHaveBeenCalled();
+  });
+
+  it('explains the deletion and clears the session it stranded', async () => {
+    mockRecipes._set([]);
+    renderGuidedCook();
+
+    expect(screen.getByTestId('cook-mode-orphan')).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(removeCookSession)).toHaveBeenCalledWith(SESSION_ID));
+  });
+
+  it('says the recipe is gone rather than that the plan is missing', async () => {
+    // The deleted recipe is answered BEFORE the plan's three states are consulted:
+    // a plan whose recipe no longer exists is not a "write one now" invitation, and
+    // an unresolved plan store must not hold this screen on a spinner for ever.
+    mockRecipes._set([]);
+    mockGuidedPlan._set(undefined);
+    renderGuidedCook();
+
+    expect(screen.getByTestId('cook-mode-orphan')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-cook-no-plan')).toBeNull();
+    expect(screen.queryByText('Loading the plan…')).toBeNull();
+  });
+
+  it('sends the cook back to the recipe list', async () => {
+    mockRecipes._set([]);
+    renderGuidedCook();
+
+    await userEvent.click(screen.getByTestId('cook-mode-orphan-back'));
+    expect(vi.mocked(push)).toHaveBeenCalledWith('/recipes');
+  });
+});
+
+describe('GuidedCookPage — working through the steps', () => {
+  it('ticks the step being cooked and moves the footer on to the next one outstanding', async () => {
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.getByTestId('cook-step-done')).toHaveTextContent('Done · next');
+    await userEvent.click(screen.getByTestId('cook-step-done'));
+
+    await waitFor(() => expect(lastPersisted().completedStepIds).toEqual(['step-1']));
+    // Step 2 is the last one, so there is nothing left to advance to.
+    expect(await screen.findByTestId('cook-step-done')).toHaveTextContent(/^Done$/);
+  });
+
+  it('collapses a ticked step to a row that can be re-read without unticking it', async () => {
+    renderGuidedCook();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-done'));
+
+    const collapsed = await screen.findByTestId('cook-step-collapsed');
+    vi.mocked(persistCookSession).mockClear();
+    await userEvent.click(collapsed);
+
+    expect(await screen.findByTestId('cook-step-done-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('cook-step-untick')).toBeInTheDocument();
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+
+  // `CookStepCollapsed` is shared with plain cook mode and takes its colours as
+  // PROPS (issue #994) — the one place the two decks deliberately differ. Nothing
+  // pinned which mode passed which, so the two call sites could be swapped and the
+  // whole suite stayed green. This is guided cook's half of the pin: a done step
+  // recedes into sage. Its opposite number is the same assertion in
+  // CookModePage.test.ts.
+  it('recedes a collapsed step into guided cook’s own sage accent', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    const collapsed = await screen.findByTestId('cook-step-collapsed');
+    expect(collapsed).toHaveClass('border-secondary/30', 'bg-secondary/5');
+    expect(within(collapsed).getByText('Step 1')).toHaveClass('text-secondary');
+  });
+
+  it('unticks a step only from the expanded view it was deliberately re-opened into', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    await userEvent.click(await screen.findByTestId('cook-step-collapsed'));
+    await userEvent.click(await screen.findByTestId('cook-step-untick'));
+
+    await waitFor(() => expect(lastPersisted().completedStepIds).toEqual([]));
+  });
+
+  it('offers to resume the earliest outstanding step when the cook is re-reading a done one', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    await userEvent.click(await screen.findByTestId('cook-step-collapsed'));
+    expect(await screen.findByTestId('cook-step-resume')).toHaveTextContent('Resume · step 2');
+  });
+
+  it('marks the timeline as steps are ticked and makes a tapped segment the current one', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    const segments = await screen.findAllByTestId('cook-timeline-step');
+    expect(segments[0]).toHaveAttribute('data-complete', 'true');
+    expect(segments[1]).toHaveAttribute('data-current', 'true');
+
+    await userEvent.click(segments[0]!);
+    await waitFor(() =>
+      expect(screen.getAllByTestId('cook-timeline-step')[0]).toHaveAttribute(
+        'data-current',
+        'true',
+      ),
+    );
+  });
+
+  it('goes back to the prep board rather than to a mise en place', async () => {
+    // The label is one of the deliberate per-mode differences #994 must preserve:
+    // the stage behind this button is a prep BOARD here and an ingredient checklist
+    // in plain cook mode, and the word on the button is what says which.
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    const back = await screen.findByTestId('cook-stage-back');
+    expect(back).toHaveTextContent('Prep');
+    await userEvent.click(back);
+
+    expect(await screen.findByTestId('guided-prep-list')).toBeInTheDocument();
+    expect(screen.getByTestId('cook-stage-toggle')).toHaveTextContent('Continue cooking');
+  });
+
+  it('turns the footer into finish cooking only once every step is ticked', async () => {
+    renderGuidedCook();
+    await enterSteps();
+
+    await userEvent.click(screen.getByTestId('cook-step-done'));
+    expect(screen.queryByTestId('cook-mode-complete')).not.toBeInTheDocument();
+
+    await userEvent.click(await screen.findByTestId('cook-step-done'));
+    expect(await screen.findByTestId('cook-mode-complete')).toHaveTextContent('Finish cooking');
+  });
+
+  it('finishing clears the session and returns to the recipe', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1', 'step-2'] }));
+    renderGuidedCook();
+
+    await userEvent.click(await screen.findByTestId('cook-mode-complete'));
+
+    await waitFor(() => expect(vi.mocked(removeCookSession)).toHaveBeenCalledWith(SESSION_ID));
+    expect(vi.mocked(push)).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}`);
+  });
+
+  // Issue #559. removeCookSession empties the store before the navigation lands, and
+  // an empty store is also what "this cook has never been started" looks like — so the
+  // bootstrap effect has to be held off, or finishing writes the session back.
+  it('finishing does not open a replacement session on its way out', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1', 'step-2'] }));
+    renderGuidedCook();
+
+    await userEvent.click(await screen.findByTestId('cook-mode-complete'));
+    await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalled());
+
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+});
+
+describe('GuidedCookPage — keeping the screen awake', () => {
+  it('confirms the lock only once the browser has actually granted it', async () => {
+    renderGuidedCook();
+    await userEvent.click(screen.getByTestId('cook-mode-wakelock'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Screen will stay awake', 'success'),
+    );
+    expect(screen.getByTestId('cook-mode-wakelock')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not claim a lock the browser refused', async () => {
+    mockWakeLock.enable.mockResolvedValueOnce(false);
+    renderGuidedCook();
+    await userEvent.click(screen.getByTestId('cook-mode-wakelock'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        "Your browser wouldn't let the screen stay awake.",
+        'destructive',
+      ),
+    );
+    expect(screen.getByTestId('cook-mode-wakelock')).toHaveAttribute('aria-pressed', 'false');
   });
 });

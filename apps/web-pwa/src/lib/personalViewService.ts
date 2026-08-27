@@ -4,6 +4,7 @@ import {
   firstIncompleteStepId,
   heatWantsAttention,
   isCheckInTimerId,
+  progressOver,
   timerHeat,
   upcomingChefDays,
   type Recipe,
@@ -262,8 +263,12 @@ export const liveCooks: Readable<readonly LiveCook[]> = derived(
       const nextStepId = firstIncompleteStepId(recipe.steps, completed);
       const index = nextStepId ? recipe.steps.findIndex((s) => s.id === nextStepId) : -1;
       // Count over the RECIPE, not the session's id list: a step edited out of the
-      // recipe must not inflate progress (same reasoning as miseProgress).
-      const completedCount = recipe.steps.filter((s) => completed.has(s.id)).length;
+      // recipe must not inflate progress. That is `progressOver`'s whole contract,
+      // so this asks it rather than restating it.
+      const completedCount = progressOver(
+        recipe.steps.map((s) => s.id),
+        completed,
+      ).checked;
       out.push({
         session,
         recipe,

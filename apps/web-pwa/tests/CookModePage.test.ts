@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { checkInTimerId } from '@salt/domain';
@@ -724,6 +724,20 @@ describe('CookModePage — working through the steps', () => {
     expect(await screen.findByTestId('cook-step-done-badge')).toBeInTheDocument();
     expect(screen.getByTestId('cook-step-untick')).toBeInTheDocument();
     expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+
+  // `CookStepCollapsed` is shared with guided cook and takes its colours as PROPS
+  // (issue #994) — the one place the two decks deliberately differ. Nothing pinned
+  // which mode passed which, so the two call sites could be swapped and the whole
+  // suite stayed green. This is plain cook mode's half of the pin: the teal primary.
+  // Its opposite number is the same assertion in GuidedCookPage.test.ts.
+  it('tints a collapsed step with plain cook mode’s own teal accent', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderCookMode();
+
+    const collapsed = await screen.findByTestId('cook-step-collapsed');
+    expect(collapsed).toHaveClass('border-primary/40', 'bg-primary/5');
+    expect(within(collapsed).getByText('Step 1')).toHaveClass('text-muted-foreground');
   });
 
   it('unticks a step only from the expanded view it was deliberately re-opened into', async () => {

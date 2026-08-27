@@ -9,6 +9,7 @@ import type {
   ShoppingListItem,
   Weekday,
 } from '@salt/domain';
+import type { GuidedPlanDoc } from '@salt/domain/schemas';
 import { FIRESTORE_DOCUMENTS_BASE_URL } from './emulator';
 
 export interface SeedCanonItemInput {
@@ -198,6 +199,70 @@ export async function seedShoppingListBeforeBoot(name: string): Promise<Shopping
   }
 
   return list;
+}
+
+// A guided plan (issue #751) — written straight into the emulator BEFORE the
+// recipe view is opened, rather than through the bridge or the AI flow.
+//
+// There is no bridge writer to use. `guidedPlans` has exactly two writers in the
+// app — the plan editor and the generateGuidedPlan flow — and neither is a seam a
+// spec about COOKING should go through: the editor would be several screens of
+// typing before the thing under test starts, and the flow is a live model call
+// (NF-E4). `guidedPlans` is greenfield (see the header of
+// `packages/domain/src/schemas/guidedPlan.ts`), so the document shape is settled
+// by the schema alone and writing it directly costs no back-compat reasoning.
+//
+// And the ordering is the same drop hazard the four seeds above exist for. A plan
+// lives in ONE document at `guidedPlans/{recipeId}` and there is no all-plans
+// subscription anywhere in the app: `RecipeViewPage` attaches its `onSnapshot` for
+// this one document when it mounts, and the split Cook control's guided half is
+// rendered on what that listener reports. Written afterwards, that is a
+// post-attach update, and the e2e build's `experimentalForceLongPolling` +
+// `persistentLocalCache` transport drops those intermittently — with the button
+// then absent for the rest of the run and the spec failing on a missing locator
+// rather than on anything it means to assert. A listener's FIRST snapshot is not
+// subject to that, so the document is put in place before there is a listener.
+//
+// Not a fifth back door in the NF-C4 sense as much as the same one again: like
+// `seedFirstDayOfWeek` it takes no `Page`, and that is what keeps the ordering
+// honest — there is nothing here to call once the app is looking at the recipe.
+export async function seedGuidedPlan(plan: GuidedPlanDoc): Promise<void> {
+  const url = `${FIRESTORE_DOCUMENTS_BASE_URL}/guidedPlans/${plan.id}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: toFirestoreFields(plan) }),
+  });
+  if (!res.ok) {
+    throw new Error(`seedGuidedPlan failed: HTTP ${res.status} ${await res.text()}`);
+  }
+}
+
+// The REST document encoding, derived from the value rather than hand-written per
+// field. The seeds above spell theirs out because each is three or four flat
+// fields; a plan is two arrays of maps, one of which contains a third, and forty
+// lines of nested `mapValue`/`arrayValue` literals would be a second, silent copy
+// of `GuidedPlanSchema` — one that goes stale the moment a field is added and
+// fails as an unexplained parse miss rather than as a type error.
+function toFirestoreFields(value: object): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value)
+      // An `.optional()` field left unset (`needs_approval`) must stay absent
+      // rather than be written as null — absent means reviewed.
+      .filter(([, v]) => v !== undefined)
+      .map(([key, v]) => [key, toFirestoreValue(v)]),
+  );
+}
+
+function toFirestoreValue(value: unknown): Record<string, unknown> {
+  if (value === null) return { nullValue: null };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  }
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(toFirestoreValue) } };
+  return { mapValue: { fields: toFirestoreFields(value as object) } };
 }
 
 export async function getAisles(page: Page): Promise<readonly Aisle[]> {
