@@ -164,9 +164,13 @@ Phase N. [1-2 sentences on what this phase delivers and why.]
 - [Another if needed]
 
 Refs #ISSUE_NUMBER
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ```
 
-`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer, and nothing after it. **That includes the `Co-Authored-By` trailer the harness appends by default:** this repo's history carries none, and this command deliberately overrides that default. One convention per history.
+`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer.
+
+**Keep the `Co-Authored-By` trailer the harness appends by default**, in the trailer block below `Refs`. Name the model you are actually running as. The trailer is the repo's convention throughout — and it is the only per-commit record of which model wrote a phase, which is how the Fable 5 campaign was identified after the fact (`git log --grep='Claude Fable 5' -i --all`). A squash carries one copy per phase commit plus GitHub's own deduped copy at the bottom; that repetition is expected and is not a reason to strip it.
 
 The pre-commit hook is not a formality — it runs `lint-staged` (prettier `--write`, then eslint), and then `pnpm typecheck` and `pnpm depcruise` all over again. Three things follow:
 
