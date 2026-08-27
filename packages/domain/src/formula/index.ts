@@ -43,8 +43,10 @@ export type {
 export type { BoundViolation, FormulaFailure } from './failure.js';
 export {
   UNIT_SHAPE_PRESETS,
+  DEFAULT_BAKE_LOSS_PERCENT,
   unitShapePreset,
   unitShapeFromPreset,
+  bakedUnitGrams,
   targetYield,
   basisYield,
 } from './unitShapes.js';

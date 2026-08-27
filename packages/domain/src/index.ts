@@ -331,13 +331,15 @@ export {
   looksScalable,
   solveFormula,
   UNIT_SHAPE_PRESETS,
+  DEFAULT_BAKE_LOSS_PERCENT,
   unitShapePreset,
   unitShapeFromPreset,
+  bakedUnitGrams,
   targetYield,
   withComponentPercentScaled,
   LEAVENING_PERCENT_BOUNDS,
 } from './formula/index.js';
-export type { BoundViolation, FormulaFailure } from './formula/index.js';
+export type { BoundViolation, FormulaFailure, UnitShapePreset } from './formula/index.js';
 
 // Process module (issues #806, #812) — ordering, total duration, the bidirectional
 // schedule that places an ordered process on a clock from either end, and the diff
