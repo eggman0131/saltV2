@@ -157,7 +157,7 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     rather than spelled out per field, because a plan is two arrays of maps with a third nested
     inside — see the comment above `toFirestoreFields`.
 
-  Preserve all four orderings. Do not add a fifth back door without the same drop-hazard
+  Preserve all five orderings. Do not add a sixth back door without the same drop-hazard
   justification.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
