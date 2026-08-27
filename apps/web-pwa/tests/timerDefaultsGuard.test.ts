@@ -59,14 +59,9 @@ function stripComments(src: string): string {
   // constant merely NAMED in prose would then count as a re-declaration, or a
   // real one hide behind a dangling `/*`.
   let out = src;
-  for (;;) {
-    const next = out
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    if (next === out) return out;
-    out = next;
-  }
+  while (out !== (out = out.replace(/<!--[\s\S]*?-->/g, '')));
+  while (out !== (out = out.replace(/\/\*[\s\S]*?\*\//g, '')));
+  return out.replace(/\/\/[^\n]*/g, '');
 }
 
 /** What `timerDefaults` exports, read from the module rather than restated. */
