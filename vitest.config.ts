@@ -61,7 +61,7 @@ export default defineConfig({
       // Both web-pwa pins were then re-measured for #994, which moved well-covered
       // code ACROSS the two globs — the cook lifecycle, the timers, the step deck
       // and the ingredient rows left `src/routes/**` for `src/lib/**` — and lifted
-      // both (73.91/63.24 → 76.07/64.12 and 71.44/63.91 → 73.37/65.6). Measured
+      // both (73.91/63.24 → 76.08/64.12 and 71.44/63.91 → 73.37/65.6). Measured
       // once on the finished branch, deliberately not per phase: mid-refactor the
       // two globs are in motion against each other, so a per-phase re-pin banks a
       // number that the next phase invalidates.
@@ -97,7 +97,7 @@ export default defineConfig({
         'packages/adapters/observability/src/**': { lines: 82.58, branches: 77.77 },
         'packages/adapters/firebase-sync/src/**': { lines: 57.82, branches: 63.02 },
         'apps/cloud-functions/src/**': { lines: 79.75, branches: 73.73 },
-        'apps/web-pwa/src/routes/**': { lines: 76.07, branches: 64.12 },
+        'apps/web-pwa/src/routes/**': { lines: 76.08, branches: 64.12 },
         'apps/web-pwa/src/lib/**': { lines: 73.37, branches: 65.6 },
         'apps/web-pwa/src/components/**': { lines: 50.86, branches: 37.67 },
       },

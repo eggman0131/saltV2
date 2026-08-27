@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { progressOver } from '@salt/domain';
   import type { StepDoc } from '@salt/domain/schemas';
 
   // The timeline band both cook modes wear under the header (issue #994). Its own
@@ -19,7 +20,10 @@
   // is the same progress on the same session document — so there is NOTHING here a
   // caller varies. The counts in the aria-label are derived from the two lists rather
   // than passed, which is what stops the two pages from being able to disagree about
-  // what "3 of 8 done" means.
+  // what "3 of 8 done" means — but derived THROUGH `progressOver`, not by re-rolling
+  // the filter, so this band and the footer's Continue/Start label cannot disagree
+  // either. Both would be quiet if they did: one is a screen-reader label, the other
+  // a button's wording.
 
   interface Props {
     steps: readonly StepDoc[];
@@ -29,8 +33,14 @@
   }
   let { steps, completedStepIds, currentStepId, onJump }: Props = $props();
 
-  const totalSteps = $derived(steps.length);
-  const completedStepCount = $derived(steps.filter((s) => completedStepIds.has(s.id)).length);
+  const progress = $derived(
+    progressOver(
+      steps.map((s) => s.id),
+      completedStepIds,
+    ),
+  );
+  const totalSteps = $derived(progress.total);
+  const completedStepCount = $derived(progress.checked);
 </script>
 
 <div

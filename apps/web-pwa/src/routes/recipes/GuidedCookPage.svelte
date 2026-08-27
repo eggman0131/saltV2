@@ -70,6 +70,7 @@
     guidedPrepBoard,
     guidedMiseProgress,
     guidedPrepCardProgress,
+    progressOver,
     prepEntryForContainer,
     prepEntryIngredients,
     looseIngredientsForStep,
@@ -310,8 +311,14 @@
     goToMise,
   } = stepDeck;
   const completedStepIds = $derived(stepDeck.completedStepIds);
+  // Counted over the RECIPE's step ids, never over the session's completed set —
+  // `progressOver`'s contract, and here it is what makes a cook whose completed
+  // steps were edited away read "Start cooking" again rather than "Continue".
   const completedStepCount = $derived(
-    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
+    progressOver(
+      (recipe?.steps ?? []).map((s) => s.id),
+      completedStepIds,
+    ).checked,
   );
   const fadeHeight = $derived(stepDeck.fadeHeight);
   const currentStep = $derived(stepDeck.currentStep);

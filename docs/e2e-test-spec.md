@@ -157,8 +157,12 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     rather than spelled out per field, because a plan is two arrays of maps with a third nested
     inside — see the comment above `toFirestoreFields`.
 
-  Preserve all five orderings. Do not add a sixth back door without the same drop-hazard
-  justification.
+  Preserve all five orderings. Do not add a sixth back door without a drop-hazard justification
+  of the same kind. Four of the five cite recorded CI failure counts; the guided-plan seed argues
+  from shape alone, because a journey that has never run in CI cannot cite a history — that is the
+  bar it must then clear instead, and it is the higher one: it has to show the hazard applies (one
+  document, listener attaches at boot with the doc absent) **and** that no bridge write exists that
+  would make the back door unnecessary. "No measurements yet" on its own is not an argument.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
   baseline. Multi-tab tests that model two users (`page1`/`page2`) MUST use separate
