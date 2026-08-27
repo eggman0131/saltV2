@@ -53,10 +53,20 @@ function walk(dir: string): string[] {
 // Strip comments so a MENTION of a constant in prose — which is exactly how the
 // two copies justified themselves to each other — never counts either way.
 function stripComments(src: string): string {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
+  // Stripped to a fixpoint, not in one pass. Nested or overlapping markers can
+  // survive a single replace (CodeQL js/incomplete-multi-character-sanitization)
+  // and a half-stripped comment is the one failure this guard cannot afford: a
+  // constant merely NAMED in prose would then count as a re-declaration, or a
+  // real one hide behind a dangling `/*`.
+  let out = src;
+  for (;;) {
+    const next = out
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    if (next === out) return out;
+    out = next;
+  }
 }
 
 /** What `timerDefaults` exports, read from the module rather than restated. */
