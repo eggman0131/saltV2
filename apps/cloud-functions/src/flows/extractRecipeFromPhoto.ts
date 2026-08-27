@@ -128,13 +128,12 @@ export const extractRecipeFromPhotoFlow = ai.defineFlow(
     }
 
     // Assemble the draft (reuses parse + canonicalise flows), stamped with the
-    // book provenance the model could actually read off the page. deriveTotalTime
-    // because a printed recipe states prep and cook far more often than a total,
-    // exactly as a web page does.
+    // book provenance the model could actually read off the page. A printed
+    // recipe states prep and cook far more often than a total; the assembler
+    // derives one from the parts on every path (#952).
     const recipe = await assembleRecipeDraft(extracted, {
       source: buildBookSource(extracted),
       needsApproval: true,
-      deriveTotalTime: true,
     });
 
     // Persist server-side, flagged as not yet human-reviewed (issue #616): the

@@ -97,6 +97,11 @@ function parseResultFor(rawTexts: string[]) {
 }
 
 const MANUAL = { type: 'manual' } as const;
+// The URL import's provenance. The time reconciliation below is the same on both
+// sources — that it no longer forks with the source is the point of #952 — so the
+// two constants are there to say WHICH path each case stands for, not to select a
+// behaviour.
+const IMPORT = { type: 'url', url: 'https://example.com/focaccia' } as const;
 
 // ─── ingredient → step ordinal resolution ────────────────────────────────────
 
@@ -653,13 +658,13 @@ describe('assembleRecipeDraft — document fields', () => {
   });
 });
 
-// ─── total-time derivation (URL import) ──────────────────────────────────────
+// ─── total time: derived when missing, repaired when it contradicts its parts ─
 
 describe('assembleRecipeDraft — total time', () => {
-  it('derives a total from prep + cook when asked and the source states no total', async () => {
+  it('derives a total from prep + cook when the source states no total', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: IMPORT },
     );
 
     expect(doc.metadata.totalTimeMinutes).toBe(20);
@@ -668,7 +673,7 @@ describe('assembleRecipeDraft — total time', () => {
   it('prefers a stated total over the derived one', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 30, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.totalTimeMinutes).toBe(30);
@@ -677,21 +682,73 @@ describe('assembleRecipeDraft — total time', () => {
   it('leaves the total null when only one part is known', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: null }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.totalTimeMinutes).toBeNull();
   });
 
-  it('never derives a total on the authoring path — a chat that stated no total gets none', async () => {
+  it('derives on the authoring path too — one definition, every way a recipe is written', async () => {
+    // This assertion is inverted from what it was (issue #952). Derivation used
+    // to be opt-in and off for the librarian, on the documented grounds that a
+    // chat "either stated a total or did not". Now that every path is prompted
+    // for all three fields against ONE definition, that asymmetry has no reason
+    // left — and a chat-authored recipe with no total is exactly what made the
+    // library's "quickest first" sort meaningless.
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
       { source: MANUAL },
     );
 
-    expect(doc.metadata.totalTimeMinutes).toBeNull();
+    expect(doc.metadata.totalTimeMinutes).toBe(20);
     expect(doc.metadata.prepTimeMinutes).toBe(5);
     expect(doc.metadata.cookTimeMinutes).toBe(15);
+  });
+
+  it('repairs a stated total that is less than its own parts', async () => {
+    // The real Paneer Makhanwala shape from the staging library: prep 10, cook
+    // 35, total 35 — arithmetically impossible, and not cosmetic, because
+    // cookShape derives the displayed hands-on figure as `total − timer waits`.
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
+      { source: MANUAL },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(45);
+    expect(doc.metadata.prepTimeMinutes).toBe(10);
+    expect(doc.metadata.cookTimeMinutes).toBe(35);
+  });
+
+  it('repairs on the import path as well as the authoring one', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 20, prepTimeMinutes: 30, cookTimeMinutes: 12 }),
+      { source: IMPORT },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(42);
+  });
+
+  it('leaves a generous total alone — passive waiting is real time, not an error', async () => {
+    // A total far ABOVE prep + cook is the honest shape of an overnight prove or
+    // a chilled pie: the repair raises a floor, it never caps a ceiling.
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 762, prepTimeMinutes: 30, cookTimeMinutes: 12 }),
+      { source: MANUAL },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(762);
+  });
+
+  it('cannot repair against a part it does not know', async () => {
+    // One known part is not a floor for a total — a stated 20 with an unknown
+    // prep says nothing wrong, and treating the unknown part as 0 would invent a
+    // fact. The stated total stands.
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 20, prepTimeMinutes: null, cookTimeMinutes: 15 }),
+      { source: MANUAL },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(20);
   });
 });
 
@@ -701,7 +758,7 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
   it('folds cookTimeMinutes: 0 to null so the card renders nothing, not "Cook 0 min"', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 15, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.cookTimeMinutes).toBeNull();
@@ -710,7 +767,7 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
   it('folds prepTimeMinutes: 0 to null as well', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 30, prepTimeMinutes: 0, cookTimeMinutes: 30 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.prepTimeMinutes).toBeNull();
@@ -719,7 +776,7 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
   it('derives the total BEFORE folding — prep 15 + cook 0 is a 15-minute salad, not an unknown', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.totalTimeMinutes).toBe(15);
@@ -730,7 +787,7 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
   it('folds a derived total of 0 — no prep and no cook states no time at all', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 0, cookTimeMinutes: 0 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata.totalTimeMinutes).toBeNull();
@@ -751,7 +808,7 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
   it('leaves every non-zero time untouched', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 45, prepTimeMinutes: 15, cookTimeMinutes: 30 }),
-      { source: MANUAL, deriveTotalTime: true },
+      { source: MANUAL },
     );
 
     expect(doc.metadata).toMatchObject({

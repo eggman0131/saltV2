@@ -82,12 +82,42 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 - Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
 }
 
+// What the three time fields MEAN, and it is unconditional — a recipe off a web
+// page and one out of a chat have to be comparable, or the list's "quickest
+// first" sort and the cook plan are sorting on three different units (issue
+// #952).
+//
+// The old rule was one line — "integers in minutes, or null" — which is a TYPE
+// declaration, not a definition. With nothing else to go on (there are no
+// `.describe()` calls in the schemas, so Genkit sends the model only names and
+// types) the model fell back on published-recipe convention, where "prep: 5 min"
+// conventionally starts from an already-weighed counter and ends before the
+// washing up. That is the kitchen nobody cooks in, and it is why every recipe in
+// the library reads optimistic.
+//
+// The arithmetic bullet is stated here AND enforced in assembleRecipeDraft. Both
+// are needed: the prompt is what makes the model's own three numbers coherent,
+// the assembler is what guarantees the stored document is, whatever the model
+// returns. Asking without enforcing is how `total: 35` came to sit on a recipe
+// whose own prep + cook is 45.
+const TIME_RULES = `- prepTimeMinutes: every minute the cook actively spends that is NOT time on heat — \
+fetching the ingredients and equipment out, weighing and measuring, peeling, chopping, mixing, \
+and clearing down afterwards. Estimate it for a cook starting with nothing out and finishing with a \
+clean kitchen, NOT for the already-weighed counter a published "prep: 5 minutes" assumes.
+- cookTimeMinutes: time the food spends cooking — on the hob, in the oven, under the grill.
+- totalTimeMinutes: wall-clock from starting to serving, INCLUDING unattended waits that are neither \
+prep nor cook (marinating, proving, chilling, resting).
+- The three MUST reconcile: totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes. Estimate the \
+numbers yourself when the source states none, or states ones that break that rule — an honest \
+estimate is worth more than a copied figure. Integers in minutes; null only when you genuinely \
+cannot estimate.`;
+
 function fields(measures: MeasurePolicy): string {
   return `## Fields
 - title: clear, concise recipe name.
 - description: 1–2 sentence summary, or null.
 - servings: integer portions, or null if not stated.
-- totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
+${TIME_RULES}
 ${CATEGORY_TAG_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: ${rawTextClause(measures)}, isOptional (true only if explicitly optional), \

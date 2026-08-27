@@ -38,12 +38,6 @@ export interface AssembleRecipeDraftOptions {
    *  #616). Omitted/false leaves the field OFF the document entirely; absent
    *  means reviewed, and an explicit `false` is not the same thing. */
   needsApproval?: boolean;
-  /** Derive `totalTimeMinutes` from prep + cook when the source gives only the
-   *  parts. True for URL imports (pages commonly state prep and cook but no
-   *  total, and a blank total in the editor reads as missing data); false for the
-   *  librarian, whose totals come from a conversation that either stated one or
-   *  did not. */
-  deriveTotalTime?: boolean;
 }
 
 type ParsedIngredient = Awaited<
@@ -54,12 +48,7 @@ type CanonResult = Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>>
 
 export async function assembleRecipeDraft(
   raw: LibrarianOutput,
-  {
-    source,
-    baseRecipe = null,
-    needsApproval = false,
-    deriveTotalTime = false,
-  }: AssembleRecipeDraftOptions,
+  { source, baseRecipe = null, needsApproval = false }: AssembleRecipeDraftOptions,
 ): Promise<RecipeDoc> {
   const now = new Date().toISOString();
 
@@ -256,12 +245,34 @@ export async function assembleRecipeDraft(
   // nonsense the schema rejects on the way in.
   const zeroToNull = (n: number | null): number | null => (n === 0 ? null : n);
 
-  const derivedTotalTimeMinutes = deriveTotalTime
-    ? (raw.totalTimeMinutes ??
-      (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-        ? raw.prepTimeMinutes + raw.cookTimeMinutes
-        : null))
-    : raw.totalTimeMinutes;
+  // The stored total must never contradict its own parts (issue #952).
+  // `recipeFieldRules` now asks every path for `total >= prep + cook`; this is
+  // where that becomes true of the DOCUMENT rather than of the request, because
+  // a model that returns prep 10, cook 35, total 35 breaks the rule silently and
+  // nothing downstream can tell an understated total from a short one. It is not
+  // cosmetic either: `cookShape` derives the displayed hands-on figure as
+  // `total − timer waits`, so an understated total either poisons that number or
+  // trips its fallback down to the equally-optimistic prep.
+  //
+  // One expression covers both jobs — a missing total is DERIVED from the parts,
+  // a stated one is RAISED to them when it is too small. It stays conditional on
+  // both parts being known: one known part is not a floor for a total (a stated
+  // total of 20 with an unknown prep says nothing wrong), and deriving from one
+  // part would invent the other as 0.
+  //
+  // This derivation used to be opt-in (`deriveTotalTime`, true for the two
+  // imports and off for the librarian, on the grounds that a chat "either stated
+  // a total or did not"). Under one shared definition of the three fields every
+  // path is now asked for all three against the same rule, so the asymmetry has
+  // no reason left and the option had one value at every call site.
+  const partsTotalMinutes =
+    raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
+      ? raw.prepTimeMinutes + raw.cookTimeMinutes
+      : null;
+  const reconciledTotalTimeMinutes =
+    partsTotalMinutes === null
+      ? raw.totalTimeMinutes
+      : Math.max(raw.totalTimeMinutes ?? 0, partsTotalMinutes);
 
   return {
     id: recipeId,
@@ -276,7 +287,7 @@ export async function assembleRecipeDraft(
     steps,
     metadata: {
       servings: raw.servings,
-      totalTimeMinutes: zeroToNull(derivedTotalTimeMinutes),
+      totalTimeMinutes: zeroToNull(reconciledTotalTimeMinutes),
       prepTimeMinutes: zeroToNull(raw.prepTimeMinutes),
       cookTimeMinutes: zeroToNull(raw.cookTimeMinutes),
       tags: normaliseTags(raw.tags),
