@@ -16,19 +16,32 @@
   } from '../../lib/cookSessionService.js';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { auth } from '../../lib/auth.svelte.js';
-  import { canonItems } from '../../lib/canonService.js';
-  import { productForms } from '../../lib/productFormService.js';
+  // The ingredient picture and the press-and-hold "add to the list" — shared with
+  // plain cook mode (issue #994), because both screens draw the same rows.
+  //
+  // Every row here that names an INGREDIENT uses them: "Also get out", the
+  // amounts under a prep job, a bowl's contents, and a step's loose ingredients
+  // (#761). A prep JOB itself still has none — it is an instruction, not an
+  // ingredient, and has no canon item to picture.
+  import {
+    ingredientIcons,
+    ingredientLabel,
+    addIngredientToShoppingList,
+  } from '../../lib/cookIngredientIcons.js';
   import { toolIcons } from '../../lib/kitchenToolService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
-  import {
-    addItemToDefaultList,
-    deleteItemFromList,
-  } from '../../lib/shoppingListService.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
+  // The timer defaults and the push floor, shared with plain cook mode and My
+  // Kitchen (issue #994) so a timer behaves the same whichever screen started it.
+  import {
+    AD_HOC_TIMER_LABEL,
+    AD_HOC_TIMER_MINUTES,
+    shouldNotifyFor,
+  } from '../../lib/timerDefaults.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import {
     sectionMinHeight,
@@ -60,8 +73,6 @@
     timerProgress,
     checkInTimerId,
     isCheckInTimerId,
-    resolveIngredientProductForm,
-    isCanonIconRenderable,
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
@@ -334,84 +345,6 @@
   // RECIPE needs got out.
   const kitStartingAtStep = $derived(kitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
-  // ─── Canon icons ───────────────────────────────────────────────────────────────
-  // Every row that names an INGREDIENT uses these: "Also get out", the amounts
-  // under a prep job, a bowl's contents, and a step's loose ingredients (#761). A
-  // prep JOB itself still has none — it is an instruction, not an ingredient, and
-  // has no canon item to picture. Lookup mirrors ShoppingListPage's
-  // `thumbnailFor`/`iconVersionFor`, cache-bust included.
-  const canonIconMap = $derived(
-    new Map(
-      $canonItems.map((ci) => [
-        ci.id,
-        { thumbnail: ci.thumbnail, version: ci.iconRequestedAt ?? ci.updatedAt },
-      ]),
-    ),
-  );
-
-  // A line naming a PRODUCT FORM shows the form's own picture (issue #871) — the
-  // squeezed lime, not the whole one. Same rule as cook mode's mise, for the same
-  // reason: these rows are read while doing something else.
-  //
-  // The parent guard lives in `resolveIngredientProductForm`: a form counts only
-  // when it belongs to the canon item this ingredient actually matched.
-  //
-  // FALLS BACK when the form has no renderable icon — not generated yet, or
-  // hidden. Generation is edge-triggered, so every form written before this
-  // shipped has a null thumbnail until regenerated; preferring the form
-  // unconditionally would replace a picture that shows today with a bare tile.
-  function formIconFor(
-    ingredient: IngredientDoc,
-  ): { thumbnail: string; version: string | number | undefined } | null {
-    const form = resolveIngredientProductForm(
-      ingredient.parsed?.item,
-      ingredient.canonId,
-      $productForms,
-    );
-    if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
-    return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
-  }
-
-  function thumbnailFor(ingredient: IngredientDoc): string | null {
-    const form = formIconFor(ingredient);
-    if (form) return form.thumbnail;
-    if (!ingredient.canonId) return null;
-    return canonIconMap.get(ingredient.canonId)?.thumbnail ?? null;
-  }
-
-  function iconVersionFor(ingredient: IngredientDoc): string | number | undefined {
-    const form = formIconFor(ingredient);
-    if (form) return form.version;
-    if (!ingredient.canonId) return undefined;
-    return canonIconMap.get(ingredient.canonId)?.version;
-  }
-
-  function ingredientLabel(ingredient: IngredientDoc): string {
-    return ingredient.parsed?.item ?? ingredient.rawText;
-  }
-
-  // Ran out of something? Hold it (issue #714). Same gesture, same target (the
-  // DEFAULT list), same undo — on the rows that actually name an ingredient.
-  async function addIngredientToShoppingList(ingredient: IngredientDoc): Promise<void> {
-    const name = ingredientLabel(ingredient);
-    const result = await addItemToDefaultList(name);
-    if (result.kind !== 'ok') {
-      const message =
-        result.error.kind === 'NotFound'
-          ? "You haven't made a shopping list yet"
-          : `Couldn't add ${name} to the shopping list`;
-      addToast(message, result.error.kind === 'NotFound' ? 'default' : 'destructive');
-      return;
-    }
-    const { itemId, listId, listName } = result.value;
-    addToast(`Added ${name} to ${listName}`, 'success', {
-      action: {
-        label: 'Undo',
-        onClick: () => void deleteItemFromList(listId, itemId),
-      },
-    });
-  }
-
   // ─── Step completion ───────────────────────────────────────────────────────────
   // Whole-document LWW through the service. Completion is never a gate, and the
   // pager is never gated either: "don't move on until the sauce has thickened" is
@@ -645,11 +578,6 @@
     activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
   );
 
-  // A delivery-precision floor, not a "will the chef walk away" heuristic — see
-  // CookModePage for the full reasoning. Kept identical so a timer behaves the same
-  // whichever mode started it.
-  const NOTIFY_MIN_MINUTES = 1.5;
-
   // A check-in with nothing typed in it. The editor lets the minutes stand alone,
   // and a reminder that arrives blank is still better than one that silently never
   // arrives, so it goes out under a name rather than being dropped.
@@ -677,7 +605,7 @@
       endsAt: new Date(startMs + c.atMinutes * 60_000).toISOString(),
       // The same delivery-precision floor the main timer uses — a check-in is the
       // same kind of thing, delivered the same way.
-      notify: c.atMinutes >= NOTIFY_MIN_MINUTES,
+      notify: shouldNotifyFor(c.atMinutes),
     }));
   }
 
@@ -697,7 +625,7 @@
     void persistCookSession(
       withTimerStarted(
         s,
-        { ...entry, endsAt, notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES },
+        { ...entry, endsAt, notify: shouldNotifyFor(entry.durationMinutes) },
         // Always offered; the producer takes them only when this is a fresh start.
         // Re-timing a running timer keeps the check-ins already armed, because
         // their anchor is the original start — see withTimerStarted.
@@ -733,9 +661,6 @@
   }
 
   // ─── The timer sheet ───────────────────────────────────────────────────────────
-  const AD_HOC_TIMER_LABEL = 'Salt Timer';
-  const AD_HOC_TIMER_MINUTES = 10;
-
   interface TimerSheetTarget {
     id: string;
     stepId: string | null;
@@ -1383,9 +1308,9 @@
                                         {#if checked}<Icon name="Check" size={16} />{/if}
                                       </span>
                                       <CanonIcon
-                                        thumbnail={thumbnailFor(ingredient)}
+                                        thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                                         name={ingredientLabel(ingredient)}
-                                        version={iconVersionFor(ingredient)}
+                                        version={$ingredientIcons.iconVersionFor(ingredient)}
                                         dimmed={checked}
                                         size={32}
                                       />
@@ -1453,9 +1378,9 @@
                         {#if checked}<Icon name="Check" size={18} />{/if}
                       </span>
                       <CanonIcon
-                        thumbnail={thumbnailFor(ingredient)}
+                        thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                         name={ingredientLabel(ingredient)}
-                        version={iconVersionFor(ingredient)}
+                        version={$ingredientIcons.iconVersionFor(ingredient)}
                         dimmed={checked}
                         size={40}
                       />
@@ -1653,9 +1578,9 @@
                                   data-testid="guided-step-container-contents"
                                 >
                                   <CanonIcon
-                                    thumbnail={thumbnailFor(ingredient)}
+                                    thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                                     name={ingredientLabel(ingredient)}
-                                    version={iconVersionFor(ingredient)}
+                                    version={$ingredientIcons.iconVersionFor(ingredient)}
                                     size={32}
                                   />
                                   <span class="min-w-0 flex-1 text-base">
@@ -1681,9 +1606,9 @@
                             <Icon name="Plus" size={17} ariaLabel="Also" />
                           </span>
                           <CanonIcon
-                            thumbnail={thumbnailFor(ingredient)}
+                            thumbnail={$ingredientIcons.thumbnailFor(ingredient)}
                             name={ingredientLabel(ingredient)}
-                            version={iconVersionFor(ingredient)}
+                            version={$ingredientIcons.iconVersionFor(ingredient)}
                             size={32}
                           />
                           <span class="min-w-0 flex-1 text-base">

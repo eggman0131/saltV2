@@ -71,13 +71,17 @@ export function getKitchenToolsSnapshot(): readonly KitchenToolDoc[] {
 
 // ─── The one shared lookup ───────────────────────────────────────────────────────
 //
-// THE POINT OF PUTTING THIS HERE. The `thumbnailFor` / `iconVersionFor` pair is
-// already written out by hand three times over — ShoppingListPage.svelte:155,
-// CookModePage.svelte:464-469 and GuidedCookPage.svelte:335-340 — and each copy
-// is a place the cache-bust rule (`iconRequestedAt ?? updatedAt`, ui-spec-v04
-// §14.4) or the tri-state render guard can quietly drift. This family gets ONE
-// definition, exported, and every surface that draws a tool uses it. Do not add a
-// fourth private copy to a page.
+// THE POINT OF PUTTING THIS HERE. The `thumbnailFor` / `iconVersionFor` pair was
+// already written out by hand several times over, and each copy is a place the
+// cache-bust rule (`iconRequestedAt ?? updatedAt`, ui-spec-v04 §14.4) or the
+// tri-state render guard can quietly drift. This family gets ONE definition,
+// exported, and every surface that draws a tool uses it. Do not add a private
+// copy to a page.
+//
+// The ingredient half of the same story now lives in `cookIngredientIcons.ts`
+// (`ingredientIcons`), shared by both cook screens since #994. ShoppingListPage
+// keeps its own pair, and deliberately: it is keyed by a bare `canonId` off a
+// list row and has no product form to prefer.
 //
 // It is a DERIVED STORE OF A LOOKUP rather than two plain functions, and that is
 // reactivity rather than taste: a plain function reading a snapshot has no
