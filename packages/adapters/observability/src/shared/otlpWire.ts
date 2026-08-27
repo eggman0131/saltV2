@@ -109,12 +109,16 @@ export const boolAttr = (key: string, v: boolean): Attribute => ({
 //   PRODUCER = 3                  │ 4  SPAN_KIND_PRODUCER
 //   CONSUMER = 4                  │ 5  SPAN_KIND_CONSUMER
 //
-// Both distributed legs used to forward `span.kind` RAW, which shipped every span
+// Both DISTRIBUTED legs used to forward `span.kind` RAW, which shipped every span
 // one kind too low: INTERNAL arrived as UNSPECIFIED, SERVER as INTERNAL, CLIENT as
 // SERVER. That does not look like corrupt data downstream — it looks like a
 // plausible but WRONG service graph, because tracing backends key topology maps and
 // parent/child rendering off span kind. Hence the fix is a behaviour change, taken
 // deliberately (#1011).
+//
+// The AI leg is not an omission from that sentence: it AUTHORS its span rather
+// than forwarding one, so it asserts SPAN_KIND_INTERNAL instead of mapping — the
+// reasoning is at its `const out: OtlpSpan` (#1029).
 //
 // Stated as an explicit switch and NEVER as `apiKind + 1`: the offset is a
 // coincidence of two independently-defined enums, not a rule, and arithmetic hides
