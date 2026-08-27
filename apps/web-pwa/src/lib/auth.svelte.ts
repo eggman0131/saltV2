@@ -6,6 +6,23 @@ import { PendingEmailOtpSchema } from '@salt/domain/schemas';
 import { authProvider } from './firebase.js';
 import { identifyUser, identifyAnonymous } from './observability.js';
 
+// The two sanctioned `localStorage` keys in the app (CLAUDE.md Rule 3). Both hold
+// PRE-AUTHENTICATION state, so there is no Firestore-backed alternative — there is
+// no signed-in user to write a document as — and both must survive the user leaving
+// the app to go and read their email:
+//
+//   pendingEmail  the magic-link address. Email clients open the link in a fresh
+//                 tab or window, which gets a fresh `sessionStorage`, so
+//                 `sessionStorage` cannot carry it.
+//   pendingOtp    the in-flight code-entry step, `{ email, sentAt }`, TTL-checked
+//                 on read against the server's code expiry below. An installed iOS
+//                 PWA is routinely killed while backgrounded and a fresh launch
+//                 gets a fresh `sessionStorage`, so holding this in memory (or in
+//                 `sessionStorage`) strands the user on the request page with a
+//                 code they cannot type in.
+//
+// Every access is wrapped so that storage being unavailable degrades quietly and
+// never throws. Nothing else in the app may add a key here.
 const PENDING_EMAIL_KEY = 'salt:auth:pendingEmail';
 const PENDING_OTP_KEY = 'salt:auth:pendingOtp';
 
