@@ -32,25 +32,24 @@
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
-  // The gesture-owned pager — spring, pointer/wheel/keyboard, element measurement —
-  // lives in `$lib/deck`, and the pure viewport arithmetic it runs on lives in
-  // `$lib/cookDeck` (issue #556). What stays in this component is the only part that
-  // knows these sections are recipe STEPS.
-  import { createDeck } from '../../lib/deck.svelte.js';
-  import { sectionMinHeight, fadeHeightFor, PEEK_MAX_PX } from '../../lib/cookDeck.js';
+  // The step deck — element registry, the pager, the probe, the peek, advancing and
+  // where it lands on entry — lives in `$lib/stepDeck` (issue #994), shared with the
+  // guided cook. Under it: the gesture-owned pager in `$lib/deck` (spring,
+  // pointer/wheel/keyboard, element measurement) and the pure viewport arithmetic in
+  // `$lib/cookDeck` (issue #556), whose numbers the markup below still reads.
+  import { createStepDeck } from '../../lib/stepDeck.svelte.js';
+  import { sectionMinHeight, PEEK_MAX_PX } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
   // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
   // every timestamp they need is passed in from here rather than read there.
   import {
-    withStepDone,
     withIngredientChecked,
     withAllIngredientsChecked,
     withGroupChecked,
     firstUseByStep as groupIngredientsByFirstUse,
     kitByStep as groupKitByStep,
-    firstIncompleteStepId,
     miseProgress,
     hasRecipeChanged,
     formatClock,
@@ -306,11 +305,7 @@
   // the steps belongs to the shared lifecycle above.
   const stage = $derived(lifecycle.stage);
 
-  const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
-  const completedStepCount = $derived(
-    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
-  );
   const showTimeline = $derived(stage === 'steps' && totalSteps > 0);
 
   // First-use ingredients per step. The recipe stamps `firstUsedInStepId` on each
@@ -350,233 +345,54 @@
     expandedChipId = id;
   }
 
-  // Set a step's completion — whole-document LWW via the service (there is no
-  // field-level write). Completion is never a gate: the footer ticks the step you're
-  // on, a done step can be unticked from its expanded view, and earlier steps are
-  // never force re-ticked.
-  function setStepDone(id: string, done: boolean): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    const next = withStepDone(s, id, done);
-    // Identity means the step was already in that state — skip the write.
-    if (next === s) return;
-    void persistCookSession(next);
-  }
-
-  // Land-on-first-incomplete. Fires only when the stage flips to `steps`; it reads
-  // completion from a NON-reactive snapshot so completion changes never move the
-  // scroll on their own — the only thing that advances the view is the cook tapping
-  // the footer (`handleStepDone` / `handleSkipToNext`), or their own swipe. Completed
-  // steps stay above, collapsed but scrollable back and re-openable. Degrades to a
-  // plain scroll (or top-of-list) if the anchor or scrollIntoView isn't available.
-  const stepEls = new Map<string, HTMLElement>();
-  function stepAnchor(node: HTMLElement, id: string) {
-    stepEls.set(id, node);
-    return {
-      destroy() {
-        if (stepEls.get(id) === node) stepEls.delete(id);
-      },
-    };
-  }
-
-  // ─── The pager ─────────────────────────────────────────────────────────────────
-  // The deck is not a native scroller: `$lib/deck` owns the drag, the fling, the
-  // wheel, the arrow keys and the spring that settles them, and it is the thing that
-  // holds the viewport and column elements. All this component tells it is which
-  // elements are the sections — everything about what a "step" IS stays here.
+  // ─── The step deck ─────────────────────────────────────────────────────────────
+  // All of it — the element registry, the gesture-owned pager, the probe that says
+  // which step the footer acts on, the bottom fade, ticking, the peek, the
+  // pending-scroll handshake that advances, and where the deck lands on entry — is in
+  // `$lib/stepDeck` (issue #994), shared verbatim with the guided cook.
   //
-  // No threshold overrides: cook mode's sections ARE the screen, which is the case
-  // the defaults in `$lib/cookDeck` were tuned for. The peek — how much of the next
-  // step stays on screen — comes from there too (`sectionMinHeight`, `PEEK_MAX_PX`):
-  // it replaces both the old "Next" strip and the scrollbar we gave up by owning the
-  // gesture, and it is the ONLY thing telling the cook there is more below.
-  const deck = createDeck({
-    sections: () =>
-      (recipe?.steps ?? [])
-        .map((step) => stepEls.get(step.id))
-        .filter((el): el is HTMLElement => el !== undefined),
-  });
-
-  // Where the deck must sit for a given step to be parked at the top of the viewport.
-  function stepStop(id: string): number | null {
-    const el = stepEls.get(id);
-    return el ? deck.offsetOf(el) : null;
-  }
-
-  // ─── The step the footer acts on ───────────────────────────────────────────────
-  // The single primary action lives in the footer, so it has to know which step the
-  // cook is on. That's the step parked at the TOP of the scroller, found by probing
-  // which step's box spans a point just below the top edge.
+  // NOTHING here is passed differently by the two screens. Both hand it the live
+  // recipe's steps, the lifecycle's stage, and a way to open or close a peek — there
+  // is no parameter that says which mode is asking, because the deck is the same deck
+  // on the same steps of the same session document. What the guided cook has that this
+  // does not is derived in ITS page, off `currentStep` below.
   //
-  // Deliberately NOT "the step with the most visible pixels": scroll back to re-read
-  // an earlier step and its collapsed row is only ~56px tall, so a full-height
-  // incomplete step still showing below it wins on area — the footer would go on
-  // offering "Done · next" for a step you aren't looking at, and tapping it would
-  // tick the wrong one.
-  let visibleStepId = $state<string | null>(null);
-  // How far up the bottom fade reaches. Measured in the same probe below, because it
-  // wants to cover the peek exactly and the peek is whatever the current step didn't
-  // need — only layout knows that number.
-  let fadeHeight = $state(0);
-
-  function probeVisibleStep(): void {
-    const root = deck.viewportEl;
-    if (!root) return;
-    const rootRect = root.getBoundingClientRect();
-    const probeY = rootRect.top + 8;
-    for (const step of recipe?.steps ?? []) {
-      const rect = stepEls.get(step.id)?.getBoundingClientRect();
-      if (!rect) continue;
-      if (rect.top <= probeY && rect.bottom > probeY) {
-        visibleStepId = step.id;
-        // Everything below this step's last line IS the next step, so that gap is the
-        // fade — `fadeHeightFor` owns the floor and the cap.
-        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
-        return;
-      }
-    }
-  }
-
-  // The footer follows the deck. Effects run after the DOM update, so the transform is
-  // already applied and the probe measures where things actually are.
-  $effect(() => {
-    void deck.offset;
-    // Re-probe on resize too, now that the fade height comes from here: the timers bar
-    // or the recipe-changed banner appearing re-lays out every section, so the peek the
-    // fade is covering changes without the deck having moved a pixel.
-    void deck.viewportHeight;
-    probeVisibleStep();
-  });
-
-  // ─── Re-reading a step you've already ticked ───────────────────────────────────
-  // Peeking must never change completion. Tapping a collapsed row expands it in
-  // place — still done — and the expanded view carries the only control that ticks
-  // it back ("Mark not done").
+  // The peeked id stays in this file because the markup assigns to it directly, and an
+  // assignment needs a variable rather than a getter — the same seam the timer sheet's
+  // open flag has below.
   let peekedStepId = $state<string | null>(null);
-
-  function peekStep(id: string): void {
-    peekedStepId = id;
-    visibleStepId = id; // you're plainly on it now; don't wait for a scroll event
-  }
-
-  function untickStep(id: string): void {
-    peekedStepId = null;
-    setStepDone(id, false);
-  }
-
-  const currentStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    if (steps.length === 0) return null;
-    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
-    return (
-      steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => s.id === firstIncompleteId) ??
-      steps[steps.length - 1]
-    );
+  const stepDeck = createStepDeck({
+    steps: () => recipe?.steps ?? [],
+    stage: () => lifecycle.stage,
+    setStage: (next) => {
+      lifecycle.stage = next;
+    },
+    setPeeked: (id) => {
+      peekedStepId = id;
+    },
   });
-  const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
-  // "The next outstanding step AFTER this one" — the query has no notion of a
-  // cursor, so the slice is what expresses "after".
-  const nextIncompleteStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    const rest = steps.slice(idx + 1);
-    const nextId = firstIncompleteStepId(rest, completedStepIds);
-    return rest.find((s) => s.id === nextId) ?? null;
-  });
-  const nextIncompleteNumber = $derived(
-    nextIncompleteStep && recipe
-      ? recipe.steps.findIndex((s) => s.id === nextIncompleteStep.id) + 1
-      : 0,
+
+  // Bound to the names the markup already uses.
+  const deck = stepDeck.deck;
+  const {
+    stepAnchor,
+    peekStep,
+    untickStep,
+    handleStepDone,
+    handleResume,
+    jumpToStep,
+    goToSteps,
+    goToMise,
+  } = stepDeck;
+  const completedStepIds = $derived(stepDeck.completedStepIds);
+  const completedStepCount = $derived(
+    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
   );
-
-  // ─── Advancing ─────────────────────────────────────────────────────────────────
-  // Finishing a step moves two things at once: the finished step collapses to a row,
-  // and the next one has to come to the top. Animating BOTH is what felt jerky — the
-  // collapse played, and a delayed smooth scroll then played on top of it. So only
-  // one of them animates: the collapse is instant (no min-height transition) and the
-  // travel is left to the spring above.
-  //
-  // It can't run on a timer, because completion round-trips through Firestore — the
-  // collapse lands whenever the listener does. So the scroll is parked here and the
-  // effect below fires it the moment the completion it's waiting on arrives, which is
-  // also the moment the layout it has to measure becomes final.
-  let pendingScroll = $state<{ afterDoneId: string | null; targetId: string } | null>(null);
-
-  // Advancing runs the same spring a swipe does — just seeded with no velocity, since
-  // a button press has none to inherit — so the two settle identically.
-  function alignToTop(id: string): void {
-    const stop = stepStop(id);
-    if (stop !== null) deck.animateTo(stop);
-  }
-
-  $effect(() => {
-    const pending = pendingScroll;
-    if (!pending) return;
-    if (pending.afterDoneId && !completedStepIds.has(pending.afterDoneId)) return;
-    pendingScroll = null;
-    alignToTop(pending.targetId);
-  });
-
-  // Footer primary while cooking: tick the step you're on and bring the next one that
-  // still needs doing to the top. `visibleStepId` moves optimistically so the footer
-  // label doesn't flicker through the intermediate state.
-  function handleStepDone(): void {
-    const step = currentStep;
-    if (!step) return;
-    const next = nextIncompleteStep;
-    setStepDone(step.id, true);
-    if (!next) return;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: step.id, targetId: next.id };
-  }
-
-  // Footer primary when you've scrolled back to an already-done step: return to the
-  // earliest step still outstanding, rather than offering to finish (which would
-  // quietly skip everything left) or to tick the step you're only re-reading. Closing
-  // the peek is local state, so there's no completion to wait on — but the alignment
-  // still goes through the effect so it measures AFTER the peek has collapsed.
-  function handleResume(): void {
-    const next = nextIncompleteStep;
-    if (!next) return;
-    peekedStepId = null;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: null, targetId: next.id };
-  }
-
-  // Timeline jump. Goes through `pendingScroll` rather than animating straight away
-  // because closing an open peek collapses a step and moves everything below it —
-  // measuring before that re-render would aim at where the target used to be.
-  function jumpToStep(id: string): void {
-    peekedStepId = null;
-    visibleStepId = id;
-    pendingScroll = { afterDoneId: null, targetId: id };
-  }
-
-  $effect(() => {
-    if (stage !== 'steps') return;
-    if (!deck.viewportEl || !deck.contentEl) return;
-    const snap = getCookSessionSnapshot();
-    const done = new Set(snap?.completedStepIds ?? []);
-    const steps = recipe?.steps ?? [];
-    const targetId = firstIncompleteStepId(steps, done);
-    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
-    if (!target) return;
-    // Placed, not animated — this is where the deck STARTS, not somewhere it travels to.
-    const landOn = (): void => {
-      const stop = stepStop(target.id);
-      if (stop !== null) deck.place(stop);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(landOn);
-    else landOn();
-  });
-
-  function goToSteps(): void {
-    lifecycle.stage = 'steps';
-  }
-  function goToMise(): void {
-    lifecycle.stage = 'mise';
-  }
+  const fadeHeight = $derived(stepDeck.fadeHeight);
+  const currentStep = $derived(stepDeck.currentStep);
+  const currentStepDone = $derived(stepDeck.currentStepDone);
+  const nextIncompleteStep = $derived(stepDeck.nextIncompleteStep);
+  const nextIncompleteNumber = $derived(stepDeck.nextIncompleteNumber);
 
   // ─── Step timers (Phase 3) ──────────────────────────────────────────────────────
   // All of it — the live projection, the 1s tick, start / dismiss / progress, and the

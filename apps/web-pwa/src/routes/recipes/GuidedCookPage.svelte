@@ -37,10 +37,12 @@
   // behaves the same whichever screen started it. A check-in is armed here rather than
   // in `$lib/cookTimers`, so this page reads the floor for itself.
   import { shouldNotifyFor } from '../../lib/timerDefaults.js';
-  import { createDeck } from '../../lib/deck.svelte.js';
+  // The step deck — element registry, pager, probe, peek, advancing and the landing —
+  // shared with plain cook mode (issue #994). The pure viewport arithmetic under it
+  // stays in `$lib/cookDeck`, whose numbers the markup below still reads.
+  import { createStepDeck } from '../../lib/stepDeck.svelte.js';
   import {
     sectionMinHeight,
-    fadeHeightFor,
     fadeFitsLookahead,
     LOOKAHEAD_VEIL_PX,
     PEEK_MAX_PX,
@@ -48,9 +50,7 @@
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
   import {
-    withStepDone,
     withPrepChecked,
-    firstIncompleteStepId,
     firstUseByStep,
     kitByStep,
     guidedPrepBoard,
@@ -222,11 +222,7 @@
   // ready-guard above until the plan has landed.
   const stage = $derived(lifecycle.stage);
 
-  const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
-  const completedStepCount = $derived(
-    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
-  );
   const showTimeline = $derived(stage === 'steps' && totalSteps > 0);
 
   // ─── The plan's notes, by step ─────────────────────────────────────────────────
@@ -262,110 +258,54 @@
   // RECIPE needs got out.
   const kitStartingAtStep = $derived(kitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
-  // ─── Step completion ───────────────────────────────────────────────────────────
-  // Whole-document LWW through the service. Completion is never a gate, and the
-  // pager is never gated either: "don't move on until the sauce has thickened" is
-  // a sentence the cook reads, not a lock the app enforces.
-  function setStepDone(id: string, done: boolean): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    const next = withStepDone(s, id, done);
-    if (next === s) return;
-    void persistCookSession(next);
-  }
-
-  const stepEls = new Map<string, HTMLElement>();
-  function stepAnchor(node: HTMLElement, id: string) {
-    stepEls.set(id, node);
-    return {
-      destroy() {
-        if (stepEls.get(id) === node) stepEls.delete(id);
-      },
-    };
-  }
-
-  // ─── The pager ─────────────────────────────────────────────────────────────────
-  // No threshold overrides, for the reason cook mode gives: a guided step section
-  // IS the screen, which is the case the defaults in `$lib/cookDeck` were tuned
-  // for. The peek comes from there too.
-  const deck = createDeck({
-    sections: () =>
-      (recipe?.steps ?? [])
-        .map((step) => stepEls.get(step.id))
-        .filter((el): el is HTMLElement => el !== undefined),
-  });
-
-  function stepStop(id: string): number | null {
-    const el = stepEls.get(id);
-    return el ? deck.offsetOf(el) : null;
-  }
-
-  // The step parked at the TOP of the scroller — the one the footer acts on. Not
-  // "the step with the most visible pixels": a collapsed done row is ~56px, so a
-  // full-height step below it would win on area and the footer would tick the
-  // wrong one.
-  let visibleStepId = $state<string | null>(null);
-  let fadeHeight = $state(0);
-
-  function probeVisibleStep(): void {
-    const root = deck.viewportEl;
-    if (!root) return;
-    const rootRect = root.getBoundingClientRect();
-    const probeY = rootRect.top + 8;
-    for (const step of recipe?.steps ?? []) {
-      const rect = stepEls.get(step.id)?.getBoundingClientRect();
-      if (!rect) continue;
-      if (rect.top <= probeY && rect.bottom > probeY) {
-        visibleStepId = step.id;
-        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
-        return;
-      }
-    }
-  }
-
-  $effect(() => {
-    void deck.offset;
-    void deck.viewportHeight;
-    probeVisibleStep();
-  });
-
-  // Peeking must never change completion: tapping a collapsed row expands it in
-  // place, and only the expanded view carries the control that unticks it.
+  // ─── The step deck ─────────────────────────────────────────────────────────────
+  // All of it — the element registry, the gesture-owned pager, the probe that says
+  // which step the footer acts on, the bottom fade, ticking, the peek, the
+  // pending-scroll handshake that advances, and where the deck lands on entry — is in
+  // `$lib/stepDeck` (issue #994), shared verbatim with plain cook mode.
+  //
+  // Verbatim is exact: there is no parameter below that this screen passes
+  // differently. Both hand it the live recipe's steps, the lifecycle's stage and a
+  // way to open or close a peek. What guided mode adds is not a flag into the deck —
+  // it is the look-ahead derived from the PLAN just below, off the deck's own
+  // `currentStep`, on the page that holds the plan.
+  //
+  // The peeked id stays in this file because the markup assigns to it directly, and an
+  // assignment needs a variable rather than a getter — the same seam the timer sheet's
+  // open flag has below.
   let peekedStepId = $state<string | null>(null);
-
-  function peekStep(id: string): void {
-    peekedStepId = id;
-    visibleStepId = id;
-  }
-
-  function untickStep(id: string): void {
-    peekedStepId = null;
-    setStepDone(id, false);
-  }
-
-  const currentStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    if (steps.length === 0) return null;
-    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
-    return (
-      steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => s.id === firstIncompleteId) ??
-      steps[steps.length - 1]
-    );
+  const stepDeck = createStepDeck({
+    steps: () => recipe?.steps ?? [],
+    stage: () => lifecycle.stage,
+    setStage: (next) => {
+      lifecycle.stage = next;
+    },
+    setPeeked: (id) => {
+      peekedStepId = id;
+    },
   });
-  const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
-  const nextIncompleteStep = $derived.by(() => {
-    const steps = recipe?.steps ?? [];
-    const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    const rest = steps.slice(idx + 1);
-    const nextId = firstIncompleteStepId(rest, completedStepIds);
-    return rest.find((s) => s.id === nextId) ?? null;
-  });
-  const nextIncompleteNumber = $derived(
-    nextIncompleteStep && recipe
-      ? recipe.steps.findIndex((s) => s.id === nextIncompleteStep.id) + 1
-      : 0,
+
+  // Bound to the names the markup already uses.
+  const deck = stepDeck.deck;
+  const {
+    stepAnchor,
+    peekStep,
+    untickStep,
+    handleStepDone,
+    handleResume,
+    jumpToStep,
+    goToSteps,
+    goToMise,
+  } = stepDeck;
+  const completedStepIds = $derived(stepDeck.completedStepIds);
+  const completedStepCount = $derived(
+    recipe ? recipe.steps.filter((s) => completedStepIds.has(s.id)).length : 0,
   );
+  const fadeHeight = $derived(stepDeck.fadeHeight);
+  const currentStep = $derived(stepDeck.currentStep);
+  const currentStepDone = $derived(stepDeck.currentStepDone);
+  const nextIncompleteStep = $derived(stepDeck.nextIncompleteStep);
+  const nextIncompleteNumber = $derived(stepDeck.nextIncompleteNumber);
 
   // What the plan says about the step BELOW this one (issue #769) — the caption on
   // the gap at the bottom of the screen, in place of plain cook mode's faded first
@@ -383,73 +323,6 @@
   const lookahead = $derived(
     recipe ? nextStepLookahead(recipe, plan?.stepNotes ?? [], currentStep?.id ?? null) : null,
   );
-
-  // ─── Advancing ─────────────────────────────────────────────────────────────────
-  // The scroll is parked here and fired by the effect below the moment the
-  // completion it waits on arrives — which is also the moment the layout it has to
-  // measure becomes final. Only the travel animates; the collapse is instant.
-  let pendingScroll = $state<{ afterDoneId: string | null; targetId: string } | null>(null);
-
-  function alignToTop(id: string): void {
-    const stop = stepStop(id);
-    if (stop !== null) deck.animateTo(stop);
-  }
-
-  $effect(() => {
-    const pending = pendingScroll;
-    if (!pending) return;
-    if (pending.afterDoneId && !completedStepIds.has(pending.afterDoneId)) return;
-    pendingScroll = null;
-    alignToTop(pending.targetId);
-  });
-
-  function handleStepDone(): void {
-    const step = currentStep;
-    if (!step) return;
-    const next = nextIncompleteStep;
-    setStepDone(step.id, true);
-    if (!next) return;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: step.id, targetId: next.id };
-  }
-
-  function handleResume(): void {
-    const next = nextIncompleteStep;
-    if (!next) return;
-    peekedStepId = null;
-    visibleStepId = next.id;
-    pendingScroll = { afterDoneId: null, targetId: next.id };
-  }
-
-  function jumpToStep(id: string): void {
-    peekedStepId = null;
-    visibleStepId = id;
-    pendingScroll = { afterDoneId: null, targetId: id };
-  }
-
-  $effect(() => {
-    if (stage !== 'steps') return;
-    if (!deck.viewportEl || !deck.contentEl) return;
-    const snap = getCookSessionSnapshot();
-    const done = new Set(snap?.completedStepIds ?? []);
-    const steps = recipe?.steps ?? [];
-    const targetId = firstIncompleteStepId(steps, done);
-    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
-    if (!target) return;
-    const landOn = (): void => {
-      const stop = stepStop(target.id);
-      if (stop !== null) deck.place(stop);
-    };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(landOn);
-    else landOn();
-  });
-
-  function goToSteps(): void {
-    lifecycle.stage = 'steps';
-  }
-  function goToMise(): void {
-    lifecycle.stage = 'mise';
-  }
 
   // ─── Step timers ───────────────────────────────────────────────────────────────
   // Carried unchanged from plain cook mode, because they are the same timers on the
