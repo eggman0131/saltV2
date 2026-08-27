@@ -80,7 +80,7 @@ const SESSION: CookSessionDoc = {
 
 type Rect = { top: number; bottom: number };
 
-/** The viewport, fixed. The probe line is therefore y = 8. */
+/** The viewport at rest. The probe line is therefore y = 8. */
 const VIEWPORT: Rect = { top: 0, bottom: 800 };
 const PROBE_LINE = VIEWPORT.top + 8;
 
@@ -101,6 +101,31 @@ const COLUMN: Record<string, Rect> = {
 let column: Record<string, Rect> = COLUMN;
 /** Where the deck currently sits. The stub reads it, so the rects move with the deck. */
 let deckOffset = 0;
+/**
+ * The viewport's box RIGHT NOW. Only the resize case moves it; reset to `VIEWPORT`
+ * before each. It is the one source of viewport geometry in this file — the element's
+ * `clientHeight` is derived from it in `build`, so a case cannot move the box the probe
+ * measures and the height the deck observes out of agreement with each other.
+ */
+let viewportRect: Rect = VIEWPORT;
+
+/**
+ * Every `ResizeObserver` the deck has constructed, as a "tell it something changed"
+ * callback. jsdom ships none and `tests/setup.ts`'s stub is deliberately inert (it has
+ * nothing to report, since jsdom lays nothing out), so the resize case installs one that
+ * records instead — the observation itself still has to be driven by hand, which is
+ * exactly the point of that case.
+ */
+let resizeNotifiers: Array<() => void> = [];
+
+class RecordingResizeObserver {
+  constructor(callback: ResizeObserverCallback) {
+    resizeNotifiers.push(() => callback([], this as unknown as ResizeObserver));
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
 
 function domRect({ top, bottom }: Rect): DOMRect {
   const r = { x: 0, y: top, top, bottom, left: 0, right: 0, width: 0, height: bottom - top };
@@ -115,6 +140,12 @@ interface Ctx {
   unmount: (id: string) => void;
   /** Register a fresh element for a step, as a remount would. */
   remount: (id: string) => void;
+  /**
+   * Resize the viewport to `next` WITHOUT moving the deck, as a timers bar appearing or
+   * a rotation does: swap the box the probe measures, then hand the deck's own
+   * `ResizeObserver` the notification a browser would have sent it.
+   */
+  resize: (next: Rect) => void;
 }
 
 function build(): Ctx {
@@ -138,6 +169,13 @@ function build(): Ctx {
   // without reading anything.
   const viewport = document.createElement('div');
   viewport.dataset.role = 'viewport';
+  // The deck measures its viewport with `clientHeight`, which jsdom always answers 0 to.
+  // Deriving it from the same rect the probe measures is what lets the resize case move
+  // both together.
+  Object.defineProperty(viewport, 'clientHeight', {
+    configurable: true,
+    get: () => viewportRect.bottom - viewportRect.top,
+  });
   stepDeck.deck.viewportEl = viewport;
   stepDeck.deck.contentEl = document.createElement('div');
 
@@ -153,6 +191,11 @@ function build(): Ctx {
       anchors.delete(id);
     },
     remount,
+    resize: (next) => {
+      viewportRect = next;
+      for (const notify of resizeNotifiers) notify();
+      flushSync();
+    },
   };
 }
 
@@ -164,6 +207,9 @@ function withDeck(run: (ctx: Ctx) => void): void {
 beforeEach(() => {
   column = COLUMN;
   deckOffset = 0;
+  viewportRect = VIEWPORT;
+  resizeNotifiers = [];
+  vi.stubGlobal('ResizeObserver', RecordingResizeObserver);
   mockCookSession._set(SESSION);
   // Fake timers so the landing effect's `requestAnimationFrame` — the one thing here
   // that would otherwise move the deck on its own — is inert unless a test asks for it.
@@ -173,7 +219,7 @@ beforeEach(() => {
     this: Element,
   ): DOMRect {
     const el = this as HTMLElement;
-    if (el.dataset?.role === 'viewport') return domRect(VIEWPORT);
+    if (el.dataset?.role === 'viewport') return domRect(viewportRect);
     const id = el.dataset?.stepId;
     const seat = id === undefined ? undefined : column[id];
     if (!seat) return domRect({ top: 0, bottom: 0 });
@@ -183,6 +229,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -369,6 +416,46 @@ describe('createStepDeck — how tall the probe makes the fade', () => {
         ['step-2', 224],
         ['step-3', 64],
       ]);
+    });
+  });
+});
+
+describe('createStepDeck — when the viewport changes under a standing deck', () => {
+  /**
+   * The dependency the rest of this file cannot see.
+   *
+   * Every case above moves the DECK, so a probe wired to `deck.offset` alone would
+   * satisfy all of them. But the probe measures the viewport too, and the viewport
+   * changes on its own: the timers bar appears, the recipe-changed banner drops in, the
+   * phone rotates. Nothing has moved by a pixel and yet both answers are stale — the
+   * fade is covering a peek that is no longer that size, and the probe line may not even
+   * be over the same step any more. That is what the `void deck.viewportHeight` read in
+   * the probe's effect is for, and it is invisible to a net driven only by offsets: this
+   * case was written by deleting that read and watching nothing go red.
+   *
+   * It has to drive both halves by hand. jsdom lays nothing out, so `clientHeight` is 0
+   * and `tests/setup.ts`'s `ResizeObserver` is inert by necessity — `resize` swaps the
+   * synthetic viewport box and fires the observer the deck built, which is the pair of
+   * events a browser delivers together. Each move below changes the viewport's HEIGHT,
+   * because height is what the deck observes and therefore what it can notice.
+   */
+  it('re-probes on a resize, with the deck standing still', () => {
+    withDeck(({ stepDeck, resize }) => {
+      expect(stepDeck.currentStep?.id).toBe('step-1');
+      expect(stepDeck.fadeHeight).toBe(100);
+
+      // The timers bar appears: 100px off the bottom, same deck offset. Step 1 now ends
+      // exactly on the bottom edge, so there is no peek left and the fade sits on its
+      // floor — a step whose answer did not change, and whose fade did.
+      resize({ top: 0, bottom: 700 });
+      expect(stepDeck.currentStep?.id).toBe('step-1');
+      expect(stepDeck.fadeHeight).toBe(64);
+
+      // Now the deck is both taller and further down the screen, which carries the probe
+      // line clear of step 1 altogether. Both answers move.
+      resize({ top: 700, bottom: 1600 });
+      expect(stepDeck.currentStep?.id).toBe('step-2');
+      expect(stepDeck.fadeHeight).toBe(200);
     });
   });
 });
