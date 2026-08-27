@@ -2,20 +2,17 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { goBack } from '../../lib/nav.js';
-  import { trackUsageEvent } from '@salt/observability';
-  import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
+  import { isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
-    cookSessionEnded,
-    isLoadingCookSession,
-    initCookSessionSync,
     persistCookSession,
-    removeCookSession,
     getCookSessionSnapshot,
   } from '../../lib/cookSessionService.js';
+  // The session lifecycle — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — shared with plain cook mode (issue #994), because
+  // both screens are the same cook on the same session document.
+  import { createCookLifecycle } from '../../lib/cookLifecycle.svelte.js';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
-  import { auth } from '../../lib/auth.svelte.js';
   // The ingredient picture and the press-and-hold "add to the list" — shared with
   // plain cook mode (issue #994), because both screens draw the same rows.
   //
@@ -29,8 +26,6 @@
     addIngredientToShoppingList,
   } from '../../lib/cookIngredientIcons.js';
   import { toolIcons } from '../../lib/kitchenToolService.js';
-  import { addToast } from '../../lib/toastStore.js';
-  import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
@@ -53,7 +48,6 @@
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
   import {
-    makeFreshSession as buildFreshSession,
     withStepDone,
     withPrepChecked,
     withTimerStarted,
@@ -74,12 +68,7 @@
     checkInTimerId,
     isCheckInTimerId,
   } from '@salt/domain';
-  import type {
-    CookActiveTimerDoc,
-    CookSessionDoc,
-    IngredientDoc,
-    StepDoc,
-  } from '@salt/domain/schemas';
+  import type { CookActiveTimerDoc, IngredientDoc, StepDoc } from '@salt/domain/schemas';
 
   // Guided cook (issue #751, Phase 2) — `/recipes/:id/cook/guided`.
   //
@@ -106,13 +95,11 @@
   // A SIBLING PAGE rather than a mode flag on CookModePage, deliberately. What
   // differs is not a slot but the whole mise stage — its data model, its tick
   // field, its progress function, its sections (there are none) and an extra
-  // section of its own — and the shared part (lifecycle, pager) is already
-  // extracted as far as it usefully goes: `initCookSessionSync` /
-  // `persistCookSession` / `getCookSessionSnapshot` in `$lib/cookSessionService`,
-  // `createDeck` in `$lib/deck`, the pure geometry in `$lib/cookDeck`, and the
-  // producers in `@salt/domain/cookSession`. A shell component would be extracting
-  // the residue of three prior extractions. It also buys the thing the issue asks
-  // for outright: normal cook mode is not edited, so it cannot regress.
+  // section of its own. What does NOT differ is shared as code rather than as a
+  // shell component: the session lifecycle in `$lib/cookLifecycle` (issue #994),
+  // `createDeck` in `$lib/deck`, the pure geometry in `$lib/cookDeck`, the timer
+  // defaults in `$lib/timerDefaults`, the ingredient rows in
+  // `$lib/cookIngredientIcons`, and the producers in `@salt/domain/cookSession`.
   //
   // FULL-VIEWPORT, the second such route (ui-spec-v05 §2, amended by this issue).
   // Its obligations are met exactly as CookModePage meets them: the route is
@@ -132,23 +119,24 @@
   }
   let { params }: Props = $props();
 
-  const recipe = $derived($recipes.find((r) => r.id === params.id) ?? null);
-  const uid = $derived(auth.user?.uid ?? null);
-  // Deterministic session id — the SAME one plain cook mode uses.
-  const sessionId = $derived(uid ? `${params.id}_${uid}` : null);
-
-  // ─── Subscription lifecycle ────────────────────────────────────────────────────
-  let unsub: (() => void) | null = null;
-  $effect(() => {
-    const sid = sessionId;
-    if (!sid) return;
-    unsub?.();
-    unsub = initCookSessionSync(sid);
-    return () => {
-      unsub?.();
-      unsub = null;
-    };
+  // ─── Session lifecycle ─────────────────────────────────────────────────────────
+  // The whole of it — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — is plain cook mode's, from `$lib/cookLifecycle`
+  // (issue #994). The ONE thing this screen passes in is the ready-guard: the
+  // opening stage must not be settled until the plan has landed, because until it
+  // does there is no prep board to be past and a session that arrives first would
+  // read as "nothing done yet".
+  const lifecycle = createCookLifecycle({
+    recipeId: () => params.id,
+    ready: () => plan !== undefined,
   });
+
+  const recipe = $derived(lifecycle.recipe);
+  const { wakeLockSupported, handleRestart, handleComplete, handleClose, toggleWakeLock } =
+    lifecycle;
+  const restarting = $derived(lifecycle.restarting);
+  const completing = $derived(lifecycle.completing);
+  const keepAwake = $derived(lifecycle.keepAwake);
 
   // The plan itself. Its store has THREE states — `undefined` not loaded, `null`
   // loaded and there is no plan, a document — and all three matter here: the
@@ -159,64 +147,6 @@
     return initGuidedPlanSync(id);
   });
   const plan = $derived($guidedPlan);
-
-  // ─── Session bootstrap ─────────────────────────────────────────────────────────
-  // Identical to plain cook mode, including the guard: a null store means "no
-  // session yet" ONLY when nothing has ended one (issue #559).
-  let bootstrapping = $state(false);
-
-  function makeFreshSession(): CookSessionDoc {
-    return buildFreshSession({
-      id: sessionId!,
-      ownerUid: uid!,
-      recipeId: params.id,
-      recipeUpdatedAtAtStart: recipe!.updatedAt,
-      nowIso: new Date().toISOString(),
-    });
-  }
-
-  async function createFreshSession(): Promise<void> {
-    if (!sessionId || !uid || !recipe) return;
-    bootstrapping = true;
-    const result = await persistCookSession(makeFreshSession());
-    bootstrapping = false;
-    if (result.kind !== 'ok') addToast('Failed to start cooking.', 'destructive');
-    // The same event plain cook mode fires. A guided cook IS a cook, and #684's
-    // volumetrics count cooks — splitting the event would silently halve the
-    // series the dashboard already plots.
-    else trackUsageEvent('cook.started', { recipe_id: params.id });
-  }
-
-  $effect(() => {
-    if (!uid || !recipe || !sessionId) return;
-    if ($isLoadingCookSession || bootstrapping) return;
-    if ($cookSession) return;
-    if ($cookSessionEnded || completing || restarting) return;
-    void createFreshSession();
-  });
-
-  // ─── Ended on another device ───────────────────────────────────────────────────
-  let endedElsewhere = $state(false);
-  $effect(() => {
-    if (!$cookSessionEnded || endedElsewhere) return;
-    endedElsewhere = true;
-    addToast('This cook was finished on another device.');
-    push(`/recipes/${params.id}`);
-  });
-
-  // ─── Deleted-recipe orphan handling ────────────────────────────────────────────
-  let orphaned = $state(false);
-  $effect(() => {
-    if ($isLoadingRecipes) return;
-    if (recipe !== null) return;
-    if (orphaned) return;
-    orphaned = true;
-    void handleOrphan();
-  });
-
-  async function handleOrphan(): Promise<void> {
-    if (sessionId) await removeCookSession(sessionId);
-  }
 
   // ─── Guided mise en place ──────────────────────────────────────────────────────
   // The whole prep screen as one pure shape (issue #767): the plan's jobs grouped
@@ -290,20 +220,9 @@
   }
 
   // ─── Stages ────────────────────────────────────────────────────────────────────
-  let stage = $state<'mise' | 'steps'>('mise');
-
-  // One-shot resume, plain cook mode's rule verbatim: a cook with step progress
-  // opens straight into the steps rather than back on a prep list it is done with.
-  // Waits for the plan as well as the session, because until the plan lands there
-  // is no prep screen to be past.
-  let stageInitialised = false;
-  $effect(() => {
-    if (stageInitialised) return;
-    const s = $cookSession;
-    if (!s || plan === undefined) return;
-    stageInitialised = true;
-    if (s.completedStepIds.length > 0) stage = 'steps';
-  });
+  // Which one this opens on is the lifecycle's one-shot resume, held off by the
+  // ready-guard above until the plan has landed.
+  const stage = $derived(lifecycle.stage);
 
   const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
@@ -528,10 +447,10 @@
   });
 
   function goToSteps(): void {
-    stage = 'steps';
+    lifecycle.stage = 'steps';
   }
   function goToMise(): void {
-    stage = 'mise';
+    lifecycle.stage = 'mise';
   }
 
   // ─── Step timers ───────────────────────────────────────────────────────────────
@@ -731,65 +650,8 @@
     hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
   );
 
-  let restarting = $state(false);
-  async function handleRestart(): Promise<void> {
-    if (!sessionId || !uid || !recipe || restarting) return;
-    restarting = true;
-    await removeCookSession(sessionId);
-    const result = await persistCookSession(makeFreshSession());
-    restarting = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to restart.', 'destructive');
-      return;
-    }
-    addToast('Started fresh with the updated recipe.', 'success');
-  }
-
-  // ─── Complete / close ──────────────────────────────────────────────────────────
-  let completing = $state(false);
-  async function handleComplete(): Promise<void> {
-    if (!sessionId || completing) return;
-    completing = true;
-    await removeCookSession(sessionId);
-    trackUsageEvent('cook.completed', { recipe_id: params.id });
-    push(`/recipes/${params.id}`);
-  }
-
-  function handleClose(): void {
-    goBack(`/recipes/${params.id}`);
-  }
-
-  // ─── Wake lock ─────────────────────────────────────────────────────────────────
-  const wakeLockSupported = isWakeLockSupported();
-  const wake = wakeLockSupported ? createWakeLock() : null;
-  let keepAwake = $state(false);
-
-  // Plain `let`, not `$state` — a re-entrancy guard only read inside the handler.
-  let togglingWakeLock = false;
-  async function toggleWakeLock(): Promise<void> {
-    if (togglingWakeLock) return;
-    togglingWakeLock = true;
-    try {
-      if (keepAwake) {
-        await wake?.disable();
-        keepAwake = false;
-        addToast('Screen can sleep again', 'success');
-        return;
-      }
-      const acquired = (await wake?.enable()) ?? false;
-      keepAwake = acquired;
-      if (acquired) addToast('Screen will stay awake', 'success');
-      else addToast("Your browser wouldn't let the screen stay awake.", 'destructive');
-    } finally {
-      togglingWakeLock = false;
-    }
-  }
-
-  $effect(() => {
-    return () => {
-      void wake?.disable();
-    };
-  });
+  // Restart, Finish, Close and the keep-awake toggle all live on the shared
+  // lifecycle, bound at the top of this script.
 </script>
 
 <!-- `z-dialog` (50), not a raw z-50: a full-viewport route shares the dialog rung of

@@ -2,19 +2,16 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { goBack } from '../../lib/nav.js';
-  import { trackUsageEvent } from '@salt/observability';
-  import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
+  import { isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
-    cookSessionEnded,
-    isLoadingCookSession,
-    initCookSessionSync,
     persistCookSession,
-    removeCookSession,
     getCookSessionSnapshot,
   } from '../../lib/cookSessionService.js';
-  import { auth } from '../../lib/auth.svelte.js';
+  // The session lifecycle — subscribe, bootstrap, ended-elsewhere, orphan, restart,
+  // finish, close, keep-awake — shared with guided cook (issue #994), because both
+  // screens are the same cook on the same session document.
+  import { createCookLifecycle } from '../../lib/cookLifecycle.svelte.js';
   // The ingredient picture and the press-and-hold "add to the list" — shared with
   // guided cook (issue #994), because both screens draw the same rows.
   import {
@@ -27,8 +24,6 @@
   // above, which resolves canon items for INGREDIENTS and knows nothing about
   // the tool vocabulary.
   import { toolIcons } from '../../lib/kitchenToolService.js';
-  import { addToast } from '../../lib/toastStore.js';
-  import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
   import {
     AD_HOC_TIMER_LABEL,
@@ -50,7 +45,6 @@
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
   // every timestamp they need is passed in from here rather than read there.
   import {
-    makeFreshSession as buildFreshSession,
     withStepDone,
     withIngredientChecked,
     withAllIngredientsChecked,
@@ -68,7 +62,6 @@
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
-    CookSessionDoc,
     IngredientDoc,
     IngredientGroupDoc,
     StepDoc,
@@ -99,95 +92,19 @@
   }
   let { params }: Props = $props();
 
-  // Recipe + identity, derived exactly as RecipeViewPage does.
-  const recipe = $derived($recipes.find((r) => r.id === params.id) ?? null);
-  const uid = $derived(auth.user?.uid ?? null);
-  // Deterministic session id — one session per user per recipe.
-  const sessionId = $derived(uid ? `${params.id}_${uid}` : null);
+  // ─── Session lifecycle ─────────────────────────────────────────────────────────
+  // Subscribe, bootstrap, ended-elsewhere, orphan, restart, finish, close and the
+  // keep-awake lock — all of it in `$lib/cookLifecycle`, shared verbatim with the
+  // guided cook (issue #994). No ready-guard: plain cook mode has nothing to wait
+  // for beyond the session itself.
+  const lifecycle = createCookLifecycle({ recipeId: () => params.id });
 
-  // ─── Subscription lifecycle ────────────────────────────────────────────────────
-  // Re-subscribe whenever the session id changes (uid resolves, or the route param
-  // changes). The effect's cleanup disposes the previous subscription.
-  let unsub: (() => void) | null = null;
-  $effect(() => {
-    const sid = sessionId;
-    if (!sid) return;
-    unsub?.();
-    unsub = initCookSessionSync(sid);
-    return () => {
-      unsub?.();
-      unsub = null;
-    };
-  });
-
-  // ─── Session bootstrap ─────────────────────────────────────────────────────────
-  // Once the recipe and the session subscription have both resolved and there is no
-  // session yet, create a fresh one stamping the live recipe's `updatedAt` as the
-  // baseline. Guarded so it runs once per absent session.
-  let bootstrapping = $state(false);
-
-  function makeFreshSession(): CookSessionDoc {
-    return buildFreshSession({
-      id: sessionId!,
-      ownerUid: uid!,
-      recipeId: params.id,
-      recipeUpdatedAtAtStart: recipe!.updatedAt,
-      nowIso: new Date().toISOString(),
-    });
-  }
-
-  async function createFreshSession(): Promise<void> {
-    if (!sessionId || !uid || !recipe) return;
-    bootstrapping = true;
-    const result = await persistCookSession(makeFreshSession());
-    bootstrapping = false;
-    if (result.kind !== 'ok') addToast('Failed to start cooking.', 'destructive');
-    // Bootstrap only — a Restart mid-cook re-persists a session but is the same
-    // cook, not a new start (issue #684).
-    else trackUsageEvent('cook.started', { recipe_id: params.id });
-  }
-
-  $effect(() => {
-    if (!uid || !recipe || !sessionId) return;
-    if ($isLoadingCookSession || bootstrapping) return;
-    if ($cookSession) return; // already have one
-    // A null store means "no session yet" ONLY when nothing has ended one. A cook
-    // finished on another device, and the gap between a local Complete / Restart
-    // clearing the store and its navigation, both read as null here — bootstrapping
-    // into either would write the session straight back and resurrect the delete.
-    // (`completing` / `restarting` are declared with their handlers further down.)
-    if ($cookSessionEnded || completing || restarting) return;
-    void createFreshSession();
-  });
-
-  // ─── Ended on another device ───────────────────────────────────────────────────
-  // The document vanished while we were cooking it: someone hit Finish or Restart on
-  // another device. Tell the cook and return to the recipe, rather than leaving a
-  // session on screen that no longer exists anywhere. Runs once.
-  let endedElsewhere = $state(false);
-  $effect(() => {
-    if (!$cookSessionEnded || endedElsewhere) return;
-    endedElsewhere = true;
-    addToast('This cook was finished on another device.');
-    push(`/recipes/${params.id}`);
-  });
-
-  // ─── Deleted-recipe orphan handling ────────────────────────────────────────────
-  // If the recipe resolves to null AFTER the recipes store has loaded, it was
-  // deleted elsewhere. Alert the cook, delete the orphaned session, and bounce to
-  // the recipe list. Runs once.
-  let orphaned = $state(false);
-  $effect(() => {
-    if ($isLoadingRecipes) return; // still loading — not an orphan yet
-    if (recipe !== null) return;
-    if (orphaned) return;
-    orphaned = true;
-    void handleOrphan();
-  });
-
-  async function handleOrphan(): Promise<void> {
-    if (sessionId) await removeCookSession(sessionId);
-  }
+  const recipe = $derived(lifecycle.recipe);
+  const { wakeLockSupported, handleRestart, handleComplete, handleClose, toggleWakeLock } =
+    lifecycle;
+  const restarting = $derived(lifecycle.restarting);
+  const completing = $derived(lifecycle.completing);
+  const keepAwake = $derived(lifecycle.keepAwake);
 
   // ─── Mise-en-place ticking ─────────────────────────────────────────────────────
   const checkedIds = $derived(new Set($cookSession?.checkedIngredientIds ?? []));
@@ -394,21 +311,9 @@
   // Two stages share this page's header/banner/footer shell; only the scroll region
   // swaps. `mise` is Stage 1 (tick ingredients); `steps` is this phase — one
   // full-viewport guided step at a time on a vertical spring-settled scroll. Default
-  // is mise.
-  let stage = $state<'mise' | 'steps'>('mise');
-
-  // One-shot resume: when the session first resolves already carrying step progress,
-  // open straight into steps so reopening a half-cooked recipe drops you back where
-  // you were (land-on-first-incomplete below finds the exact step). A plain-boolean
-  // guard (not $state) keeps this from re-firing as the session updates.
-  let stageInitialised = false;
-  $effect(() => {
-    if (stageInitialised) return;
-    const s = $cookSession;
-    if (!s) return;
-    stageInitialised = true;
-    if (s.completedStepIds.length > 0) stage = 'steps';
-  });
+  // is mise, and the one-shot resume that opens a half-cooked recipe straight into
+  // the steps belongs to the shared lifecycle above.
+  const stage = $derived(lifecycle.stage);
 
   const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
@@ -676,10 +581,10 @@
   });
 
   function goToSteps(): void {
-    stage = 'steps';
+    lifecycle.stage = 'steps';
   }
   function goToMise(): void {
-    stage = 'mise';
+    lifecycle.stage = 'mise';
   }
 
   // ─── Step timers (Phase 3) ──────────────────────────────────────────────────────
@@ -897,83 +802,8 @@
     hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
   );
 
-  // Restart: discard the current session and start a fresh one against the CURRENT
-  // recipe (new baseline, cleared ticks), staying on the cook page so the user
-  // keeps cooking the updated recipe.
-  let restarting = $state(false);
-  async function handleRestart(): Promise<void> {
-    if (!sessionId || !uid || !recipe || restarting) return;
-    restarting = true;
-    await removeCookSession(sessionId);
-    const result = await persistCookSession(makeFreshSession());
-    restarting = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to restart.', 'destructive');
-      return;
-    }
-    addToast('Started fresh with the updated recipe.', 'success');
-  }
-
-  // ─── Complete / close ──────────────────────────────────────────────────────────
-  // Complete clears the session (delete the doc) and returns to the recipe view.
-  let completing = $state(false);
-  async function handleComplete(): Promise<void> {
-    if (!sessionId || completing) return;
-    completing = true;
-    await removeCookSession(sessionId);
-    // The explicit "Finish cooking" gesture — restarts and closes are not
-    // completions (issue #684).
-    trackUsageEvent('cook.completed', { recipe_id: params.id });
-    // Deliberately left true: removeCookSession clears the store synchronously, and
-    // this flag is what stops the bootstrap effect from creating a replacement
-    // session in the gap before the navigation tears the page down.
-    push(`/recipes/${params.id}`);
-  }
-
-  // Close leaves the session intact so it can be resumed later / on another device.
-  // Back goes where you came from (the recipe, or Mine if you launched it there),
-  // falling back to the recipe view on a cold-launch straight into cook mode.
-  function handleClose(): void {
-    goBack(`/recipes/${params.id}`);
-  }
-
-  // ─── Wake lock ──────────────────────────────────────────────────────────────────
-  const wakeLockSupported = isWakeLockSupported();
-  const wake = wakeLockSupported ? createWakeLock() : null;
-  let keepAwake = $state(false);
-
-  // The icon alone is a quiet affordance — a toast makes the state change explicit,
-  // since nothing else on screen confirms it. The ON path reports what actually
-  // happened rather than assuming: `enable()` resolves false when the browser or OS
-  // refuses the lock, and the toggle must not claim a lock it never got.
-  // Plain `let`, not `$state` — a re-entrancy guard only read inside the handler, so
-  // it needs no reactivity.
-  let togglingWakeLock = false;
-  async function toggleWakeLock(): Promise<void> {
-    if (togglingWakeLock) return;
-    togglingWakeLock = true;
-    try {
-      if (keepAwake) {
-        await wake?.disable();
-        keepAwake = false;
-        addToast('Screen can sleep again', 'success');
-        return;
-      }
-      const acquired = (await wake?.enable()) ?? false;
-      keepAwake = acquired;
-      if (acquired) addToast('Screen will stay awake', 'success');
-      else addToast("Your browser wouldn't let the screen stay awake.", 'destructive');
-    } finally {
-      togglingWakeLock = false;
-    }
-  }
-
-  // Release the lock when leaving cook mode.
-  $effect(() => {
-    return () => {
-      void wake?.disable();
-    };
-  });
+  // Restart, Finish, Close and the keep-awake toggle all live on the shared
+  // lifecycle, bound at the top of this script.
 </script>
 
 <!-- "Click anywhere else" for the expanded first-use chip. On window rather than the
