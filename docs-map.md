@@ -1,0 +1,84 @@
+# Docs map — read these when the task touches their area
+
+Indexed from [CLAUDE.md](CLAUDE.md), which is auto-loaded; this file is not, and
+neither is `docs/`. Everything below is invisible unless you open it deliberately,
+so treat this table as the index: **before editing anything under `packages/`,
+`apps/`, `scripts/`, `infra/` or `.github/workflows/`, read the row that matches
+what you are touching.** Each doc holds knowledge that is **not** recoverable from
+the code — decisions, gotchas, external setup, and contracts.
+
+The map sits in its own file rather than inline in `CLAUDE.md` because it is a
+lookup table consulted once per task, not a rule that has to be in front of you at
+all times — inline it cost every agent and every subagent ~4k tokens a turn.
+Nothing else about it changed. All paths are relative to the repository root.
+
+Rule for maintaining the docs: a doc earns its place by holding what code cannot
+say. If something is already explained in a header comment next to the code, it
+does **not** get restated here or in `docs/` — one source, no duplication. A new
+doc gets its row in the same commit, or it may as well not exist.
+
+The **Tracks** column is the routing source for the PR doc review
+([.github/workflows/pr-doc-review.yml](.github/workflows/pr-doc-review.yml)), which
+runs once per pull request when it comes out of draft — that job reads this table
+instead of keeping its own copy, so adding a row here is all it takes to bring a doc
+into review. Keep the globs accurate; `pnpm docsmap:check` parses this file and
+fails CI on a row that routes nothing or links to a file that is gone.
+
+| Read this                                                                                              | Tracks                                                                                                                                                         | When                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [docs/salt-architecture.md](docs/salt-architecture.md)                                                 | `packages/**`, `apps/**`, `eslint.config.*`, `.dependency-cruiser.*`, `pnpm-workspace.yaml`                                                                    | The prose contract behind `CLAUDE.md`: §3 dependency graph, §4 domain, §6 adapters, §7 adapter errors (§7.6 error-reporting policy), §8 cloud functions, §9 PWA, §11 enforcement. Any layering/boundary question.                                        |
+| [docs/domain-implementation.md](docs/domain-implementation.md)                                         | `packages/domain/**`                                                                                                                                           | Writing anything in the domain layer — module/coordinator pattern.                                                                                                                                                                                     |
+| [docs/matching-pipeline.md](docs/matching-pipeline.md)                                                 | `packages/domain/src/canon/**`, `packages/adapters/**`, `apps/cloud-functions/**`, `apps/web-pwa/src/routes/admin/**`, `apps/web-pwa/src/routes/canon/**`      | Canon matching: stages, thresholds, AI arbitration, `needs_approval`, and the **live** `MatchLogEntry` logging schema.                                                                                                                                 |
+| [docs/canon-icons.md](docs/canon-icons.md)                                                             | `apps/cloud-functions/src/triggers/iconWriteTrigger.ts`, `apps/cloud-functions/src/flows/defineIconFlow.ts`, `apps/cloud-functions/src/triggers/onCanonItemWritten.ts`, `apps/cloud-functions/src/triggers/onProductFormWritten.ts`, `apps/cloud-functions/src/triggers/onKitchenToolWritten.ts`, `apps/cloud-functions/src/callables/drawEquipmentIcon.ts`, `apps/cloud-functions/src/triggers/onEquipmentManifestWritten.ts`, `apps/cloud-functions/src/imaging/**`  | Tier-1 pictograms for canon items, product forms (#871), equipment (#877) and kitchen tools (#882) — generation pipeline, storage, rendering, and the verbatim prompt (reproduce exactly).                                                                                                 |
+| [docs/recipe-module.md](docs/recipe-module.md)                                                         | `packages/domain/src/recipe/**`, `packages/domain/src/schemas/recipe.ts`, `apps/cloud-functions/src/triggers/onRecipeWritten.ts`                               | Recipe schema, canon batch interaction, shopping-list extraction.                                                                                                                                                                                      |
+| [docs/meal-planning.md](docs/meal-planning.md)                                                         | `packages/domain/src/mealPlan/**`, `apps/web-pwa/src/routes/mealplan/**`, `apps/web-pwa/src/lib/mealPlanService.ts`                                            | Planner: week identity, `firstDayOfWeek`, shop day (#629), conflict model, which weeks may be written.                                                                                                                                                 |
+| [docs/formulas-schedules-batches.md](docs/formulas-schedules-batches.md)                               | `packages/domain/src/formula/**`, `packages/domain/src/process/**`, `packages/domain/src/batch/**`, `packages/domain/src/culture/**`                           | **Bread is built; ferments and cures are still contract (Epic #778).** Bread scaling, ferments and cures: the formula/process/batch contract, the scale-is-maths / adapt-is-AI seam, and why no `bread` kind. Formulas, `batches/{batchId}` + its observations subcollection, `proposeSchedule` and the stage-reminder path all exist as of #812; phases 03–05 do not. Read before designing any part of it.                                            |
+| [docs/ai-kitchen-assistant.md](docs/ai-kitchen-assistant.md)                                           | `apps/cloud-functions/src/flows/**`, `apps/web-pwa/src/routes/chat/**`, `apps/web-pwa/src/routes/recipes/CookModePage.svelte`, `apps/web-pwa/src/lib/cook*.ts` | Chef chat / cook mode — design principles and per-user data exceptions.                                                                                                                                                                                |
+| [docs/releases.md](docs/releases.md)                                                                   | `.github/workflows/deploy-*.yml`, `firebase.json`, `.firebaserc`, `apps/*/.env*`                                                                               | Deploying, the three Firebase projects, and where config/secrets live.                                                                                                                                                                                 |
+| [docs/data-refresh.md](docs/data-refresh.md)                                                           | `scripts/*firestore*.mjs`, `scripts/restore-*.mjs`, `storage.rules`                                                                                            | Copying data between environments, plus the cross-project image-bucket posture.                                                                                                                                                                        |
+| [docs/e2e.md](docs/e2e.md)                                                                             | `apps/web-pwa/e2e/**`, `docker/**`, `apps/web-pwa/playwright.config.ts`, `vitest.config.ts`, `firebase.test.docker.json`                                       | Running/debugging e2e + emulator integration suites; poisoned-environment recovery.                                                                                                                                                                    |
+| [docs/e2e-test-spec.md](docs/e2e-test-spec.md)                                                         | `apps/web-pwa/e2e/**`                                                                                                                                          | **Writing or reviewing** an e2e test — non-functional rules and the reviewer checklist.                                                                                                                                                                |
+| [docs/unit-test-spec.md](docs/unit-test-spec.md)                                                       | `packages/*/tests/**`, `packages/adapters/*/tests/**`, `apps/*/tests/**`, `**/*.test.ts`                                                                        | **Writing or reviewing** a Vitest unit test — non-functional rules (`UT-*`) and the reviewer checklist. The e2e spec's counterpart for the other 96k lines.                                                                                            |
+| [docs/939-investigation.md](docs/939-investigation.md)                                                 | `packages/adapters/firebase-sync/src/subscribeCollection.ts`, `packages/adapters/firebase-sync/src/subscribeDocument.ts`, `packages/adapters/firebase-sync/src/schemaParsing.ts`, `packages/adapters/firebase-sync/src/chatSessionSubscription.ts` | The read path measured (#939): real collection sizes, what a whole-snapshot re-parse actually costs, and why `chatSessions` was the only subscription of fifteen that needed a bound. Read it **before** adding a `limit`/`where` to any subscription or touching the shared parse loop — most of the thirteen findings were measured and refuted, and every count is point-in-time. |
+| [docs/visual-regression.md](docs/visual-regression.md)                                                 | `.github/workflows/chromatic.yml`, `apps/storybook/**`                                                                                                         | Chromatic VR: why it is selective and non-blocking, accepting diffs.                                                                                                                                                                                   |
+| [docs/error-reporting-calibration.md](docs/error-reporting-calibration.md)                             | `packages/adapters/observability/**`                                                                                                                           | Verifying reporting changes in PostHog; the intentional asymmetries that are **not** bugs.                                                                                                                                                             |
+| [docs/runbooks/product-forms-staging-validation.md](docs/runbooks/product-forms-staging-validation.md) | `packages/domain/src/productForm/**`                                                                                                                           | Exercising product-forms on staging (live — see #512). Gotchas section first.                                                                                                                                                                          |
+| [docs/runbooks/app-check-preflight.md](docs/runbooks/app-check-preflight.md)                           | `apps/cloud-functions/src/tracedCallable.ts`, `apps/web-pwa/.env.*`                                                                                            | **Before flipping any App Check enforcement setting** (#718). Two independent origin allowlists that nothing keeps in agreement — the gap that broke prod sign-in on 2026-08-05.                                                                       |
+| [docs/runbooks/cloud-smoke.md](docs/runbooks/cloud-smoke.md)                                           | `apps/cloud-functions/probes/**`                                                                                                                               | Running or triaging the cloud probe harness (#722) — `pnpm probe`. Preconditions (one IAM grant per project), why App Check tokens are **minted** and never debug tokens, what each journey covers, and the triage tree. Read before adding a journey. |
+| [docs/runbooks/ttl-policies.md](docs/runbooks/ttl-policies.md)                                         | `apps/cloud-functions/src/triggers/onCookTimerDispatch.ts`, `apps/cloud-functions/src/triggers/onBatchStageDispatch.ts`, `apps/cloud-functions/src/triggers/onKitchenTimerDispatch.ts`, `apps/cloud-functions/src/triggers/timerDeliveryRetention.ts`, `packages/adapters/firebase-sync/src/chatSessionSubscription.ts`, `scripts/migrate-ttl-timestamps.mjs` | Retention on `chatSessions` and `timerDeliveries` (#1008) — why a TTL policy silently skips a non-`Timestamp` field, the per-project **deploy → migrate → enable → verify** procedure, and what is expected to be swept (the 42 past-expiry chats) versus kept (the 31 sentinels). Read before touching either TTL field or its write sites. |
+| [infra/bigquery-export/README.md](infra/bigquery-export/README.md)                                     | `infra/bigquery-export/**`                                                                                                                                     | Firestore→BigQuery changelog export (#684): why the manifest is isolated from CI deploys, the prod-only install + backfill procedure.                                                                                                                  |
+
+### Design docs (`docs/design/`)
+
+- [design.md](docs/design/design.md) — **machine-consumed, not prose.** Its YAML
+  frontmatter is the source of truth for the Culinary Modernist palette and
+  tokens; `packages/ui-components/scripts/check-theme.ts` and
+  `tests/tokens.theme.test.ts` read it. Editing tokens starts here, not in CSS.
+- [component-tokens.md](docs/design/component-tokens.md) — the procedure when a
+  component "looks wrong" and the fix should become a token. Follow it rather
+  than inventing tokens.
+  Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
+
+- **ui-spec-v02 → v11 are cumulative, never superseding.** v0.2 holds the
+  foundations (boundaries, package surface, event naming, styling rules) and stays
+  in force for every later version; each later spec only adds components —
+  [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
+  [v04](docs/design/ui-spec-v04.md) Combobox + `ListPage` selection mode,
+  [v05](docs/design/ui-spec-v05.md) `ListPage` fill mode,
+  [v06](docs/design/ui-spec-v06.md) `ImageCropper` free-aspect mode,
+  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode,
+  [v08](docs/design/ui-spec-v08.md) `Dial`,
+  [v09](docs/design/ui-spec-v09.md) `Chip` + `ChipGroup` (the filter-pill row —
+  one size, and the group owns layout and grouping semantics but never
+  selection; §8.23.8 adds the two static chips, `fact` and `tag`, which render a
+  span because they are read rather than pressed),
+  [v10](docs/design/ui-spec-v10.md) `Tabs` (a bits-ui wrapper — roving focus and
+  automatic activation, a count on each tab, and the selected value always owned
+  by the page so it can move the selection itself),
+  [v11](docs/design/ui-spec-v11.md) `ImageCropper` square mode (a third `aspect`
+  value, `'1:1'`, for the pictogram upload — the amendment v06 §1.3 demanded
+  before the union could be widened; why neither existing mode works is the
+  alpha-bounding-box arithmetic in §1.1). Touching
+  `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
+  the spec that owns your component. The specs are binding: if something is
+  missing or ambiguous, stop and extend the spec rather than inventing.

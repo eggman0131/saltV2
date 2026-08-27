@@ -161,7 +161,7 @@ jobs:
       - name: Theme check
         run: pnpm theme:check
 
-      # Docs map hygiene. `docs/` is not auto-loaded, so CLAUDE.md's Docs map is
+      # Docs map hygiene. `docs/` is not auto-loaded, so `docs-map.md` is
       # the ONLY index of it — a doc missing from the map is invisible to every
       # agent, and a row whose glob has gone dead reads as covered while routing
       # nothing. Both are whole-repo facts that per-PR doc review structurally
