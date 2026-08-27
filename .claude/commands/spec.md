@@ -53,7 +53,26 @@ Delegate breadth to Explore subagents when the surface is wide or you don't yet 
 
 Check for prior art too: `gh issue list --search "<keywords>" --state all`. Extending or superseding an existing issue beats duplicating it.
 
-Scope the read's output to four things and no others: **layers involved**, **binding constraints** (named — rule number, `docs/…` section — not paraphrased), **existing patterns to reuse**, and **anything that looks like it will fight the architecture**. No code walkthroughs, no implementation proposals — those come later, if at all.
+Scope the read's output to five things and no others: **layers involved**, **binding constraints** (named — rule number, `docs/…` section — not paraphrased), **existing patterns to reuse**, **anything that looks like it will fight the architecture**, and **whether it can ship dark**. No code walkthroughs, no implementation proposals — those come later, if at all.
+
+**Can it ship dark?** Production is a deliberate promotion, so anything half-built on `main` holds
+back everything merged behind it. A per-user flag is the release valve (#831), but a flag hides a
+*surface*, never a *consequence*. Answer three questions, in order:
+
+1. Does it own its own collections, or does it add fields to shared ones?
+2. Does it *add* surfaces, or modify existing ones?
+3. **Does anything it writes get read by someone the feature is hidden from?**
+
+Pass all three and it can be released to one person at a time for the cost of a feature key and a
+few call sites. Question 3 is the one that decides it: meals freezes its expansion into
+`day.recipeIds`, so a meal planned while hidden still puts five cards on everyone's planner — no UI
+gate can reach that. Bread passes because `formulas`/`batches` are its own collections and the recipe
+document is untouched, which `docs/formulas-schedules-batches.md` states as a design goal rather than
+leaving to luck.
+
+If it fails, raise it in Step 2 alongside the shape that would pass, and let me choose. Separability
+is nearly free to design in and expensive to retrofit — once the schema has shipped it is a migration,
+not a refactor.
 
 **Keep the `file:line` as you go.** This read gets spent twice: once writing the issue, and once by `/run`, which otherwise re-derives exactly these things once per phase — five architecture sweeps for a four-phase feature. Pointers recorded now are sweeps `/run` never pays for again; the **Context pointers** field in each phase block is where they land.
 
@@ -80,7 +99,8 @@ No implementation detail. Written for a non-coder deciding if this is right.]
 
 ## Architecture Notes
 [Layer map references. Packages touched. Key decisions made. Constraints from CLAUDE.md.
-What must NOT be done. Existing patterns to reuse. Written for a fresh agent with no prior context.]
+What must NOT be done. Existing patterns to reuse. Whether it can ship dark behind a flag, and
+what keeps it that way. Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
 [Every architecture risk or fork raised in Step 2 goes here, each as:

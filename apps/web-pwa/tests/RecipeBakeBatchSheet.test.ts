@@ -172,6 +172,32 @@ describe('RecipeBakeBatchSheet — what twelve rolls weigh out to', () => {
     expect(screen.getByTestId('bake-batch-total-grams')).toHaveTextContent('742 g');
   });
 
+  it('offers the formula’s own shape when the preset list does not hold it', async () => {
+    // A formula written for a hand-typed shape must still be bakeable at a
+    // DIFFERENT count. Before the picker could name that shape, asking for six
+    // silently fell back to the reference yield and made twelve.
+    const boule = {
+      label: '1 kg sourdough boule',
+      count: 2,
+      unitDoughGrams: 1000,
+      bakeLossPercent: 14,
+    };
+    renderSheet({ ...FORMULA, referenceYield: { kind: 'target', shape: boule } } as Formula);
+    await waitFor(() => expect(screen.getByTestId('bake-batch-sheet')).toBeInTheDocument());
+
+    expect(screen.getByTestId('bake-batch-shape')).toHaveTextContent(boule.label);
+    expect(screen.getByTestId('bake-batch-count')).toHaveValue('2');
+
+    await fireEvent.input(screen.getByTestId('bake-batch-count'), { target: { value: '4' } });
+    await fireEvent.click(screen.getByTestId('bake-batch-confirm'));
+
+    await waitFor(() => expect(mockStartBatch).toHaveBeenCalledTimes(1));
+    expect(mockStartBatch.mock.calls[0]![0].atYield).toEqual({
+      kind: 'target',
+      shape: { ...boule, count: 4 },
+    });
+  });
+
   it('falls back to the formula as written when the count is not a count', async () => {
     renderSheet();
     await waitFor(() => expect(screen.getByTestId('bake-batch-preview')).toBeInTheDocument());

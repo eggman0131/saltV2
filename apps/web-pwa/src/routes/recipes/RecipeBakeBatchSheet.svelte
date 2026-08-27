@@ -25,10 +25,10 @@
     solveFormula,
     targetYield,
     unitShapeFromPreset,
-    unitShapePreset,
     withComponentPercentScaled,
     type Recipe,
     type ScheduleAnchor,
+    type UnitShapePreset,
   } from '@salt/domain';
   import type { Formula, ProposeScheduleOutput } from '@salt/domain/schemas';
   import { proposeSchedule, startBatch } from '../../lib/batchService.js';
@@ -147,13 +147,49 @@
   const activeProposal = $derived(proposalFor === askKey ? proposal : null);
 
   /**
+   * The formula's own shape, offered as a picker option whenever the preset list
+   * does not already hold it — a hand-typed "1 kg sourdough boule" included.
+   *
+   * Without it such a formula could be baked as written, or as some preset, but
+   * never as TWELVE of the thing the recipe is actually for: the picker had no way
+   * to name it, and a count with no shape falls back to `referenceYield` and
+   * silently ignores the count. The id is synthetic and lives only in this
+   * component — nothing is stored, and the match back is the shape itself.
+   */
+  const OWN_SHAPE_ID = 'formula-shape';
+
+  const ownShapeOption = $derived.by((): UnitShapePreset | null => {
+    if (formula.referenceYield.kind !== 'target') return null;
+    const { label, unitDoughGrams, bakeLossPercent } = formula.referenceYield.shape;
+    const alreadyListed = UNIT_SHAPE_PRESETS.some((p) => samePreset(p, formula.referenceYield));
+    return alreadyListed ? null : { id: OWN_SHAPE_ID, label, unitDoughGrams, bakeLossPercent };
+  });
+
+  const shapeOptions = $derived(
+    ownShapeOption === null ? UNIT_SHAPE_PRESETS : [ownShapeOption, ...UNIT_SHAPE_PRESETS],
+  );
+
+  // All three fields, not just label and weight: a "900 g tin loaf" whose bake loss
+  // was corrected by hand is a different shape from the preset it is named after,
+  // and folding one onto the other would quietly bake at the wrong figure.
+  function samePreset(preset: UnitShapePreset, yieldValue: Formula['referenceYield']): boolean {
+    if (yieldValue.kind !== 'target') return false;
+    const shape = yieldValue.shape;
+    return (
+      preset.label === shape.label &&
+      preset.unitDoughGrams === shape.unitDoughGrams &&
+      preset.bakeLossPercent === shape.bakeLossPercent
+    );
+  }
+
+  /**
    * Seed from the formula's OWN reference yield — "the recipe as written" is the
    * answer most runs want, and it should be sitting in the boxes rather than waiting
    * to be typed.
    *
-   * A shape the preset list does not recognise leaves the picker empty, which is not
-   * a failure state: an empty picker means "as written", and the solve falls back to
-   * `formula.referenceYield` for exactly the same answer.
+   * The picker can always name that shape now (see `ownShapeOption`), so an empty
+   * picker means the formula is basis-driven — a weight, not a count of anything —
+   * and the solve falls back to `formula.referenceYield` for exactly that answer.
    */
   function seed(): void {
     mode = 'startAt';
@@ -161,12 +197,9 @@
     startError = null;
     discardProposal();
     if (formula.referenceYield.kind === 'target') {
-      const shape = formula.referenceYield.shape;
-      const preset = UNIT_SHAPE_PRESETS.find(
-        (p) => p.label === shape.label && p.unitDoughGrams === shape.unitDoughGrams,
-      );
-      presetId = preset?.id ?? '';
-      countText = String(shape.count);
+      const option = shapeOptions.find((p) => samePreset(p, formula.referenceYield));
+      presetId = option?.id ?? '';
+      countText = String(formula.referenceYield.shape.count);
     } else {
       presetId = '';
       countText = '1';
@@ -181,7 +214,9 @@
     wasOpen = open;
   });
 
-  const selectedPreset = $derived(presetId ? unitShapePreset(presetId) : null);
+  const selectedPreset = $derived(
+    presetId ? (shapeOptions.find((p) => p.id === presetId) ?? null) : null,
+  );
   const count = $derived.by(() => {
     const value = Number(countText.trim());
     return Number.isInteger(value) && value > 0 ? value : null;
@@ -439,7 +474,7 @@
             {selectedPreset?.label ?? 'As written'}
           </SelectTrigger>
           <SelectContent>
-            {#each UNIT_SHAPE_PRESETS as preset (preset.id)}
+            {#each shapeOptions as preset (preset.id)}
               <SelectItem value={preset.id}>{preset.label}</SelectItem>
             {/each}
           </SelectContent>

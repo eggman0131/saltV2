@@ -1,6 +1,7 @@
 import type { Formula, FormulaComponent, ReferenceYield } from '../schemas/formula.js';
 import type { BoundViolation, FormulaFailure } from './failure.js';
 import { roundGrams } from './rounding.js';
+import { bakedUnitGrams } from './unitShapes.js';
 
 // The bidirectional yield solve (issue #782). One equation, two unknowns you can
 // choose between:
@@ -137,7 +138,7 @@ export function solveFormula(
     usableExactGrams = shape.count * shape.unitDoughGrams;
     totalExactGrams = usableExactGrams * handlingAllowance;
     basisExactGrams = totalExactGrams / (sumAllPercent / 100);
-    const bakedUnitExactGrams = shape.unitDoughGrams * (1 - shape.bakeLossPercent / 100);
+    const bakedUnitExactGrams = bakedUnitGrams(shape);
     units = {
       label: shape.label,
       count: shape.count,
