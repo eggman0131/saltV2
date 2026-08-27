@@ -211,6 +211,19 @@ has. It is also the easiest to render vacuously green.
   Sheet or Dialog focus trap eats `userEvent`'s per-keystroke events, so the input receives a
   truncated value and the test fails on an assertion that looks unrelated.
   **Evidence:** #793/#804, the second of that investigation's two root causes.
+  **And a helper that OPENS one must wait for focus to land in it before it returns.** bits-ui takes
+  the dialog on a tick of its own; until it does, `document.activeElement` is still the trigger, so a
+  key pressed in that window is dispatched from wherever the trigger sits and runs every handler on
+  the way up. Wait on `dialog.contains(document.activeElement)`, not on the dialog merely existing.
+  **Evidence:** #967 — the planner's Escape reached the day sheet on one machine and the cook deck
+  underneath it on another, and passed both times.
+
+- **UT-F5 (MUST) — Drive a production timer; never wait for it.** A module that sets a real
+  `setTimeout` to undo itself (a flash, a debounce, an idle settle) fires only if the worker outlives
+  the delay, which is a property of the host, not of the test. Use fake timers and
+  `vi.advanceTimersByTime` so the callback runs on both platforms or on neither.
+  **Evidence:** #967 — `savedTick`'s 1.5 s clear ran on CI's runner and not on macOS, so the module
+  measured 7/7 lines on one and 6/7 on the other with the suite green either way.
 
 - **UT-F3 (MUST NOT) — No arbitrary sleeps.** Wait on the real signal: `await waitFor(...)`,
   `findBy*`, or `vi.advanceTimersByTime` under fake timers. A bare `setTimeout` race resolves
@@ -296,6 +309,7 @@ Async & harness
 [ ] UT-F2  fireEvent (not userEvent.type) inside a bits-ui focus trap
 [ ] UT-F3  No arbitrary sleeps; waitFor/findBy/fake timers
 [ ] UT-F4  Fake timers, stubEnv, stubGlobal, window writes restored in afterEach
+[ ] UT-F5  A production timer is driven with fake timers, never waited out
 
 Tooling (only if a test directory or config is added)
 [ ] UT-G1  New tests/ dir has a tsconfig.test.json wired into root `typecheck`
