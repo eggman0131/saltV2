@@ -5,6 +5,7 @@ import type {
   PushSubscriptionDoc,
   RecipeDoc,
 } from '@salt/domain/schemas';
+import { FakeTimestamp } from '../support/fakeTimestamp.js';
 
 // Unit-level (mock-based, no emulator) coverage of the cook-timer DISPATCH handler
 // (issue #544): re-read the live session, no-op stale/duplicate dispatches via the
@@ -102,21 +103,6 @@ const mockDb = {
   runTransaction: async (fn: (tx: unknown) => Promise<void>) =>
     fn({ get: async () => mockLedgerSnap, set: mockTxSet }),
 };
-// The slice of firebase-admin's `Timestamp` the ledger claim uses (#1008):
-// `fromMillis` at the write site, `toMillis` in the offset assertion below.
-class FakeTimestamp {
-  private readonly ms: number;
-  constructor(ms: number) {
-    this.ms = ms;
-  }
-  static fromMillis(ms: number): FakeTimestamp {
-    return new FakeTimestamp(ms);
-  }
-  toMillis(): number {
-    return this.ms;
-  }
-}
-
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => mockDb,
   Timestamp: FakeTimestamp,
