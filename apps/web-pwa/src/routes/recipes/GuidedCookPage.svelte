@@ -12,6 +12,10 @@
   // finish, close, keep-awake — shared with plain cook mode (issue #994), because
   // both screens are the same cook on the same session document.
   import { createCookLifecycle } from '../../lib/cookLifecycle.svelte.js';
+  // The step timers — projection, tick, start/dismiss/progress and the sheet — also
+  // shared with plain cook mode (issue #994). The plan's check-ins are the one thing
+  // this screen hands it; see the timer section below.
+  import { createCookTimers } from '../../lib/cookTimers.svelte.js';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   // The ingredient picture and the press-and-hold "add to the list" — shared with
   // plain cook mode (issue #994), because both screens draw the same rows.
@@ -26,17 +30,13 @@
     addIngredientToShoppingList,
   } from '../../lib/cookIngredientIcons.js';
   import { toolIcons } from '../../lib/kitchenToolService.js';
-  import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
-  // The timer defaults and the push floor, shared with plain cook mode and My
-  // Kitchen (issue #994) so a timer behaves the same whichever screen started it.
-  import {
-    AD_HOC_TIMER_LABEL,
-    AD_HOC_TIMER_MINUTES,
-    shouldNotifyFor,
-  } from '../../lib/timerDefaults.js';
+  // The push floor, shared with plain cook mode and My Kitchen (issue #994) so a timer
+  // behaves the same whichever screen started it. A check-in is armed here rather than
+  // in `$lib/cookTimers`, so this page reads the floor for itself.
+  import { shouldNotifyFor } from '../../lib/timerDefaults.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import {
     sectionMinHeight,
@@ -50,8 +50,6 @@
   import {
     withStepDone,
     withPrepChecked,
-    withTimerStarted,
-    withTimerDismissed,
     firstIncompleteStepId,
     firstUseByStep,
     kitByStep,
@@ -64,11 +62,10 @@
     nextStepLookahead,
     hasRecipeChanged,
     formatClock,
-    timerProgress,
     checkInTimerId,
     isCheckInTimerId,
   } from '@salt/domain';
-  import type { CookActiveTimerDoc, IngredientDoc, StepDoc } from '@salt/domain/schemas';
+  import type { CookActiveTimerDoc, IngredientDoc } from '@salt/domain/schemas';
 
   // Guided cook (issue #751, Phase 2) — `/recipes/:id/cook/guided`.
   //
@@ -96,10 +93,11 @@
   // differs is not a slot but the whole mise stage — its data model, its tick
   // field, its progress function, its sections (there are none) and an extra
   // section of its own. What does NOT differ is shared as code rather than as a
-  // shell component: the session lifecycle in `$lib/cookLifecycle` (issue #994),
-  // `createDeck` in `$lib/deck`, the pure geometry in `$lib/cookDeck`, the timer
-  // defaults in `$lib/timerDefaults`, the ingredient rows in
-  // `$lib/cookIngredientIcons`, and the producers in `@salt/domain/cookSession`.
+  // shell component: the session lifecycle in `$lib/cookLifecycle` and the step
+  // timers in `$lib/cookTimers` (issue #994), `createDeck` in `$lib/deck`, the pure
+  // geometry in `$lib/cookDeck`, the timer defaults in `$lib/timerDefaults`, the
+  // ingredient rows in `$lib/cookIngredientIcons`, and the producers in
+  // `@salt/domain/cookSession`.
   //
   // FULL-VIEWPORT, the second such route (ui-spec-v05 §2, amended by this issue).
   // Its obligations are met exactly as CookModePage meets them: the route is
@@ -457,45 +455,14 @@
   // Carried unchanged from plain cook mode, because they are the same timers on the
   // same session document: an `activeTimers` entry with an ABSOLUTE `endsAt`, so a
   // reload or a device switch reconstructs the remaining time with no extra client
-  // state, and a timer started in one mode is live in the other.
+  // state, and a timer started in one mode is live in the other. All of it — the
+  // projection, the 1s tick, start / dismiss / progress and the one sheet — is in
+  // `$lib/cookTimers` (issue #994), shared with CookModePage.
   //
-  // The audible alert is NOT here. It lives in the app-level watcher
-  // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates away.
-  // Do not re-add a chime here; two owners means two honks.
-  const activeTimers = $derived($cookSession?.activeTimers ?? []);
-  // Keyed by STEP: "is there a live timer on the step I am cooking?". A check-in
-  // carries its step so the push copy can name it, so this must ask for the step's
-  // OWN timer rather than the last entry that mentions the step — otherwise the
-  // inline control would count down a reminder and its Cancel would cancel one.
-  const timerByStep = $derived(
-    new Map(
-      activeTimers.flatMap((t) =>
-        t.stepId === null || isCheckInTimerId(t.id) ? [] : [[t.stepId, t] as const],
-      ),
-    ),
-  );
-
-  let now = $state(Date.now());
-  $effect(() => {
-    if (activeTimers.length === 0) return;
-    if (typeof setInterval !== 'function') return;
-    const handle = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(handle);
-  });
-
-  // What the bar shows. A check-in that has FIRED leaves on its own: it is a nudge,
-  // not a checkpoint, so there is nothing to confirm and nothing to dismiss, and a
-  // "Check the heat — Finished" chip sitting over the braise for the next two hours
-  // would be exactly the acknowledgement the issue forbids. The entry stays in the
-  // document (harmless — its key is already in the enqueue diff) and goes when the
-  // timer it hangs off is dismissed. Derived off `now` rather than the effect above,
-  // which must keep watching `activeTimers.length` or it would tear its own interval
-  // down every second.
-  const barTimers = $derived(
-    activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
-  );
+  // What this screen adds, and the ONLY thing it adds, is below: the plan's check-ins,
+  // handed to the factory as the function that arms them. It is a parameter rather
+  // than a mode, which is what makes "check-ins are guided-only" structural — plain
+  // cook mode does not pass one, so it has no way to arm a reminder at all.
 
   // A check-in with nothing typed in it. The editor lets the minutes stand alone,
   // and a reminder that arrives blank is still better than one that silently never
@@ -528,122 +495,33 @@
     }));
   }
 
-  function startTimerEntry(entry: {
-    id: string;
-    stepId: string | null;
-    label: string | null;
-    durationMinutes: number;
-  }): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    primeChime();
-    // One clock read for the main timer AND its check-ins, so every reminder is
-    // anchored to the same instant the wait started from.
-    const startMs = Date.now();
-    const endsAt = new Date(startMs + entry.durationMinutes * 60_000).toISOString();
-    void persistCookSession(
-      withTimerStarted(
-        s,
-        { ...entry, endsAt, notify: shouldNotifyFor(entry.durationMinutes) },
-        // Always offered; the producer takes them only when this is a fresh start.
-        // Re-timing a running timer keeps the check-ins already armed, because
-        // their anchor is the original start — see withTimerStarted.
-        checkInEntriesFor(entry.id, entry.stepId, startMs),
-      ),
-    );
-  }
-
-  function startTimer(step: StepDoc): void {
-    const timer = step.timer;
-    if (!timer) return;
-    startTimerEntry({
-      id: step.id,
-      stepId: step.id,
-      label: timer.description ?? null,
-      durationMinutes: timer.durationMinutes,
-    });
-  }
-
-  function dismissTimer(timerId: string): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    void persistCookSession(withTimerDismissed(s, timerId));
-  }
-
-  function timerProgressFor(timer: CookActiveTimerDoc): number | null {
-    const durationMinutes =
-      timer.durationMinutes ??
-      (timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes);
-    return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
-  }
-
-  // ─── The timer sheet ───────────────────────────────────────────────────────────
-  interface TimerSheetTarget {
-    id: string;
-    stepId: string | null;
-    label: string;
-    durationMinutes: number;
-    running: boolean;
-  }
+  // Everything else about a timer is plain cook mode's, from `$lib/cookTimers`. The
+  // sheet's open flag stays here because the markup binds it, and `bind:` needs a
+  // variable it can assign to; everything the sheet is opened WITH is in the factory.
   let timerSheetOpen = $state(false);
-  let timerSheetTarget = $state<TimerSheetTarget | null>(null);
-  const timerSheetPrefill = $derived({
-    label: timerSheetTarget?.label ?? AD_HOC_TIMER_LABEL,
-    durationMinutes: timerSheetTarget?.durationMinutes ?? AD_HOC_TIMER_MINUTES,
+  const timers = createCookTimers({
+    steps: () => recipe?.steps ?? [],
+    showSheet: () => {
+      timerSheetOpen = true;
+    },
+    armCheckIns: checkInEntriesFor,
   });
 
-  function openTimerSheet(target: TimerSheetTarget): void {
-    timerSheetTarget = target;
-    timerSheetOpen = true;
-  }
-
-  function openStepTimerSheet(step: StepDoc): void {
-    if (!step.timer) return;
-    openTimerSheet({
-      id: step.id,
-      stepId: step.id,
-      label: step.timer.description ?? '',
-      durationMinutes: step.timer.durationMinutes,
-      running: false,
-    });
-  }
-
-  function openRunningTimerSheet(timer: CookActiveTimerDoc): void {
-    const stepDuration =
-      timer.stepId === null
-        ? undefined
-        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes;
-    openTimerSheet({
-      id: timer.id,
-      stepId: timer.stepId,
-      label: timer.label ?? '',
-      durationMinutes: timer.durationMinutes ?? stepDuration ?? AD_HOC_TIMER_MINUTES,
-      running: true,
-    });
-  }
-
-  function openAdHocTimerSheet(): void {
-    openTimerSheet({
-      id: crypto.randomUUID(),
-      stepId: null,
-      label: AD_HOC_TIMER_LABEL,
-      durationMinutes: AD_HOC_TIMER_MINUTES,
-      running: false,
-    });
-  }
-
-  function confirmTimerSheet(next: { label: string; durationMinutes: number }): void {
-    const target = timerSheetTarget;
-    if (!target) return;
-    startTimerEntry({
-      id: target.id,
-      stepId: target.stepId,
-      label: next.label === '' ? null : next.label,
-      durationMinutes: next.durationMinutes,
-    });
-  }
+  // Bound to the names the markup already uses.
+  const timerByStep = $derived(timers.timerByStep);
+  const barTimers = $derived(timers.barTimers);
+  const now = $derived(timers.now);
+  const timerSheetPrefill = $derived(timers.sheetPrefill);
+  const timerSheetTarget = $derived(timers.sheetTarget);
+  const {
+    startTimer,
+    dismissTimer,
+    timerProgressFor,
+    openStepTimerSheet,
+    openRunningTimerSheet,
+    openAdHocTimerSheet,
+    confirmTimerSheet,
+  } = timers;
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   const recipeChanged = $derived(
