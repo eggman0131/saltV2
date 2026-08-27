@@ -2,6 +2,7 @@
 description: Coordinate several issues end to end — run /run per issue in its own worktree from a rolling pool, adversarially review each PR, then land them through a serial merge queue. Owns branch topology and merging; writes no code.
 argument-hint: <issue numbers>
 disable-model-invocation: true
+model: opus
 ---
 
 # Campaign
@@ -24,12 +25,29 @@ The success condition is a clean tree when Daniel comes back: every issue merged
 
 ## Standing rules
 
-- **Context hygiene is a hard rule, not an aspiration.** You do not read source files, diffs, CI logs, or test output. If you are about to Read something under `packages/`, `apps/`, or `docs/`, that is a delegation. You read: issue bodies, issue and PR comments, structured agent returns, and `gh`/`git` status output. File names are not diffs — `git diff --name-only`, `gh pr view --json files` and `git status` are yours and you will need them. A coordinator that reads diffs runs out of context at issue three and restarts work that already landed.
+- **Context hygiene is a hard rule, not an aspiration.** You do not read source files, diffs, CI logs, or test output. If you are about to Read something under `packages/`, `apps/`, or `docs/`, that is a delegation. You read: structured agent returns, the reviewer's summary, and `gh`/`git` status output — and not even the issue bodies, which are extracted for you (Setup 2). File names are not diffs — `git diff --name-only`, `gh pr view --json files` and `git status` are yours and you will need them. A coordinator that reads diffs runs out of context at issue three and restarts work that already landed.
 - **Unattended by default.** Daniel is not watching. AskUserQuestion is unavailable to you in spirit even where it exists — a question blocks the fleet for hours. Decide inside the envelope below; outside it, park the branch and keep the queue moving.
 - **CLAUDE.md is binding**, for you and every agent you spawn.
 - **The git guard is real.** `scripts/git-guard.mjs` refuses `git push …main`, `git push --no-verify`, and bare `git stash` / `stash pop` / `stash clear` — the stash stack is shared across every worktree and concurrent agent. Land things with `gh pr merge`. Set work aside with a WIP commit, never a stash.
 - **/run is the worker.** Do not reimplement the phase loop. Point each worker at `.claude/commands/run.md` and give it the overrides in **Dispatch**. Two copies of that loop will drift within a month.
 - **GitHub through the `gh` CLI throughout.** There is no GitHub MCP server in this repo. Two harness traps, and every brief you write carries both: plain `gh issue view` / `gh pr view` exit 0 with **empty stdout** in a non-TTY session — use the `--json` forms or `gh api`, and treat empty comment output as a failed fetch, never as "no comments" — and every `gh` call needs the sandbox disabled.
+
+## Models
+
+**Whatever model you are running on propagates to every agent you spawn** — a subagent with no `model:` inherits from its parent. One selection at the top silently sets the price of the entire tree, and a campaign spawns thirty-odd agents. Fable 5 is exactly twice Opus 5 on both input and output, so an unnoticed selection doubles the whole campaign and nothing in the run tells you it happened.
+
+So this command names a model at **every** `Agent` call rather than letting one inherit:
+
+| Spawn | Model | Why |
+| --- | --- | --- |
+| you, the coordinator | `opus` | you adjudicate technical disputes without being allowed to read the code, and your merges are irreversible |
+| footprint extractor | `haiku` | fixed extraction against a known heading set |
+| worker (`/run`) | `opus` | owns validation and the git history |
+| reviewer | `opus` | the other genuine reasoning job in this command |
+| fix agent | `sonnet` | findings arrive enumerated and the scope is closed |
+| conflict resolver | `sonnet` | you have already classified the conflict; it applies a rule you handed it |
+
+Never omit `model:` and let it inherit. If you find yourself running on anything other than Opus, say so once in the ledger's **Plan** block before you dispatch anything — that line is the only chance anyone gets to catch it before the bill.
 
 ---
 
@@ -50,17 +68,28 @@ Any row whose recorded state disagrees with what `gh` says — "merged" with an 
 
 Workers do not survive a session: a `dispatched` row from a dead session has no live agent behind it. Verify what its branch actually holds (the per-branch PR check above, plus `git log --oneline origin/main..origin/<branch>` if it was pushed), then either re-dispatch from where it stands — /run's own resume logic picks up landed phases — or park it.
 
-### 2. Read the issues, derive the footprints
+### 2. Derive the footprints — delegated, never read
 
-`gh issue view N --json title,body,labels` for each. From each issue hold only:
+**Do not open the issue bodies yourself.** A phased spec issue runs 10–25KB; you need about 200 tokens of it. Everything you read here stays in your transcript and is resent on every turn for the rest of the campaign — across a hundred-plus coordinator turns that is the single largest avoidable cost in this command, and it buys you nothing, because `/run` reads the issue from source anyway.
 
-- title, kind (`/spec` / `/defect` / `/refactor-spec`), phase count;
-- the union of every phase's **Technical deliverables** and **Must not touch** paths — this is the issue's **footprint**;
-- any explicit dependency the body states ("depends on #N", "after #N", "supersedes #N").
+Spawn one extractor per issue, all in one message so they run concurrently, each `Agent(…, model: "haiku")`:
 
-You do not need the phase detail. /run reads the issue itself; re-holding it here just burns the context you are trying to protect.
+> Read issue #N with `gh api repos/{owner}/{repo}/issues/N --jq '.body'` — the sandbox must be disabled, and plain `gh issue view` prints nothing in this harness. Return exactly this and nothing else. No prose, no summary of what the feature does, no opinion on whether it is a good idea:
+>
+> ```
+> ISSUE: N
+> TITLE: <title>
+> KIND: <spec | defect | refactor-spec — whichever baseline heading it carries>
+> PHASES: <count>
+> DELIVERABLES: [every path named across all phases' Technical deliverables]
+> MUST_NOT_TOUCH: [every path named across all phases' Must not touch]
+> DEPENDS_ON: [issues the body names as a dependency — "depends on #N", "after #N", "supersedes #N" — or NONE]
+> RUNNABLE: <yes | no — no if there are no phase blocks, or any phase block carries no Technical deliverables>
+> ```
 
-If an issue has no phase blocks, or its phase blocks carry no Technical deliverables, it is not /run-able. Park it before the campaign starts and say which.
+`DELIVERABLES` ∪ `MUST_NOT_TOUCH` is the issue's **footprint**, and it is all you hold. You will need it twice — once for the conflict graph below, once to classify rebase conflicts in the merge queue — and for nothing else.
+
+`RUNNABLE: no` → park it before the campaign starts and say which.
 
 ### 3. Conflict graph, not waves
 
@@ -104,6 +133,7 @@ No label — the `campaign:` title prefix is the discoverable marker, and it is 
 ## Plan
 Order: #a → #b → #c
 Pool: 2   Max diff: 1500   Ending: merge to main
+Models: coordinator opus · workers opus · reviewers opus · fixes and conflict resolution sonnet · extractors haiku
 Conflicts: #b after #a (shared packages/domain/src/recipe/**)
 Envelope: <the decision envelope you are operating under>
 
@@ -147,7 +177,7 @@ Explicitly, with `git worktree add` — **not** the Agent tool's `isolation: "wo
 
 ## Dispatch
 
-**Workers are Agent-tool subagents, spawned in the background — one per worktree.** This choice is load-bearing, so do not substitute a mechanism: a subagent has a task id the harness can kill (`TaskStop`) and *confirm* killed, it cannot outlive your session — so a resumed campaign never inherits a live worker it cannot see — and it runs unattended without any permission-flag guesswork. Record the agent's id in the ledger row **at the moment you dispatch it**, before anything else. A handle you did not record at dispatch cannot be recovered afterwards, and you will not read logs to find it.
+**Workers are Agent-tool subagents on `opus`, spawned in the background — one per worktree.** This choice is load-bearing, so do not substitute a mechanism: a subagent has a task id the harness can kill (`TaskStop`) and *confirm* killed, it cannot outlive your session — so a resumed campaign never inherits a live worker it cannot see — and it runs unattended without any permission-flag guesswork. Record the agent's id in the ledger row **at the moment you dispatch it**, before anything else. A handle you did not record at dispatch cannot be recovered afterwards, and you will not read logs to find it.
 
 **Arm a watchdog with every dispatch.** Every worker carries a budget — state it in the brief (default: no single phase longer than 45 minutes, no worker longer than 3 hours) — but a budget nobody checks is dead text: a spinning worker does not return BLOCKED, it returns nothing, and nothing wakes you for a worker that has hung. So alongside each worker, start a backgrounded shell that is nothing but `sleep <budget-seconds>` (Bash, `run_in_background: true`), named for the issue. Its exit re-invokes you; record its shell id in the same ledger row. Worker returns on time → `TaskStop` its watchdog as part of processing the return. Watchdog fires first → the budget is breached.
 
@@ -196,9 +226,9 @@ The slot is the smaller half of this. A worker you left running still holds a wo
 
 A PR is review-eligible only after you have verified what the review prompt asserts. The worker's `CI` field says green — check it agrees with reality now: `gh pr checks <pr>` (the heavy suites may show as passed-because-skipped if a sibling merged since the worker finished; that is the merge queue's problem, re-run after its rebase — what must be genuinely green here is everything else). A red check means the worker's return was wrong, and a worker that misreported CI may have misreported anything: park, don't review.
 
-One reviewer agent per PR, spawned fresh, **read-only** — it must not have the branch checked out and must not fix anything. A reviewer that can fix things will, and you lose the signal.
+One reviewer agent per PR, `Agent(…, model: "opus")`, spawned fresh, **read-only** — it must not have the branch checked out and must not fix anything. A reviewer that can fix things will, and you lose the signal.
 
-Give it: the issue body (`gh issue view N --json title,body`); the per-phase handoff comments — `gh api "repos/{owner}/{repo}/issues/N/comments"`; the existing PR discussion — `gh api "repos/{owner}/{repo}/issues/<pr>/comments"` **and** `gh api "repos/{owner}/{repo}/pulls/<pr>/reviews"` (`pr-doc-review.yml` has already run by this point, and so may other AI reviewers; conversation comments and review bodies live on different endpoints, so fetch both); and `gh pr diff <pr>`. The plain `--comments` forms print nothing in this harness — never conclude "no comments" from their output.
+**Give it the commands, not their output.** The brief below hands the reviewer a fetch list it runs itself. You run none of it — fetching the diff to paste it over would put 1500 lines into the context this whole command exists to protect, and this is the one place in the file where that mistake is easy to make.
 
 A PR reaching review is already under the ceiling — the worker enforced `--max-diff` at every phase boundary, so an oversized branch parked with its PR still in draft. That is deliberate: splitting a large diff across two reviewers splits the review too, and neither half can see a duplication or an architectural drift that spans the boundary. The fix for a diff too large to review is a PR that should have been two PRs, and the only place to fix that is upstream, in the phase loop.
 
@@ -206,28 +236,38 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 
 > Review PR #X against issue #N adversarially. Assume it is wrong and find where.
 >
+> Gather your own material first — every `gh` call needs the sandbox disabled, and the plain `--comments` forms print nothing in this harness, so empty output is a failed fetch and never "no comments":
+> - the issue: `gh api repos/{owner}/{repo}/issues/N --jq '.body'`
+> - the per-phase handoff comments: `gh api "repos/{owner}/{repo}/issues/N/comments"`
+> - the PR discussion, from **both** endpoints, because conversation comments and review bodies live apart: `gh api "repos/{owner}/{repo}/issues/<pr>/comments"` and `gh api "repos/{owner}/{repo}/pulls/<pr>/reviews"`
+> - the diff: `gh pr diff <pr>`
+>
 > Do not re-litigate what the gates already prove. `lint` + `depcruise` + `boundary:test` prove the import graph and the layer map. `typecheck` + `check` prove the types. `docsmap:check` proves the Docs map has a row. `theme:check` and `provenance:check` prove the tokens. All green on this PR — verified before you were spawned. Re-reporting any of them is noise.
 >
 > Do not repeat findings already on the PR. Read the existing comments first.
 >
 > Scope is the issue's phases. The handoff comments carry **Out of scope (do not suggest)** — that list is binding. Suggesting work the issue deliberately deferred is a defect in the review, not a finding.
 >
-> Look at the four things the gates structurally cannot see:
-> 1. **Testing** — do the assertions test behaviour, or merely execute the code? What case is missing? Judge against the reviewer checklists in `docs/unit-test-spec.md` (UT-*) and, for e2e, `docs/e2e-test-spec.md`. If a checklist file is absent on this branch, say so and judge on the merits — do not improvise a checklist and attribute it to the doc.
-> 2. **Documentation** — does a doc in CLAUDE.md's Docs map now say something false? A row existing is not a doc being true.
-> 3. **Duplication** — semantic, not textual: the same rule expressed in two places that can now disagree.
-> 4. **Architectural intent** — legal by depcruise but wrong in spirit: policy leaking into an adapter, a domain concern implemented in a component.
+> **You are hunting defects, not auditing quality.** Anything a tool can find, a tool has already found. Look at the four things the gates structurally cannot see, in this order — the first two are where real defects live and where most of your effort belongs:
+> 1. **Correctness** — an input, a state, or an ordering under which this code does the wrong thing. Concurrency, LWW clobbering, partial failure, empty and boundary cases, a `Failure` swallowed, a trigger racing a client write.
+> 2. **Architectural intent** — legal by depcruise but wrong in spirit: policy leaking into an adapter, a domain concern implemented in a component, a rule that will be true today and unenforced tomorrow.
+> 3. **Duplication** — semantic, not textual: the same rule expressed in two places that can now disagree. Not duplicated test scaffolding, not similar-looking code.
+> 4. **Testing** — report a gap **only** where a missing assertion means a real defect could ship undetected, and say what that defect would be. Do not audit against a checklist; do not open `docs/unit-test-spec.md` or `docs/e2e-test-spec.md` — 50KB of checklist compels enumeration, and enumeration is what makes a review unreadable. No findings about test style, test naming, or duplicated test helpers.
+>
+> **Documentation is not your lens.** `pr-doc-review.yml` has already run on this PR and is the tool that owns it. Raise a doc point only when the diff makes a specific existing sentence factually false *and* the doc review did not catch it.
 >
 > Severity, and be strict about the top one:
 > - **blocking** — you can state a concrete failure: this input, this state, this wrong output or crash. If you cannot name one, it is not blocking.
 > - **should-fix** — real, but ships safely and can be a follow-up.
-> - **note** — style, taste, preference.
+> - **note** — style, taste, preference. Say them in one line each or not at all.
 >
-> Post one review: `gh pr review <pr> --comment --body-file <file>` (every `gh` call needs the sandbox disabled), findings grouped by severity, most severe first. Then return only the counts and the blocking findings' one-line summaries.
+> **Write only findings.** No "what I verified and found sound" section, no summary of what the PR does, no restatement of the phases — the coordinator and the author both already know. If the honest answer is that you found nothing, the review is three lines saying so, and that is a good review rather than a failed one.
+>
+> Post one review: `gh pr review <pr> --comment --body-file <file>` (every `gh` call needs the sandbox disabled), findings grouped by severity, most severe first. Then return only the counts, the blocking findings' one-line summaries, and the should-fix findings' one-line summaries.
 
 ### Fixing findings
 
-Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose phases have all landed; pointed at a finished branch it either no-ops or restarts work. Spawn a plain agent instead:
+Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose phases have all landed; pointed at a finished branch it either no-ops or restarts work. Spawn a plain `Agent(…, model: "sonnet")` instead — the findings arrive enumerated and the scope is closed, so there is no design judgement left in this step:
 
 > In worktree `<path>` on branch `<branch>`, address these blocking review findings: [list]. Do not rebase, do not merge, do not touch another branch, and do not take work beyond the findings — the issue's Out of scope list still binds. Run the safe gate set, commit, push.
 >
@@ -238,11 +278,18 @@ Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose
 > GATES: <green | red>
 > ```
 
-Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3: anything still open after round 2 becomes a follow-up issue.
+Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3. A **blocking** item still open after round 2 parks the branch (see the envelope), or — if you adjudicate it as safe to ship — gets a filed issue before the merge. Everything else joins the ledger's should-fix list and is filed by nobody.
 
 **You adjudicate, not the reviewer.** A rejection is a position, not a veto; you decide, record the decision in the ledger, and move on. Reviewer-wins is a deadlock and this command runs unattended.
 
-Every should-fix and every rejected-but-real finding becomes a follow-up issue (`gh issue create`, referencing the PR) before the branch merges. Notes are dropped. Do not let the reviewer's taste hold the queue.
+**Do not file an issue per should-fix.** Collect them — one line each, with the PR number — and put the whole list in the ledger's closing comment for Daniel to triage. Notes are dropped entirely.
+
+This is deliberate and it is a reversal: filing them automatically produced seventeen open issues from a single five-issue campaign, overwhelmingly test-coverage and doc-accuracy suggestions, none of which was ever actioned. A backlog nobody triaged is not a record, it is noise with a tracking number — and writing each one cost a full issue body. The two exceptions that still get `gh issue create` at the time, because they are structural rather than taste:
+
+- **`BLOCKED: oversized`** — the split proposal, as described in **Dispatch**.
+- **a blocking finding you adjudicated as real but chose not to hold the queue for** — that is a known defect shipping to main, and it needs a number before the merge, not after the campaign.
+
+Do not let the reviewer's taste hold the queue.
 
 ---
 
@@ -254,14 +301,16 @@ The queue being serial does not idle the pool: while a branch is in the queue, w
 
 `--stop-at-green` skips this section entirely. Reviewed, green, unmerged PRs are the deliverable; go straight to **Finish** and report them. Leave the worktrees in place — Daniel will want them if he's landing these by hand.
 
-A branch is queue-eligible when: PR out of draft, review closed with no blocking findings outstanding, follow-up issues filed.
+A branch is queue-eligible when: PR out of draft, review closed with no blocking findings outstanding, and its should-fix findings recorded in the ledger.
 
 For each eligible branch, in list order:
 
 1. `git fetch --no-tags origin main`
-2. **Rebase in its worktree — delegated.** Spawn an agent: rebase onto `origin/main`; on conflict, report the conflicted paths and stop without resolving. You then classify from the paths alone against the footprints of what this campaign has already merged (this is why you hold footprints, and why file names are not diffs):
-   - conflicted paths all inside a merged sibling's footprint, or `pnpm-lock.yaml`, or the Docs map → this campaign's own work; resolve it. Send the agent back with the classification and the resolution rule; it resolves, runs the safe gate set, continues the rebase.
-   - any conflicted path outside → **park**. Someone else's concurrent change is not yours to resolve. Abort the rebase (`git rebase --abort`) so the worktree is left clean for a human.
+2. **Rebase in its worktree — yourself, inline.** Do not spawn an agent for this. `git -C <worktree> rebase origin/main`, and on conflict `git -C <worktree> diff --name-only --diff-filter=U` for the conflicted paths. That is file names, not diffs, so it is squarely inside your standing rule — and an agent costs a whole fresh context plus a round trip to run two git commands you can run in one message.
+
+   Classify from the paths alone, against the footprints of what this campaign has already merged (this is the second and last thing footprints are for):
+   - conflicted paths all inside a merged sibling's footprint, or `pnpm-lock.yaml`, or the Docs map → this campaign's own work. **Now** delegate: spawn an `Agent(…, model: "sonnet")` with the classification and the resolution rule (`pnpm install --lockfile-only` for the lockfile, re-apply both rows for the Docs map, and for a sibling's footprint the rule that this campaign's own merged change wins), and have it resolve, run the safe gate set, and continue the rebase. Resolving is the part that reads code; classifying was not.
+   - any conflicted path outside → **park**. Someone else's concurrent change is not yours to resolve. `git -C <worktree> rebase --abort` so the worktree is left clean for a human.
 3. **Re-run the safe gate set.** This is the semantic-conflict catch, and the single highest-value step in the queue: two branches can each be green alone and red together, with no textual conflict between them. Red → park, log, next.
 4. `git push --force-with-lease`
 5. Wait for CI: `sleep 20 && gh pr checks <pr> --watch --fail-fast`. Blocking is fine here — the pool is what keeps working.
@@ -324,9 +373,13 @@ When the queue is empty:
    ## Campaign complete
    **Landed:** #a (PR #1), #b (PR #2)
    **Parked:** #c — [reason, what a human needs to decide, branch name]
-   **Follow-ups filed:** #d, #e
+   **Issues filed:** #d, #e — [only oversized-splits and shipped-known-defects; see Review]
    **Decisions taken:** [one line each]
+
+   **Should-fix, not filed** — Daniel's triage, one line each:
+   - PR #1: [finding]
+   - PR #2: [finding]
    ```
    Close the ledger issue only if nothing is parked. A parked issue is unfinished business and the open ledger is where it lives.
 2. `TaskStop` any watchdog still running; `git worktree prune`; confirm no campaign worktrees remain, and that every remaining remote branch is one you deliberately parked (labelled `status: on-hold`, reason on the PR).
-3. Report: landed, parked with reasons, follow-ups. One read, no digging. If everything landed, say so in a sentence and stop — a clean campaign does not need a report longer than its ledger.
+3. Report: landed, parked with reasons, issues filed, and the should-fix list. One read, no digging. If everything landed, say so in a sentence and stop — a clean campaign does not need a report longer than its ledger.
