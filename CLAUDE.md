@@ -2,6 +2,17 @@
 
 This file is the authoritative, machine-enforced architecture contract. Violating these rules will cause CI to fail. The full prose contract lives in [docs/salt-architecture.md](docs/salt-architecture.md).
 
+**Where a fact belongs.** This file is auto-loaded into every session and every
+subagent, so its size is paid before any code is read — `pnpm context:check` caps
+it. Something earns a place here only if an agent needs it **before** knowing which
+directory it is in, or it spans three or more packages. Otherwise:
+
+| The fact is… | It goes… |
+| --- | --- |
+| already stated by the code | in a comment at the declaration; link to that |
+| needed only inside one package | in a nested `CLAUDE.md` there ([apps/cloud-functions/CLAUDE.md](apps/cloud-functions/CLAUDE.md)) — loaded only when working in that tree |
+| looked up once per task | in a doc under `docs/`, with a row in [docs-map.md](docs-map.md) |
+
 ## Layer map
 
 ```
@@ -23,7 +34,7 @@ storybook                  →  ui-components                 # dev-only Storybo
 
 1. **Domain is pure.** `packages/domain` must not import Firebase, Node.js built-ins, browser APIs, or any I/O. No side effects. Pure functions and types only. Any conflict-resolution policy belongs here (never in an adapter) — but none is wired in today: document-level LWW is enforced entirely by Firestore (see data-model conventions).
 2. **Firebase SDKs are split by runtime.** The browser `firebase` SDK is imported only in `packages/adapters/firebase-sync` (it wraps the browser SDK for the PWA + offline cache). Cloud Functions talk to Firestore directly via `firebase-admin`/`firebase-functions` — the Admin SDK belongs in `apps/cloud-functions` (~25 files) and is **not** a violation there. What the lint/depcruise rules actually forbid is **any** Firebase SDK (`firebase` or `firebase-admin`) in `domain`, `observability`, and `ui-components`. `firebase-sync` is browser-only and must never be imported by `cloud-functions` (see §8).
-3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`. **Narrow exceptions (both scoped to `apps/web-pwa` only, both must degrade gracefully if storage throws, and both explicitly exclude all adapters):** (a) `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative — specifically the two sign-in keys in `apps/web-pwa/src/lib/auth.svelte.ts`, both of which must persist before any user is signed in and both of which must survive the user leaving the app to read their email: the magic-link pending email `salt:auth:pendingEmail` (email clients open the link in a fresh tab/window, so `sessionStorage` is unavailable) and the in-flight OTP step `salt:auth:pendingOtp` (`{ email, sentAt }`, TTL-checked against the server's 10-minute code expiry on read; an installed iOS PWA is routinely killed while backgrounded, and a fresh launch gets a fresh `sessionStorage`, so an in-memory step would strand the user on the request page holding a code); and (b) `window.sessionStorage` for the one-shot stale-deploy reload guard in `apps/web-pwa/src/lib/pwa.ts` (`salt:pwa:preloadReloadGuard`), which must survive a single page reload within the same tab to prevent a chunk-load reload loop and auto-clears at session end (page-load mechanics, not user data — no Firestore-backed alternative). Everything else stays forbidden.
+3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`. **Exactly three sanctioned keys exist**, all in `apps/web-pwa` (never an adapter), each wrapped so storage being unavailable degrades quietly: the two pre-authentication sign-in keys in [auth.svelte.ts](apps/web-pwa/src/lib/auth.svelte.ts) and the one-shot stale-deploy reload guard in [pwa.ts](apps/web-pwa/src/lib/pwa.ts). Each is justified in a comment at its own declaration — read that before adding a fourth, because the bar is "pre-auth or page-load mechanics with no Firestore-backed alternative", and nothing has cleared it since. Everything else stays forbidden.
 4. **Adapters do not import each other.** `firebase-sync` ↔ `observability` is forbidden in both directions.
 5. **Cloud Functions do not import the default `@salt/observability` subpath.** That subpath wraps the browser-only PostHog SDK (`posthog-js`) and cannot run in Node. Server-side observability uses `@salt/observability/server` (`posthog-node` + native OpenTelemetry). `firebase-functions/logger` continues to be used additively for CF-side match logs.
 6. **No importing apps.** Nothing may import `@salt/web-pwa`, `@salt/cloud-functions`, or `@salt/storybook`.
@@ -36,13 +47,18 @@ storybook                  →  ui-components                 # dev-only Storybo
 
 ## Data model conventions
 
-- **All data is family-shared.** No `userId`, `householdId`, or per-user scoping on any collection. Equipment, recipes, shopping list, canon, aisles, meal planner, shop days, and guided plans all live in single shared collections. (`guidedPlans/{recipeId}`, issue #751 — the prep list and step notes for one recipe, keyed by the recipe id. Deliberately its OWN collection rather than fields on `RecipeSchema`: a plan is a rendering of a recipe, not part of it, so it can be rewritten without touching — or LWW-clobbering — the dish, and a recipe with no plan carries no empty scaffolding.) Do not add user-scoped fields to new collections. (`shoppingDays/{YYYY-MM-DD}` carries a `setBy` uid, but it is **audit only** and deliberately unpinned in the rules — either partner may reschedule the other's shop.)
-- **Per-user exceptions (only four).** `chatSessions`, `cookSessions`, `pushSubscriptions` and — fourth — `kitchenTimers` are the only owner-scoped collections, deliberate exceptions to the family-shared rule because a chat history / an in-progress cook / which device to notify / whose egg is boiling is personal. `pushSubscriptions` (issue #544) holds one web-push subscription per device, id `${uid}_${deviceHash}`, `ownerUid` set on create and pinned on update, read/delete gated on `resource.data.ownerUid` with a `resource == null` clause (deterministic id → subscribe/delete-before-exists, mirroring `cookSessions`). Cloud Functions read every subscription via the Admin SDK (bypassing rules) to send. There is also a server-owned, client-denied `timerDeliveries` ledger (exactly-once delivery dedupe) — always a separate doc, never a write-back onto the document that triggered the send (a client full-doc `setDoc` would clobber it under LWW). It serves **several producers, deliberately sharing one collection**: cook timers, keyed `${sessionId}_${timerId}_${endsAtMs}` (#544), batch stage reminders, keyed `batch_${batchId}_${stageId}_${plannedStartAtMs}` (#812), and standalone kitchen timers, keyed `kitchen_${uid}_${timerId}_${endsAtMs}` (#842) — the prefixes keep the key spaces apart. A second collection of the same kind, with the same `allow read, write: if false` rules and the same purpose, would be pure duplication, so do not add one; the rules block covers them all without change. `cookSessions` uses a deterministic id (`${recipeId}_${uid}`) with `ownerUid == request.auth.uid` set on create and pinned on update; unlike `chatSessions` it has **no TTL** (a cook may span several days) and its orphan cleanup (deleted-recipe → delete session) is client-side only. Its read/delete rule also permits `resource == null` (issue #558) — the deterministic id means the cook page subscribes before the session exists, and a rule dereferencing `resource.data` on an absent doc is denied and kills the listener for good. Do not "tidy" that clause away; it is covered by both emulator suites. (`pushSubscriptions` mirrors this same `resource == null` clause for the same deterministic-id reason.) `kitchenTimers` (issue #842) is the fourth: **one document per user**, id `kitchenTimers/{uid}`, holding a `timers[]` array of standalone timers — the one-doc-per-user shape is what bounds the collection at ~5 documents forever, so there is no sweep, no scheduled function and **no TTL policy** (a dismissed timer leaves the array; one left ringing over a day is pruned by the next start). Its rule is the one that **deliberately has NO `resource == null` clause**, and it must not gain one: the document id simply *is* the uid, so ownership is provable from the path and the rule never dereferences `resource.data` at all — the absent-doc denial that forced the clause onto the other two cannot arise. The `ownerUid` field is still stored and pinned on write, because `onKitchenTimerDispatch` reads it off the parsed document to target `pushSubscriptions`.
-- **Shop day is its own collection** (issue #629). `shoppingDays/{YYYY-MM-DD}` — one tiny family-shared doc per shop trip. Not a field on a shopping list (it is a fact about the household's _week_, read by both the planner and the reminder) and not on `mealPlans/{startDate}` (a week doc only exists once someone plans that week, but the shop happens regardless — and keeping it separate means marking a shop never contends with a concurrent full-doc week write under LWW). The date-keyed id is load-bearing: the daily reminder is one `get` by deterministic id, the planner reads a week with one range query over doc ids (no index), and clearing is a `delete` — there is no "cleared" state to model. `slot` (`'am' | 'pm'`) drives **copy and display only**, never timing.
-- **`recipes` holds four kinds** (issues #637, #652). `kind: 'recipe' | 'outing' | 'cocktail' | 'placeholder'` — an `outing` (UI label "When you CBA") is a takeaway/night off with no ingredients and no method; a `cocktail` is a full recipe that is not dinner; a `placeholder` is neither — a stock photograph of "a good dinner, no particular dish", attached to a planner day that was planned in a sentence so that night gets a card like any other. Its mood is an ordinary `tags` entry (`bright` / `comfort`, constants exported from `@salt/domain`), deliberately **not** a schema field. `.default('recipe')` is mandatory (the realtime subscription skips docs that fail validation, so a required field would hide every production recipe), `ingredients`/`steps` stay required arrays (`[]`, never a discriminated union), and `kind` is immutable — set at create via `/recipes/new/:kind`, never editable. **Never branch on `kind` for behaviour outside `packages/domain`**: what an entry can do comes from the pure predicates `takesIngredients` / `isCookable` / `isPlannable` in `domain/src/recipe/queries/capabilities.ts`. Direct comparisons are permitted only to pick words, pictures or identity — `recipeKind.ts` copy/icons, the list's section chips, the planner picker badge, and the CF art-direction prompt selectors in `generateRecipeImage.ts` / `describeRecipeScene.ts` — never to decide whether something exists or is allowed. Outings and placeholders are **not** separate collections — they occupy a planner slot in place of a recipe; if they need their own fields, add optional nullable fields to the recipe doc first. Note what `isPlannable` actually gates: whether a kind is **offered in the planner picker**, not whether it may sit in a day. A placeholder is `isPlannable: false` and still occupies a slot, because it is attached on its own rather than chosen.
-- **Recipe attribution is audit-only, not scoping** (issue #845). `recipes.createdBy` / `recipes.lastEditedBy` hold a snapshot of `Member.name` — displayed on the recipe and nothing else, exactly like `shoppingDays.setBy`: never checked on read, never pinned on update, never a gate on capability, availability or ordering, and no rules change. A name on a family-shared document is not per-user scoping and must not be read as a fourth exception to the rule above.
-- **No soft-delete, no tombstones.** Firestore is the master; delete means delete. Canon has a vestigial `deletedAt` field from the local-first era — do not copy this pattern to new schemas.
-- **LWW per document.** Last-write-wins at the document level, enforced entirely by Firestore's full-document `setDoc` — no merge logic at any layer. There is no live conflict-resolution policy today; if a document ever needs bespoke resolution it belongs in `packages/domain` (pure), never in an adapter. Note the granularity: a client `setDoc` rewrites the whole doc, so it can clobber a field a CF trigger wrote concurrently (e.g. `thumbnail`/`embedding`) — that is the LWW contract, not a bug. See the LWW integration test in `firebase-sync`.
+Mechanics — id schemes, the `firestore.rules` clauses that look redundant and are
+not, per-collection shapes, and the per-boundary Zod failure table — are in
+[docs/data-model.md](docs/data-model.md). Read it before adding a collection,
+changing an id scheme, or editing `firestore.rules`. The invariants below hold
+everywhere and are not negotiable:
+
+- **All data is family-shared.** No `userId`, `householdId`, or per-user scoping on any collection. Equipment, recipes, shopping list, canon, aisles, meal planner, shop days and guided plans all live in single shared collections. Do not add user-scoped fields to new collections.
+- **Per-user exceptions (only four).** `chatSessions`, `cookSessions`, `pushSubscriptions`, `kitchenTimers` — a chat history, an in-progress cook, which device to notify, whose egg is boiling. There is no fifth. A uid stored for **audit** (`shoppingDays.setBy`, `recipes.createdBy` / `lastEditedBy` — snapshots of `Member.name`, displayed and nothing else) is not scoping: never checked on read, never pinned on update, never a gate on capability, availability or ordering. Do not read one as an exception.
+- **No soft-delete, no tombstones.** Firestore is the master; delete means delete.
+- **LWW per document.** Last-write-wins at the document level, enforced entirely by Firestore's full-document `setDoc` — no merge logic at any layer. There is no live conflict-resolution policy; if a document ever needs bespoke resolution it belongs in `packages/domain` (pure), never in an adapter. Note the granularity: a client `setDoc` rewrites the whole document, so it can clobber a field a CF trigger wrote concurrently (e.g. `thumbnail`/`embedding`) — that is the contract, not a bug. See the LWW integration test in `firebase-sync`.
+- **Never branch on `recipes.kind` for behaviour outside `packages/domain`.** What an entry can do comes from the pure predicates `takesIngredients` / `isCookable` / `isPlannable` in `domain/src/recipe/queries/capabilities.ts`. Direct comparisons are permitted only to pick words, pictures or identity — `recipeKind.ts` copy/icons, the list's section chips, the planner picker badge, and the CF art-direction prompt selectors in `generateRecipeImage.ts` / `describeRecipeScene.ts` — never to decide whether something exists or is allowed.
+- **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, Meal Planner and Recipes hold real production data — a schema change must be backward-compatible on read, or carry a one-off migration.
 
 ## AI / Genkit conventions
 
@@ -61,39 +77,50 @@ storybook                  →  ui-components                 # dev-only Storybo
 
 ### Worktree rules — where am I running?
 
-Some commands seize resources that belong to the whole machine rather than to a checkout. Three positions, and the answer to "may I run this?" differs in each:
+A few commands seize host-global singletons (fixed ports, the emulator compose
+projects, `.emulator-data`, the `:5174` Vite) and would kill the dev session Daniel
+is sitting in or corrupt another agent's e2e run: `dev`, `dev:genkit`,
+`dev:emulators`, `stop:emulators`, `test:emulator`, and `@salt/web-pwa`'s `e2e` /
+`e2e:ui` / `e2e:coverage`. **Ask Daniel before running one from a linked worktree**,
+then re-run with `SALT_TAKE_HOST=1`.
 
-| Position | Owns | Guarded commands |
-| --- | --- | --- |
-| **Main working tree** (`/Users/daniel/Projects/salt-vscode`) | the host stacks | run freely — it is the owner |
-| **Linked worktree on this host** (`.claude/worktrees/**`) | nothing | **refused** — ask before taking the host over |
-| **Cloud VM** (a Claude Code cloud session, including a worktree inside one) | the whole VM | run freely — there is nobody to ask |
+You do not have to remember which: [scripts/host-guard.mjs](scripts/host-guard.mjs)
+refuses them in a linked worktree, kills nothing, and prints what it protected, the
+override, and the safe alternatives. Its header comment carries the reasoning,
+including why a cloud VM must never be guarded.
 
-- **Safe anywhere, no permission needed:** `lint`, `typecheck`, `check`, `test`, `depcruise`, `boundary:test`, `format`, `format:check`, and `pnpm -r build` (there is no root `build` script — building is per-package). This is how you validate your work in a worktree, and it covers everything short of e2e. Use it and you will never meet the guard.
-- **Guarded:** `dev`, `dev:genkit`, `dev:emulators`, `stop:emulators`, `test:emulator`, and `@salt/web-pwa`'s `e2e` / `e2e:ui` / `e2e:coverage`. They grab host-global singletons — fixed ports, the `test-emulators` / `salt-vitest-emulators` compose projects, `.emulator-data`, the host-global `:5174` Vite — and they grab them bluntly, so from a worktree they kill the dev session Daniel is sitting in or corrupt another agent's e2e run into a red that looks like a real defect. `scripts/host-guard.mjs` refuses them in a linked worktree and kills nothing. **Ask Daniel first**, then re-run with `SALT_TAKE_HOST=1`.
-- **The guard must never fire in a cloud session.** A cloud VM belongs entirely to that session, so refusing there would skip validation for no reason and tell you to ask someone who is not present. A cloud session is a fresh clone, so the guard already no-ops — but the harness can create a linked worktree inside the VM, which would trip it. One-time setup: set `SALT_TAKE_HOST=1` in the cloud environment's **environment variables**. Deliberately not detected in code: Remote Control sessions are "remote" while driving Daniel's actual machine, and those must stay guarded.
-- **A cloud session is deliberately AI-key-less.** Cloud environments have no secrets store, `apps/cloud-functions/.secret.local` exists only on the Mac, and environment variables there are readable by anyone using the environment. `apps/web-pwa/.env.development` is tracked and its Firebase browser keys are public by design, so build / typecheck / check / unit tests need zero configuration. Anything needing Gemini goes through the `FUNCTIONS_AI_FAKE` seam or does not run at all. Do not go hunting for keys you will never find.
+**Everything short of e2e runs freely anywhere, no permission needed:** `lint`,
+`typecheck`, `check`, `test`, `depcruise`, `boundary:test`, `format`,
+`format:check`, `pnpm -r build` (there is no root `build` script). That is how you
+validate work in a worktree.
+
+**A cloud session is deliberately AI-key-less.** No secrets store, and
+`apps/cloud-functions/.secret.local` exists only on the Mac. Build, typecheck, check
+and unit tests need zero configuration; anything needing Gemini goes through the
+`FUNCTIONS_AI_FAKE` seam or does not run at all. Do not go hunting for keys you will
+never find.
 
 ## Zod schema conventions
 
-- **Schemas live in `@salt/domain/schemas`.** All zod schemas are defined under `packages/domain/src/schemas/` and exported via the `@salt/domain/schemas` subpath. Do not define schemas in adapters, apps, or `@salt/shared-types`.
-- **Schema-first.** Define the zod schema first; derive the TypeScript type with `type Foo = z.infer<typeof FooSchema>`. Never maintain a hand-written type alongside a schema for the same shape.
-- **Validate at trust boundaries only.** Add `.parse()` or `.safeParse()` at: AI/Genkit flow outputs, Firestore document reads (in `firebase-sync`), callable CF inputs, and "type laundering" sites (`as` casts, `unknown` narrowings, `JSON.parse`, string → structured parsers). Do **not** add validation to internal domain → domain calls, adapter internals, or any code the TypeScript compiler already proves correct.
-- **Handle validation failures per boundary type.** Always use `.safeParse()`, then:
-  - **Adapter single-document reads** (e.g. `load(id)`) → return `Failure<DomainError>` (`{ kind: 'StorageError', reason: 'corruption' }`); do not throw across internal layer seams.
-  - **Adapter list reads & realtime subscriptions** → skip the invalid doc, log it, and return the valid subset; one corrupt doc must not fail the whole read. Stream-level errors still surface via `onError`.
-  - **Callable CF entrypoints** → `throw new HttpsError('invalid-argument', …)`; this is the Firebase callable protocol for rejecting bad client input, not an internal seam.
-  - **Firestore triggers** → log and return; there is no caller to surface a `Failure` to.
-- **Production schema changes need a back-compat check.** Pre-launch (greenfield) schema-shape changes are free. Once production holds real data, a schema-shape change must not break documents already written — keep it backward-compatible on read or run a one-off migration. See [docs/salt-architecture.md §1.1](docs/salt-architecture.md).
+- **Schemas live in `@salt/domain/schemas`.** Defined under `packages/domain/src/schemas/`, exported via the `@salt/domain/schemas` subpath. Never in adapters, apps, or `@salt/shared-types`.
+- **Schema-first.** Define the schema, derive the type with `z.infer`. Never maintain a hand-written type alongside a schema for the same shape.
+- **Validate at trust boundaries only** — AI/Genkit flow outputs, Firestore reads (in `firebase-sync`), callable CF inputs, and "type laundering" sites (`as` casts, `unknown` narrowings, `JSON.parse`, string → structured parsers). **Not** on internal domain → domain calls, adapter internals, or anything the compiler already proves.
+- **Always `.safeParse()`, never `.parse()`** at those boundaries. What to do with the failure differs per boundary and is tabulated in [docs/data-model.md](docs/data-model.md) — the short version: adapters return `Failure`, list reads skip the bad doc, callables throw `HttpsError`, triggers log and return.
 
 ## Observability / error-reporting conventions
 
-- **Report the unexpected, suppress the expected.** Caught errors reach PostHog error tracking only via `ErrorReportingPort`, gated on the `DomainError` category — not by which call site happens to have a `catch`/`onError`. Reporting exists to surface failures the friendly-message path would otherwise hide; it is not a mirror of every `Failure`. Full policy: [docs/salt-architecture.md §7.6](docs/salt-architecture.md).
-- **Report:** `StorageError`, `SyncError`, uncategorised/unknown errors, and (server-side) unhandled CF exceptions + AI/Genkit flow failures. `AuthError` is reported **except** the sign-out / token-refresh `permission-denied` race on in-flight listeners.
-- **Do not report:** `NetworkError`/offline, `ValidationError`, `NotFound`, `ConflictError`, and the sign-out auth race.
-- **Coverage is uniform** across write/command failures, realtime `onError`, and server CF — gated by category, not by call-site shape.
-- **Best-effort, never throws** (Rule 10). Scrub raw user input (e.g. canon match text) from reported context — data is family-shared, but free-form user content must not be attached. Server PostHog reporting is additive to `firebase-functions/logger`.
-- **Not lint-enforceable.** This is a runtime convention checked by review + the gating helper + unit tests, not `eslint-plugin-boundaries`.
+Errors reach PostHog only via `ErrorReportingPort`, gated on the `DomainError`
+**category** — never by which call site happens to have a `catch`/`onError`, so
+coverage is uniform across write failures, realtime `onError` and server CF.
+Reporting surfaces what the friendly-message path would hide; it is not a mirror of
+every `Failure`. Best-effort, never throws (Rule 10). Full policy:
+[docs/salt-architecture.md §7.6](docs/salt-architecture.md); calibration in
+[docs/error-reporting-calibration.md](docs/error-reporting-calibration.md).
+
+- **Report:** `StorageError`, `SyncError`, uncategorised/unknown errors, and (server-side) unhandled CF exceptions + AI/Genkit flow failures. `AuthError` too — **except** the sign-out / token-refresh `permission-denied` race on in-flight listeners.
+- **Do not report:** `NetworkError`/offline, `ValidationError`, `NotFound`, `ConflictError`, and that sign-out race.
+- **Scrub raw user input** (e.g. canon match text) from reported context. Data is family-shared, but free-form user content must not be attached.
+- **Not lint-enforceable** — review, the gating helper and unit tests, not `eslint-plugin-boundaries`.
 
 ## Enforcement
 
@@ -119,81 +146,22 @@ Some commands seize resources that belong to the whole machine rather than to a 
 | `apps/cloud-functions`            | `@salt/cloud-functions` |
 | `apps/storybook`                  | `@salt/storybook`       |
 
-## Docs map — read these when the task touches their area
+## Docs map — [docs-map.md](docs-map.md)
 
-`docs/` is **not** auto-loaded; only this file is. Everything below is invisible
-unless you open it deliberately, so treat this table as the index. Each doc holds
-knowledge that is **not** recoverable from the code — decisions, gotchas, external
-setup, and contracts. Read the one that matches your task **before** editing.
+`docs/` is **not** auto-loaded, and neither is the map. **Before editing anything
+under `packages/`, `apps/`, `scripts/`, `infra/` or `.github/workflows/`, open
+[docs-map.md](docs-map.md)** and read the row matching what you are touching. Each
+doc there holds knowledge that is **not** recoverable from the code — decisions,
+gotchas, external setup, and contracts. A doc missing from the map is invisible to
+every agent, so a new doc gets its row in the same commit.
 
-Rule for maintaining them: a doc earns its place by holding what code cannot say.
-If something is already explained in a header comment next to the code, it does
-**not** get restated here or in `docs/` — one source, no duplication.
+It is a lookup table consulted once per task rather than a rule you must hold in
+mind, which is why it is one file away instead of inline. It remains the routing
+source for the PR doc review and is still checked by `pnpm docsmap:check`.
 
-The **Tracks** column is the routing source for the PR doc review
-([.github/workflows/pr-doc-review.yml](.github/workflows/pr-doc-review.yml)), which
-runs once per pull request when it comes out of draft — that job reads this table
-instead of keeping its own copy, so adding a row here is all it takes to bring a doc
-into review. Keep the globs accurate.
-
-| Read this                                                                                              | Tracks                                                                                                                                                         | When                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [docs/salt-architecture.md](docs/salt-architecture.md)                                                 | `packages/**`, `apps/**`, `eslint.config.*`, `.dependency-cruiser.*`, `pnpm-workspace.yaml`                                                                    | The prose contract behind this file: §3 dependency graph, §4 domain, §6 adapters, §7 adapter errors (§7.6 error-reporting policy), §8 cloud functions, §9 PWA, §11 enforcement. Any layering/boundary question.                                        |
-| [docs/domain-implementation.md](docs/domain-implementation.md)                                         | `packages/domain/**`                                                                                                                                           | Writing anything in the domain layer — module/coordinator pattern.                                                                                                                                                                                     |
-| [docs/matching-pipeline.md](docs/matching-pipeline.md)                                                 | `packages/domain/src/canon/**`, `packages/adapters/**`, `apps/cloud-functions/**`, `apps/web-pwa/src/routes/admin/**`, `apps/web-pwa/src/routes/canon/**`      | Canon matching: stages, thresholds, AI arbitration, `needs_approval`, and the **live** `MatchLogEntry` logging schema.                                                                                                                                 |
-| [docs/canon-icons.md](docs/canon-icons.md)                                                             | `apps/cloud-functions/src/triggers/iconWriteTrigger.ts`, `apps/cloud-functions/src/flows/defineIconFlow.ts`, `apps/cloud-functions/src/triggers/onCanonItemWritten.ts`, `apps/cloud-functions/src/triggers/onProductFormWritten.ts`, `apps/cloud-functions/src/triggers/onKitchenToolWritten.ts`, `apps/cloud-functions/src/callables/drawEquipmentIcon.ts`, `apps/cloud-functions/src/triggers/onEquipmentManifestWritten.ts`, `apps/cloud-functions/src/imaging/**`  | Tier-1 pictograms for canon items, product forms (#871), equipment (#877) and kitchen tools (#882) — generation pipeline, storage, rendering, and the verbatim prompt (reproduce exactly).                                                                                                 |
-| [docs/recipe-module.md](docs/recipe-module.md)                                                         | `packages/domain/src/recipe/**`, `packages/domain/src/schemas/recipe.ts`, `apps/cloud-functions/src/triggers/onRecipeWritten.ts`                               | Recipe schema, canon batch interaction, shopping-list extraction.                                                                                                                                                                                      |
-| [docs/meal-planning.md](docs/meal-planning.md)                                                         | `packages/domain/src/mealPlan/**`, `apps/web-pwa/src/routes/mealplan/**`, `apps/web-pwa/src/lib/mealPlanService.ts`                                            | Planner: week identity, `firstDayOfWeek`, shop day (#629), conflict model, which weeks may be written.                                                                                                                                                 |
-| [docs/formulas-schedules-batches.md](docs/formulas-schedules-batches.md)                               | `packages/domain/src/formula/**`, `packages/domain/src/process/**`, `packages/domain/src/batch/**`, `packages/domain/src/culture/**`                           | **Bread is built; ferments and cures are still contract (Epic #778).** Bread scaling, ferments and cures: the formula/process/batch contract, the scale-is-maths / adapt-is-AI seam, and why no `bread` kind. Formulas, `batches/{batchId}` + its observations subcollection, `proposeSchedule` and the stage-reminder path all exist as of #812; phases 03–05 do not. Read before designing any part of it.                                            |
-| [docs/ai-kitchen-assistant.md](docs/ai-kitchen-assistant.md)                                           | `apps/cloud-functions/src/flows/**`, `apps/web-pwa/src/routes/chat/**`, `apps/web-pwa/src/routes/recipes/CookModePage.svelte`, `apps/web-pwa/src/lib/cook*.ts` | Chef chat / cook mode — design principles and per-user data exceptions.                                                                                                                                                                                |
-| [docs/releases.md](docs/releases.md)                                                                   | `.github/workflows/deploy-*.yml`, `firebase.json`, `.firebaserc`, `apps/*/.env*`                                                                               | Deploying, the three Firebase projects, and where config/secrets live.                                                                                                                                                                                 |
-| [docs/data-refresh.md](docs/data-refresh.md)                                                           | `scripts/*firestore*.mjs`, `scripts/restore-*.mjs`, `storage.rules`                                                                                            | Copying data between environments, plus the cross-project image-bucket posture.                                                                                                                                                                        |
-| [docs/e2e.md](docs/e2e.md)                                                                             | `apps/web-pwa/e2e/**`, `docker/**`, `apps/web-pwa/playwright.config.ts`, `vitest.config.ts`, `firebase.test.docker.json`                                       | Running/debugging e2e + emulator integration suites; poisoned-environment recovery.                                                                                                                                                                    |
-| [docs/e2e-test-spec.md](docs/e2e-test-spec.md)                                                         | `apps/web-pwa/e2e/**`                                                                                                                                          | **Writing or reviewing** an e2e test — non-functional rules and the reviewer checklist.                                                                                                                                                                |
-| [docs/unit-test-spec.md](docs/unit-test-spec.md)                                                       | `packages/*/tests/**`, `packages/adapters/*/tests/**`, `apps/*/tests/**`, `**/*.test.ts`                                                                        | **Writing or reviewing** a Vitest unit test — non-functional rules (`UT-*`) and the reviewer checklist. The e2e spec's counterpart for the other 96k lines.                                                                                            |
-| [docs/939-investigation.md](docs/939-investigation.md)                                                 | `packages/adapters/firebase-sync/src/subscribeCollection.ts`, `packages/adapters/firebase-sync/src/subscribeDocument.ts`, `packages/adapters/firebase-sync/src/schemaParsing.ts`, `packages/adapters/firebase-sync/src/chatSessionSubscription.ts` | The read path measured (#939): real collection sizes, what a whole-snapshot re-parse actually costs, and why `chatSessions` was the only subscription of fifteen that needed a bound. Read it **before** adding a `limit`/`where` to any subscription or touching the shared parse loop — most of the thirteen findings were measured and refuted, and every count is point-in-time. |
-| [docs/visual-regression.md](docs/visual-regression.md)                                                 | `.github/workflows/chromatic.yml`, `apps/storybook/**`                                                                                                         | Chromatic VR: why it is selective and non-blocking, accepting diffs.                                                                                                                                                                                   |
-| [docs/error-reporting-calibration.md](docs/error-reporting-calibration.md)                             | `packages/adapters/observability/**`                                                                                                                           | Verifying reporting changes in PostHog; the intentional asymmetries that are **not** bugs.                                                                                                                                                             |
-| [docs/runbooks/product-forms-staging-validation.md](docs/runbooks/product-forms-staging-validation.md) | `packages/domain/src/productForm/**`                                                                                                                           | Exercising product-forms on staging (live — see #512). Gotchas section first.                                                                                                                                                                          |
-| [docs/runbooks/app-check-preflight.md](docs/runbooks/app-check-preflight.md)                           | `apps/cloud-functions/src/tracedCallable.ts`, `apps/web-pwa/.env.*`                                                                                            | **Before flipping any App Check enforcement setting** (#718). Two independent origin allowlists that nothing keeps in agreement — the gap that broke prod sign-in on 2026-08-05.                                                                       |
-| [docs/runbooks/cloud-smoke.md](docs/runbooks/cloud-smoke.md)                                           | `apps/cloud-functions/probes/**`                                                                                                                               | Running or triaging the cloud probe harness (#722) — `pnpm probe`. Preconditions (one IAM grant per project), why App Check tokens are **minted** and never debug tokens, what each journey covers, and the triage tree. Read before adding a journey. |
-| [docs/runbooks/ttl-policies.md](docs/runbooks/ttl-policies.md)                                         | `apps/cloud-functions/src/triggers/onCookTimerDispatch.ts`, `apps/cloud-functions/src/triggers/onBatchStageDispatch.ts`, `apps/cloud-functions/src/triggers/onKitchenTimerDispatch.ts`, `apps/cloud-functions/src/triggers/timerDeliveryRetention.ts`, `packages/adapters/firebase-sync/src/chatSessionSubscription.ts`, `scripts/migrate-ttl-timestamps.mjs` | Retention on `chatSessions` and `timerDeliveries` (#1008) — why a TTL policy silently skips a non-`Timestamp` field, the per-project **deploy → migrate → enable → verify** procedure, and what is expected to be swept (the 42 past-expiry chats) versus kept (the 31 sentinels). Read before touching either TTL field or its write sites. |
-| [infra/bigquery-export/README.md](infra/bigquery-export/README.md)                                     | `infra/bigquery-export/**`                                                                                                                                     | Firestore→BigQuery changelog export (#684): why the manifest is isolated from CI deploys, the prod-only install + backfill procedure.                                                                                                                  |
-
-### Design docs (`docs/design/`)
-
-- [design.md](docs/design/design.md) — **machine-consumed, not prose.** Its YAML
-  frontmatter is the source of truth for the Culinary Modernist palette and
-  tokens; `packages/ui-components/scripts/check-theme.ts` and
-  `tests/tokens.theme.test.ts` read it. Editing tokens starts here, not in CSS.
-- [component-tokens.md](docs/design/component-tokens.md) — the procedure when a
-  component "looks wrong" and the fix should become a token. Follow it rather
-  than inventing tokens.
-  Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
-
-- **ui-spec-v02 → v11 are cumulative, never superseding.** v0.2 holds the
-  foundations (boundaries, package surface, event naming, styling rules) and stays
-  in force for every later version; each later spec only adds components —
-  [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
-  [v04](docs/design/ui-spec-v04.md) Combobox + `ListPage` selection mode,
-  [v05](docs/design/ui-spec-v05.md) `ListPage` fill mode,
-  [v06](docs/design/ui-spec-v06.md) `ImageCropper` free-aspect mode,
-  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode,
-  [v08](docs/design/ui-spec-v08.md) `Dial`,
-  [v09](docs/design/ui-spec-v09.md) `Chip` + `ChipGroup` (the filter-pill row —
-  one size, and the group owns layout and grouping semantics but never
-  selection; §8.23.8 adds the two static chips, `fact` and `tag`, which render a
-  span because they are read rather than pressed),
-  [v10](docs/design/ui-spec-v10.md) `Tabs` (a bits-ui wrapper — roving focus and
-  automatic activation, a count on each tab, and the selected value always owned
-  by the page so it can move the selection itself),
-  [v11](docs/design/ui-spec-v11.md) `ImageCropper` square mode (a third `aspect`
-  value, `'1:1'`, for the pictogram upload — the amendment v06 §1.3 demanded
-  before the union could be widened; why neither existing mode works is the
-  alpha-bounding-box arithmetic in §1.1). Touching
-  `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
-  the spec that owns your component. The specs are binding: if something is
-  missing or ambiguous, stop and extend the spec rather than inventing.
+Rule for maintaining docs: a doc earns its place by holding what code cannot say.
+If a header comment beside the code already explains it, it does **not** get
+restated in `docs/` — one source, no duplication.
 
 ## Code search (Serena MCP)
 

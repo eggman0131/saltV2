@@ -103,7 +103,7 @@ Footprint overlap serialises, even when the issues are logically independent. Ov
 Two files are excluded from footprint overlap, because otherwise they collide on almost every campaign and neither collision is real:
 
 - `pnpm-lock.yaml` — any two issues adding a dependency touch it. At merge time, resolve by regenerating (`pnpm install --lockfile-only`), never by park.
-- the **Docs map table in CLAUDE.md** — any two issues adding a doc row touch it. Resolve by re-applying both rows.
+- the **Docs map table in `docs-map.md`** — any two issues adding a doc row touch it. Resolve by re-applying both rows.
 
 Both are delegated resolutions like any other; they are simply never a reason to stop.
 
@@ -255,6 +255,11 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 > 4. **Testing** — report a gap **only** where a missing assertion means a real defect could ship undetected, and say what that defect would be. Do not audit against a checklist; do not open `docs/unit-test-spec.md` or `docs/e2e-test-spec.md` — 50KB of checklist compels enumeration, and enumeration is what makes a review unreadable. No findings about test style, test naming, or duplicated test helpers.
 >
 > **Documentation is not your lens.** `pr-doc-review.yml` has already run on this PR and is the tool that owns it. Raise a doc point only when the diff makes a specific existing sentence factually false *and* the doc review did not catch it.
+> Look at the four things the gates structurally cannot see:
+> 1. **Testing** — do the assertions test behaviour, or merely execute the code? What case is missing? Judge against the reviewer checklists in `docs/unit-test-spec.md` (UT-*) and, for e2e, `docs/e2e-test-spec.md`. If a checklist file is absent on this branch, say so and judge on the merits — do not improvise a checklist and attribute it to the doc.
+> 2. **Documentation** — does a doc in the `docs-map.md` Docs map now say something false? A row existing is not a doc being true.
+> 3. **Duplication** — semantic, not textual: the same rule expressed in two places that can now disagree.
+> 4. **Architectural intent** — legal by depcruise but wrong in spirit: policy leaking into an adapter, a domain concern implemented in a component.
 >
 > Severity, and be strict about the top one:
 > - **blocking** — you can state a concrete failure: this input, this state, this wrong output or crash. If you cannot name one, it is not blocking.

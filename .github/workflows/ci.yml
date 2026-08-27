@@ -161,7 +161,7 @@ jobs:
       - name: Theme check
         run: pnpm theme:check
 
-      # Docs map hygiene. `docs/` is not auto-loaded, so CLAUDE.md's Docs map is
+      # Docs map hygiene. `docs/` is not auto-loaded, so `docs-map.md` is
       # the ONLY index of it — a doc missing from the map is invisible to every
       # agent, and a row whose glob has gone dead reads as covered while routing
       # nothing. Both are whole-repo facts that per-PR doc review structurally
@@ -170,6 +170,15 @@ jobs:
       # required contexts must stay three.
       - name: Docs map check
         run: pnpm docsmap:check
+
+      # Context budget. CLAUDE.md is auto-loaded into every session and every
+      # subagent, so its size is a tax on all of them — and it grew 2.3 KB →
+      # 43.6 KB over four months with nothing ever pushing content back out.
+      # The cap forces the placement question (code comment / nested CLAUDE.md /
+      # doc + map row) at the moment someone adds. Same reasoning as the docs map
+      # above: deterministic, free, and invisible to per-PR review.
+      - name: Context budget check
+        run: pnpm context:check
 
   types:
     name: Types
