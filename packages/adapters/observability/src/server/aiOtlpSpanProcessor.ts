@@ -334,6 +334,14 @@ export function remapGenkitSpan(span: ReadableSpanLike): OtlpSpan | null {
     traceId: ctx.traceId,
     spanId: ctx.spanId,
     name,
+    // ASSERTED, never mapped (#1029). The distributed leg forwards a span
+    // verbatim, so it must remap what it was handed; this leg SYNTHESISES one —
+    // the name and every attribute above are rewritten into `gen_ai.*` so PostHog
+    // renders a $ai_* node in an LLM trace TREE, which is not a service topology
+    // and reads no kind off it. The kind of a span we author is ours to state, so
+    // a forwarded Genkit kind would buy nothing and make our wire output depend on
+    // Genkit's internals. If the distributed leg ever ships the same underlying
+    // span as CLIENT, that is two endpoints showing two correct views of one call.
     kind: SPAN_KIND_INTERNAL,
     startTimeUnixNano: hrTimeToNanos(span.startTime),
     endTimeUnixNano: hrTimeToNanos(span.endTime),
