@@ -36,23 +36,27 @@ export default defineConfig({
       // its own floor so a regression is attributed to the area that caused it —
       // vitest names the matched glob in the failure message.
       //
-      // Numbers are EXACT measurements with ONE stated exception. Repeat runs on
-      // one machine are byte-identical, and seven of the eight areas below also
-      // measure identically on macOS and on CI's ubuntu-latest — same figure to
-      // the last decimal, both metrics. So they carry no margin: a margin would
-      // only buy room for a real regression to hide in.
+      // Numbers are EXACT measurements. Repeat runs on one machine are
+      // byte-identical, and every area below measures identically on macOS and on
+      // CI's ubuntu-latest — same figure to the last decimal, both metrics. So
+      // they carry NO margin: a margin would only buy room for a real regression
+      // to hide in.
       //
-      // `apps/web-pwa/src/lib/**` is the exception and is pinned ONE LINE and ONE
-      // BRANCH below the worse of the two platforms (lines 67.48 → 67.44,
-      // branches 60.99 → 60.93). Two timing-sensitive modules in that directory —
-      // `deck.svelte.ts` and `savedTick.svelte.ts` — land differently under CI's
-      // slower scheduler, and the entire cross-platform delta in the repo is
-      // those two files: one branch and one line, nothing else. The headroom is
-      // sized at exactly that wobble, computed rather than guessed. It is three
-      // orders of magnitude smaller than a real regression (removing one
-      // firebase-sync test file moved that area 5.22pp), so the ratchet still
-      // bites. Fixing the underlying non-determinism is #967; when that lands,
-      // this pin goes back to the measured figure and the headroom goes away.
+      // `apps/web-pwa/src/lib/**` used to be the exception, pinned one line and
+      // one branch low because `deck.svelte.ts` and `savedTick.svelte.ts` landed
+      // differently under CI's scheduler — the whole cross-platform delta in the
+      // repo was those two files. Both were tests waiting on host timing rather
+      // than driving it, and #967 fixed them at the source: `savedTick`'s 1.5 s
+      // clear is now advanced with fake timers instead of outlived, and the
+      // planner's day sheet waits for bits-ui to take focus before anything is
+      // typed, so an Escape meant for the dialog can no longer be dispatched from
+      // the deck row underneath it. The headroom went with them.
+      //
+      // Re-pinning it at TODAY's measurement also banks the coverage that area has
+      // earned since #943 measured it (67.51/60.99 on 2026-08-24 → 71.44/63.91),
+      // which is a raise and therefore deliberate: leaving the pin at the older
+      // figure would hand back four points of hiding room to close a gap of four
+      // hundredths, which is the opposite of what the ratchet is for.
       //
       // Areas deliberately unfloored: `packages/shared-types/src` (4 covered
       // lines in total — a pin there is noise, not a signal) and the storybook
@@ -86,8 +90,7 @@ export default defineConfig({
         'packages/adapters/firebase-sync/src/**': { lines: 57.82, branches: 63.02 },
         'apps/cloud-functions/src/**': { lines: 79.75, branches: 73.73 },
         'apps/web-pwa/src/routes/**': { lines: 73.91, branches: 63.24 },
-        // The one pin with headroom — see the note above.
-        'apps/web-pwa/src/lib/**': { lines: 67.44, branches: 60.93 },
+        'apps/web-pwa/src/lib/**': { lines: 71.44, branches: 63.91 },
         'apps/web-pwa/src/components/**': { lines: 50.86, branches: 37.67 },
       },
     },

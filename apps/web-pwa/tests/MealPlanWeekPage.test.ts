@@ -201,6 +201,17 @@ function weekWithRecipe(date: string): MealPlanWeek {
 // portalled dialog on <body>, which `screen` queries reach exactly as before.
 async function openDay(date: string): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-summary`));
+  // …and then WAIT for bits-ui's focus scope to take the dialog, which it does on
+  // a tick of its own. Until it lands, `document.activeElement` is still the row
+  // that opened the sheet — a row that lives inside the deck — so anything typed
+  // in that window is dispatched from INSIDE the deck and runs the deck's own
+  // keydown handler on its way up. Whether that window is still open by the time
+  // the next line runs is a matter of host scheduling, which is exactly how the
+  // planner's Escape tests came to cover a branch of `deck.svelte.ts` on one
+  // machine and not another (#967).
+  const detail = await screen.findByTestId(`day-${date}-detail`);
+  const dialog = detail.closest('[role="dialog"]') ?? detail;
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
 }
 
 // The week's shop-day picker (#640, Phase 4): a header button that says the
@@ -1234,6 +1245,21 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
     await pressDeck('ArrowDown');
     // One press, one day — the stops are the day headers, not arbitrary pixels.
     await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH - LEAD));
+  });
+
+  it('leaves a key it does not own to whatever is underneath', async () => {
+    const start = weekAroundToday(0);
+    renderLaidOut(start);
+
+    const deck = screen.getByTestId('week-deck');
+    deck.focus();
+    // The deck owns six navigation keys and nothing else. Everything the deck
+    // wraps — note fields, buttons, the day sheets — is typed into through it, so
+    // a key it does not own must come back unclaimed: no `preventDefault`, no
+    // travel. `fireEvent` returns false once a handler has prevented the default,
+    // which is the assertion this hangs on.
+    expect(await fireEvent.keyDown(deck, { key: 'a' })).toBe(true);
+    expect(deckOffset()).toBe(0);
   });
 
   it('renders the days already behind us a step quieter', () => {
