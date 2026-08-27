@@ -171,6 +171,15 @@ jobs:
       - name: Docs map check
         run: pnpm docsmap:check
 
+      # Context budget. CLAUDE.md is auto-loaded into every session and every
+      # subagent, so its size is a tax on all of them — and it grew 2.3 KB →
+      # 43.6 KB over four months with nothing ever pushing content back out.
+      # The cap forces the placement question (code comment / nested CLAUDE.md /
+      # doc + map row) at the moment someone adds. Same reasoning as the docs map
+      # above: deterministic, free, and invisible to per-PR review.
+      - name: Context budget check
+        run: pnpm context:check
+
   types:
     name: Types
     runs-on: ubuntu-latest
