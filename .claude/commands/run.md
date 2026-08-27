@@ -81,7 +81,7 @@ Delegate an Explore only when one of these holds, and say which:
 
 That gate matters because the sweep is not cheap and the issue was written to make it unnecessary — an Explore run out of habit re-buys what `/spec` already paid for.
 
-When you do delegate it, the report is restricted to exactly these three, and nothing else:
+When you do delegate it, use `Agent(…, model: "haiku")` — or `"sonnet"` if the sweep has to reason about what it finds — and restrict the report to exactly these three, nothing else:
 
 > 1. **Layers in play** — which packages the phase touches, and any layer-map boundary it crosses.
 > 2. **Binding constraints** — the CLAUDE.md rules and doc contracts that bound *this* phase, each named (rule number, `docs/…` section) rather than paraphrased.
@@ -91,11 +91,15 @@ When you do delegate it, the report is restricted to exactly these three, and no
 
 ### 2. Implementation
 
-**Default: implement in-place on the issue branch** — either directly or via a subagent without worktree isolation. Phases are a dependent chain, and `isolation: "worktree"` branches from `main`, not from `HEAD`: a worktree subagent would not see the previous phases' work.
+**Default: write it yourself, in-place on the issue branch.** You are already holding the phase spec, step 1's context and the previous phase's handoff contract. An implementer subagent starts from none of that — so delegating means re-serialising what you already have, paying a fresh full context to receive it, and then re-validating its self-report against the diff in step 3 regardless, because a report is a claim and `git diff` is evidence. On a typical phase that is an entire extra agent bought to save you nothing, and across a four-phase issue it is four of them.
+
+Spawn an implementer only when the phase is genuinely large — as a rule of thumb **400+ changed lines across five or more files** — or when it divides into two independent chunks worth running at once. Below that, write the code.
+
+Either way the work lands **on the issue branch with no worktree isolation**. Phases are a dependent chain, and `isolation: "worktree"` branches from `main`, not from `HEAD`: a worktree subagent would not see the previous phases' work.
 
 Use `isolation: "worktree"` only for genuinely independent work you want to run in parallel, and land it with `git cherry-pick` (not merge) onto the issue branch — a worktree branch's merge base is `main`, so merging drags the whole diff-from-main with it. Never run two in-place subagents concurrently; they share one checkout and one `HEAD`.
 
-Brief the implementer with **only** what the phase needs:
+When you do delegate, brief the implementer with **only** what the phase needs:
 - Phase N spec — scope, technical deliverables, must-not-touch — not the whole issue
 - the context from step 1
 - the previous phase's handoff contract (omit for phase 1)
@@ -160,9 +164,13 @@ Phase N. [1-2 sentences on what this phase delivers and why.]
 - [Another if needed]
 
 Refs #ISSUE_NUMBER
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ```
 
-`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer, and nothing after it. **That includes the `Co-Authored-By` trailer the harness appends by default:** this repo's history carries none, and this command deliberately overrides that default. One convention per history.
+`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer.
+
+**Keep the `Co-Authored-By` trailer the harness appends by default**, in the trailer block below `Refs`. Name the model you are actually running as. The trailer is the repo's convention throughout — and it is the only per-commit record of which model wrote a phase, which is how the Fable 5 campaign was identified after the fact (`git log --grep='Claude Fable 5' -i --all`). A squash carries one copy per phase commit plus GitHub's own deduped copy at the bottom; that repetition is expected and is not a reason to strip it.
 
 The pre-commit hook is not a formality — it runs `lint-staged` (prettier `--write`, then eslint), and then `pnpm typecheck` and `pnpm depcruise` all over again. Three things follow:
 
