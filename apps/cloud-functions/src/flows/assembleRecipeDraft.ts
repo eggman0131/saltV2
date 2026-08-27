@@ -265,12 +265,23 @@ export async function assembleRecipeDraft(
   // a total or did not"). Under one shared definition of the three fields every
   // path is now asked for all three against the same rule, so the asymmetry has
   // no reason left and the option had one value at every call site.
+  //
+  // EDIT MODE IS THE ONE EXCEPTION (review finding on #1048/#952). The repair
+  // above raises an understated STATED total — it must never fabricate one that
+  // was never stated. On a fresh draft that distinction is moot: there is no
+  // stored value to protect. But `baseRecipe` means this draft is about to be
+  // spread over an existing recipe by `mergeAmendedRecipe`'s `draft ?? existing`
+  // (or, for a refresh, an equivalent client-side merge) — and a fabricated
+  // non-null total wins that `??` and silently overwrites the real stored one
+  // (a 4-hour chill, say) with `prep + cook`. So in edit mode a librarian
+  // `total: null` stays null, exactly like a forgotten `servings`; only a
+  // STATED total still gets raised to the parts' floor.
   const partsTotalMinutes =
     raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
       ? raw.prepTimeMinutes + raw.cookTimeMinutes
       : null;
   const reconciledTotalTimeMinutes =
-    partsTotalMinutes === null
+    partsTotalMinutes === null || (raw.totalTimeMinutes === null && baseRecipe !== null)
       ? raw.totalTimeMinutes
       : Math.max(raw.totalTimeMinutes ?? 0, partsTotalMinutes);
 

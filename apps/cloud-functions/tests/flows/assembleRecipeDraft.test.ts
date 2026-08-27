@@ -619,6 +619,44 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(doc.createdBy).toBe('');
     expect(doc.lastEditedBy).toBe('');
   });
+
+  it('does not fabricate a total from prep + cook on an amend when the librarian returns null (PR #1048 regression)', async () => {
+    // The Key Lime Pie shape from the blocking review finding: a stored total of
+    // 295 (a 4-hour chill) with prep 20 / cook 35. Chatting about something else
+    // entirely, the librarian echoes prep and cook back unchanged and simply
+    // never touches total, so it comes back null — "the model forgot", not "the
+    // chill is gone". Before the fix, the reconciliation above derived
+    // max(0, 20+35)=55 from the parts regardless of edit mode, and that 55 is
+    // non-null, so it would win `mergeAmendedRecipe`'s `draft ?? existing` and
+    // silently overwrite the real 295. The fix must leave the total null here so
+    // the merge's `??` falls through to the stored value instead.
+    const base = baseRecipe();
+    base.metadata = {
+      ...base.metadata,
+      totalTimeMinutes: 295,
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+    };
+
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 20, cookTimeMinutes: 35 }),
+      { source: MANUAL, baseRecipe: base },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBeNull();
+  });
+
+  it('still repairs a STATED total that is less than its own parts on an amend', async () => {
+    // The fix is narrow: only a null total is protected. A total the librarian
+    // actually stated, even one that contradicts the parts it also stated, is
+    // still authoritative and still gets raised — same as the create path.
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
+      { source: MANUAL, baseRecipe: baseRecipe() },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(45);
+  });
 });
 
 // ─── document-level fields ───────────────────────────────────────────────────
