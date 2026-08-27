@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import {
@@ -37,9 +37,9 @@ import type {
 // one page COPIED, so cook mode's suite watches cook mode's copy and nothing
 // watched this one. The copies are byte-identical, which is exactly why a merge of
 // them would have been invisible to the only net that existed. So the lifecycle is
-// mirrored here against THIS page before anything is de-forked; once #994's later
-// phases land and there is one implementation, these two suites are two call sites
-// of the same code and both must stay green.
+// mirrored here against THIS page before anything is de-forked. #994's later phases
+// have since landed, and there IS one implementation — so these two suites are now
+// two call sites of the same code, and both must stay green.
 
 const {
   mockAuth,
@@ -107,19 +107,28 @@ const { mockCanonItems, mockProductForms, mockWakeLock, mockChime } = vi.hoisted
 }));
 
 // UT-B1 WAIVER — 11 `vi.mock` calls against a cap of 5, and the seam cannot be
-// narrowed. Every one of them is a module this page reaches for DIRECTLY, and each
-// stands in for a boundary that has no in-process implementation: the router
-// (`push`), the toast host, the signed-in member, the four Firestore-backed stores
-// this page composes (canon, product forms, recipes, the cook session), the guided
-// plan, the shopping-list write, and the two browser capabilities jsdom does not
-// have (Screen Wake Lock, AudioContext). There is no narrower seam to mock — a page
-// component's collaborators ARE its module imports, and mocking one layer further
-// down would put Firebase itself in this file. What keeps that honest is the shape
-// of the fakes: the session service is a working in-memory double that echoes
-// writes back through the store on the real timing (see its note below), so every
-// assertion here is on a persisted payload or on the DOM that came back, never on
-// the fact that a mock was called (UT-A1). #994's later phases REDUCE this list by
-// extracting the lifecycle behind one factory; they must not grow it.
+// narrowed. Each stands in for a boundary that has no in-process implementation:
+// the router (`push`), the toast host, the signed-in member, the four
+// Firestore-backed stores this screen composes (canon, product forms, recipes, the
+// cook session), the guided plan, the shopping-list write, and the two browser
+// capabilities jsdom does not have (Screen Wake Lock, AudioContext). Mocking one
+// layer further down would put Firebase itself in this file.
+//
+// #994 MOVED that seam rather than shrinking it — the count is unchanged at 11.
+// Only `svelte-spa-router`, `cookSessionService` and `guidedPlanService` are still
+// imports of the page itself. The other eight now arrive through the factories it
+// composes: `auth`, `recipeService`, `wakeLock` and `toastStore` via
+// `$lib/cookLifecycle`, `chime` via `$lib/cookTimers`, and `canonService`,
+// `productFormService` and `shoppingListService` via `$lib/cookIngredientIcons`. A
+// page component's collaborators are its module imports TRANSITIVELY; extracting a
+// factory relocates what a render pulls in, it does not remove any of it. So do not
+// raise this cap to reach a factory — mock the module that factory imports, which
+// is what every line below already does.
+//
+// What keeps that honest is the shape of the fakes: the session service is a
+// working in-memory double that echoes writes back through the store on the real
+// timing (see its note below), so every assertion here is on a persisted payload or
+// on the DOM that came back, never on the fact that a mock was called (UT-A1).
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
@@ -1783,6 +1792,21 @@ describe('GuidedCookPage — working through the steps', () => {
     expect(await screen.findByTestId('cook-step-done-badge')).toBeInTheDocument();
     expect(screen.getByTestId('cook-step-untick')).toBeInTheDocument();
     expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+
+  // `CookStepCollapsed` is shared with plain cook mode and takes its colours as
+  // PROPS (issue #994) — the one place the two decks deliberately differ. Nothing
+  // pinned which mode passed which, so the two call sites could be swapped and the
+  // whole suite stayed green. This is guided cook's half of the pin: a done step
+  // recedes into sage. Its opposite number is the same assertion in
+  // CookModePage.test.ts.
+  it('recedes a collapsed step into guided cook’s own sage accent', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    const collapsed = await screen.findByTestId('cook-step-collapsed');
+    expect(collapsed).toHaveClass('border-secondary/30', 'bg-secondary/5');
+    expect(within(collapsed).getByText('Step 1')).toHaveClass('text-secondary');
   });
 
   it('unticks a step only from the expanded view it was deliberately re-opened into', async () => {
