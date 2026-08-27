@@ -2,7 +2,6 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
     persistCookSession,
@@ -49,6 +48,21 @@
   } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
+  // The regions this screen draws byte-for-byte the same way plain cook mode does
+  // (issue #994). Composition, not a design-system primitive: they are app-level
+  // arrangements of `@salt/ui-components` parts with exactly two call sites, and
+  // promoting one into the package would need a ui-spec of its own.
+  //
+  // The one that carries a per-mode difference is `CookStepCollapsed`, and it takes
+  // that difference as two class props written out below — never as a mode flag.
+  import CookLoadingOrphan from './CookLoadingOrphan.svelte';
+  import CookTimeline from './CookTimeline.svelte';
+  import CookRecipeChangedBanner from './CookRecipeChangedBanner.svelte';
+  import CookTimersBar from './CookTimersBar.svelte';
+  import CookStepCollapsed from './CookStepCollapsed.svelte';
+  import CookStepKit from './CookStepKit.svelte';
+  import CookStepTimer from './CookStepTimer.svelte';
+  import CookStepDoneControls from './CookStepDoneControls.svelte';
   import {
     withPrepChecked,
     firstUseByStep,
@@ -61,9 +75,7 @@
     looseIngredientsForStep,
     nextStepLookahead,
     hasRecipeChanged,
-    formatClock,
     checkInTimerId,
-    isCheckInTimerId,
   } from '@salt/domain';
   import type { CookActiveTimerDoc, IngredientDoc } from '@salt/domain/schemas';
 
@@ -418,28 +430,7 @@
   data-testid="guided-cook-page"
 >
   {#if recipe === null}
-    <div class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      {#if $isLoadingRecipes}
-        <Spinner size={20} />
-        <p class="text-sm text-muted-foreground">Loading…</p>
-      {:else}
-        <Icon name="TriangleAlert" size={28} class="text-destructive" />
-        <div class="flex flex-col gap-1" data-testid="cook-mode-orphan">
-          <p class="text-base font-semibold">This recipe was deleted</p>
-          <p class="text-sm text-muted-foreground">
-            The recipe you were cooking no longer exists, so this cook session has been closed.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onclick={() => push('/recipes')}
-          data-testid="cook-mode-orphan-back"
-        >
-          {#snippet leading()}<Icon name="ArrowLeft" size={16} />{/snippet}
-          Back to recipes
-        </Button>
-      {/if}
-    </div>
+    <CookLoadingOrphan />
   {:else if plan === undefined}
     <!-- The plan's not-loaded state, kept distinct from "there is no plan" so the
        screen below never flashes over a plan one frame from arriving. -->
@@ -560,155 +551,29 @@
     <!-- Timeline. One segment per step, each a jump to it. Same band, same colours
        and same meanings as plain cook mode — this is the same progress. -->
     {#if showTimeline}
-      <div
-        class="flex shrink-0 items-center gap-1 border-b px-4 py-2"
-        role="group"
-        aria-label="Steps: {completedStepCount} of {totalSteps} done"
-        data-testid="cook-timeline"
-      >
-        {#each recipe.steps as timelineStep, index (timelineStep.id)}
-          {@const stepDone = completedStepIds.has(timelineStep.id)}
-          {@const stepCurrent = currentStep?.id === timelineStep.id}
-          <button
-            type="button"
-            class="py-2 {stepCurrent
-              ? 'flex-[1.6]'
-              : 'flex-1'} transition-[flex] duration-200 motion-reduce:transition-none"
-            onclick={() => jumpToStep(timelineStep.id)}
-            aria-label="Step {index + 1} of {totalSteps}{stepDone ? ', done' : ''}"
-            aria-current={stepCurrent ? 'step' : undefined}
-            data-testid="cook-timeline-step"
-            data-complete={stepDone}
-            data-current={stepCurrent}
-          >
-            <span
-              class="block h-1.5 rounded-full transition-colors {stepCurrent
-                ? 'bg-amber-500'
-                : stepDone
-                  ? 'bg-emerald-600'
-                  : 'bg-muted-foreground/25'}"
-            ></span>
-          </button>
-        {/each}
-      </div>
+      <CookTimeline
+        steps={recipe.steps}
+        {completedStepIds}
+        currentStepId={currentStep?.id ?? null}
+        onJump={jumpToStep}
+      />
     {/if}
 
     <!-- Recipe-changed banner -->
     {#if recipeChanged}
-      <div
-        class="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-        data-testid="cook-mode-recipe-changed"
-      >
-        <Icon name="TriangleAlert" size={16} class="shrink-0 text-amber-500" />
-        <span class="flex-1">This recipe was updated since you started cooking.</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onclick={handleRestart}
-          loading={restarting}
-          disabled={restarting}
-          data-testid="cook-mode-restart"
-        >
-          {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-          Restart
-        </Button>
-      </div>
+      <CookRecipeChangedBanner {restarting} onRestart={handleRestart} />
     {/if}
 
     <!-- Persistent timers bar -->
     {#if barTimers.length > 0}
-      <div
-        class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
-        data-testid="cook-timers-bar"
-      >
-        <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each barTimers as t (t.id)}
-            {@const remaining = new Date(t.endsAt).getTime() - now}
-            {@const fired = remaining <= 0}
-            {@const checkIn = isCheckInTimerId(t.id)}
-            {@const stepIndex =
-              t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
-            {@const stepLabel =
-              t.label ??
-              (stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null)}
-            {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
-            {@const progress = timerProgressFor(t)}
-            <div
-              class="overflow-hidden rounded-lg border {fired
-                ? 'border-primary bg-primary/10'
-                : 'bg-card'}"
-              data-testid="cook-timer-chip"
-              data-timer-id={t.id}
-              data-fired={fired}
-              data-check-in={checkIn}
-            >
-              <div class="flex items-center gap-3 px-3 py-2">
-                <!-- A check-in's chip is NOT a way into the sheet. Its `endsAt` is
-                   anchored to the moment its timer started, and re-timing it from
-                   now would detach it from the wait it belongs to — so it reads as a
-                   row, and the only thing you can do to it is call it off. -->
-                {#snippet chipBody()}
-                  <Icon
-                    name={checkIn ? 'Bell' : fired ? 'BellRing' : 'Timer'}
-                    size={18}
-                    class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
-                  />
-                  <span
-                    class="min-w-0 flex-1 truncate text-sm font-medium {fired
-                      ? 'text-primary'
-                      : 'text-foreground'}"
-                    title={stepLabel ? stepName : undefined}
-                    data-testid="cook-timer-chip-label"
-                  >
-                    {stepLabel ?? stepName}
-                  </span>
-                  <span
-                    class="shrink-0 font-mono text-base tabular-nums {fired
-                      ? 'font-semibold text-primary'
-                      : ''}"
-                    data-testid="cook-timer-chip-time"
-                  >
-                    {fired ? 'Finished' : formatClock(remaining)}
-                  </span>
-                {/snippet}
-                {#if checkIn}
-                  <div class="flex min-w-0 flex-1 items-center gap-3 py-1">
-                    {@render chipBody()}
-                  </div>
-                {:else}
-                  <button
-                    type="button"
-                    class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
-                    onclick={() => openRunningTimerSheet(t)}
-                    data-testid="cook-timer-chip-edit"
-                  >
-                    {@render chipBody()}
-                  </button>
-                {/if}
-                <Button
-                  size="sm"
-                  variant={fired ? 'solid' : 'ghost'}
-                  onclick={() => dismissTimer(t.id)}
-                  data-testid="cook-timer-chip-dismiss"
-                >
-                  {fired ? 'Dismiss' : 'Cancel'}
-                </Button>
-              </div>
-              {#if progress !== null}
-                <div class="h-1 w-full bg-muted-foreground/15" aria-hidden="true">
-                  <div
-                    class="h-full transition-[width] duration-1000 ease-linear motion-reduce:transition-none {fired
-                      ? 'bg-primary'
-                      : 'bg-amber-500'}"
-                    style="width: {progress * 100}%"
-                    data-testid="cook-timer-chip-progress"
-                  ></div>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
+      <CookTimersBar
+        timers={barTimers}
+        steps={recipe.steps}
+        {now}
+        progressFor={timerProgressFor}
+        onEdit={openRunningTimerSheet}
+        onDismiss={dismissTimer}
+      />
     {/if}
 
     <!-- Stage 1: the prep board / Stage 2: the steps with their notes -->
@@ -1081,28 +946,17 @@
                 <!-- A DONE step recedes into sage, so the live step is the only
                    black-on-white thing on the deck. Sage rather than the teal
                    primary because that is what a finished thing goes everywhere
-                   else in Salt — the shopping list floods a ticked row with it. -->
-                <button
-                  type="button"
-                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-secondary/30 bg-secondary/5 px-4 py-3 text-left"
-                  onclick={() => peekStep(step.id)}
-                  aria-expanded="false"
-                  data-testid="cook-step-collapsed"
-                >
-                  <span
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary bg-primary text-primary-foreground"
-                  >
-                    <Icon name="Check" size={18} />
-                  </span>
-                  <span
-                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary"
-                  >
-                    Step {i + 1}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground line-through">
-                    {step.text}
-                  </span>
-                </button>
+                   else in Salt — the shopping list floods a ticked row with it.
+                   Plain cook mode hands the same component its teal; the two
+                   values live at these two call sites so neither can be changed
+                   without seeing the other. -->
+                <CookStepCollapsed
+                  index={i}
+                  text={step.text}
+                  accentClass="border-secondary/30 bg-secondary/5"
+                  labelClass="text-secondary"
+                  onPeek={() => peekStep(step.id)}
+                />
               {:else}
                 <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6">
                   <div class="flex flex-col gap-3">
@@ -1294,35 +1148,7 @@
                      docs/ai-kitchen-assistant.md at its narrowest: guided mode shows
                      everything plain cook mode shows, and then some. -->
                   {#if stepKit.length > 0}
-                    <ul
-                      class="flex flex-wrap items-start gap-2"
-                      aria-label="Kit this step calls for"
-                      data-testid="cook-step-kit"
-                    >
-                      {#each stepKit as entry (entry.label)}
-                        <li class="shrink-0 max-w-full">
-                          <span
-                            class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
-                              entry.label,
-                            )
-                              ? 'pl-1'
-                              : 'pl-4'}"
-                            data-testid="cook-step-kit-chip"
-                          >
-                            {#if $toolIcons.toolIconFor(entry.label)}
-                              <CanonIcon
-                                thumbnail={$toolIcons.toolIconFor(entry.label)}
-                                version={$toolIcons.toolIconVersionFor(entry.label)}
-                                name={entry.label}
-                                size={40}
-                                class="rounded-full"
-                              />
-                            {/if}
-                            <span class="min-w-0 break-words">{entry.label}</span>
-                          </span>
-                        </li>
-                      {/each}
-                    </ul>
+                    <CookStepKit entries={stepKit} />
                   {/if}
 
                   <!-- Per-step timer, unchanged from plain cook mode: state derives
@@ -1330,131 +1156,22 @@
                      device switches, and the persistent bar above keeps it visible
                      once this step collapses. -->
                   {#if step.timer}
-                    {@const timerEntry = timerByStep.get(step.id)}
-                    <div class="flex flex-col gap-2" data-testid="cook-step-timer">
-                      {#if timerEntry}
-                        {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
-                        {@const progress = timerProgressFor(timerEntry)}
-                        {#if remaining > 0}
-                          <div class="overflow-hidden rounded-lg border bg-card">
-                            <div class="flex items-center gap-3 px-4 py-3">
-                              <Icon name="Timer" size={22} class="shrink-0 text-muted-foreground" />
-                              {#if step.timer.description}
-                                <span
-                                  class="min-w-0 flex-1 truncate text-base"
-                                  data-testid="cook-step-timer-label"
-                                >
-                                  {step.timer.description}
-                                </span>
-                              {/if}
-                              <span
-                                class="{step.timer.description
-                                  ? 'shrink-0'
-                                  : 'flex-1'} font-mono text-2xl tabular-nums"
-                                data-testid="cook-step-timer-countdown"
-                              >
-                                {formatClock(remaining)}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                onclick={() => dismissTimer(timerEntry.id)}
-                                data-testid="cook-step-timer-dismiss"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                            {#if progress !== null}
-                              <div class="h-1.5 w-full bg-muted-foreground/15" aria-hidden="true">
-                                <div
-                                  class="h-full bg-amber-500 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
-                                  style="width: {progress * 100}%"
-                                  data-testid="cook-step-timer-progress"
-                                ></div>
-                              </div>
-                            {/if}
-                          </div>
-                        {:else}
-                          <div
-                            class="flex items-center gap-3 rounded-lg border border-primary bg-primary/10 px-4 py-3"
-                          >
-                            <Icon name="BellRing" size={22} class="shrink-0 text-primary" />
-                            {#if step.timer.description}
-                              <span
-                                class="min-w-0 flex-1 truncate text-base font-medium text-primary"
-                                data-testid="cook-step-timer-label"
-                              >
-                                {step.timer.description}
-                              </span>
-                            {/if}
-                            <span
-                              class="{step.timer.description
-                                ? 'shrink-0'
-                                : 'flex-1'} text-lg font-semibold text-primary"
-                              data-testid="cook-step-timer-countdown"
-                            >
-                              {step.timer.description ? 'Finished' : 'Timer finished'}
-                            </span>
-                            <Button
-                              onclick={() => dismissTimer(timerEntry.id)}
-                              data-testid="cook-step-timer-dismiss"
-                            >
-                              Dismiss
-                            </Button>
-                          </div>
-                        {/if}
-                      {:else}
-                        <div class="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="min-w-0 flex-1"
-                            onclick={() => startTimer(step)}
-                            data-testid="cook-step-timer-start"
-                          >
-                            {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
-                            <span class="min-w-0 truncate">
-                              Start {step.timer.durationMinutes} minute timer{step.timer.description
-                                ? ` (${step.timer.description})`
-                                : ''}
-                            </span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="lg"
-                            class="shrink-0"
-                            onclick={() => openStepTimerSheet(step)}
-                            ariaLabel="Adjust this timer"
-                            title="Adjust this timer"
-                            data-testid="cook-step-timer-adjust"
-                          >
-                            {#snippet leading()}<Icon name="Pencil" size={18} />{/snippet}
-                          </Button>
-                        </div>
-                      {/if}
-                    </div>
+                    <CookStepTimer
+                      timer={step.timer}
+                      entry={timerByStep.get(step.id)}
+                      {now}
+                      progressFor={timerProgressFor}
+                      onStart={() => startTimer(step)}
+                      onAdjust={() => openStepTimerSheet(step)}
+                      onDismiss={dismissTimer}
+                    />
                   {/if}
 
                   {#if done}
-                    <div class="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => untickStep(step.id)}
-                        data-testid="cook-step-untick"
-                      >
-                        {#snippet leading()}<Icon name="Undo2" size={16} />{/snippet}
-                        Mark not done
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onclick={() => (peekedStepId = null)}
-                        data-testid="cook-step-collapse"
-                      >
-                        {#snippet leading()}<Icon name="ChevronUp" size={16} />{/snippet}
-                        Collapse
-                      </Button>
-                    </div>
+                    <CookStepDoneControls
+                      onUntick={() => untickStep(step.id)}
+                      onCollapse={() => (peekedStepId = null)}
+                    />
                   {/if}
                 </div>
               {/if}
