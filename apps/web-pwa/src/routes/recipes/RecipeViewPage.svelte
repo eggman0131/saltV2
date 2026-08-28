@@ -2334,7 +2334,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
              know renders its words with no picture and never borrows another
              tool's, because the pill draws no tile at all on a miss (§8.30.5).
              Turning the icon kill-switch off therefore costs the pictures and
-             nothing else — the words are the content. -->
+             nothing else — the words are the content.
+
+             `shrink-0 max-w-full` is this row's own obligation as the pill's
+             caller (§8.30.3): the pill is `inline-flex`, not `flex`, so it does
+             not stretch on its own, but this row IS a flex row and would still
+             shrink or overflow a long pill without it — the same class the
+             cook-step kit list applies via its `<li>`. -->
         {#if kit.length > 0}
           <Card>
             <CardContent class="flex flex-col gap-2 p-4">
@@ -2345,6 +2351,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                     label={entry.label}
                     thumbnail={$toolIcons.toolIconFor(entry.label)}
                     version={$toolIcons.toolIconVersionFor(entry.label)}
+                    class="shrink-0 max-w-full"
                     data-testid="recipe-kit-chip"
                   />
                 {/each}

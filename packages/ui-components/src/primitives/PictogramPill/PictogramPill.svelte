@@ -18,7 +18,13 @@
 
 <span
   class={cn(
-    'flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base',
+    // `inline-flex`, not `flex`: every other static pill in the package
+    // (`.salt-chip--fact` et al., salt.css:730-736) is inline-level, and a
+    // block-level pill stretches to fill any non-flex parent it lands in —
+    // exactly what a plain wrapping `<div>`/`<p>` around it is. The caller
+    // still owns not letting it stretch or shrink inside a flex row of its
+    // own (`shrink-0 max-w-full`, §8.30.3).
+    'inline-flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base',
     // 4px sets the round tile flush in the pill's round end, so the picture
     // reads as the end of the pill; with no tile the words fall back to the
     // pill's normal 16px inset (§8.30.4).
@@ -28,13 +34,15 @@
   {...rest}
 >
   {#if hasPicture}
-    <CanonIcon
-      thumbnail={thumbnail ?? null}
-      {version}
-      name={label}
-      size={40}
-      class="rounded-full"
-    />
+    <!-- Decorative: the label span below is the accessible name. Silenced two
+         ways — an empty `name` (so `CanonIcon`'s `<img alt>` is `""`) and
+         `aria-hidden` on the wrapper — so a screen reader announces the
+         object once, not twice (§8.30.6). The per-step kit row
+         (RecipeViewPage.svelte) already did this by hand; this makes it the
+         primitive's own behaviour so no caller has to remember. -->
+    <span aria-hidden="true">
+      <CanonIcon thumbnail={thumbnail ?? null} {version} name="" size={40} class="rounded-full" />
+    </span>
   {/if}
   <span class="min-w-0 break-words">{label}</span>
 </span>

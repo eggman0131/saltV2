@@ -322,6 +322,20 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
     expect(chip.tagName).toBe('SPAN');
   });
+
+  it('keeps each pill from stretching or overflowing the flex-wrap strip (§8.30.3)', () => {
+    // The strip's own row is `flex flex-wrap`, so — unlike a plain block
+    // parent — the pill's `inline-flex` alone does not stop it stretching or
+    // shrinking; the caller must add `shrink-0 max-w-full`, the same class the
+    // per-step kit list applies via its `<li>` (issue #1050 finding 1).
+    mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
+    renderPage();
+
+    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
+    const classes = chip.className.split(/\s+/);
+    expect(classes).toContain('shrink-0');
+    expect(classes).toContain('max-w-full');
+  });
 });
 
 // ─── Per-step kit, in the Method column (issue #882) ────────────────────────────

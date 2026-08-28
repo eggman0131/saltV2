@@ -41,6 +41,31 @@ describe('PictogramPill', () => {
       });
       expect(pill().textContent?.trim()).toBe('potato masher');
     });
+
+    it('is inline-level, not block — every other static pill in the package is', () => {
+      // salt.css:730-736 (`.salt-chip--fact` and its siblings) is inline-flex;
+      // `flex` here would stretch the pill to fill any non-flex parent, which
+      // is exactly what the Storybook Playground/NoPicture canvas is (#1050).
+      render(PictogramPill, {
+        props: { label: 'large frying pan', thumbnail: PAN, 'data-testid': 'pill' },
+      });
+      const classes = pill().className.split(/\s+/);
+      expect(classes).toContain('inline-flex');
+      expect(classes).not.toContain('flex');
+    });
+
+    it('silences the decorative tile so the label is not announced twice', () => {
+      // The tile sits beside a visible label span that already carries the
+      // name; an unsilenced `<img alt>` would double-announce the object to a
+      // screen reader. axe has no rule for this — a green axe run is not
+      // evidence either way (§8.30.8).
+      render(PictogramPill, {
+        props: { label: 'large frying pan', thumbnail: PAN, 'data-testid': 'pill' },
+      });
+      const tile = screen.getByTestId('canon-icon');
+      expect(tile.closest('[aria-hidden="true"]')).not.toBeNull();
+      expect(screen.getByTestId('canon-icon-img')).toHaveAttribute('alt', '');
+    });
   });
 
   describe('the picture', () => {

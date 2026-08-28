@@ -73,17 +73,19 @@ One box, one size. There are no variants and no size prop, for v0.9 §8.23.4's
 reason: a size left to the call site drifts.
 
 ```
-<span>                              ← the pill: the whole component
-  <CanonIcon size={40} />           ← present only when there is a picture
-  <span>{label}</span>              ← the words
+<span>                                    ← the pill: the whole component
+  <span aria-hidden="true">               ← present only when there is a picture
+    <CanonIcon size={40} name="" />       ← decorative; name empty, alt="" (§8.30.6)
+  </span>
+  <span>{label}</span>                    ← the words, and the accessible name
 </span>
 ```
 
 | Part | Classes |
 | --- | --- |
-| Pill | `flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base` |
+| Pill | `inline-flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base` |
 | Pill, left padding | `pl-1` with a picture, `pl-4` without (§8.30.4) |
-| Tile | `CanonIcon` at `size={40}`, `class="rounded-full"` |
+| Tile | `CanonIcon` at `size={40}`, `class="rounded-full"`, `name=""`, wrapped in `aria-hidden="true"` (§8.30.6) |
 | Label | `min-w-0 break-words` |
 
 - **Dashed border, `bg-card`.** The pill inventories a thing you either have or
@@ -97,6 +99,12 @@ reason: a size left to the call site drifts.
   label; it wraps inside the pill rather than pushing the row sideways. The
   caller owns the row and keeps the pill from stretching (`shrink-0 max-w-full`
   on a list item, as the cook-step list does).
+- **`inline-flex`, not `flex`.** Every other static pill in the package
+  (`.salt-chip--fact` and its siblings, v0.9 §8.23.8) is inline-level; a
+  block-level pill stretches to fill any non-flex parent it is dropped into.
+  `inline-flex` is what makes the pill sit inline in ordinary prose flow — the
+  `shrink-0 max-w-full` above is a *separate* obligation, for when the caller's
+  own row is a flex container the pill must not stretch or overflow inside.
 
 ## 8.30.4 The padding switch
 
@@ -139,9 +147,17 @@ announced as a control.
 - **No `onclick`.** Typed `never`. A pill that does something is a `Chip`
   (`filter`/`expander`) or a `Button`; if neither fits, amend this spec.
 - **No hover, no focus ring, no pressed state.** There is nothing to press.
-- **The words are the accessible content.** The tile adds nothing a reader does
-  not already get — `CanonIcon`'s `<img alt>` carries the same label the pill
-  prints beside it.
+- **The words are the accessible content; the tile is decorative and silent.**
+  The label span is what a reader gets — the tile must not repeat it.
+  `CanonIcon` renders with an empty `name` (so its `<img alt>` is `""`), and
+  the tile is wrapped in `aria-hidden="true"`. Without both, a screen reader
+  announces the object twice: once from the image `alt`, once from the label
+  span beside it. (An early draft of this section reasoned the opposite way —
+  "the tile adds nothing a reader does not already get" — but that is the
+  argument *for* silencing it, not evidence it was already silent. The
+  per-step kit row (`RecipeViewPage.svelte`'s `recipe-view-step-kit`) already
+  solved this by hand with the same `aria-hidden` + empty/`sr-only` pattern;
+  the primitive now does it natively so no caller has to remember.)
 - **The pill is one element, not a list.** Row semantics — `<ul>`/`<li>`, an
   `aria-label` naming the set — belong to the caller, the only party that knows
   what the row is a list of.
@@ -177,6 +193,12 @@ the layer-map boundary `ui-components` exists on the far side of.
 - `version` reaches the rendered `<img src>` as the cache-bust (v0.4 §14.7 owns
   the join rule; this is only that it is passed through).
 - `data-testid` and the rest of the passthrough land on the pill element.
+- The pill is inline-level (`inline-flex`, not `flex`), so it does not
+  stretch to fill a non-flex parent.
+- With a thumbnail, the tile is not part of the accessible name: it is
+  `aria-hidden` and its `<img>` carries an empty `alt`, so the label is
+  announced once, not twice. (This is not axe-detectable — axe has no rule for
+  a doubled announcement — so a green axe run is not evidence either way.)
 - No axe violations, with a picture and without.
 
 ## 8.30.9 Forbidden
