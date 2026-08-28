@@ -7,6 +7,7 @@ import {
   type RecipeKitEntryDoc,
 } from '@salt/domain/schemas';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
+import { equipmentSectionForKit } from './equipmentContext.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 
@@ -24,6 +25,13 @@ import { resolveModel } from '../ai/resolveModel.js';
 // Labels are FREE TEXT and there is no enum over the drawn vocabulary anywhere in
 // this file. See IdentifyRecipeKitInputSchema's header for why that is the whole
 // point: a constrained list turns a potato masher into a fork.
+//
+// It is also handed the household's equipment manifest (issue #954), which is what
+// lets a label say "Magimix Cook Expert" rather than "food processor" — the
+// manifest holds four things that answer to "food processor", so the generic word
+// answers nothing. The licence that comes with it is deliberately narrow and lives
+// in EQUIPMENT_KIT_FRAMING (equipmentContext.ts): name which one, never introduce
+// one.
 
 const IDENTIFY_KIT_SYSTEM = `You are an experienced cook reading a recipe before starting, working out what to \
 get out of the cupboards. You are given the recipe's title, description, ingredients and numbered method steps, \
@@ -37,15 +45,19 @@ Do NOT return:
 - ingredients, or anything you eat
 - the oven, hob, grill or microwave — they are the kitchen, not something you get out
 - consumables: foil, cling film, baking paper, kitchen roll, string
-- appliances the household may or may not own: stand mixers, food processors, air fryers, blenders, pressure \
-cookers. If the method genuinely cannot be done without one, say so as a tool ("food processor") — but never \
-suggest one as a convenience for a job the method does by hand.
+- an appliance for a job the method does by hand. A stand mixer, food processor, air fryer, blender or \
+pressure cooker belongs in the answer only when the method genuinely cannot be done without it — never as a \
+convenience you are offering.
 
 ## How to name it
 Name it the way a cook would say it out loud, and be specific enough that the right one comes out of the \
 cupboard: "large frying pan", not "pan". "Box grater", not "grater". "Small saucepan", "baking tray", \
 "large mixing bowl", "chopping board", "sharp knife", "wooden spoon", "fine sieve". Lowercase, singular, no \
-quantities, no brand names, and no explanation — just the thing.
+quantities, and no explanation — just the thing.
+
+NEVER generalise a named appliance back to a generic one. If a step says "Magimix Cook Expert", the kit says \
+"Magimix Cook Expert" — not "food processor". Same for a named accessory, attachment, mode or setting. A \
+name the recipe already carries is a name the cook needs; flattening it is throwing away the answer.
 
 ## Work it out, do not copy it out
 Most of the kit is never named in the method. "Mash the potatoes" needs a potato masher. "Drain the pasta" \
@@ -109,7 +121,7 @@ export const identifyRecipeKitFlow = ai.defineFlow(
     inputSchema: IdentifyRecipeKitInputSchema,
     outputSchema: IdentifyRecipeKitOutputSchema,
   },
-  async ({ title, description, ingredients, steps }: IdentifyRecipeKitInput) => {
+  async ({ title, description, ingredients, steps, equipment }: IdentifyRecipeKitInput) => {
     const promptParts = [
       `Title: ${title}`,
       description ? `Description: ${description}` : null,
@@ -131,12 +143,20 @@ export const identifyRecipeKitFlow = ai.defineFlow(
     // not a place for invention.
     const modelId = await resolveModel('fast', 'identifyRecipeKit');
     const model = googleAI.model(modelId);
+    // The manifest rides on the SYSTEM prompt, beneath the naming rules, exactly as
+    // it does for the chef and the librarian — it is policy about the kitchen, not
+    // part of the recipe being read. '' (no manifest, or an unreadable one) leaves
+    // the system prompt byte-for-byte what it was before #954.
+    const equipmentSection = equipmentSectionForKit(equipment);
+    const system = equipmentSection
+      ? `${IDENTIFY_KIT_SYSTEM}\n\n${equipmentSection}`
+      : IDENTIFY_KIT_SYSTEM;
     const result = await withAiTimeout(
       'identifyRecipeKit',
       () =>
         ai.generate({
           model,
-          system: IDENTIFY_KIT_SYSTEM,
+          system,
           prompt: promptParts.join('\n\n'),
           output: { schema: IdentifyRecipeKitAIOutputSchema },
           config: { temperature: 0 },

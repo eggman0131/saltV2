@@ -496,6 +496,21 @@ a required field would empty the list of recipes written before this shipped.
 - **`isCookable(recipe.kind)` gates the call**, not `kind === 'outing'` — see
   "Schema extensions (kind discriminator)" above. An outing or a placeholder
   has nothing to get out and must never cost an AI call.
+- **The flow is handed the equipment manifest, and that is what makes a label
+  useful (issue #954).** The original prompt ended its naming rules with "no
+  brand names" and offered `"food processor"` as the desired output form, so a
+  step reading "Run the Magimix Cook Expert on slow cook" stored `slow cooker` —
+  the name was discarded, not missing. It also contradicted the librarian one
+  pass upstream, which is explicitly forbidden from generalising a named
+  appliance. Two changes fix it: the clause is gone, and the trigger now passes
+  `readEquipmentContext(...)` on the input's `equipment` field, wrapped by a
+  THIRD framing beside the chef's and the librarian's
+  (`equipmentSectionForKit`). The licence is deliberately narrow — name which
+  one, never introduce one — because the household owns four things that answer
+  to "food processor" and none of them belongs in a method that does the job by
+  hand. `equipment` is `.optional().default('')` and the reader is fail-open, so
+  a missing or corrupt manifest degrades to the pre-#954 prompt byte for byte
+  and never to a failed inference (Rule 10).
 
 ## Refresh — a chef turn, never a librarian mode (issue #890)
 

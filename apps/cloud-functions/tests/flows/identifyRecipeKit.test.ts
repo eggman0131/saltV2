@@ -27,8 +27,15 @@ vi.mock('../../src/ai/resolveModel.js', () => ({
   resolveModel: vi.fn().mockResolvedValue('gemini-flash-latest'),
 }));
 
+// equipmentContext.ts pulls in firebase-functions for its warn logs. The flow only
+// uses its pure string half, so stub the logger rather than the module.
+vi.mock('firebase-functions', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 const { identifyRecipeKitFlow, sanitiseRecipeKit } =
   await import('../../src/flows/identifyRecipeKit.js');
+const { IdentifyRecipeKitInputSchema } = await import('@salt/domain/schemas');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,6 +49,7 @@ const input = {
     { id: 's1', text: 'Boil the potatoes until tender.' },
     { id: 's2', text: 'Drain, then mash with the butter.' },
   ],
+  equipment: '',
 };
 
 describe('sanitiseRecipeKit', () => {
@@ -153,5 +161,69 @@ describe('identifyRecipeKit flow', () => {
     const result = await (identifyRecipeKitFlow as Function)(input);
 
     expect(result.kit).toEqual([{ label: 'tagine', stepIds: ['s1'] }]);
+  });
+});
+
+describe('IdentifyRecipeKitInputSchema — equipment (issue #954)', () => {
+  const base = {
+    title: 'Champ',
+    description: null,
+    ingredients: [],
+    steps: [],
+  };
+
+  it('parses without `equipment`, defaulting it to the empty string', () => {
+    // The fail-open contract: `readEquipmentContext` returns '' for a missing,
+    // corrupt or unreadable manifest, and '' must mean "answer exactly as before",
+    // never "skip inference".
+    const parsed = IdentifyRecipeKitInputSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.equipment).toBe('');
+  });
+
+  it('parses with `equipment`, keeping the rendered manifest verbatim', () => {
+    const parsed = IdentifyRecipeKitInputSchema.safeParse({
+      ...base,
+      equipment: '- Magimix Cook Expert',
+    });
+    expect(parsed.success && parsed.data.equipment).toBe('- Magimix Cook Expert');
+  });
+});
+
+describe('identifyRecipeKit flow — the manifest (issue #954)', () => {
+  it('puts the household kit on the system prompt, with the naming rules', async () => {
+    mockGenerate.mockResolvedValue({ output: { kit: [] } });
+
+    await (identifyRecipeKitFlow as Function)({
+      ...input,
+      equipment: '- Magimix Cook Expert\n- OXO Good Grips Chef\u2019s Mandoline',
+    });
+
+    const system = mockGenerate.mock.calls[0]?.[0]?.system as string;
+    expect(system).toContain('- Magimix Cook Expert');
+    expect(system).toContain('OXO Good Grips Chef\u2019s Mandoline');
+    // The licence that comes with the manifest, and its limit.
+    expect(system).toContain('NEVER generalise a named appliance back to a generic one');
+    expect(system).toContain('NOT a licence to introduce one');
+  });
+
+  it('leaves the system prompt untouched when there is no manifest', async () => {
+    mockGenerate.mockResolvedValue({ output: { kit: [] } });
+
+    await (identifyRecipeKitFlow as Function)({ ...input, equipment: '' });
+
+    const system = mockGenerate.mock.calls[0]?.[0]?.system as string;
+    expect(system).not.toContain('## Your kitchen');
+  });
+
+  it('no longer forbids brand names', async () => {
+    // The #954 defect in one line: the prompt used to end the naming rules with
+    // "no brand names", which is what discarded "Magimix Cook Expert" from a step
+    // that said it.
+    mockGenerate.mockResolvedValue({ output: { kit: [] } });
+
+    await (identifyRecipeKitFlow as Function)(input);
+
+    expect(mockGenerate.mock.calls[0]?.[0]?.system as string).not.toContain('no brand names');
   });
 });

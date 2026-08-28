@@ -9,6 +9,7 @@ import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
 import { identifyRecipeKitFlow } from '../flows/identifyRecipeKit.js';
 import { readComponentContext } from '../flows/componentContext.js';
+import { readEquipmentContext } from '../flows/equipmentContext.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -267,6 +268,14 @@ async function maybeInferKit(
   if (!(await isRecipeImageGenerationEnabled())) return;
 
   try {
+    // What the household actually owns (issue #954), read only once every cheap
+    // guard above has passed so a recipe that will not be inferred costs no read.
+    // The SAME reader chefChat and authorRecipe use, and it is fail-open by
+    // construction: a missing doc, a failed `safeParse` or a thrown read all return
+    // '', which the flow treats as "no manifest" and answers exactly as it did
+    // before. Kit context is an enhancement, never a precondition (Rule 10).
+    const equipment = await readEquipmentContext(getFirestore(), 'identifyRecipeKit');
+
     // No `withAiTimeout` wrapper HERE, following `describeSceneOrNothing` below
     // rather than the image branch above: the flow owns its own deadline (55s, no
     // retry) and a second wrapper would impose the house 20s default on top of it —
@@ -280,6 +289,7 @@ async function maybeInferKit(
       // Steps carry their ids — the flow has to answer with the ids this document
       // actually holds, and the sanitiser inside it drops anything else.
       steps: recipe.steps.map((s) => ({ id: s.id, text: s.text })),
+      equipment,
     });
     // Partial `.update()`, never a whole-document set: a full write from here would
     // clobber whatever a concurrent client save had just put on the document.

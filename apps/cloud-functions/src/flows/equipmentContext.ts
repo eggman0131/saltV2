@@ -6,12 +6,21 @@
 // prompts. (Before this, only chefChat read the manifest and authorRecipe
 // flattened "in the Pizzaiolo at 400 °C" back to "bake in the oven".)
 //
-// SCOPE: reading + rendering the manifest, plus the two framings that wrap it.
+// SCOPE: reading + rendering the manifest, plus the three framings that wrap it.
 // The framings are deliberately NOT interchangeable and must not be merged:
 //   - EQUIPMENT_CHEF_FRAMING gives the chef licence to CHOOSE kit (proportionately).
 //   - EQUIPMENT_LIBRARIAN_FRAMING gives the librarian licence to PRESERVE ONLY.
 //     authorRecipe is a temperature-0 transcriber; handing it the manifest must
 //     never license it to pick an appliance the conversation did not establish.
+//   - EQUIPMENT_KIT_FRAMING gives identifyRecipeKit licence to NAME WHICH ONE.
+//     It may not add an appliance to a method that does its work by hand, but when
+//     the method already reaches for one it must say which — that is the whole
+//     question the "You'll need" strip exists to answer (issue #954).
+//
+// All three sit in this one file deliberately. One authoring policy written as prose
+// in three prompt files is the drift #934 is about, and #954 WAS that drift: the
+// librarian was told never to generalise a named appliance while the kit flow, one
+// pass later, was told "no brand names".
 //
 // No schema change backs this: `AccessorySchema.owned` and `EquipmentItemSchema.rules`
 // already exist. Equipment capabilities are deliberately NOT stored — a pro model
@@ -142,6 +151,36 @@ the step says "Pizzaiolo" — not "the oven". Same for a named accessory, mode, 
 conversation says hob, the step says hob, even when something fancier is listed here. Inventing \
 equipment is a worse error than omitting it.`;
 
+// ─── Kit framing (identifyRecipeKit) ────────────────────────────────
+//
+// The kit flow may NAME equipment, and may not INTRODUCE it. That is a narrower
+// licence than the chef's and a wider one than the librarian's, which is why it is
+// a third framing rather than a reuse of either:
+//   - narrower than the chef's, because the chef is choosing a method and this flow
+//     is reading one that is already written. It must not decide the mash wants the
+//     Kenwood.
+//   - wider than the librarian's, because "food processor" in a step is not a name
+//     to preserve, it is a class to resolve. Four things in this manifest answer to
+//     it and the strip's only job is to say which one to get out.
+const EQUIPMENT_KIT_FRAMING = `## Your kitchen
+This is the equipment this household actually owns — real, specific products. Use it to say WHICH \
+piece of kit the cook gets out, never to decide that they should get one out.
+
+- NEVER generalise a named appliance back to a generic one. If a step says "Magimix Cook Expert", the \
+kit entry says "Magimix Cook Expert" — not "food processor". Same for a named accessory, attachment \
+or mode.
+- If a step names only a CLASS of appliance ("food processor", "stand mixer", "slow cooker") and \
+something here does that job, name that item instead. Where several qualify, pick the one that best \
+fits THIS job — weigh the scale of the work, the faff of getting it out and the washing-up, not \
+capability alone. The biggest machine is not automatically the right one.
+- Copy the item's name from this list VERBATIM, capitalisation and all. These names override the \
+lowercase house style; do not tidy, shorten or re-word them.
+- Accessories marked NOT owned are unavailable — never name one.
+- If nothing here does the job, use the ordinary cook's words for it. A frying pan is a frying pan.
+
+Naming which appliance is NOT a licence to introduce one. If the method does the job by hand, the \
+kit is the hand tool the method uses, and nothing from this list belongs in the answer.`;
+
 /**
  * The chef's equipment section, or '' when there is no manifest to show.
  */
@@ -156,4 +195,16 @@ export function equipmentSectionForChef(equipmentContext: string): string {
 export function equipmentSectionForLibrarian(equipmentContext: string): string {
   if (!equipmentContext) return '';
   return `${EQUIPMENT_LIBRARIAN_FRAMING}\n\n${equipmentContext}`;
+}
+
+/**
+ * The kit flow's equipment section, or '' when there is no manifest to show.
+ *
+ * '' is the important half: with no manifest the kit prompt is byte-for-byte what
+ * it was before #954, so a missing or corrupt manifest degrades to today's generic
+ * labels and never to a failed inference.
+ */
+export function equipmentSectionForKit(equipmentContext: string): string {
+  if (!equipmentContext) return '';
+  return `${EQUIPMENT_KIT_FRAMING}\n\n${equipmentContext}`;
 }

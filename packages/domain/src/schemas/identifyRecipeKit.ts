@@ -33,6 +33,17 @@ export const IdentifyRecipeKitInputSchema = z.object({
   // use each piece of kit, so it needs the ids the recipe document actually
   // carries — it can neither invent them nor be handed ordinals to map back.
   steps: z.array(z.object({ id: z.string(), text: z.string() })),
+  // The household's equipment manifest, already rendered to prompt text by
+  // `renderEquipmentManifest` (issue #954). It is what lets a label say WHICH food
+  // processor — the manifest holds four, and "food processor" identifies none of
+  // them.
+  //
+  // Optional with a `''` default, and that is the fail-open contract rather than
+  // tidiness: `readEquipmentContext` returns '' for a missing, corrupt or
+  // unreadable manifest, and '' has to mean "infer kit exactly as before" — never
+  // "skip inference". A household with no manifest gets the pre-#954 prompt byte
+  // for byte.
+  equipment: z.string().optional().default(''),
 });
 
 export type IdentifyRecipeKitInput = z.infer<typeof IdentifyRecipeKitInputSchema>;
