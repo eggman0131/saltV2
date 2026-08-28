@@ -46,7 +46,6 @@ export function subscribeEquipmentIcons(
       // Keyed by the DOCUMENT id — the equipment item it belongs to, which the
       // icon document itself does not carry as a field.
       project: (icon, id): [string, EquipmentIconDoc] => [id, icon],
-      forwardsRawError: true,
     },
     (entries) => onIcons(new Map(entries)),
     onError,

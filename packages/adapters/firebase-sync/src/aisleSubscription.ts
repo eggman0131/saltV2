@@ -23,8 +23,6 @@ export function subscribeAisles(
       schema: AislesDocumentSchema,
       label: 'AislesDocumentSchema',
       onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: true,
     },
     // ONE document holding the whole array, so "no document" is an empty list
     // rather than the `null` every other single-document read delivers — there

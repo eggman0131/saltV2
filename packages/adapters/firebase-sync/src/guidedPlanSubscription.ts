@@ -59,8 +59,6 @@ export function subscribeGuidedPlan(
       schema: GuidedPlanSchema,
       label: 'GuidedPlanSchema',
       onCorrupt: 'error',
-      logsRejection: true,
-      forwardsRawError: true,
     },
     onPlan,
     onError,

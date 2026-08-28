@@ -49,25 +49,16 @@ export interface CollectionRead<TParsed, TDelivered> {
   label: string;
   /** One parsed document → what the subscriber receives. See `parseDocuments`. */
   project: (parsed: TParsed, id: string) => TDelivered;
-  /**
-   * Whether the STREAM path forwards the original Firestore error alongside the
-   * categorised `DomainError`, so a reporting call site can send the real stack.
-   *
-   * True for thirteen of the fourteen; `subscribeMembers` declares a
-   * single-argument `onError` and must keep receiving one argument. That is
-   * #928's finding B2-009, recorded here as data rather than unified in a
-   * consolidation — unifying it is a visible API change and belongs in its own
-   * commit. The PARSE path never forwards a raw error, on any subscription:
-   * there is no Firestore error to forward, and the absent second argument is
-   * what tells a caller the two paths apart.
-   */
-  forwardsRawError: boolean;
 }
 
 /**
  * Subscribe to a collection. Delivers the valid subset on every snapshot;
  * stream-level failures cross as a `Failure`-shaped `DomainError` on `onError`,
- * never as a throw (Rule 10).
+ * never as a throw (Rule 10). The original Firestore error rides alongside as
+ * the second argument, on every collection read alike (#928 finding B2-009), so
+ * a reporting call site can send the real stack. The PARSE path forwards
+ * nothing: a refused document is skipped and logged, and never reaches
+ * `onError` at all.
  *
  * ─── Only what changed is parsed (issue #939) ────────────────────────────────
  * A snapshot used to be walked whole: `snap.docs` re-`safeParse`d end to end
@@ -164,10 +155,6 @@ export function subscribeCollection<TParsed, TDelivered>(
       // the whole-snapshot loop this replaced.
       onDocs(docs);
     },
-    (err) => {
-      const domainError = classifyFirestoreError(err);
-      if (read.forwardsRawError) onError(domainError, err);
-      else onError(domainError);
-    },
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }

@@ -56,7 +56,6 @@ export function subscribeKitchenMemories(
       schema: KitchenMemorySchema,
       label: 'KitchenMemorySchema',
       project: (memory) => memory,
-      forwardsRawError: true,
     },
     onMemories,
     onError,

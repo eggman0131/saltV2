@@ -133,24 +133,30 @@ describe('subscribeEquipmentManifest', () => {
     expect(manifest.items[0].rules).toEqual([]);
   });
 
+  // Both stream rows assert the RAW error alongside the classified one. This
+  // subscription's `onError` took a single argument until #928 Phase 1 deleted
+  // `forwardsRawError`; the second argument is the stack a reporting call site
+  // sends to PostHog, so a regression to one argument must go red here.
   it('calls onError with classified DomainError on Firestore permission-denied', () => {
     const onError = vi.fn();
     subscribeEquipmentManifest(() => {}, onError);
 
+    const raw = Object.assign(new Error('Firestore error'), { code: 'permission-denied' });
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('Firestore error'), { code: 'permission-denied' }));
+    errCb(raw);
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 
   it('calls onError with classified DomainError on Firestore unauthenticated', () => {
     const onError = vi.fn();
     subscribeEquipmentManifest(() => {}, onError);
 
+    const raw = Object.assign(new Error('Firestore error'), { code: 'unauthenticated' });
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('Firestore error'), { code: 'unauthenticated' }));
+    errCb(raw);
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'unauthenticated' });
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'unauthenticated' }, raw);
   });
 });
 

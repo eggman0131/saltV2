@@ -41,8 +41,6 @@ export function subscribeKitchenTimers(
       // exist until the first timer starts, and the next start writes a fresh one
       // over a corrupt one.
       onCorrupt: 'null',
-      logsRejection: true,
-      forwardsRawError: true,
     },
     onDoc,
     onError,

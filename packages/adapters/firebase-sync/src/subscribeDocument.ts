@@ -43,31 +43,20 @@ export interface DocumentRead<T> {
    * belongs in a commit that says so rather than inside a consolidation.
    */
   onCorrupt: 'error' | 'null';
-  /**
-   * Whether a rejected document is logged before that outcome.
-   *
-   * Five of the fourteen do; nine do not. That is #928's finding B2-008, and it
-   * is a field rather than a fix for the same reason `onCorrupt` is: making the
-   * nine start logging is a deliberate change with its own commit. Note the two
-   * `'null'` rows CANNOT stop logging — a silent `null` is indistinguishable
-   * from an absent document, and the log is the only record that anything was
-   * refused.
-   */
-  logsRejection: boolean;
-  /**
-   * Whether the STREAM path forwards the original Firestore error alongside the
-   * categorised `DomainError`. Seven of the fourteen do; the other seven declare
-   * a single-argument `onError` and must keep receiving one argument (#928
-   * finding B2-009). The PARSE path never forwards one — see
-   * `CollectionRead.forwardsRawError`.
-   */
-  forwardsRawError: boolean;
 }
 
 /**
  * Subscribe to one document. Delivers the parsed document, or `null` when it does
  * not exist. Stream-level failures cross as a `DomainError` on `onError`, never
  * as a throw (Rule 10).
+ *
+ * `onError` has ONE signature across every single-document read (#928 finding
+ * B2-009): the stream path always forwards the original Firestore error as a
+ * second argument, so a reporting call site gets the real stack; the parse path
+ * always passes one argument, because a corruption `Failure` is synthetic and
+ * has no Firestore error behind it. That difference is the caller's only way to
+ * tell the two paths apart, and it is now a property of the path rather than of
+ * which subscription you happen to be holding.
  */
 export function subscribeDocument<T>(
   read: DocumentRead<T>,
@@ -87,17 +76,13 @@ export function subscribeDocument<T>(
         onDoc(result.data);
         return;
       }
-      if (read.logsRejection) logRejection(read.label, snap.id, result.error);
+      logRejection(read.label, snap.id, result.error);
       // One argument, always: the corruption Failure is synthetic and has no
       // Firestore error behind it, and its absent second argument is what tells
       // a caller this came from the parse and not from the stream.
       if (read.onCorrupt === 'error') onError({ kind: 'StorageError', reason: 'corruption' });
       else onDoc(null);
     },
-    (err) => {
-      const domainError = classifyFirestoreError(err);
-      if (read.forwardsRawError) onError(domainError, err);
-      else onError(domainError);
-    },
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }

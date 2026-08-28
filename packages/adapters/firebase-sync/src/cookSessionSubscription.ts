@@ -49,8 +49,6 @@ export function subscribeCookSession(
       // Disposable transient state: a corrupt session is "no session", and the
       // page bootstraps a fresh one over it. See the header.
       onCorrupt: 'null',
-      logsRejection: true,
-      forwardsRawError: true,
     },
     onSession,
     onError,
@@ -93,7 +91,6 @@ export function subscribeMyCookSessions(
       schema: CookSessionSchema,
       label: 'CookSessionSchema',
       project: (session) => session,
-      forwardsRawError: true,
     },
     onSessions,
     onError,

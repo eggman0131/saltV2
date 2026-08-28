@@ -22,9 +22,8 @@
  *      dates; nothing there would notice a projection that dropped `slot` or
  *      `setBy`.
  *
- * Plus the STREAM path and its arity (`forwardsRawError: true` here against
- * `false` on `subscribeMembers` — #928 finding B2-009), which no emulator row
- * drives.
+ * Plus the STREAM path and its arity — two arguments, the second the raw
+ * Firestore error — which no emulator row drives.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 

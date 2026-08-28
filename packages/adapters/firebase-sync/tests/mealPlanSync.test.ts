@@ -88,13 +88,17 @@ describe('subscribeMealPlanConfig', () => {
     expect(onError).toHaveBeenCalledWith({ kind: 'StorageError', reason: 'corruption' });
   });
 
+  // The RAW error rides alongside the classified one. These three reads took a
+  // single-argument `onError` until #928 Phase 1 deleted `forwardsRawError`, and
+  // the second argument carries the stack a reporting call site sends — note the
+  // contrast with the corruption rows above, which pass ONE argument because the
+  // parse path has no Firestore error behind it.
   it('classifies stream-level errors', () => {
     const onError = vi.fn();
     subscribeMealPlanConfig(() => {}, onError);
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(
-      Object.assign(new Error('e'), { code: 'permission-denied' }),
-    );
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
+    const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
+    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });
 

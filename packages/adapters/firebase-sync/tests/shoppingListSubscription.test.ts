@@ -17,9 +17,9 @@
  *      defaulting rather than refusing is the difference between a legacy
  *      document appearing with an empty name and vanishing from the list
  *      entirely.
- *   2. THE STREAM path and its arity (`forwardsRawError: true`, against `false`
- *      on `subscribeMembers` — #928 finding B2-009). No emulator row drives a
- *      collection subscription's error callback.
+ *   2. THE STREAM path and its arity — two arguments, the second the raw
+ *      Firestore error. No emulator row drives a collection subscription's
+ *      error callback.
  *   3. `listShoppingLists`, the one-shot `getDocs`. `writerContract.test.ts`
  *      classifies it as a `'read'` and covers no reads; the subscription net
  *      covers no one-shots.

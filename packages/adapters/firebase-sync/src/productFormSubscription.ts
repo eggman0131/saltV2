@@ -24,7 +24,6 @@ export function subscribeProductForms(
       schema: ProductFormSchema,
       label: 'ProductFormSchema',
       project: (form) => form as ProductForm,
-      forwardsRawError: true,
     },
     onItems,
     onError,

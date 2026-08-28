@@ -16,7 +16,7 @@ const SINGLETON_DOC_ID = 'singleton';
 
 export function subscribeDevSettings(
   onSettings: (settings: DevSettingsDoc | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
@@ -24,8 +24,6 @@ export function subscribeDevSettings(
       schema: DevSettingsSchema,
       label: 'DevSettingsSchema',
       onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     onSettings,
     onError,

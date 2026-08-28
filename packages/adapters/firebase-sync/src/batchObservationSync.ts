@@ -68,7 +68,6 @@ export function subscribeBatchObservations(
       schema: BatchObservationSchema,
       label: 'BatchObservationSchema',
       project: (observation) => observation,
-      forwardsRawError: true,
     },
     onObservations,
     onError,

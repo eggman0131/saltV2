@@ -23,8 +23,6 @@ export function subscribeShoppingListsConfig(
       schema: ShoppingListsConfigSchema,
       label: 'ShoppingListsConfigSchema',
       onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: true,
     },
     onConfig,
     onError,

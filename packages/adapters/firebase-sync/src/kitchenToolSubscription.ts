@@ -41,7 +41,6 @@ export function subscribeKitchenTools(
       schema: KitchenToolSchema,
       label: 'KitchenToolSchema',
       project: (tool) => tool,
-      forwardsRawError: true,
     },
     onTools,
     onError,

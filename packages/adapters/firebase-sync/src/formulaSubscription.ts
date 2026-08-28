@@ -50,8 +50,6 @@ export function subscribeFormula(
       schema: FormulaSchema,
       label: 'FormulaSchema',
       onCorrupt: 'error',
-      logsRejection: true,
-      forwardsRawError: true,
     },
     onFormula,
     onError,
