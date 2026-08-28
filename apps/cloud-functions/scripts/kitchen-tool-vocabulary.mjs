@@ -26,6 +26,10 @@
 //      needs no entry on `Mixing bowl`, because the label is already inside it;
 //      "skillet" does, because it shares no word with "frying pan". Adding the
 //      covered ones back is dead weight that also risks out-lengthening a sibling.
+//      ENFORCED by `tests/kitchenToolVocabulary.test.ts`, along with rule 1 and
+//      the id rule below — this rule was stated here and broken 35 times in this
+//      same table until #956 trimmed them, which is what a rule checked by
+//      nothing becomes.
 //   3. LENGTH IS THE TIE-BREAK, SO A LONGER PHRASE OVERRIDES A SHORTER ONE.
 //      That is what lets `Small bowl` (10) beat `Mixing bowl`'s "bowl" (4), and
 //      `Rice paddle`'s "rice spoon" (10) beat `Wooden spoon`'s "spoon" (5).
@@ -56,46 +60,46 @@ export const TOOLS = [
   // rolling pin or a tin opener yet — and they stay: each is one drawing on a
   // sheet the operator already judges whole, and the first recipe that says
   // "rolling pin" then gets a picture instead of a queue row.
-  { id: 'mixing-bowl', label: 'Mixing bowl', matchers: ['bowl', 'large bowl', 'big bowl', 'batter bowl', 'pudding basin'] },
+  { id: 'mixing-bowl', label: 'Mixing bowl', matchers: ['bowl', 'pudding basin'] },
   { id: 'small-bowl', label: 'Small bowl', matchers: ['ramekin', 'prep bowl', 'little bowl'] },
-  { id: 'jug', label: 'Jug', matchers: ['measuring jug', 'pouring jug', 'pitcher', 'beaker'] },
-  { id: 'plate', label: 'Plate', matchers: ['serving plate', 'meat plate', 'dinner plate', 'dish', 'platter'] },
-  { id: 'baking-tray', label: 'Baking tray', matchers: ['tray', 'oven tray', 'baking sheet', 'sheet pan', 'roasting tray'] },
+  { id: 'jug', label: 'Jug', matchers: ['pitcher', 'beaker'] },
+  { id: 'plate', label: 'Plate', matchers: ['dish', 'platter'] },
+  { id: 'baking-tray', label: 'Baking tray', matchers: ['tray', 'baking sheet', 'sheet pan'] },
   { id: 'roasting-tin', label: 'Roasting tin', matchers: ['roasting dish', 'roasting pan'] },
   { id: 'loaf-tin', label: 'Loaf tin', matchers: ['bread tin', 'loaf pan'] },
   { id: 'cake-tin', label: 'Cake tin', matchers: ['cake pan', 'springform tin', 'sandwich tin'] },
   { id: 'ovenproof-dish', label: 'Ovenproof dish', matchers: ['baking dish', 'casserole dish', 'gratin dish', 'oven dish', 'pie dish'] },
-  { id: 'colander', label: 'Colander', matchers: ['strainer', 'pasta strainer'] },
-  { id: 'sieve', label: 'Sieve', matchers: ['fine mesh sieve', 'sifter', 'mesh strainer', 'chinois'] },
+  { id: 'colander', label: 'Colander', matchers: ['strainer'] },
+  { id: 'sieve', label: 'Sieve', matchers: ['sifter', 'mesh strainer', 'chinois'] },
   { id: 'frying-pan', label: 'Frying pan', matchers: ['skillet', 'non-stick pan', 'sauté pan'] },
-  { id: 'saucepan', label: 'Saucepan', matchers: ['pan', 'milk pan'] },
-  { id: 'stockpot', label: 'Stockpot', matchers: ['pot', 'pasta pot'] },
+  { id: 'saucepan', label: 'Saucepan', matchers: ['pan'] },
+  { id: 'stockpot', label: 'Stockpot', matchers: ['pot'] },
   { id: 'casserole-pot', label: 'Casserole pot', matchers: ['dutch oven', 'casserole', 'heavy-based pot', 'cast iron pot'] },
   { id: 'griddle-pan', label: 'Griddle pan', matchers: ['grill pan'] },
   { id: 'wok', label: 'Wok', matchers: ['stir-fry pan'] },
-  { id: 'chopping-board', label: 'Chopping board', matchers: ['cutting board', 'board'] },
-  { id: 'chefs-knife', label: "Chef's knife", matchers: ["cook's knife", 'large knife', 'sharp knife', 'knife'] },
+  { id: 'chopping-board', label: 'Chopping board', matchers: ['board'] },
+  { id: 'chefs-knife', label: "Chef's knife", matchers: ['knife'] },
   { id: 'paring-knife', label: 'Paring knife', matchers: ['small knife'] },
   { id: 'bread-knife', label: 'Bread knife', matchers: ['serrated knife'] },
   { id: 'wooden-spoon', label: 'Wooden spoon', matchers: ['spoon'] },
-  { id: 'spatula', label: 'Spatula', matchers: ['fish slice', 'turner', 'silicone spatula'] },
-  { id: 'whisk', label: 'Whisk', matchers: ['balloon whisk', 'hand whisk'] },
+  { id: 'spatula', label: 'Spatula', matchers: ['fish slice', 'turner'] },
+  { id: 'whisk', label: 'Whisk', matchers: [] },
   { id: 'tongs', label: 'Tongs', matchers: [] },
   { id: 'ladle', label: 'Ladle', matchers: [] },
   { id: 'slotted-spoon', label: 'Slotted spoon', matchers: [] },
-  { id: 'box-grater', label: 'Box grater', matchers: ['grater', 'cheese grater'] },
+  { id: 'box-grater', label: 'Box grater', matchers: ['grater'] },
   { id: 'microplane', label: 'Microplane', matchers: ['fine grater', 'zester'] },
-  { id: 'peeler', label: 'Peeler', matchers: ['vegetable peeler', 'potato peeler', 'y peeler'] },
+  { id: 'peeler', label: 'Peeler', matchers: [] },
   { id: 'potato-masher', label: 'Potato masher', matchers: ['masher'] },
   { id: 'rolling-pin', label: 'Rolling pin', matchers: [] },
   { id: 'pastry-brush', label: 'Pastry brush', matchers: ['basting brush'] },
   { id: 'tin-opener', label: 'Tin opener', matchers: ['can opener'] },
   { id: 'garlic-crusher', label: 'Garlic crusher', matchers: ['garlic press'] },
-  { id: 'kitchen-scales', label: 'Kitchen scales', matchers: ['scales', 'digital scales'] },
-  { id: 'wire-rack', label: 'Wire rack', matchers: ['cooling rack', 'rack'] },
-  { id: 'mortar-and-pestle', label: 'Mortar and pestle', matchers: ['pestle and mortar', 'mortar'] },
-  { id: 'kitchen-scissors', label: 'Kitchen scissors', matchers: ['scissors', 'kitchen shears', 'shears'] },
-  { id: 'thermometer', label: 'Thermometer', matchers: ['meat thermometer', 'probe thermometer', 'digital thermometer'] },
+  { id: 'kitchen-scales', label: 'Kitchen scales', matchers: ['scales'] },
+  { id: 'wire-rack', label: 'Wire rack', matchers: ['rack'] },
+  { id: 'mortar-and-pestle', label: 'Mortar and pestle', matchers: ['mortar'] },
+  { id: 'kitchen-scissors', label: 'Kitchen scissors', matchers: ['scissors', 'shears'] },
+  { id: 'thermometer', label: 'Thermometer', matchers: [] },
 
   // ─── Grown from production's real kit labels (issue #956) ─────────────────
   // Every row below is behind at least one of the 38 labels production's recipes
@@ -124,7 +128,7 @@ export const TOOLS = [
   { id: 'stick-blender', label: 'Stick blender', matchers: ['immersion blender', 'hand blender'] },
   { id: 'hand-mixer', label: 'Hand mixer', matchers: ['electric whisk'] },
   { id: 'stand-mixer', label: 'Stand mixer', matchers: ['food mixer', 'kitchenaid'] },
-  { id: 'meat-grinder', label: 'Meat grinder', matchers: ['mincer', 'meat mincer'] },
+  { id: 'meat-grinder', label: 'Meat grinder', matchers: ['mincer'] },
   { id: 'vacuum-sealer', label: 'Vacuum sealer', matchers: [] },
   { id: 'waffle-iron', label: 'Waffle iron', matchers: ['waffle maker'] },
   { id: 'salad-spinner', label: 'Salad spinner', matchers: [] },
@@ -133,14 +137,14 @@ export const TOOLS = [
 
   // Vessels and small kit. These are the folds that pay: one row absorbs every
   // adjective production has put in front of the noun.
-  { id: 'jar', label: 'Jar', matchers: ['kilner', 'preserving jar'] },
+  { id: 'jar', label: 'Jar', matchers: ['kilner'] },
   { id: 'storage-container', label: 'Storage container', matchers: ['container', 'tub', 'lidded box'] },
   { id: 'mug', label: 'Mug', matchers: [] },
   { id: 'baking-stone', label: 'Baking stone', matchers: ['pizza stone', 'baking steel'] },
   { id: 'trivet', label: 'Trivet', matchers: ['pot stand', 'heat mat'] },
   { id: 'tea-towel', label: 'Tea towel', matchers: ['kitchen towel', 'dish towel'] },
   { id: 'meat-press', label: 'Meat press', matchers: ['burger press', 'bacon press'] },
-  { id: 'fork', label: 'Fork', matchers: ['carving fork'] },
+  { id: 'fork', label: 'Fork', matchers: [] },
   // A shamoji, not a serving spoon — which is why "rice spoon" is listed rather
   // than left to `Wooden spoon`'s "spoon". The longer phrase wins, deliberately.
   { id: 'rice-paddle', label: 'Rice paddle', matchers: ['rice spoon', 'shamoji'] },
