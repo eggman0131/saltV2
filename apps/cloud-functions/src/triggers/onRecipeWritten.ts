@@ -3,11 +3,17 @@ import { getStorage } from 'firebase-admin/storage';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
-import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
+import {
+  RecipeSchema,
+  DevSettingsSchema,
+  type RecipeDoc,
+  type EstimateRecipeTimesOutput,
+} from '@salt/domain/schemas';
 import { componentDisplayLines, isCookable } from '@salt/domain';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
 import { identifyRecipeKitFlow } from '../flows/identifyRecipeKit.js';
+import { estimateRecipeTimesFlow } from '../flows/estimateRecipeTimes.js';
 import { readComponentContext } from '../flows/componentContext.js';
 import { readEquipmentContext } from '../flows/equipmentContext.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
@@ -28,6 +34,12 @@ import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntry
 // whole saved recipe and written back to `recipe.kit`. The two run under
 // `Promise.allSettled` (as onCanonItemWritten's icon + embedding pair do) so a
 // failure in one can never reject the handler and retry both.
+//
+// Issue #952 adds a THIRD, and it is unlike the other two: it never fires on
+// create. The three authoring paths already answer "how long does this take?"
+// against a proper definition, so a create has nothing to re-ask. It fires only on
+// an explicit `timesRequestedAt` bump — which today means the one-off backfill
+// script — and rewrites the three `metadata.*TimeMinutes` fields and nothing else.
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -314,6 +326,182 @@ async function maybeInferKit(
 }
 
 /**
+ * Edge-trigger decision for the time re-estimate branch (issue #952, phase 2).
+ *
+ * Deliberately the NARROWEST of the three guards in this file, and narrower than
+ * `kitNeedsInference` directly above in one specific way: **a create does not fire
+ * it.** Kit had to fire on create because nothing else in the system ever produces
+ * a kit list. Times are different — the librarian and both extractors are asked
+ * for all three fields against the definition in `recipeFieldRules`, and
+ * `assembleRecipeDraft` reconciles them on the way in. A recipe that has just been
+ * authored already has the best answer this codebase can give, so re-asking on
+ * create would buy a second AI call per recipe, forever, to second-guess it.
+ *
+ * Estimate when, and only when: the `timesRequestedAt` nonce CHANGED on this write.
+ * That is the backfill script asking, or any future "re-estimate the times" action.
+ * The nonce (rather than a bare flag) is what guarantees the request mutates the
+ * document at all — Firestore emits no write event for a no-op update, the same
+ * reason `kitRequestedAt` and `iconRequestedAt` exist.
+ *
+ * WHY NOT `timesEstimatedAt === undefined`, which would look like the kit guard.
+ * Because that would make every unrelated save of a never-backfilled recipe —
+ * canonicalise, per-row rematch, an edit, "apply changes", each a whole-document
+ * `setDoc` — fire an AI call, on a library where every pre-#952 recipe is
+ * permanently unstamped. The stamp exists for the script's benefit (skip what is
+ * already done, resume an interrupted run); the nonce is what gates the branch.
+ * They are two fields doing two jobs, which is why both are on the schema.
+ *
+ * A re-estimate of an already-stamped recipe is therefore possible and cheap: bump
+ * the nonce again. The script does that by not skipping when told not to.
+ */
+export function timesNeedEstimate(before: DocumentSnapshot | undefined, after: RecipeDoc): boolean {
+  if (after.timesRequestedAt === undefined) return false; // nobody asked
+  // "A create does not fire it" is only true here: without this line, a create
+  // whose payload happened to carry the nonce would read as a "nonce changed"
+  // (undefined !== N) and fire — the guard's whole contract, restated at
+  // `maybeInferKit`'s sibling reasoning above. No live path creates a recipe
+  // carrying the nonce today (this is a claim/code mismatch, not a live defect —
+  // #952 phase 2 review, should-fix 5), but it is what makes the comment above
+  // true rather than true "usually".
+  if (!before?.exists) return false;
+  return before.data()?.['timesRequestedAt'] !== after.timesRequestedAt;
+}
+
+/**
+ * Floors the WRITTEN total at the stored total whenever the stored total already
+ * exceeded stored `prep + cook` (issue #952 phase 2 review, blocking 1).
+ *
+ * The flow is deliberately never shown the stored triple (see
+ * `estimateRecipeTimes.ts` → "It is not shown the stored times, deliberately"),
+ * and for `prep`/`cook` that is right — the stored numbers are wrong in a KNOWN
+ * direction, low. It is NOT right for `total`: when the stored total already
+ * exceeds stored prep + cook, that excess is a real unattended wait (a prove, a
+ * marinade, a chill), and a wait is frequently recorded ONLY in that number —
+ * often as prose with no `step.timer`, which leaves the flow's inputs with no
+ * arithmetic route back to it. Overwriting it unconditionally would destroy
+ * exactly the number issue #952's own `reconcileEstimatedTimes` doc comment
+ * calls out as legitimate ("an excess is an unattended wait, and those are
+ * real"), irreversibly, on a one-off sweep of the whole library.
+ *
+ * "The stored total already exceeded stored prep + cook" is exactly the signal
+ * "this document records a real wait" — so that, and only that, is floored.
+ * `prep`/`cook` are still overwritten unconditionally: they carry no such
+ * signal, and the direction they are wrong in is the one this backfill exists to
+ * fix. A returned `totalTimeMinutes: null` is covered the same way: `null` must
+ * not erase a stored total that recorded a wait, so it floors to the stored
+ * total exactly as a too-low number would.
+ */
+function floorTotalAtStoredWait(
+  stored: Readonly<{
+    prepTimeMinutes: number | null;
+    cookTimeMinutes: number | null;
+    totalTimeMinutes: number | null;
+  }>,
+  estimated: EstimateRecipeTimesOutput,
+): EstimateRecipeTimesOutput {
+  const storedParts = (stored.prepTimeMinutes ?? 0) + (stored.cookTimeMinutes ?? 0);
+  const storedRecordsWait =
+    stored.totalTimeMinutes !== null && stored.totalTimeMinutes > storedParts;
+  if (!storedRecordsWait) return estimated;
+  return {
+    ...estimated,
+    totalTimeMinutes: Math.max(estimated.totalTimeMinutes ?? 0, stored.totalTimeMinutes as number),
+  };
+}
+
+/**
+ * Time re-estimate branch. Re-asks how long the recipe actually takes and writes
+ * the answer to the three `metadata.*TimeMinutes` fields.
+ *
+ * BEST-EFFORT (Rule 10), exactly as the kit branch is: a failure logs, reports and
+ * leaves `timesEstimatedAt` UNSTAMPED, so re-running the backfill script picks the
+ * recipe up again. It never rejects, so the two sibling branches are untouched by
+ * it.
+ *
+ * THE WRITE IS THREE FIELD PATHS AND A STAMP. Not a document `set`, and not a
+ * `metadata` object — `update({ 'metadata.prepTimeMinutes': … })` addresses the
+ * leaves, so `metadata.servings` and `metadata.tags` are not even sent, let alone
+ * overwritten. That matters more here than on the other two branches because this
+ * one is driven by a script sweeping the whole library: recipes are last-write-wins
+ * per WHOLE document (CLAUDE.md → Data model conventions), so a coarser write from
+ * a batch pass would be a library-wide opportunity to clobber a concurrent edit.
+ *
+ * It deliberately does NOT touch `updatedAt`, `lastEditedBy`, `rawText`,
+ * ingredients, steps or timers. The flow has no output field for any of them, so
+ * that is structural rather than a promise.
+ */
+async function maybeEstimateTimes(
+  id: string,
+  recipe: RecipeDoc,
+  before: DocumentSnapshot | undefined,
+): Promise<void> {
+  if (!timesNeedEstimate(before, recipe)) return;
+
+  // An outing is a restaurant and a placeholder is a photograph and a title —
+  // neither is cooked, so neither has times worth an AI call. Asked through the
+  // pure capability predicate, never `kind === 'outing'`: what a kind can do is
+  // answered in one place (packages/domain/src/recipe/queries/capabilities.ts).
+  if (!isCookable(recipe.kind)) return;
+
+  // Nothing to read. A recipe with no method gives the estimate no evidence
+  // beyond its title, and a number invented from a title is worse than the
+  // optimistic one it would replace.
+  if (recipe.steps.length === 0) return;
+
+  // E2E (FUNCTIONS_AI_FAKE): skip entirely, exactly as the other two branches do.
+  // Unreachable in production (the flag is never set there).
+  if (aiFakeEnabled()) return;
+
+  // The SAME per-environment kill-switch the hero image and the kit use (issue
+  // #238), checked only once the cheap in-memory guards pass. It is the "stop this
+  // environment spending money generating recipe content" lever, and a sweep of
+  // the whole library is the most expensive thing that lever exists for.
+  if (!(await isRecipeImageGenerationEnabled())) return;
+
+  try {
+    const times = await estimateRecipeTimesFlow({
+      title: recipe.title.trim(),
+      description: recipe.description,
+      servings: recipe.metadata.servings,
+      // Flattened to display lines, as the kit and scene branches flatten them:
+      // the flow wants what the dish is made of, not how the list is grouped.
+      // These lines are most of the prep estimate.
+      ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
+      // The step's own timer is a FACT the model should not have to re-derive
+      // from prose, and it is what separates an unattended prove from time on
+      // heat.
+      steps: recipe.steps.map((s) => ({
+        text: s.text,
+        timerMinutes: s.timer?.durationMinutes ?? null,
+      })),
+    });
+    // No `withAiTimeout` wrapper here (issue #915): the flow owns its budget.
+    // Floor the total at a stored wait (blocking 1 above) before it is written —
+    // prep/cook pass through unchanged.
+    const finalTimes = floorTotalAtStoredWait(recipe.metadata, times);
+    await getFirestore().collection('recipes').doc(id).update({
+      'metadata.prepTimeMinutes': finalTimes.prepTimeMinutes,
+      'metadata.cookTimeMinutes': finalTimes.cookTimeMinutes,
+      'metadata.totalTimeMinutes': finalTimes.totalTimeMinutes,
+      // Stamped in the SAME update as the answer, so "estimated" and "has the
+      // new numbers" cannot disagree. The request nonce is left in place rather
+      // than deleted — deleting it would read as a nonce change on this write's
+      // own re-fire and buy a second estimate every time, which is exactly the
+      // trap the kit branch documents.
+      timesEstimatedAt: Date.now(),
+    });
+  } catch (err) {
+    // Leave `timesEstimatedAt` unstamped so a re-run retries; never block the
+    // trigger.
+    logger.error('onRecipeWritten: time estimate failed', { id, err });
+    // Additive: an AI flow throwing is unexpected, so report it to PostHog
+    // alongside the logger. Best-effort, never throws; the handler's finally
+    // flushes.
+    reportServerError(err);
+  }
+}
+
+/**
  * Authors a scene brief for the hero: art direction describing the plated dish,
  * written by a cheap fast-model text call that reads the WHOLE recipe — every
  * ingredient and every step — not just the title/description/tags the image prompt
@@ -452,13 +640,15 @@ export const onRecipeWritten = onDocumentWritten(
     // Wait for the OTel pipeline to be live before running so the flow's AI spans
     // are captured by the span processors (issue #370); resolves immediately once
     // warm, and settles (never rejects) on a telemetry-init failure.
-    // Two independently-guarded side-effects, as onCanonItemWritten has. allSettled
+    // Three independently-guarded side-effects, as onCanonItemWritten has two.
+    // allSettled
     // so a failure in one branch never rejects the handler — a rejection would
     // retry BOTH, paying a second time for the one that had already succeeded. Both
     // are edge-triggered on before→after, so both need the prior snapshot.
     await Promise.allSettled([
       maybeGenerateImage(id, parsed.data, event.data?.before),
       maybeInferKit(id, parsed.data, event.data?.before),
+      maybeEstimateTimes(id, parsed.data, event.data?.before),
     ]);
   }, traceContextFromWrittenDoc),
 );

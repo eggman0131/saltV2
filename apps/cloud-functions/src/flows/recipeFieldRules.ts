@@ -100,7 +100,12 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 // the assembler is what guarantees the stored document is, whatever the model
 // returns. Asking without enforcing is how `total: 35` came to sit on a recipe
 // whose own prep + cook is 45.
-const TIME_RULES = `- prepTimeMinutes: every minute the cook actively spends that is NOT time on heat — \
+// Exported (issue #952, phase 2) so the estimateRecipeTimes flow asks its question
+// against THIS text and not a paraphrase of it. A backfill that re-estimates
+// against a second, hand-copied definition would put the library back where it
+// started — half the recipes on one definition and half on another — which is the
+// #785 twin in a new place.
+export const TIME_RULES = `- prepTimeMinutes: every minute the cook actively spends that is NOT time on heat — \
 fetching the ingredients and equipment out, weighing and measuring, peeling, chopping, mixing, \
 and clearing down afterwards. Estimate it for a cook starting with nothing out and finishing with a \
 clean kitchen, NOT for the already-weighed counter a published "prep: 5 minutes" assumes.

@@ -245,6 +245,32 @@ export const RecipeSchema = z.object({
   // deliberately leaves this field in place when it stamps: deleting it would read
   // as a nonce change on its own re-fire and buy a second inference every time.
   kitRequestedAt: z.number().optional(),
+  // ─── Time re-estimate control fields (both optional + additive → back-compat
+  // on read; every document written before #952 lacks them and stays valid) ────
+  //
+  // These are the BACKFILL's two halves, not a per-write feature. The three
+  // authoring paths already produce honest times since #952 phase 1; what they
+  // cannot do is revisit the ~59 recipes authored before it, whose prep times
+  // assume the already-weighed counter the old one-line rule implied. So the
+  // onRecipeWritten times branch is edge-triggered on `timesRequestedAt` ALONE —
+  // deliberately unlike the kit branch, which also fires on create. A create
+  // never needs it (the librarian or the extractor just answered the same
+  // question against the same definition), and firing there would buy a second
+  // AI call per recipe forever to second-guess a number that is already right.
+  //
+  // The nonce (epoch ms) is what guarantees the request mutates the document at
+  // all: Firestore emits no write event for a no-op update, which is the same
+  // reason `kitRequestedAt` and `iconRequestedAt` exist.
+  timesRequestedAt: z.number().optional(),
+  // The stamp (epoch ms) the trigger writes in the SAME update as the three
+  // `metadata.*TimeMinutes` values. It is NOT what gates the branch — the nonce
+  // is — and it exists for the script: a re-run skips a recipe that already
+  // carries one, so an interrupted backfill resumes instead of paying for every
+  // recipe twice, and "how far did it get" is answerable by a masked read of one
+  // field rather than by reading the model's logs. A deliberate second pass is
+  // still available: bumping the nonce re-fires the branch whatever the stamp
+  // says, which is what makes a re-estimate after a prompt change possible.
+  timesEstimatedAt: z.number().optional(),
   // The photoreal "arty" hero image (Tier-2, issue #148). `null` = none yet: the
   // onRecipeWritten trigger generates one from the title + description on create.
   // A non-null `{ url, source }` is rendered; the trigger skips it (already
