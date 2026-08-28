@@ -53,9 +53,20 @@ export const LibrarianOutputSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   servings: z.number().nullable(),
-  totalTimeMinutes: z.number().nullable(),
-  prepTimeMinutes: z.number().nullable(),
-  cookTimeMinutes: z.number().nullable(),
+  // Same time constraints as the extractor (ExtractRecipeAIOutputSchema), and
+  // for the same reasons — the librarian was the one authoring path that would
+  // accept a fractional or negative minute count and store it (issue #952).
+  //
+  // The 0 rule is asymmetric on purpose (issue #739): `totalTimeMinutes: 0`
+  // describes a recipe nobody can cook, so 0 there is a model glitch and stays
+  // rejected, while `prepTimeMinutes: 0` / `cookTimeMinutes: 0` are real answers
+  // for anything assembled rather than cooked. Read the fuller reasoning beside
+  // the extractor's copy before changing either. 0 does not survive to the
+  // stored recipe in any case: assembleRecipeDraft folds it back to null once it
+  // has reconciled the total.
+  totalTimeMinutes: z.number().int().positive().nullable(),
+  prepTimeMinutes: z.number().int().nonnegative().nullable(),
+  cookTimeMinutes: z.number().int().nonnegative().nullable(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(LibrarianGroupSchema),
   steps: z.array(LibrarianStepSchema),

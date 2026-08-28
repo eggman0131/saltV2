@@ -126,6 +126,38 @@ describe('extractRecipeFromUrl — shared field rules (#785)', () => {
     expect(system).not.toContain('preserve the original wording');
   });
 
+  it('exempts the TIMES from faithfulness, and nothing else (#952)', async () => {
+    mockJsonLd.mockReturnValue(JSON_LD);
+
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    // The JSON-LD prompt used to name "times" in the same breath as ingredients
+    // and steps — "Use ONLY the ingredients, steps, times and servings given" —
+    // so an import inherited the food blog's optimistic prep time by explicit
+    // instruction, and no amount of defining prep in the shared field rules could
+    // reach it.
+    const system = systemPromptFrom();
+    expect(system).not.toContain('Use ONLY the ingredients, steps, times and servings given');
+    expect(system).toContain('Use ONLY the ingredients, steps and servings given');
+    expect(system).toContain('The TIMES are the one exception');
+    expect(system).toContain('a HINT, not a floor');
+
+    // The narrowing is for the three numbers ONLY. Content stays verbatim.
+    expect(system).toContain('Do not invent, add, drop or reorder');
+    expect(system).toContain('Keep every ingredient and every instruction');
+    expect(system).toContain('this licence covers the three numbers and nothing else');
+  });
+
+  it("labels the page's own times as the page's, not as fields to copy", async () => {
+    mockJsonLd.mockReturnValue(JSON_LD);
+
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    const prompt = (mockGenerate.mock.calls[0]![0] as { prompt: string }).prompt;
+    expect(prompt).toContain('Total time as stated by the page (minutes): 20');
+    expect(prompt).not.toContain('Total time (minutes): 20');
+  });
+
   it("bans cups but keeps the source's tsp/tbsp for the parse stage", async () => {
     await (extractRecipeFromUrlFlow as Function)({ url: URL });
 

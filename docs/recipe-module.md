@@ -121,6 +121,52 @@ Key invariants:
   original non-metric measure is not thrown away, it moves to `displayText`, so
   "½ tsp" still reads as "½ tsp".
 
+### The three time fields — definition and arithmetic (issue #952)
+
+The field set is unchanged (`schemaVersion` stays `1`, no migration); what was
+missing was any statement of what the numbers **mean**. Every authoring path used
+to receive one line of guidance — "integers in minutes, or null" — which is a type,
+not a definition, so the model fell back on published-recipe convention. That
+convention is the optimistic one: a food writer's "prep: 5 minutes" starts from an
+already-weighed counter and stops before the washing up.
+
+The definition, now stated in `recipeFieldRules.ts` and therefore identical on all
+three paths (librarian, URL import, photo import):
+
+- **`prepTimeMinutes`** — every minute the cook actively spends that is not time on
+  heat: fetching the ingredients and equipment out, weighing and measuring, the
+  knife work, and clearing down afterwards. Estimated for a cook who starts with
+  nothing out and finishes with a clean kitchen.
+- **`cookTimeMinutes`** — time the food spends cooking. On the hob, in the oven,
+  under the grill.
+- **`totalTimeMinutes`** — wall-clock from starting to serving, **including**
+  unattended waits that are neither prep nor cook: marinating, proving, chilling,
+  resting. This is why a total may legitimately be many times prep + cook.
+- **`totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes`**, always.
+
+Two decisions worth keeping:
+
+- **The arithmetic rule is both asked for and enforced.** `recipeFieldRules.ts`
+  states it to the model; `assembleRecipeDraft` re-imposes it on the assembled
+  document, deriving a missing total from the parts and raising a stated total that
+  is below them. Asking alone is not enough — the library holds recipes stored with
+  `prep: 10, cook: 35, total: 35` — and enforcing alone is not either, because the
+  repaired number is only as honest as the parts it is built from. Note the repair
+  raises a floor and never caps a ceiling, so an overnight prove keeps its 762.
+- **An import re-estimates the times; it never rewrites the content.** The JSON-LD
+  prompt's faithfulness rule used to name "times" alongside ingredients and steps,
+  which made a URL import inherit the publisher's optimistic number by explicit
+  instruction. It now exempts the three time fields and nothing else. The rationale
+  is comparability: a library where half the recipes use blog convention and half
+  use ours has a "quickest first" sort that means nothing. Ingredients, steps and
+  servings stay verbatim.
+
+Nothing downstream changed. `cookShape` still derives the displayed hands-on figure
+as `total − timer waits` (it is the second source of truth this issue deliberately
+did **not** create), and the cook plan still starts a dish at
+`serve − cookTimeMinutes` — the decisions recorded below at *The cook plan*. That
+start clock excludes prep on purpose and is tracked separately as #953.
+
 ### Schema extensions (issue #180)
 
 Three additive fields were added after the Phase-1/2 hand-entry stress-test

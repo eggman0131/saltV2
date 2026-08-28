@@ -149,13 +149,12 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
     }
 
     // 6. Assemble the draft (reuses parse + canonicalise flows). Same assembler
-    //    the librarian uses — the import only differs in its provenance, its
-    //    unread-by-a-human flag (#616), and deriving a total time from prep +
-    //    cook when the page states only the parts.
+    //    the librarian uses — the import only differs in its provenance and its
+    //    unread-by-a-human flag (#616). Reconciling the three time fields is the
+    //    assembler's job on every path now (#952), not an import-only option.
     const recipe = await assembleRecipeDraft(extracted, {
       source: { type: 'url', url: parsed.href },
       needsApproval: true,
-      deriveTotalTime: true,
     });
 
     // 7. Persist it here, server-side, flagged as not yet human-reviewed
@@ -210,10 +209,15 @@ function buildJsonLdPrompt(
   lines.push(`Title: ${recipe.title}`);
   if (recipe.description !== null) lines.push(`Description: ${recipe.description}`);
   if (recipe.servings !== null) lines.push(`Servings: ${recipe.servings}`);
+  // Labelled as the PAGE's numbers, not ours. The faithfulness rule now exempts
+  // the times (issue #952), and a bare "Prep time (minutes): 5" reads like a
+  // field to copy across; "as stated by the page" reads like the hint it is.
   if (recipe.totalTimeMinutes !== null)
-    lines.push(`Total time (minutes): ${recipe.totalTimeMinutes}`);
-  if (recipe.prepTimeMinutes !== null) lines.push(`Prep time (minutes): ${recipe.prepTimeMinutes}`);
-  if (recipe.cookTimeMinutes !== null) lines.push(`Cook time (minutes): ${recipe.cookTimeMinutes}`);
+    lines.push(`Total time as stated by the page (minutes): ${recipe.totalTimeMinutes}`);
+  if (recipe.prepTimeMinutes !== null)
+    lines.push(`Prep time as stated by the page (minutes): ${recipe.prepTimeMinutes}`);
+  if (recipe.cookTimeMinutes !== null)
+    lines.push(`Cook time as stated by the page (minutes): ${recipe.cookTimeMinutes}`);
   if (recipe.tags.length > 0) lines.push(`Keywords: ${recipe.tags.join(', ')}`);
   lines.push('');
   lines.push('Ingredients:');
@@ -292,9 +296,13 @@ Your job is to faithfully convert it to UK conventions and return it in the requ
 is genuine recipe data, so set isRecipe=true.
 
 ## Faithfulness
-- Use ONLY the ingredients, steps, times and servings given. Do not invent, add, drop or reorder \
+- Use ONLY the ingredients, steps and servings given. Do not invent, add, drop or reorder \
 content. Keep every ingredient and every instruction. Preserve any ingredient groupings/headings if \
 present in the data.
+- The TIMES are the one exception (issue #952). The page's stated prep/cook/total are a HINT, not a \
+floor: re-estimate all three against the time definitions below, and expect the page's prep time to \
+be the low, already-weighed-counter kind. Content faithfulness is unaffected — this licence covers \
+the three numbers and nothing else.
 - You MAY, and should, SPLIT a source step that bundles several operations into consecutive steps, per \
 the one-operation rule below. That re-divides the given instructions; it does not add, drop or reorder \
 content, so it is not a breach of the rule above. Never MERGE two source steps into one.

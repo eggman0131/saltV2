@@ -112,6 +112,49 @@ describe('recipeFieldRules — the measure vocabulary is UNCONDITIONAL', () => {
   });
 });
 
+describe('recipeFieldRules — the time fields are DEFINED, on every path (#952)', () => {
+  // Before #952 the whole of the model's time guidance was one line —
+  // "totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or
+  // null" — which says what type they are and nothing about what they MEAN. With
+  // no definition supplied (and no `.describe()` anywhere in
+  // packages/domain/src/schemas, so Genkit sends only names and types) the model
+  // fell back on published-recipe convention: prep starts from an already-weighed
+  // counter and ends before the washing up.
+  it('says prep covers fetching, measuring and clearing down — not just the knife work', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('fetching the ingredients and equipment out, weighing and measuring');
+      expect(rules).toContain('clearing down afterwards');
+      expect(rules).toContain('starting with nothing out and finishing with a clean kitchen');
+    }
+  });
+
+  it('separates time on heat from unattended waiting', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('cookTimeMinutes: time the food spends cooking');
+      expect(rules).toContain('wall-clock from starting to serving');
+      expect(rules).toContain('INCLUDING unattended waits that are neither prep nor cook');
+    }
+  });
+
+  it('states the arithmetic rule the assembler also enforces', () => {
+    // Stated here AND enforced in assembleRecipeDraft. The prompt is what makes
+    // the model's own three numbers coherent; the assembler is what guarantees
+    // the stored document is, whatever comes back.
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes');
+    }
+  });
+
+  it('asks for an estimate rather than a copied figure, on every path', () => {
+    // The URL import is the path that most needs to hear this: its source is a
+    // food blog whose prep time is the optimistic kind by convention.
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('Estimate the numbers yourself when the source states none');
+      expect(rules).toContain('null only when you genuinely cannot estimate');
+    }
+  });
+});
+
 describe('recipeFieldRules — unconditional rules', () => {
   it('converts temperatures, names and spelling whichever the source', () => {
     // None of these is a measure the chef chose, so preserving their wording
