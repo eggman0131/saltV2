@@ -1,6 +1,6 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
-import { matchOrCreate } from '@salt/domain';
+import { matchOrCreate, resolveProductForm } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
 import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
@@ -13,6 +13,7 @@ import {
 import { ai } from '../genkit.js';
 import { createFirestoreCanonStore } from '../adapters/firestoreCanonStore.js';
 import { createFirestoreAisleStore } from '../adapters/firestoreAisleStore.js';
+import { createFirestoreProductFormStore } from '../adapters/firestoreProductFormStore.js';
 import { createServerEmbeddingAdapter } from '../adapters/serverEmbedding.js';
 import { createServerArbitrationAdapter } from '../adapters/serverArbitration.js';
 import { createServerMatchLoggingAdapter } from '../adapters/serverMatchLog.js';
@@ -41,7 +42,32 @@ const OutputSchema = z.union([
   }),
 ]);
 
-export function buildMatchOrCreatePorts(
+/**
+ * Reads `productForms` and builds the "is this name a derivation" predicate the
+ * synonym guard consults (`appendCanonSynonym`, issue #865/#866).
+ *
+ * Returns `undefined` — i.e. "no opinion", today's behaviour — when the read
+ * fails or the table is empty. That degrade is required by Rule 10 and is the
+ * documented domain default (`appendCanonSynonym.ts:18-28`): a caller that could
+ * not read the forms must not escalate to refusing synonyms wholesale. It is
+ * also the limit of the guarantee below, and is stated rather than glossed: while
+ * a `productForms` read is failing, a derivation can still be written into a
+ * synonym list, exactly as it could before this existed.
+ *
+ * An empty table is folded into the same branch for clarity, not for behaviour —
+ * `resolveProductForm(name, [])` is always `null`, so a present-but-empty
+ * predicate would answer `false` to everything anyway.
+ */
+async function buildDefaultDerivedNamePredicate(
+  db: ReturnType<typeof getFirestore>,
+): Promise<MatchOrCreatePorts['isDerivedName']> {
+  const formsResult = await createFirestoreProductFormStore(db).list();
+  if (formsResult.kind !== 'ok' || formsResult.value.length === 0) return undefined;
+  const forms = formsResult.value;
+  return (name: string) => resolveProductForm(name, forms) !== null;
+}
+
+export async function buildMatchOrCreatePorts(
   parentSpan?: ObservabilitySpan,
   // Distributed-trace correlation (issue #362, Phase 5). The shopping-list
   // trigger threads the browser-rooted W3C `traceparent` here so the canon
@@ -49,13 +75,22 @@ export function buildMatchOrCreatePorts(
   // onCanonItemWritten icon/embedding trigger continue the same trace. Optional:
   // the callable path passes nothing (its trace rides the request, not the doc).
   traceContext?: string,
-  // Only the recipe-canonicalisation flow holds the product-form list, so only it
-  // can answer "is this name a derivation rather than another name for the thing"
-  // — see `isDerivedName`. Omitted everywhere else, which leaves the synonym
-  // append exactly as it was.
+  // An explicit override of the `isDerivedName` predicate this builder otherwise
+  // reads for itself. The recipe-canonicalisation flow supplies one because its
+  // `forms` array is MUTABLE — a form minted mid-batch must protect the next item
+  // in the same recipe, which a snapshot taken here cannot do.
+  //
+  // Every entry point that builds its ports HERE now gets the guard by default
+  // (issue #937). That covers the three server callers — the callable, the
+  // shopping-list trigger and the recipe batch. It is not a claim about ports
+  // built elsewhere: the browser fast path assembles its own bag in
+  // `canonService.ts` and supplies its own predicate from the canon subscription.
   extras?: Pick<MatchOrCreatePorts, 'isDerivedName'>,
-): MatchOrCreatePorts {
+): Promise<MatchOrCreatePorts> {
   const db = getFirestore();
+  // The override wins, and short-circuits the read: a caller that already holds
+  // the forms should not pay a second collection read to be overruled.
+  const isDerivedName = extras?.isDerivedName ?? (await buildDefaultDerivedNamePredicate(db));
   // Both match-log sinks: firebase-functions/logger + PostHog. Built once here so
   // the fan-out port below reuses them across entries.
   const logSinks = [
@@ -79,7 +114,7 @@ export function buildMatchOrCreatePorts(
         await Promise.allSettled(logSinks.map((p) => p.write(entry)));
       },
     },
-    ...(extras?.isDerivedName !== undefined ? { isDerivedName: extras.isDerivedName } : {}),
+    ...(isDerivedName !== undefined ? { isDerivedName } : {}),
   };
 }
 
@@ -104,10 +139,16 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
   async (input) => {
     ensureObservabilityInitialised();
 
+    // Every field the wire schema declares, on the same conditional-spread
+    // pattern. `rawText` was declared, typed by the client caller and consumed by
+    // the arbitration prompt, but dropped here — the one entry point that
+    // advertised it and threw it away (issue #937). No caller sends it yet, so
+    // this closes a trap rather than fixing a live symptom.
     const cleanInput: MatchOrCreateInput = {
       rawName: input.rawName,
       ...(input.selectedAisleId !== undefined && { selectedAisleId: input.selectedAisleId }),
       ...(input.forceCreate !== undefined && { forceCreate: input.forceCreate }),
+      ...(input.rawText !== undefined && { rawText: input.rawText }),
     };
 
     // Trace context is extracted at the callable entrypoint (index.ts) and
@@ -116,7 +157,7 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
     const parentSpan = startSpan(`canon.matchOrCreateCanon: ${cleanInput.rawName}`);
 
     try {
-      const result = await matchOrCreate(cleanInput, buildMatchOrCreatePorts(parentSpan));
+      const result = await matchOrCreate(cleanInput, await buildMatchOrCreatePorts(parentSpan));
       parentSpan.setAttribute('canon.path', 'cf');
       if (result.kind === 'ok') {
         parentSpan.setAttribute('canon.outcome', result.value.decision);

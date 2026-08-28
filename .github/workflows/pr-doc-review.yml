@@ -715,6 +715,58 @@ jobs:
           # rejected diff plus the checker's complaint says the same thing,
           # verifiably, and can be applied by hand in under a minute.
           if [ "$GATED" = "true" ]; then
+            # Which docs would a hand-applied version of this diff UNROUTE?
+            #
+            # Removing a `docs-map.md` row for a doc that is still on disk is
+            # the one doc edit that does lasting damage (#1025; #921/#986
+            # before it): neither `docs/` nor the map itself is auto-loaded, so
+            # the row is the only thing that makes a doc visible to this job's
+            # own routing step and to every agent. A bot proposes it because an
+            # unfamiliar row reads to it like an orphan to tidy away.
+            #
+            # `check-docs-map.mjs` already catches that on the COMMITTED path —
+            # it is why nothing was pushed. The invitation at the end of this
+            # comment is the one path that routes AROUND the gate, by asking a
+            # human to apply the rejected diff themselves. So when the diff
+            # would unroute a live doc, the invitation is replaced by a warning
+            # naming exactly what would be lost.
+            #
+            # Net effect, not raw `-` lines: a reworded row appears as one
+            # removal and one addition of the same link, which is not a
+            # deletion. Hence (links removed) minus (links added), narrowed to
+            # targets that still exist on disk. CLAUDE.md is scanned alongside
+            # docs-map.md because the map lived inside it until #1038, and the
+            # checker still accepts the heading at either level.
+            map_links() {
+              awk -v want="$2" '
+                /^diff --git / { file = $3; sub(/^a\//, "", file); next }
+                file != "docs-map.md" && file != "CLAUDE.md" { next }
+                /^(--- |\+\+\+ )/ { next }
+                substr($0, 1, 1) != want { next }
+                {
+                  line = $0
+                  while (match(line, /\]\([^)#]+\)/)) {
+                    target = substr(line, RSTART + 2, RLENGTH - 3)
+                    line = substr(line, RSTART + RLENGTH)
+                    if (target !~ /^https?:/) print target
+                  }
+                }
+              ' "$1" | sort -u
+            }
+
+            : > .doc-review/unrouted.txt
+            if [ -f .doc-review/rejected.diff ]; then
+              map_links .doc-review/rejected.diff '-' > .doc-review/map-removed.txt
+              map_links .doc-review/rejected.diff '+' > .doc-review/map-added.txt
+              comm -23 .doc-review/map-removed.txt .doc-review/map-added.txt \
+                > .doc-review/map-dropped.txt
+              while read -r target; do
+                if [ -n "$target" ] && [ -e "$target" ]; then
+                  printf '%s\n' "$target" >> .doc-review/unrouted.txt
+                fi
+              done < .doc-review/map-dropped.txt
+            fi
+
             {
               echo "## 🚧 Doc review — proposed edits were **not** committed"
               echo ""
@@ -745,7 +797,20 @@ jobs:
               echo ""
               echo "</details>"
               echo ""
-              echo "Apply it by hand if it is right; ignore it if it is not. Either way the job stays green — a red \`PR Doc Review\` means the workflow itself is broken, never that a review found something."
+              if [ -s .doc-review/unrouted.txt ]; then
+                echo "> [!WARNING]"
+                echo "> **Do not apply this diff by hand.** Its net effect on the Docs map is to delete the row for a doc that is still on disk. Neither \`docs/\` nor \`docs-map.md\` is auto-loaded, so that row is the only thing that makes the doc visible — to this job's own routing step and to every agent that reads the map. Applying this would not make the doc harder to find; it would make it invisible."
+                echo ">"
+                echo "> Pointers that would be lost:"
+                echo ">"
+                sed 's/^/> - `/; s/$/`/' .doc-review/unrouted.txt
+                echo ">"
+                echo "> If one of those rows genuinely is stale, retire the doc and its row together in a deliberate commit — do not take it from a diff the repo's own checker just rejected."
+              else
+                echo "Apply it by hand if it is right; ignore it if it is not."
+              fi
+              echo ""
+              echo "Either way the job stays green — a red \`PR Doc Review\` means the workflow itself is broken, never that a review found something."
             } > "$body"
           fi
 

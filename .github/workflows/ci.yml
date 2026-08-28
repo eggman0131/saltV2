@@ -95,13 +95,21 @@ jobs:
           # Up-to-date gate. The "Main" ruleset uses
           # strict_required_status_checks_policy (= "require branches to be up
           # to date before merging"), so a branch behind origin/main CANNOT
-          # merge until it is rebased — and that rebase re-triggers this whole
+          # merge until it is updated — and that update re-triggers this whole
           # workflow. Running the heavy emulator + Playwright suites on a branch
           # that is already behind is therefore pure waste: the result is thrown
           # away at rebase. When behind, mark uptodate=false so the heavy jobs
           # skip (a skipped required check passes; strict mode still blocks the
           # merge until the branch is updated, at which point CI runs for real).
           # Only meaningful when code=true (the heavy suites would otherwise run).
+          #
+          # Who performs that update: auto-update-prs.yml, for any PR with
+          # auto-merge enabled — so it is usually automatic rather than a
+          # hand-driven click. A PR without auto-merge (a /run draft, say) is
+          # still its author's to rebase. GitHub's merge queue would subsume
+          # this gate entirely, but it requires an organisation-owned
+          # repository and so is unavailable here; auto-update-prs.yml carries
+          # the full reasoning.
           uptodate=true
           if [ "$code" = "true" ]; then
             git fetch --no-tags origin main

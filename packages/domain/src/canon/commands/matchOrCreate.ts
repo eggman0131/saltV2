@@ -3,7 +3,7 @@ import { ErrorCode } from '@salt/shared-types';
 import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { Aisle } from '../entities/Aisle.js';
-import type { MatchCandidate } from '../entities/MatchCandidate.js';
+import type { MatchCandidate, MatchStage } from '../entities/MatchCandidate.js';
 import type { FinalDecision } from '../entities/MatchLogEntry.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
 import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
@@ -251,6 +251,13 @@ async function classifyOne(
     void logging.write(entry).catch(() => {});
   };
 
+  // Recorded BEFORE the forceCreate branch, which returns from both of its arms.
+  // `MatchLogBuilder.start` has just reset this to 0, so setting it below the
+  // branch meant every forced creation reported `inputItemCount: 0` — an
+  // artificial bucket in the canon.match funnel, where the field is documented as
+  // "size of canon snapshot considered" (issue #937).
+  logBuilder?.setInputItemCount(items.length);
+
   if (forceCreate) {
     if (aisles.length > 0 && (selectedAisleId ?? null) === null) {
       return {
@@ -275,8 +282,6 @@ async function classifyOne(
     };
   }
 
-  logBuilder?.setInputItemCount(items.length);
-
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
 
   if (stage1to4.kind === 'match') {
@@ -288,7 +293,7 @@ async function classifyOne(
       kind: 'needs_ai',
       input,
       normalisedName,
-      shortlist: [...stage1to4.candidates],
+      shortlist: enrichAmbiguousSupport(stage1to4.candidates, normalisedName),
       reason: 'ambiguous_near_tie',
       aisles,
       logBuilder,
@@ -457,7 +462,16 @@ async function applyClassification(
     // bind only on a POSITIVE AI match, never via this degraded path. Token
     // overlap (stage 2) and embedding (stage 5) candidates stay valid fallbacks;
     // a stage-4-only shortlist creates a new item instead of mis-binding.
-    const fallback = shortlist.find((c) => c.stage !== 4);
+    //
+    // Reads `supportedStages`, not `stage`: the question here is whether edit
+    // distance is the ONLY support, and `stage` records merely which signal
+    // scored HIGHEST. Testing `stage !== 4` skipped candidates that token overlap
+    // or embedding also backed whenever their Levenshtein score came out higher
+    // ("chick pea flour" vs "Chick Pea Flakes" — token 0.667, Levenshtein 0.800),
+    // minting a new item where the pipeline promised to bind an existing one.
+    // The lone-candidate fast bind above deliberately still reads `stage`: it
+    // asks the other question, and widening it is what #248 removed.
+    const fallback = shortlist.find((c) => c.supportedStages.some((s) => s !== 4));
     if (fallback) {
       const currentItem = snapshot.get(fallback.item.id) ?? fallback.item;
       return resolveMatch(ports, currentItem, rawName, 'ai_arbitrated', commitLog);
@@ -567,22 +581,74 @@ function buildShortlist(
   for (const c of embedCandidates) map.set(c.item.id, c);
   for (const item of items) {
     const normItem = normaliseName(item.name);
-    const s2 = tokenMatch(normalisedName, normItem);
-    if (s2 >= MATCH_THRESHOLDS.aiThreshold) {
+    // Both scored signals, folded through one accumulator. `confidence` and
+    // `stage` keep their existing meanings — the best score, and which signal gave
+    // it, strictly-greater so a tie leaves the earlier winner in place, exactly as
+    // before. `supportedStages` accumulates EVERY signal that cleared the
+    // threshold, which is what the degraded fallback needs and what a single
+    // `stage` field could never record (issue #937).
+    for (const [stage, score] of [
+      [2, tokenMatch(normalisedName, normItem)],
+      [4, stringSimilarity(normalisedName, normItem)],
+    ] as const) {
+      if (score < MATCH_THRESHOLDS.aiThreshold) continue;
       const existing = map.get(item.id);
-      if (!existing || s2 > existing.confidence) {
-        map.set(item.id, { item, confidence: s2, stage: 2 });
+      if (!existing) {
+        map.set(item.id, { item, confidence: score, stage, supportedStages: [stage] });
+        continue;
       }
-    }
-    const s4 = stringSimilarity(normalisedName, normItem);
-    if (s4 >= MATCH_THRESHOLDS.aiThreshold) {
-      const existing = map.get(item.id);
-      if (!existing || s4 > existing.confidence) {
-        map.set(item.id, { item, confidence: s4, stage: 4 });
-      }
+      const supportedStages = withStage(existing.supportedStages, stage);
+      map.set(
+        item.id,
+        score > existing.confidence
+          ? { item, confidence: score, stage, supportedStages }
+          : { ...existing, supportedStages },
+      );
     }
   }
   return [...map.values()].sort((a, b) => b.confidence - a.confidence);
+}
+
+/** Adds a stage to a provenance list, keeping it deduplicated and ascending. */
+function withStage(stages: readonly MatchStage[], stage: MatchStage): readonly MatchStage[] {
+  return stages.includes(stage) ? stages : [...stages, stage].sort((a, b) => a - b);
+}
+
+/**
+ * `findClosestMatch`'s 'ambiguous' result hands back candidates straight from
+ * `runScoredStage`, which stamps every one of them `supportedStages: [stage]`
+ * — the single stage that produced the near-tie, with no visibility into
+ * whether a DIFFERENT signal also clears `aiThreshold` for the same
+ * candidate. That is exactly what the degraded AI-failure fallback in
+ * `applyClassification` needs: a stage-4 near-tie where token overlap ALSO
+ * supports a candidate must not read as "edit distance is the only support"
+ * and fall through to `persistNew` (issue #937 B1).
+ *
+ * Re-scores each candidate against stage 2 (token overlap) and stage 4
+ * (string similarity) through the same accumulator `buildShortlist` uses,
+ * folding any signal at or above `aiThreshold` into `supportedStages`.
+ * Membership is untouched — this only enriches the field on the candidates
+ * `findClosestMatch` already selected, never adds or drops one — and
+ * `confidence`/`stage` are left as-is: they still record the top-scoring
+ * signal from the stage that actually produced this candidate list.
+ */
+function enrichAmbiguousSupport(
+  candidates: readonly MatchCandidate[],
+  normalisedName: string,
+): MatchCandidate[] {
+  return candidates.map((c) => {
+    const normItem = normaliseName(c.item.name);
+    let supportedStages = c.supportedStages;
+    for (const [stage, score] of [
+      [2, tokenMatch(normalisedName, normItem)],
+      [4, stringSimilarity(normalisedName, normItem)],
+    ] as const) {
+      if (score >= MATCH_THRESHOLDS.aiThreshold) {
+        supportedStages = withStage(supportedStages, stage);
+      }
+    }
+    return supportedStages === c.supportedStages ? c : { ...c, supportedStages };
+  });
 }
 
 // Takes the whole `ports` bag rather than just `store` so the synonym guard

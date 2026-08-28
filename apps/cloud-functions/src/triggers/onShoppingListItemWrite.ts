@@ -120,7 +120,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
       const result = await matchOrCreate(
         { rawName: cleanName, ...(rawText ? { rawText } : {}) },
-        buildMatchOrCreatePorts(matchSpan, traceContext),
+        await buildMatchOrCreatePorts(matchSpan, traceContext),
       );
 
       if (result.kind === 'err') {

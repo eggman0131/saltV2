@@ -14,8 +14,13 @@ function getCollection(name: string) {
   return c;
 }
 
+// Collections whose `.get()` rejects, so a test can drive the Rule 10 degrade
+// path of a read that fails rather than merely returning nothing.
+const failingReads = new Set<string>();
+
 function resetFirestore() {
   collections.clear();
+  failingReads.clear();
 }
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -38,8 +43,12 @@ vi.mock('firebase-admin/firestore', () => ({
           },
         }),
         async get() {
+          if (failingReads.has(name)) throw new Error(`simulated ${name} read failure`);
           return {
-            docs: [...store.values()].map((data) => ({ data: () => data })),
+            docs: [...store.values()].map((data, i) => ({
+              id: `${name}-${i}`,
+              data: () => data,
+            })),
           };
         },
       };
@@ -68,7 +77,8 @@ vi.mock('../../src/flows/arbitrateCanon.js', () => ({
 }));
 
 // Import after all mocks so the module graph picks them up.
-const { matchOrCreateCanonFlow } = await import('../../src/flows/matchOrCreateCanon.js');
+const { matchOrCreateCanonFlow, buildMatchOrCreatePorts } =
+  await import('../../src/flows/matchOrCreateCanon.js');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -76,8 +86,13 @@ function seedCanonItem(item: CanonItem): void {
   getCollection('canonItems').set(item.id, { ...item });
 }
 
+// Writes a doc that actually satisfies AislesDocumentSchema. `schemaVersion` and
+// `updatedAt` are not decoration: without them the store's safeParse fails, the
+// aisle load degrades to an empty list, and every "no candidates" input takes the
+// create-without-AI branch instead of reaching arbitration — so a test meaning to
+// exercise an AI path would quietly exercise the other one.
 function seedAisles(aisles: Array<{ id: string; name: string; order: number }>): void {
-  getCollection('canonData').set('aisles', { aisles });
+  getCollection('canonData').set('aisles', { schemaVersion: 1, updatedAt: '', aisles });
 }
 
 function readCanonStorage(): CanonItem[] {
@@ -196,5 +211,195 @@ describe('matchOrCreateCanon flow', () => {
     expect(result.value.item.aisleId).toBe('produce');
     // arbitration is skipped when the caller chose an aisle.
     expect(mockArbitrate).not.toHaveBeenCalled();
+  });
+});
+
+// ─── The derived-name guard on the server entry points (issue #937, Phase 1) ──
+//
+// A synonym asserts IDENTITY; a product form asserts DERIVATION. Writing a
+// derivative's name into the parent's synonym list makes stage 3 answer "a clove
+// IS a bulb" for every later resolution, and the yield is silently lost — the
+// #865/#866 harm verbatim. The guard lives in `appendCanonSynonym` and fires only
+// when `ports.isDerivedName` is supplied; before this phase the callable and the
+// shopping-list trigger supplied nothing, so the two busiest routes wrote the bad
+// synonym while the fast path and the recipe batch refused it.
+
+const GARLIC_BULBS = 'garlic-bulbs-1';
+
+function seedGarlicCloveForm(): void {
+  getCollection('productForms').set('form-garlic-clove', {
+    id: 'form-garlic-clove',
+    schemaVersion: 1,
+    matchers: [],
+    parentCanonId: GARLIC_BULBS,
+    label: 'garlic clove',
+    yield: { formUnit: 'count', amountPerParent: 10 },
+    updatedAt: '',
+    thumbnail: null,
+  });
+}
+
+// "garlic cloves" clears no deterministic stage against "Garlic Bulbs" (token
+// overlap 0.5, Levenshtein 0.583 — both under aiThreshold 0.60), so the shortlist
+// is empty and the AI is asked to name a new item. It answers with a name the
+// snapshot already holds, and the snapshot-name failsafe binds to the existing
+// item — calling `resolveMatch` with the raw derivative text, which is where the
+// synonym gets appended. That failsafe is one of the three routes the issue names,
+// and its own code comment uses this exact "Garlic" example.
+function arbitrateToExistingGarlicBulbs(): void {
+  mockArbitrate.mockResolvedValueOnce({
+    kind: 'new',
+    canonName: 'Garlic Bulbs',
+    aisleId: null,
+    shoppingBehavior: 'needed',
+    prompt: '',
+    rawResponse: '',
+  });
+}
+
+describe('matchOrCreateCanon flow — derived names never become synonyms', () => {
+  it('binds "garlic cloves" to Garlic Bulbs without recording it as a synonym', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    seedCanonItem(makeItem({ id: GARLIC_BULBS, name: 'Garlic Bulbs' }));
+    seedGarlicCloveForm();
+    arbitrateToExistingGarlicBulbs();
+
+    const result = await (matchOrCreateCanonFlow as Function)({ rawName: 'garlic cloves' });
+
+    expect(result.kind).toBe('ok');
+    expect(result.value.decision).toBe('ai_arbitrated');
+    expect(result.value.item.id).toBe(GARLIC_BULBS);
+    // The match stands; only the identity claim is refused. No synonym, and no
+    // needs_approval flip — the parent doc is not rewritten at all.
+    expect(result.value.item.synonyms).toEqual([]);
+    expect(result.value.item.needs_approval).toBe(false);
+    const stored = readCanonStorage();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.synonyms).toEqual([]);
+    expect(stored[0]!.needs_approval).toBe(false);
+  });
+
+  // The control for the case above: without a form claiming the name, the same
+  // input still records the synonym. This is what makes the assertion above a
+  // test of the guard rather than of the matcher happening not to write.
+  it('still records a synonym when no product form claims the name', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    seedCanonItem(makeItem({ id: GARLIC_BULBS, name: 'Garlic Bulbs' }));
+    arbitrateToExistingGarlicBulbs();
+
+    const result = await (matchOrCreateCanonFlow as Function)({ rawName: 'garlic cloves' });
+
+    expect(result.kind).toBe('ok');
+    expect(result.value.item.synonyms).toEqual(['garlic clove']);
+  });
+
+  // Rule 10 degrade, and the stated limit of the guarantee: a productForms read
+  // that FAILS leaves the append exactly as it was before this phase existed. It
+  // must never escalate to refusing synonyms wholesale.
+  it('degrades to today’s behaviour when the productForms read fails', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    seedCanonItem(makeItem({ id: GARLIC_BULBS, name: 'Garlic Bulbs' }));
+    seedGarlicCloveForm();
+    failingReads.add('productForms');
+    arbitrateToExistingGarlicBulbs();
+
+    const result = await (matchOrCreateCanonFlow as Function)({ rawName: 'garlic cloves' });
+
+    expect(result.kind).toBe('ok');
+    expect(result.value.item.id).toBe(GARLIC_BULBS);
+    expect(result.value.item.synonyms).toEqual(['garlic clove']);
+  });
+});
+
+describe('buildMatchOrCreatePorts', () => {
+  // The shopping-list trigger calls the builder with no extras, so this is the
+  // predicate the trigger now matches with.
+  it('supplies a working isDerivedName by default, with no extras passed', async () => {
+    seedGarlicCloveForm();
+
+    const ports = await buildMatchOrCreatePorts();
+
+    expect(ports.isDerivedName).toBeDefined();
+    expect(ports.isDerivedName!('garlic cloves')).toBe(true);
+    expect(ports.isDerivedName!('garlic bulbs')).toBe(false);
+  });
+
+  it('omits the predicate entirely when no product forms exist', async () => {
+    const ports = await buildMatchOrCreatePorts();
+
+    expect(ports.isDerivedName).toBeUndefined();
+  });
+
+  it('omits the predicate entirely when the productForms read fails', async () => {
+    seedGarlicCloveForm();
+    failingReads.add('productForms');
+
+    const ports = await buildMatchOrCreatePorts();
+
+    expect(ports.isDerivedName).toBeUndefined();
+  });
+
+  // The recipe batch overrides with a closure over its MUTABLE forms array, so a
+  // form minted mid-batch protects the next item. The override must win, and must
+  // not pay for a snapshot read it is about to discard.
+  it('lets an explicit extras predicate win, and skips the read entirely', async () => {
+    seedGarlicCloveForm();
+    failingReads.add('productForms'); // would throw if the default read ran
+
+    const override = (name: string) => name === 'anything at all';
+    const ports = await buildMatchOrCreatePorts(undefined, undefined, {
+      isDerivedName: override,
+    });
+
+    expect(ports.isDerivedName).toBe(override);
+  });
+});
+
+// ─── cleanInput carries every declared field (issue #937, Phase 2) ────────────
+//
+// `rawText` is declared on the wire schema, declared on the domain input,
+// consumed by the arbitration prompt, supplied by the shopping-list trigger and
+// by the recipe batch, and documented as forwarded — and the callable was the one
+// entry point that declared it and then dropped it before the domain saw it. No
+// client sends it today, so this closes a trap for the next caller rather than
+// fixing a live symptom.
+describe('matchOrCreateCanon flow — rawText reaches arbitration', () => {
+  it('forwards rawText from the callable input onto the arbitration request', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'new',
+      canonName: 'Tinned Tomatoes',
+      aisleId: 'produce',
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    await (matchOrCreateCanonFlow as Function)({
+      rawName: 'tinned tomatoes',
+      rawText: '2 x 400g tins of chopped tomatoes',
+    });
+
+    expect(mockArbitrate).toHaveBeenCalledWith(
+      expect.objectContaining({ rawText: '2 x 400g tins of chopped tomatoes' }),
+    );
+  });
+
+  it('omits rawText from the arbitration request when the caller sends none', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'new',
+      canonName: 'Tinned Tomatoes',
+      aisleId: 'produce',
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    await (matchOrCreateCanonFlow as Function)({ rawName: 'tinned tomatoes' });
+
+    expect(mockArbitrate).toHaveBeenCalledWith(
+      expect.not.objectContaining({ rawText: expect.anything() }),
+    );
   });
 });

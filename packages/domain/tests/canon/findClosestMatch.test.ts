@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { findClosestMatch } from '../../src/canon/queries/findClosestMatch.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
+import type { StageLog } from '../../src/canon/entities/MatchLogEntry.js';
+import { MatchLogBuilder } from '../../src/canon/commands/buildMatchLog.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
@@ -21,6 +23,15 @@ const catalog: readonly CanonItem[] = [
   item({ id: '2', name: 'Olive Oil', synonyms: ['EVOO'] }),
   item({ id: '3', name: 'Butter', synonyms: [] }),
   item({ id: '4', name: 'Peanut Butter', synonyms: [] }),
+];
+
+// More than 5 items — needed so the top-5 slice in `runScoredStage` is
+// actually reachable (see the structural-parity block below).
+const bigCatalog: readonly CanonItem[] = [
+  ...catalog,
+  item({ id: '5', name: 'Basil', synonyms: [] }),
+  item({ id: '6', name: 'Oregano', synonyms: [] }),
+  item({ id: '7', name: 'Garlic', synonyms: [] }),
 ];
 
 describe('findClosestMatch — stage 1: exact normalised name match', () => {
@@ -193,5 +204,139 @@ describe('findClosestMatch — no match', () => {
 
   it('returns none for empty catalog', () => {
     expect(findClosestMatch([], 'tomato').kind).toBe('none');
+  });
+});
+
+// Additive (issue #937, Phase 2). A candidate this function returns was built at
+// exactly one stage, so its provenance is that stage and nothing else — the
+// accumulation across signals happens later, in `buildShortlist`. Asserted rather
+// than assumed because the degraded AI-failure fallback now reads this field to
+// decide whether edit distance is a candidate's ONLY support, and a stage that
+// forgot to populate it would not fail to compile once the field exists.
+describe('findClosestMatch — candidate provenance', () => {
+  it('records the constructing stage as the sole supporting signal', () => {
+    const cases: Array<{ query: string; items: readonly CanonItem[]; stage: number }> = [
+      { query: 'tomato', items: catalog, stage: 1 },
+      {
+        query: 'extra virgin olive oil',
+        items: [item({ id: 'x', name: 'Extra Virgin Olive Oil Sauce' })],
+        stage: 2,
+      },
+      { query: 'evoo', items: catalog, stage: 3 },
+      { query: 'buttter', items: [item({ id: '3', name: 'Butter' })], stage: 4 },
+    ];
+
+    for (const { query, items, stage } of cases) {
+      const result = findClosestMatch(items, query);
+      expect(result.kind, query).toBe('match');
+      if (result.kind === 'match') {
+        expect(result.candidate.stage, query).toBe(stage);
+        expect(result.candidate.supportedStages, query).toEqual([stage]);
+      }
+    }
+  });
+
+  it('records provenance on ambiguous candidates too', () => {
+    const twins = [item({ id: 'a', name: 'Tomato' }), item({ id: 'b', name: 'tomato' })];
+    const result = findClosestMatch(twins, 'tomato');
+    expect(result.kind).toBe('ambiguous');
+    if (result.kind === 'ambiguous') {
+      for (const c of result.candidates) expect(c.supportedStages).toEqual([1]);
+    }
+  });
+});
+
+// Additive (issue #937, Phase 3). Stages 2 and 4 are now one helper run with a
+// different scorer, threshold, ordinal and name. That removes the divergence risk
+// the duplication carried — but only for as long as they stay merged, and nothing
+// stops a later edit inlining one of them again. These assertions are what make
+// the property survive that: they compare the two stages' emitted StageLogs
+// directly, so a divergence in the gap convention on miss and pass,
+// `consideredCount`, `skipReason`, the StageLog key set, or the top-5 slicing
+// landing in one half and not the other fails here rather than in production
+// telemetry months later. A per-stage threshold value itself is NOT pinned by
+// this block — both gap assertions derive their expectation from the same
+// emitted log, so they are self-consistent with any threshold; only a
+// gap-CONVENTION change is caught.
+//
+// Deliberately NOT asserted against stages 1 and 3: those are set-membership
+// shaped and use a different gap convention (1.0 single / 0.0 tie / null miss),
+// which is why they were left out of the extraction.
+describe('findClosestMatch — stages 2 and 4 stay structurally identical', () => {
+  function stagesFor(items: readonly CanonItem[], query: string): Map<number, StageLog> {
+    const log = new MatchLogBuilder();
+    log.start(query, query);
+    findClosestMatch(items, query, log);
+    const entry = log.complete('run', 'created', null);
+    return new Map(entry.stages.map((s) => [s.stage, s]));
+  }
+
+  it('emits the same StageLog keys for both scored stages', () => {
+    // "tomato paste" clears neither stage 2's 0.80 nor stage 4's 0.85 against this
+    // catalog (both best out at 0.5), so both stages run to completion and log.
+    const stages = stagesFor(catalog, 'tomato paste');
+    const s2 = stages.get(2);
+    const s4 = stages.get(4);
+    expect(s2).toBeDefined();
+    expect(s4).toBeDefined();
+    expect(Object.keys(s2!).sort()).toEqual(Object.keys(s4!).sort());
+  });
+
+  it('uses the same gap convention on a miss: bestScore − threshold, never null', () => {
+    const stages = stagesFor(catalog, 'tomato paste');
+    for (const stage of [2, 4] as const) {
+      const s = stages.get(stage)!;
+      expect(s.passed, `stage ${stage}`).toBe(false);
+      expect(s.bestScore, `stage ${stage}`).not.toBeNull();
+      expect(s.gap, `stage ${stage}`).toBeCloseTo(s.bestScore! - s.threshold, 10);
+    }
+  });
+
+  it('uses the same gap convention on a pass: bestScore − secondScore', () => {
+    // One run per stage, because a passing stage 2 returns before stage 4 runs.
+    const cases = [
+      {
+        stage: 2 as const,
+        items: [item({ id: 'x', name: 'Extra Virgin Olive Oil Sauce' })],
+        query: 'extra virgin olive oil',
+      },
+      { stage: 4 as const, items: [item({ id: 'y', name: 'Butter' })], query: 'buttter' },
+    ];
+
+    for (const { stage, items, query } of cases) {
+      const s = stagesFor(items, query).get(stage);
+      expect(s, `stage ${stage}`).toBeDefined();
+      expect(s!.passed, `stage ${stage}`).toBe(true);
+      // Single candidate → second score is 0, so gap === bestScore. Asserted via
+      // the top-candidate list rather than restating the arithmetic, so the two
+      // stages are compared on the same derivation.
+      const second = s!.topCandidates[1]?.score ?? 0;
+      expect(s!.gap, `stage ${stage}`).toBeCloseTo(s!.bestScore! - second, 10);
+    }
+  });
+
+  it('records consideredCount and skipReason identically — both stages score the whole catalog', () => {
+    const stages = stagesFor(catalog, 'tomato paste');
+    for (const stage of [2, 4] as const) {
+      const s = stages.get(stage)!;
+      expect(s.consideredCount, `stage ${stage}`).toBe(catalog.length);
+      expect(s.skipReason, `stage ${stage}`).toBeNull();
+    }
+  });
+
+  // A 4-item catalog can never exercise the top-5 slice — the bound is
+  // unreachable, and the two stages are never actually compared to each
+  // other, so a re-inlined stage 4 sliced to e.g. `slice(0, 2)` would still
+  // pass a `toBeLessThanOrEqual(5)` assertion taken per stage. `bigCatalog`
+  // has more than five items, all scoring well below both stop thresholds
+  // against 'tomato paste' (verified: token and Levenshtein both ≤ 0.5), so
+  // both stages miss, both log to completion, and the slice is compared
+  // directly between the two stages rather than against a constant.
+  it('slices to the same top-5 bound in both stages — compared to each other, not just to 5', () => {
+    const stages = stagesFor(bigCatalog, 'tomato paste');
+    const s2 = stages.get(2)!;
+    const s4 = stages.get(4)!;
+    expect(s2.topCandidates.length).toBeLessThanOrEqual(5);
+    expect(s4.topCandidates.length).toBe(s2.topCandidates.length);
   });
 });

@@ -66,6 +66,17 @@ If the current branch is already dedicated to this issue (it ends in `-ISSUE_NUM
 
 All phase commits land on this branch; hold its name for the PR.
 
+**A merged PR leaves no ancestry — ask content, not lineage.** `main` is squash-merged, so the commit carrying your work is a *new* commit with no parent link to the branch it came from. That branch is never an ancestor of `main` and never becomes one: `git branch --merged main` will not list it, `git log origin/main..HEAD` will keep showing every phase commit as unique, and `git merge-base --is-ancestor` will keep answering false — after the merge exactly as before it. Resume on a stale local branch, ask lineage whether the work landed, and you get a confident wrong *no*, then either re-implement landed phases or stack the next one on history that is already in `main`.
+
+Ask the PR, and confirm against content — every squash subject ends in `(#PR)`:
+
+```
+gh pr list --head <type>/<slug>-ISSUE_NUMBER --state all --json number,state,mergedAt
+git log --oneline origin/main --grep='(#PR)'
+```
+
+`merged` means finished: the PR cannot track new work and the branch must not be reused. Start the follow-up from `main` — `git checkout -B <branch> origin/main` — and let the first push open a new PR.
+
 ---
 
 ## Per-phase loop (N = 1 to final)
@@ -189,7 +200,7 @@ git rebase origin/main    # no-op when already current
 git push -u origin <type>/<slug>-ISSUE_NUMBER
 ```
 
-**Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main` — the "Main" ruleset is strict, so a behind-branch must rebase before it can merge anyway, and that rebase re-triggers CI. Push while behind and you get a green tick for suites that never ran (step 8). Add `--force-with-lease` only when the rebase actually rewrote commits.
+**Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main` — the "Main" ruleset is strict, so a behind-branch must rebase before it can merge anyway, and that rebase re-triggers CI. `auto-update-prs.yml` does that automatically, but only for PRs with auto-merge enabled, which a `/run` draft is not: yours is yours to rebase. Push while behind and you get a green tick for suites that never ran (step 8). Add `--force-with-lease` only when the rebase actually rewrote commits.
 
 **Phase 1 only — open the PR, as a draft.** CI triggers on `pull_request` and on pushes to `main`, and on nothing else: **a pushed branch with no PR runs no CI at all.** The PR exists from phase 1 so every later phase gets a real signal; it stays draft until the final phase.
 

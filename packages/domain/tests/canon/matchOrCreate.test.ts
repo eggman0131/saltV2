@@ -1166,3 +1166,192 @@ describe('arbitration returning "new" for a name that already exists', () => {
     expect(store.items).toHaveLength(3);
   });
 });
+
+// ─── Candidate provenance: "which signals support this", not "which scored top" ─
+//
+// `stage` records the single top-scoring signal. Two policy sites read candidate
+// provenance and they ask DIFFERENT questions (issue #937):
+//
+//   • the lone-candidate fast bind asks "is token overlap the STRONGEST support?"
+//     — `stage === 2` is exactly right, and #248 narrowed it on purpose;
+//   • the degraded AI-failure fallback asks "is edit distance the ONLY support?"
+//     — for which `stage !== 4` is the wrong proxy, because a candidate that token
+//     overlap also backs gets skipped whenever its Levenshtein score came out
+//     higher.
+//
+// `supportedStages` answers the second question; `stage` keeps answering the
+// first. The two must not be collapsed into one field — doing so would widen the
+// fast bind into the behaviour #248 removed.
+
+describe('degraded fallback reads supporting signals, not the top-scoring one', () => {
+  // Regression A. "chick pea flour" vs "Chick Pea Flakes": token overlap 0.667,
+  // Levenshtein 0.800 — both clear aiThreshold (0.60), and edit distance wins the
+  // confidence, so the candidate used to be stamped stage 4 and skipped. Token
+  // overlap genuinely supports it, so the AI-error fallback must bind it.
+  it('falls back to a candidate that token overlap also supports', async () => {
+    const flakes = canonItem({ id: 'cpf1', name: 'Chick Pea Flakes' });
+    const { run, store } = makePipeline({
+      items: [flakes],
+      arbitration: {
+        arbitrate: async () => ({
+          kind: 'err',
+          error: { kind: 'NetworkError', reason: 'transient' },
+        }),
+      },
+    });
+
+    const result = await run('chick pea flour');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(result.value.item.id).toBe('cpf1');
+    }
+    // Bound to the existing item rather than minting a second one.
+    expect(store.items).toHaveLength(1);
+  });
+
+  it('falls back for the "red wine vinegar" / "White Wine Vinegar" pair too', async () => {
+    const white = canonItem({ id: 'wwv1', name: 'White Wine Vinegar' });
+    const { run, store } = makePipeline({
+      items: [white],
+      arbitration: {
+        arbitrate: async () => ({
+          kind: 'err',
+          error: { kind: 'NetworkError', reason: 'transient' },
+        }),
+      },
+    });
+
+    const result = await run('red wine vinegar');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('wwv1');
+    expect(store.items).toHaveLength(1);
+  });
+
+  // Regression B. The narrowing still holds where it should: "olives" vs "limes"
+  // is supported by edit distance and NOTHING else (token overlap 0), so the
+  // fallback must still refuse it and create a new item.
+  it('still creates a new item when edit distance is the only support', async () => {
+    const limes = canonItem({ id: 'lime1', name: 'limes' });
+    const { run, store } = makePipeline({
+      items: [limes],
+      arbitration: {
+        arbitrate: async () => ({
+          kind: 'err',
+          error: { kind: 'NetworkError', reason: 'transient' },
+        }),
+      },
+    });
+
+    const result = await run('olives');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.id).not.toBe('lime1');
+    expect(store.items).toHaveLength(2);
+  });
+
+  // Regression C. The lone-candidate fast bind has NOT widened. "chick pea flour"
+  // is a single shortlist candidate that token overlap supports, but its top
+  // signal is edit distance — it must still escalate to the AI rather than
+  // binding silently, which is precisely what #248 removed.
+  it('does not widen the lone-candidate fast bind to dual-supported candidates', async () => {
+    const flakes = canonItem({ id: 'cpf1', name: 'Chick Pea Flakes' });
+    const arbitrateSpy = vi.fn().mockResolvedValue({ kind: 'ok', value: { kind: 'no-match' } });
+    const { run } = makePipeline({ items: [flakes], arbitration: { arbitrate: arbitrateSpy } });
+
+    await run('chick pea flour');
+
+    expect(arbitrateSpy).toHaveBeenCalledOnce();
+  });
+
+  // The counterpart the fast bind is FOR: "plain flour" vs "Plain Flour Strong"
+  // scores token 0.667 / Levenshtein 0.611, so token overlap is the top signal and
+  // this one correctly binds without an AI call. Kept beside the case above so a
+  // future change cannot quietly move the boundary between them.
+  it('still fast-binds when token overlap is the top signal', async () => {
+    const strong = canonItem({ id: 'pfs1', name: 'Plain Flour Strong' });
+    const arbitrateSpy = vi.fn().mockResolvedValue({ kind: 'ok', value: { kind: 'no-match' } });
+    const { run } = makePipeline({ items: [strong], arbitration: { arbitrate: arbitrateSpy } });
+
+    const result = await run('plain flour');
+
+    expect(arbitrateSpy).not.toHaveBeenCalled();
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('pfs1');
+  });
+});
+
+// Regression E (issue #937, B1). `classifyOne` builds the `needs_ai` shortlist
+// two ways: a stage1to4 'none' result goes through `buildShortlist`, which
+// accumulates `supportedStages` across signals — the path the cases above
+// exercise. A stage1to4 'ambiguous' result instead takes `stage1to4.candidates`
+// straight from `findClosestMatch`, where `runScoredStage` stamps every
+// candidate `supportedStages: [stage]` — for a stage-4 near-tie, `[4]`
+// regardless of what token overlap says. That needs a ≥2-item catalog that
+// reaches `kind: 'ambiguous'` at stage 4 — every case above uses a one-item
+// catalog, which can only ever reach `kind: 'none'`, which is why none of them
+// caught this.
+//
+// "Self Raising Flor" / "Self Rising Flour" vs input "self raising flour":
+// both score token overlap 0.667 (over aiThreshold 0.60) and Levenshtein 0.944
+// (over stage4Stop 0.85, gap 0.0 < ambiguityGap) — a genuine stage-4 ambiguous
+// tie where token overlap ALSO supports both candidates.
+describe('degraded fallback on an ambiguous stage-4 shortlist (#937 B1)', () => {
+  it('falls back to an existing candidate instead of minting a third item', async () => {
+    const flor = canonItem({ id: 'flor1', name: 'Self Raising Flor' });
+    const flour = canonItem({ id: 'flour1', name: 'Self Rising Flour' });
+    const { run, store } = makePipeline({
+      items: [flor, flour],
+      arbitration: {
+        arbitrate: async () => ({
+          kind: 'err',
+          error: { kind: 'NetworkError', reason: 'transient' },
+        }),
+      },
+    });
+
+    const result = await run('self raising flour');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect([flor.id, flour.id]).toContain(result.value.item.id);
+    }
+    // Bound to one of the two existing items, not a third `needs_approval` one.
+    expect(store.items).toHaveLength(2);
+  });
+});
+
+// Regression D. `MatchLogBuilder.start` resets inputItemCount to 0, and the
+// forceCreate branch used to return above the line that set it — so every forced
+// creation reported a canon snapshot of 0 into `canon.match` and Cloud Logging.
+describe('inputItemCount on the forced-creation path', () => {
+  it('records the catalog size, not 0, when forceCreate is set', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    const items = [canonItem({ id: 'a1', name: 'apple' }), canonItem({ id: 'b1', name: 'banana' })];
+    idCounter = 0;
+
+    await matchOrCreate(
+      { rawName: 'mango', forceCreate: true },
+      {
+        store: makeStore(items),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+
+    expect(written[0]?.finalDecision).toBe('created');
+    expect(written[0]?.inputItemCount).toBe(2);
+  });
+});
