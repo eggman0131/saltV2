@@ -302,14 +302,27 @@ export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTim
 // is the read that says which words our content already uses and nothing draws,
 // and `suggestKitchenToolParent` is the advisory hint that keeps curating that
 // list from minting a second drawing of an object the vocabulary already has.
+//
+// `instanceNamedKitchenTools` and `kitchenToolSlug` are here for the offline
+// curation tools rather than the app (issue #956): the seed table's test asserts
+// the first returns nothing and that every row's id is the second of its label,
+// and `scripts/prune-instance-named-kitchen-tools.ts` runs the first over the
+// live collection. Both are pure, and neither is a second way to identify a tool
+// — `kitchenToolSlug` is the one `createKitchenTool` already mints with.
 export {
   resolveKitchenTool,
   unresolvedKitLabels,
   suggestKitchenToolParent,
+  instanceNamedKitchenTools,
   createKitchenTool,
   updateKitchenTool,
+  kitchenToolSlug,
 } from './kitchenTool/index.js';
-export type { CreateKitchenToolInput, UpdateKitchenToolInput } from './kitchenTool/index.js';
+export type {
+  CreateKitchenToolInput,
+  UpdateKitchenToolInput,
+  InstanceNamedKitchenTool,
+} from './kitchenTool/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"
