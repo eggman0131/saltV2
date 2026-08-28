@@ -1,0 +1,194 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { RecipeDoc } from '@salt/domain/schemas';
+
+// Blocking finding 1 (issue #952 phase 2 review): the sweep can silently destroy
+// a correct `totalTimeMinutes`. The flow is deliberately never shown the stored
+// triple, and for `prep`/`cook` that is right — the stored numbers are wrong in a
+// KNOWN direction, low. But when the STORED total already exceeds stored
+// `prep + cook`, the excess is a real unattended wait (a prove, a marinade, a
+// chill) that is frequently recorded ONLY in that number, and the flow's inputs
+// (title/description/servings/ingredients/step text+timer) contain no route back
+// to it when the wait is prose with no `step.timer` — exactly the reviewer's
+// Overnight No Knead Focaccia example: stored 30 / 12 / 762, the model returns
+// ~45, and an unconditional overwrite loses the 762 for good, irreversibly, on a
+// production sweep. Covers the same loss for a returned `totalTimeMinutes: null`.
+//
+// Fix: floor the WRITTEN total at the stored total whenever the stored total
+// already exceeded stored prep + cook — that excess is exactly the signal "this
+// document records a real wait". Only the total is floored; prep/cook are still
+// overwritten unconditionally (that direction is correct — see the flow header).
+
+vi.mock('firebase-functions/v2/firestore', () => ({
+  onDocumentWritten: (_opts: unknown, handler: unknown) => handler,
+}));
+vi.mock('firebase-functions/params', () => ({ defineSecret: () => ({ value: () => '' }) }));
+vi.mock('firebase-functions', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+const mockEstimateTimes = vi.fn();
+vi.mock('../../src/flows/estimateRecipeTimes.js', () => ({
+  estimateRecipeTimesFlow: mockEstimateTimes,
+}));
+
+// The sibling branches are not this suite's subject; the fixtures below are
+// shaped (image already set, kit already inferred) so neither one fires, but
+// stub their flows anyway so a slipped fixture cannot wander into a real call.
+vi.mock('../../src/flows/generateRecipeImage.js', () => ({
+  generateRecipeImageFlow: vi.fn(async () => ({ imageBase64: 'QUJD', contentType: 'image/png' })),
+}));
+vi.mock('../../src/flows/describeRecipeScene.js', () => ({
+  describeRecipeSceneFlow: vi.fn(async () => ({ brief: 'irrelevant' })),
+}));
+vi.mock('../../src/imaging/encodeHeroImage.js', () => ({
+  encodeHeroImage: vi.fn(async () => Buffer.from([1, 2, 3])),
+}));
+vi.mock('../../src/flows/componentContext.js', () => ({
+  readComponentContext: vi.fn(async () => []),
+}));
+vi.mock('../../src/flows/identifyRecipeKit.js', () => ({
+  identifyRecipeKitFlow: vi.fn(async () => ({ kit: [] })),
+}));
+
+const mockUpdate = vi.fn().mockResolvedValue(undefined);
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: { delete: () => 'DELETE' },
+  getFirestore: () => ({
+    collection: () => ({
+      doc: () => ({ update: mockUpdate, get: () => Promise.resolve({ exists: false }) }),
+    }),
+  }),
+}));
+vi.mock('firebase-admin/storage', () => ({
+  getStorage: () => ({
+    bucket: () => ({ name: 'demo-salt.appspot.com', file: () => ({ save: vi.fn() }) }),
+  }),
+}));
+vi.mock('@salt/observability/server', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  flushServerObservability: vi.fn().mockResolvedValue(undefined),
+  createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+}));
+
+const { onRecipeWritten } = await import('../../src/triggers/onRecipeWritten.js');
+
+// The reviewer's own worked example: Overnight No Knead Focaccia. Its prove is
+// prose ("cover and leave overnight") with no `step.timer`, so 762 has no
+// arithmetic route back from the flow's inputs.
+function focaccia(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
+  return {
+    id: 'focaccia',
+    schemaVersion: 1,
+    kind: 'recipe',
+    title: 'Overnight No Knead Focaccia',
+    description: 'A wet dough, proved overnight, baked hot and fast.',
+    ingredients: [],
+    steps: [
+      { id: 's1', text: 'Mix and cover; leave overnight to prove.', timer: null, note: null },
+    ],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: 30,
+      cookTimeMinutes: 12,
+      totalTimeMinutes: 762,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    // Set so the sibling hero-image branch cannot fire.
+    image: { url: 'https://example.test/focaccia.png', source: 'ai' },
+    // Set so the sibling kit branch cannot fire.
+    kit: [],
+    kitInferredAt: 1_690_000_000_000,
+    createdAt: '2026-07-10T00:00:00.000Z',
+    updatedAt: '2026-07-10T00:00:00.000Z',
+    ...overrides,
+  } as unknown as RecipeDoc;
+}
+
+function makeEvent(after: RecipeDoc, before: RecipeDoc | Record<string, unknown> | null) {
+  return {
+    params: { id: after.id },
+    data: {
+      before: before
+        ? { exists: true, data: () => before }
+        : { exists: false, data: () => undefined },
+      after: { exists: true, data: () => after },
+    },
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('onRecipeWritten — time branch floors the total at a recorded wait (B1)', () => {
+  it('does not overwrite a stored total that exceeds stored prep+cook with a lower model answer', async () => {
+    // The model has no route back to 762 from the flow's inputs and returns ~45,
+    // reconciled against its OWN parts (30 + 12 = 42, so 45 stands).
+    mockEstimateTimes.mockResolvedValue({
+      prepTimeMinutes: 30,
+      cookTimeMinutes: 12,
+      totalTimeMinutes: 45,
+    });
+
+    const before = { timesRequestedAt: undefined };
+    const after = focaccia({ timesRequestedAt: 1_700_000_000_000 });
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'metadata.prepTimeMinutes': 30,
+        'metadata.cookTimeMinutes': 12,
+        // 762 must survive — the excess over stored prep+cook (30+12=42) is a
+        // real unattended wait, and the model's 45 has no way to know about it.
+        'metadata.totalTimeMinutes': 762,
+      }),
+    );
+  });
+
+  it('does not let a returned totalTimeMinutes: null erase a stored total that recorded a wait', async () => {
+    mockEstimateTimes.mockResolvedValue({
+      prepTimeMinutes: 30,
+      cookTimeMinutes: 12,
+      totalTimeMinutes: null,
+    });
+
+    const before = { timesRequestedAt: undefined };
+    const after = focaccia({ timesRequestedAt: 1_700_000_000_000 });
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ 'metadata.totalTimeMinutes': 762 }),
+    );
+  });
+
+  it('still writes the model total as-is when the stored total never recorded a wait', async () => {
+    // Stored total (35) does NOT exceed stored prep+cook (10 + 35 = 45) — nothing
+    // to float above, so the model's reconciled answer is written unchanged. This
+    // is the issue's OTHER worked example (Paneer Makhanwala: 10 + 35 → 35),
+    // which this fix must keep fixing.
+    mockEstimateTimes.mockResolvedValue({
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 45,
+    });
+
+    const before = { timesRequestedAt: undefined };
+    const after = focaccia({
+      timesRequestedAt: 1_700_000_000_000,
+      metadata: {
+        servings: null,
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 35,
+        totalTimeMinutes: 35,
+        tags: [],
+      },
+    });
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ 'metadata.totalTimeMinutes': 45 }),
+    );
+  });
+});

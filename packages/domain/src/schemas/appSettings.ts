@@ -89,6 +89,12 @@ export const AI_FLOW_ROLES = {
   // recipe never names), and a label that reads like a cook wrote it ("large
   // frying pan", not "pan") is the whole user-visible outcome.
   identifyRecipeKit: 'fast',
+  // `fast` (issue #952, phase 2). Same shape and same reasoning as
+  // identifyRecipeKit directly above: it reads a whole stored recipe and returns a
+  // short structured answer, once per recipe on a trigger. Not `lite` — judging
+  // that six onions is twenty minutes of knife work and that a proved dough is an
+  // unattended wait rather than prep is the entire value of the answer.
+  estimateRecipeTimes: 'fast',
   parseEntry: 'lite',
   parseRecipeIngredients: 'lite',
   populateEquipmentEntry: 'lite',
