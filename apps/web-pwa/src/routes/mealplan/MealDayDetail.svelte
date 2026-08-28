@@ -60,6 +60,12 @@
     // (never denormalised onto the plan doc). Missing/deleted ids are skipped.
     // Optional: the weekday-keyed template editor omits it and stays recipe-free.
     recipes?: readonly Recipe[];
+    // The same recipes indexed by id, for resolving `day.recipeIds` (#940).
+    // Supplied by the page from `recipeService`'s derived index so one map is
+    // shared by every row. Optional for the same reason `recipes` is.
+    // `| undefined` so the sheet can forward its own optional prop straight
+    // through under exactOptionalPropertyTypes, as `weather` does.
+    recipesById?: ReadonlyMap<string, Recipe> | undefined;
     testid: string;
     // `| undefined` so the parent can pass `forecast?.days[date]` directly under
     // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
@@ -100,6 +106,7 @@
     day,
     members,
     recipes = [],
+    recipesById,
     testid,
     weather,
     dateKey,
@@ -118,10 +125,15 @@
   // The day stores recipe IDS only; titles resolve live from the `recipes` prop
   // at render time (no denormalisation). Ids with no matching recipe — deleted
   // since they were attached — are skipped so a broken row is never rendered.
+  //
+  // Resolved through the id index (#940) rather than by scanning `recipes` per
+  // id. `lookup` falls back to a map built from the `recipes` prop when the page
+  // did not supply one — correct, but built per component instance, so the two
+  // planner pages pass the shared index and only a caller that supplies
+  // `recipes` alone (the component tests) takes the fallback.
+  const lookup = $derived(recipesById ?? new Map(recipes.map((r) => [r.id, r])));
   const attachedRecipes = $derived(
-    day.recipeIds
-      .map((id) => recipes.find((r) => r.id === id))
-      .filter((r): r is Recipe => r !== undefined),
+    day.recipeIds.map((id) => lookup.get(id)).filter((r): r is Recipe => r !== undefined),
   );
   // Picker options exclude already-attached recipes so the same dish can't be
   // added twice, and anything that cannot occupy a dinner slot — a cocktail is

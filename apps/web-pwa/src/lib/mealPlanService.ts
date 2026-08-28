@@ -428,6 +428,10 @@ function weekIsKnown(start: string): boolean {
 function editWeekDay(
   dateKey: string,
   apply: (week: MealPlanWeek) => MealPlanWeek,
+  // Coalesce the write, for a field typed a character at a time. Everything else
+  // is one deliberate tap and writes at once — see `persistWeek` vs
+  // `persistWeekNow` and the note on which mutators opt in (issue #940).
+  coalesce = false,
 ): Promise<ReadResult<void, DomainError>> {
   const start = weekStartFor(dateKey, firstDay());
   if (!weekIsKnown(start)) {
@@ -439,7 +443,8 @@ function editWeekDay(
       }),
     );
   }
-  return persistWeek(apply(weekObjectFor(start)));
+  const next = apply(weekObjectFor(start));
+  return coalesce ? persistWeek(next) : persistWeekNow(next);
 }
 
 // ─── Write coalescing (issue #940) ────────────────────────────────────────────
@@ -451,6 +456,12 @@ function editWeekDay(
 // four note mutators are reached from two pages and a per-component fix covers
 // whichever component remembered.
 //
+// ONLY THOSE FOUR COALESCE. Chef, attendee, guests, recipes and load-template
+// write immediately: each is one deliberate tap, so there is no burst to merge,
+// and deferring one means a reload inside the window silently discards an edit
+// the user had finished making. `e2e/mealplan.spec.ts` asserts those survive a
+// reload, and it is right to.
+//
 // The split that makes this safe: the OPTIMISTIC STORE APPLY stays synchronous
 // and only the `setDoc` is deferred. Every week mutator rebuilds the document
 // from `_weeks` (see `editWeekDay`), so a deferred apply would let two edits to
@@ -460,11 +471,12 @@ function editWeekDay(
 // What this does and does not guarantee:
 //  - Edits made inside one window are NOT lost: each apply rebuilds from the
 //    store, so the last pending document contains all of them.
-//  - An edit IS lost if the tab or process dies inside the window — at most the
-//    last WRITE_DEBOUNCE_MS of typing. Pending writes live in memory only;
-//    persisting them would need browser storage, which CLAUDE.md Rule 3 forbids.
-//    `flushMealPlanWrites` on blur and on teardown is what keeps that window to
-//    an actual crash rather than an ordinary sheet dismissal.
+//  - Pending writes live in memory only; persisting them would need browser
+//    storage, which CLAUDE.md Rule 3 forbids. The flush points are therefore what
+//    bound the loss: blur, sheet teardown, and `pagehide`/tab-hide. A reload or a
+//    closed tab is ordinary and is covered; a tab the OS kills between the
+//    `pagehide` flush and the SDK persisting the mutation is not, and nothing
+//    in-memory can cover it.
 //  - A dropped connection loses nothing extra: the flush still calls `setDoc`,
 //    and Firestore's `persistentLocalCache` queues it like any other write.
 //  - Two devices editing the SAME document inside the same window still resolve
@@ -588,6 +600,29 @@ export function flushMealPlanWrites(): Promise<void> {
   return Promise.all([weekWrites.flushAll(), templateWrites.flushAll()]).then(() => undefined);
 }
 
+// A reload or a closed tab is ORDINARY, not a crash, and it must not cost the
+// user the sentence they just typed. `pagehide` is the event that fires for all
+// of them (reload, navigation, tab close, and iOS Safari's bfcache freeze, where
+// `beforeunload` does not); `visibilitychange` covers a backgrounded phone,
+// which on mobile is where a tab most often dies without ever firing `pagehide`.
+//
+// Registered once, at module load, and never removed: the module lives as long
+// as the document does, and a flush with nothing pending is a no-op.
+//
+// The honest limit: this hands the write to the Firestore SDK, which enqueues it
+// in `persistentLocalCache` and replays it on the next load. It does NOT wait for
+// the server, and nothing here can — an unload handler cannot hold the page open.
+// A tab killed by the OS between the enqueue and the SDK's own persistence still
+// loses the edit. That window is far smaller than the debounce it replaces, but
+// it is not zero, and no in-memory design can make it zero (Rule 3 forbids the
+// storage that could).
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => void flushMealPlanWrites());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushMealPlanWrites();
+  });
+}
+
 // Stamp updatedAt and update the store optimistically — SYNCHRONOUSLY — then
 // queue the document write. The target document is the week's own `startDate`;
 // the object carries where it belongs.
@@ -626,9 +661,14 @@ function persistWeekNow(week: MealPlanWeek): Promise<ReadResult<void, DomainErro
   return result;
 }
 
-function persistTemplate(template: MealPlanTemplate): Promise<ReadResult<void, DomainError>> {
+function persistTemplate(
+  template: MealPlanTemplate,
+  coalesce = false,
+): Promise<ReadResult<void, DomainError>> {
   _template.set(template);
-  return templateWrites.queue(TEMPLATE_KEY, template);
+  const result = templateWrites.queue(TEMPLATE_KEY, template);
+  if (!coalesce) void templateWrites.flush(TEMPLATE_KEY);
+  return result;
 }
 
 /**
@@ -725,7 +765,7 @@ export async function addRecipeToDay(
 // — Week day/attendee mutators —
 // Each routes to the document its `dateKey` belongs in; see `editWeekDay`.
 export function setWeekDayNote(dateKey: string, note: string) {
-  return editWeekDay(dateKey, (w) => setDayNote(w, dateKey, note));
+  return editWeekDay(dateKey, (w) => setDayNote(w, dateKey, note), true);
 }
 export function setWeekDayChefs(dateKey: string, chefs: readonly string[]) {
   return editWeekDay(dateKey, (w) => setDayChefs(w, dateKey, chefs));
@@ -750,7 +790,7 @@ export function setWeekAttendeeHomeTime(
   return editWeekDay(dateKey, (w) => setAttendeeHomeTime(w, dateKey, memberId, homeTime));
 }
 export function setWeekAttendeeNote(dateKey: string, memberId: string, note: string) {
-  return editWeekDay(dateKey, (w) => setAttendeeNote(w, dateKey, memberId, note));
+  return editWeekDay(dateKey, (w) => setAttendeeNote(w, dateKey, memberId, note), true);
 }
 
 // — Config —
@@ -760,7 +800,7 @@ export function saveFirstDayOfWeek(day: Weekday): Promise<ReadResult<void, Domai
 
 // — Template day/attendee mutators (keyed by weekday) —
 export function setTemplateDayNote(weekday: Weekday, note: string) {
-  return persistTemplate(setDayNote(currentTemplateObject(), weekday, note));
+  return persistTemplate(setDayNote(currentTemplateObject(), weekday, note), true);
 }
 export function setTemplateDayChefs(weekday: Weekday, chefs: readonly string[]) {
   return persistTemplate(setDayChefs(currentTemplateObject(), weekday, chefs));
@@ -782,7 +822,7 @@ export function setTemplateAttendeeHomeTime(
   return persistTemplate(setAttendeeHomeTime(currentTemplateObject(), weekday, memberId, homeTime));
 }
 export function setTemplateAttendeeNote(weekday: Weekday, memberId: string, note: string) {
-  return persistTemplate(setAttendeeNote(currentTemplateObject(), weekday, memberId, note));
+  return persistTemplate(setAttendeeNote(currentTemplateObject(), weekday, memberId, note), true);
 }
 
 // ─── Test / e2e helpers ───────────────────────────────────────────────────────

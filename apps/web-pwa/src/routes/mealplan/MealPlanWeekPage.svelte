@@ -35,7 +35,7 @@
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
-  import { recipes } from '../../lib/recipeService.js';
+  import { recipes, recipesById } from '../../lib/recipeService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import {
     currentWeek,
@@ -367,7 +367,7 @@
       .filter((date) => date >= todayDate)
       .flatMap((date) =>
         (days[date]?.recipeIds ?? [])
-          .map((id) => $recipes.find((r) => r.id === id))
+          .map((id) => $recipesById.get(id))
           .filter((r): r is Recipe => r !== undefined && takesIngredients(kindOf(r)))
           .map((recipe) => ({ date, recipe })),
       );
@@ -838,6 +838,7 @@
           {day}
           members={$members}
           recipes={$recipes}
+          recipesById={$recipesById}
           testid={`day-${date}`}
           isToday={date === todayDate}
           weather={$weatherForecast?.days[date]}
@@ -1166,6 +1167,7 @@
               day={paneDay}
               members={$members}
               recipes={$recipes}
+              recipesById={$recipesById}
               testid="day-pane"
               weather={$weatherForecast?.days[paneDate]}
               dateKey={paneDate}

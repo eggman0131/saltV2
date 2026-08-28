@@ -126,6 +126,12 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/membersService.js', () => ({ members: mockMembers }));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
+  // The id index the planner resolves `recipeIds` through (#940). Derived from
+  // the same stub, so a test that seeds `mockRecipes` needs no second seed.
+  recipesById: {
+    subscribe: (run: (m: ReadonlyMap<string, Recipe>) => void) =>
+      mockRecipes.subscribe((list: readonly Recipe[]) => run(new Map(list.map((r) => [r.id, r])))),
+  },
   buildRecipeAddPlan: mockBuildRecipeAddPlan,
   buildMadeSubRows: vi.fn(() => []),
   commitRecipeAddPlan: mockCommitRecipeAddPlan,
