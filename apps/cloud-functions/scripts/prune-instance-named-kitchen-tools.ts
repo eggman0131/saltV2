@@ -37,10 +37,18 @@
 // (`src/maintenance/storageSweepTargets.ts`). Hand-deleting the object here would
 // duplicate that logic and risk removing one the sweep still considers live.
 //
-// TABLE-ONLY ROWS ARE NEVER DELETED. A pair whose doomed side came from `TOOLS`
-// rather than Firestore is a defect in the seed table — the table's test would be
-// red — and the fix is an edit to the table, not a write to production. Such a
-// pair is reported and skipped.
+// A SEED-TABLE ROW IS NEVER DELETED, WHETHER OR NOT IT HAS BEEN SEEDED YET. The
+// safety property is keyed on membership in `TOOLS`, not merely on absence from
+// Firestore — `live.has(tool.id)` alone stops distinguishing the two the moment
+// the seeder has run, since by then every one of the 64 table rows IS a live
+// document. A pair whose doomed side is a seed id is always a defect in the seed
+// table — the table's own test would be red — and the fix is an edit to the
+// table, not a write to production, regardless of whether that row happens to be
+// live yet. Such a pair is reported and skipped. (PR #1068 review: the prior
+// `live.has(tool.id)`-only guard let a live document that merely SHARED an id
+// with a seed row — i.e. the ordinary post-seed state — through as deletable;
+// see `scripts/lib/pruneInstanceNamedKitchenTools.ts` for the fix and
+// `tests/pruneInstanceNamedKitchenTools.test.ts` for the regression coverage.)
 //
 // SAFE BY DEFAULT: dry run (prints every proposed deletion) unless `--apply`.
 // No Gemini key, no image generation, no Storage call — the dangerous step of
@@ -52,10 +60,11 @@
 
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { instanceNamedKitchenTools } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 
 import { TOOLS } from './kitchen-tool-vocabulary.mjs';
+import { asDoc, planKitchenToolPrune } from './lib/pruneInstanceNamedKitchenTools.js';
+import type { SeedTool } from './lib/pruneInstanceNamedKitchenTools.js';
 
 const projectId = process.env['GOOGLE_CLOUD_PROJECT'];
 if (!projectId) {
@@ -67,25 +76,6 @@ const apply = process.argv.includes('--apply');
 initializeApp({ projectId, credential: applicationDefault() });
 const db = getFirestore();
 
-interface SeedTool {
-  readonly id: string;
-  readonly label: string;
-  readonly matchers: readonly string[];
-}
-
-/** A tool as the resolver reads it. Only `id`, `label` and `matchers` are consulted. */
-function asDoc(id: string, label: string, matchers: readonly string[]): KitchenToolDoc {
-  return {
-    id,
-    schemaVersion: 1,
-    label,
-    matchers: [...matchers],
-    thumbnail: null,
-    createdAt: '',
-    updatedAt: '',
-  };
-}
-
 async function main(): Promise<void> {
   const snap = await db.collection('kitchenTools').get();
   const live = new Map<string, KitchenToolDoc>();
@@ -95,24 +85,22 @@ async function main(): Promise<void> {
     live.set(doc.id, asDoc(doc.id, label, matchers));
   }
 
-  // The live collection wins on id: a document that has been curated since the
-  // table was written is the one the operator is looking at, and reporting the
-  // seed row's matchers instead would name phrases production does not hold.
-  const union = [...live.values()];
-  for (const tool of TOOLS as readonly SeedTool[]) {
-    if (!live.has(tool.id)) union.push(asDoc(tool.id, tool.label, tool.matchers));
-  }
-
-  const pairs = instanceNamedKitchenTools(union);
-  const deletable = pairs.filter(({ tool }) => live.has(tool.id));
-  const tableOnly = pairs.filter(({ tool }) => !live.has(tool.id));
+  // The merge (live wins on id — a document curated since the table was
+  // written is the one the operator is looking at, and reporting the seed
+  // row's matchers instead would name phrases production does not hold) and
+  // the deletable/table-only partition both live in the pure function below,
+  // where a test can reach them.
+  const { union, deletable, tableOnly } = planKitchenToolPrune(
+    [...live.values()],
+    TOOLS as readonly SeedTool[],
+  );
 
   console.log(
     `\n${projectId}: ${live.size} live kitchenTools, ${TOOLS.length} seed rows, ` +
       `${union.length} distinct tools once merged\n`,
   );
 
-  if (pairs.length === 0) {
+  if (deletable.length === 0 && tableOnly.length === 0) {
     console.log('No instance-named tools. Nothing to prune.\n');
     return;
   }
