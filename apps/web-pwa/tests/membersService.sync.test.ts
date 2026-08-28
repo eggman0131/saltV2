@@ -6,6 +6,10 @@ vi.mock('@salt/firebase-sync', () => ({
   subscribeMembers: vi.fn(),
   upsertMember: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   deleteMember: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  // Reached via the service's onError → reportSubscriptionError, which consults
+  // it on the AuthError branch only (issue #1053). The stream-error case below
+  // fires an AuthError, so the mock must carry it or the module namespace throws.
+  isAuthTransitioning: vi.fn(() => false),
 }));
 
 // The service resolves the signed-in member itself now (issue #634), so it reads

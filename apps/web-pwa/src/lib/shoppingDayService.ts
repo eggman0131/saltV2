@@ -9,6 +9,7 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
+import { subscriptionErrorHandler } from './errorReporting.js';
 import { selectedStartDate, extensionStartDate, firstDayOfWeek } from './mealPlanService.js';
 
 // Shop-day service (issue #629). The shop date is provisioning state for the
@@ -88,11 +89,10 @@ function subscribeWeek(start: string): void {
       start,
       addCalendarDays(start, 6),
       (days) => _shopDayByWeek.update((byWeek) => ({ ...byWeek, [start]: shopDayForWeek(days) })),
-      () => {
-        // A failed/corrupt range read leaves the last-known marker in place; the
-        // planner then shades exactly as it did before, which is the honest
-        // fallback. The adapter reports per the observability gate.
-      },
+      // A failed/corrupt range read leaves the last-known marker in place; the
+      // planner then shades exactly as it did before, which is the honest
+      // fallback. The handler reports it to the category gate on the way past.
+      subscriptionErrorHandler(),
     ),
   );
 }
@@ -153,11 +153,11 @@ export function initShoppingDaySync(): () => void {
     // computed once at sign-in, so an app left open for days would otherwise
     // keep offering a shop that has already happened as "upcoming".
     (days) => _upcomingShopDay.set(shopDayForWeek(days.filter((d) => d.date >= todayIso()))),
-    () => {
-      // As above — the line keeps its last-known value. Note this leaves the
-      // store `undefined` if the very first read fails, which renders nothing:
-      // the right call, since "no shop set" would be a claim we cannot make.
-    },
+    // As above — reported, and the line keeps its last-known value. Note this
+    // leaves the store `undefined` if the very first read fails, which renders
+    // nothing: the right call, since "no shop set" would be a claim we cannot
+    // make.
+    subscriptionErrorHandler(),
   );
 
   return () => {

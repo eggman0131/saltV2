@@ -5,6 +5,7 @@
   import type { WeatherForecast, WeatherDaySummary } from '@salt/domain/schemas';
   import { appSettings } from '../../lib/appSettingsService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { subscriptionErrorHandler } from '../../lib/errorReporting.js';
 
   // Weather forecast cache readout + refresh (issue #382, Phase 2). Minimal admin
   // control so the fetch+cache pipeline is independently testable: clicking
@@ -24,10 +25,10 @@
         forecast = f;
         corrupt = false;
       },
-      (err) => {
+      subscriptionErrorHandler((err) => {
         // A corrupt cache doc surfaces here; flag it and keep the table empty.
         corrupt = err.kind === 'StorageError' && err.reason === 'corruption';
-      },
+      }),
     );
   });
 

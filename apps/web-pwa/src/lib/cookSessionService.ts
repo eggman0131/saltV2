@@ -133,7 +133,9 @@ export function initMyCookSessionsSync(uid: string): () => void {
     (sessions) => _myCookSessions.set(sessions),
     (err, rawError) => {
       // A stream-level failure leaves the list empty: the resume card and its
-      // badge simply don't appear. The adapter reports per the observability gate.
+      // badge simply don't appear. Reported from here — the adapter cannot
+      // report (Rule 4 forbids firebase-sync importing observability), so the
+      // call below is the only path to the category gate.
       reportSubscriptionError(errors, err, rawError);
     },
   );
