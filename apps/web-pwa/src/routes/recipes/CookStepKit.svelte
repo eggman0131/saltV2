@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CanonIcon } from '@salt/ui-components';
+  import { PictogramPill } from '@salt/ui-components';
   import { toolIcons } from '../../lib/kitchenToolService.js';
   import type { RecipeKitEntryDoc } from '@salt/domain/schemas';
 
@@ -12,7 +12,10 @@
   // clipped line and long-presses onto the shopping list, and a frying pan has
   // neither an amount to reveal nor anywhere to be bought to. A button that does
   // nothing on press is worse than a span — it takes a tab stop and promises an
-  // action.
+  // action. The pill itself is `PictogramPill` (ui-spec-v12 §8.30) since #955:
+  // this markup was hand-rolled here, and the third surface that wanted it
+  // reached for a `Chip` and drew an 18px smudge. The <ul>/<li> and the
+  // aria-label stay here, because only this file knows what the row is a list of.
   //
   // Drawn at the step the tool comes OUT and not again until it has been put down;
   // the run rule is the domain query's, applied by the caller, not this file's. An
@@ -32,25 +35,12 @@
 >
   {#each entries as entry (entry.label)}
     <li class="shrink-0 max-w-full">
-      <span
-        class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
-          entry.label,
-        )
-          ? 'pl-1'
-          : 'pl-4'}"
+      <PictogramPill
+        label={entry.label}
+        thumbnail={$toolIcons.toolIconFor(entry.label)}
+        version={$toolIcons.toolIconVersionFor(entry.label)}
         data-testid="cook-step-kit-chip"
-      >
-        {#if $toolIcons.toolIconFor(entry.label)}
-          <CanonIcon
-            thumbnail={$toolIcons.toolIconFor(entry.label)}
-            version={$toolIcons.toolIconVersionFor(entry.label)}
-            name={entry.label}
-            size={40}
-            class="rounded-full"
-          />
-        {/if}
-        <span class="min-w-0 break-words">{entry.label}</span>
-      </span>
+      />
     </li>
   {/each}
 </ul>

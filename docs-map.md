@@ -60,7 +60,7 @@ fails CI on a row that routes nothing or links to a file that is gone.
   than inventing tokens.
   Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
 
-- **ui-spec-v02 → v11 are cumulative, never superseding.** v0.2 holds the
+- **ui-spec-v02 → v12 are cumulative, never superseding.** v0.2 holds the
   foundations (boundaries, package surface, event naming, styling rules) and stays
   in force for every later version; each later spec only adds components —
   [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
@@ -79,7 +79,11 @@ fails CI on a row that routes nothing or links to a file that is gone.
   [v11](docs/design/ui-spec-v11.md) `ImageCropper` square mode (a third `aspect`
   value, `'1:1'`, for the pictogram upload — the amendment v06 §1.3 demanded
   before the union could be widened; why neither existing mode works is the
-  alpha-bounding-box arithmetic in §1.1). Touching
+  alpha-bounding-box arithmetic in §1.1),
+  [v12](docs/design/ui-spec-v12.md) `PictogramPill` (a drawn object, named — the
+  40px pictogram and its words in one static pill; §8.30.2 records why a `Chip`
+  is the wrong container for a picture and why no size variant was added to fix
+  it). Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

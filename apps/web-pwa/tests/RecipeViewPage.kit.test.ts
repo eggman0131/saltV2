@@ -289,8 +289,31 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
-  it('renders each entry as a static chip — read, not pressed', () => {
-    // ui-spec-v09 §8.23.8: a `fact` chip is a span, so it is not reachable by Tab
+  it('draws the pictogram at 40px, the in-list size (issue #955)', () => {
+    // The defect this pins: the strip drew the tile at 18px inside a `fact` chip,
+    // and the framing normalisation (`contentMax: 108`, ~52% of the box height for
+    // a landscape tool) turned that into ~15 × 9 px of frying pan — smaller than
+    // the words beside it. 40px is ui-spec-v04 §14.6.1's size for every in-list
+    // pictogram, and ui-spec-v12 §8.30 is the container that can hold one.
+    setTools([
+      tool({
+        id: 'frying-pan',
+        label: 'large frying pan',
+        thumbnail: 'https://example.com/kit/pan.webp',
+      }),
+    ]);
+    mockRecipes._set([makeEntry({ kit: [{ label: 'large frying pan', stepIds: [] }] })]);
+    renderPage();
+
+    const strip = screen.getByTestId('recipe-kit-strip');
+    const tile = within(strip).getByTestId('canon-icon');
+    expect(tile.getAttribute('style')).toContain('width: 40px');
+    expect(tile.getAttribute('style')).toContain('height: 40px');
+  });
+
+  it('renders each entry as a static pill — read, not pressed', () => {
+    // ui-spec-v12 §8.30.6, carrying ui-spec-v09 §8.23.8's rule across from the
+    // `fact` chip this replaced: the pill is a span, so it is not reachable by Tab
     // and is not announced as a control. The strip states what the dish needs; it
     // does not offer anything to do about it.
     mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
@@ -298,6 +321,20 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
 
     const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
     expect(chip.tagName).toBe('SPAN');
+  });
+
+  it('keeps each pill from stretching or overflowing the flex-wrap strip (§8.30.3)', () => {
+    // The strip's own row is `flex flex-wrap`, so — unlike a plain block
+    // parent — the pill's `inline-flex` alone does not stop it stretching or
+    // shrinking; the caller must add `shrink-0 max-w-full`, the same class the
+    // per-step kit list applies via its `<li>` (issue #1050 finding 1).
+    mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
+    renderPage();
+
+    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
+    const classes = chip.className.split(/\s+/);
+    expect(classes).toContain('shrink-0');
+    expect(classes).toContain('max-w-full');
   });
 });
 

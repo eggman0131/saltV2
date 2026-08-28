@@ -19,6 +19,7 @@
     Icon,
     ImageCropper,
     Markdown,
+    PictogramPill,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -2321,35 +2322,38 @@ Finish with a short note on what you changed and why, so I can read the gist her
              need" over nothing is worse than no card, because it reads as a recipe
              that failed rather than one nobody has asked yet.
 
-             Each entry is a static `fact` chip — a span, no `onclick`, not reachable
-             by Tab (ui-spec-v09 §8.23.8) — because these are read, not pressed. The
-             picture is resolved from the LABEL through the shared lookup; a label the
-             drawn vocabulary does not know renders its words with no picture and
-             never borrows another tool's. Turning the icon kill-switch off therefore
-             costs the pictures and nothing else — the words are the content. -->
+             Each entry is a `PictogramPill` (ui-spec-v12 §8.30) — a span, no
+             `onclick`, not reachable by Tab, because these are read, not pressed.
+             It was a `fact` chip until #955, drawing the pictogram at 18px inside a
+             26px text pill: a frying pan painted 15 × 9 px, which is a smudge
+             rather than a picture. A chip is the wrong container for a drawn
+             object, not merely the wrong number — §8.30.2 has the reasoning.
+
+             The picture is resolved from the LABEL through the shared lookup and
+             handed over already resolved; a label the drawn vocabulary does not
+             know renders its words with no picture and never borrows another
+             tool's, because the pill draws no tile at all on a miss (§8.30.5).
+             Turning the icon kill-switch off therefore costs the pictures and
+             nothing else — the words are the content.
+
+             `shrink-0 max-w-full` is this row's own obligation as the pill's
+             caller (§8.30.3): the pill is `inline-flex`, not `flex`, so it does
+             not stretch on its own, but this row IS a flex row and would still
+             shrink or overflow a long pill without it — the same class the
+             cook-step kit list applies via its `<li>`. -->
         {#if kit.length > 0}
           <Card>
             <CardContent class="flex flex-col gap-2 p-4">
               <p class="text-sm font-medium">You&rsquo;ll need</p>
               <div class="flex flex-wrap items-center gap-2" data-testid="recipe-kit-strip">
                 {#each kit as entry (entry.label)}
-                  <Chip variant="fact" tone="neutral" data-testid="recipe-kit-chip">
-                    {#snippet icon()}
-                      <!-- Nothing at all on a miss, deliberately: `CanonIcon` would
-                           draw its bare placeholder tile, and a blank grey square
-                           inside a chip reads as a broken picture rather than as a
-                           tool nobody has drawn yet. -->
-                      {#if $toolIcons.toolIconFor(entry.label)}
-                        <CanonIcon
-                          thumbnail={$toolIcons.toolIconFor(entry.label)}
-                          version={$toolIcons.toolIconVersionFor(entry.label)}
-                          name={entry.label}
-                          size={18}
-                        />
-                      {/if}
-                    {/snippet}
-                    {entry.label}
-                  </Chip>
+                  <PictogramPill
+                    label={entry.label}
+                    thumbnail={$toolIcons.toolIconFor(entry.label)}
+                    version={$toolIcons.toolIconVersionFor(entry.label)}
+                    class="shrink-0 max-w-full"
+                    data-testid="recipe-kit-chip"
+                  />
                 {/each}
               </div>
             </CardContent>
