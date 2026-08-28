@@ -157,7 +157,9 @@ function die(message) {
     '\nUsage: node scripts/backfill-recipe-kit.mjs --project <dev|staging|prod> [--apply] [--verify] [--redo]',
   );
   console.error('       (dry run by default — nothing is written without --apply)');
-  console.error('       --verify re-reads the stamp and the stored kit, and reports what is pending');
+  console.error(
+    '       --verify re-reads the stamp and the stored kit, and reports what is pending',
+  );
   console.error('       --redo also asks recipes that already carry kitInferredAt, clearing it');
   console.error('       writing to prod additionally needs --confirm production');
   process.exit(1);
@@ -170,6 +172,17 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.project) die('--project is required (dev | staging | prod). There is no default.');
 const env = ENVIRONMENTS[args.project];
 if (!env) die(`Unknown project "${args.project}". Expected one of: dev, staging, prod.`);
+// Contradictory modes (PR #1067 review, blocking finding 1): `--verify` is
+// read-only and `--apply` writes. Letting both through fell to the Mode banner's
+// ternary, which never looked at `args.verify` — so `--apply --redo --confirm
+// production --verify` printed "Mode : APPLY", then the verify block below
+// process.exit()s before the confirm gate and the write loop ever run. Nothing
+// gets written. Worse, in the pre-remediation state every cookable recipe still
+// carries the stamp its PRE-#954 inference left, so the listing reads "done"
+// across the board and exits 0 — an operator sees an APPLY banner, a clean sweep
+// and a green exit, and walks away from a library that was never touched. Refuse
+// the combination outright instead of silently resolving it.
+if (args.verify && args.apply) die('--verify cannot be combined with --apply — pick one.');
 // Backstop against a mistyped SALT_*_PROJECT pointing the write somewhere
 // unexpected — the same guard restore-firestore.mjs applies.
 if (!env.expects.test(env.project)) {
@@ -200,7 +213,9 @@ async function api(url, init = {}) {
 }
 
 console.log(`Project : ${env.project} (${env.label})`);
-console.log(`Mode    : ${args.apply ? 'APPLY — one AI call per recipe' : 'DRY RUN — nothing will be written'}\n`);
+console.log(
+  `Mode    : ${args.verify ? 'VERIFY — reading only' : args.apply ? 'APPLY — one AI call per recipe' : 'DRY RUN — nothing will be written'}\n`,
+);
 
 // ─── Scan ─────────────────────────────────────────────────────────────────────
 
@@ -270,7 +285,7 @@ if (args.verify) {
   console.log(`\nCookable recipes  : ${cookable.length}`);
   console.log(`Inferred          : ${cookable.length - pending.length}`);
   console.log(`Still pending     : ${pending.length}${pending.length === 0 ? ' ✔' : ' ✖'}`);
-  console.log('\n  Read the labels above against each recipe\'s method. A named appliance');
+  console.log("\n  Read the labels above against each recipe's method. A named appliance");
   console.log('  the household owns should appear by name, not as its class.');
   // Non-zero while anything is outstanding, so a "did it work" reads off the exit
   // code rather than off the prose above it.
@@ -286,7 +301,9 @@ console.log(`Not cookable      : ${notCookable.length} (skipped — nothing to g
 console.log(
   `Already inferred  : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`,
 );
-console.log(`To ask            : ${toAsk.length}${args.redo ? ' (--redo: clearing kitInferredAt)' : ''}\n`);
+console.log(
+  `To ask            : ${toAsk.length}${args.redo ? ' (--redo: clearing kitInferredAt)' : ''}\n`,
+);
 
 if (toAsk.length === 0) {
   console.log('✔ Nothing to do.');

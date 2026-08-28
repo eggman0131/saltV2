@@ -9,16 +9,16 @@ nothing, and the one judgement call the run exists to settle.
 ## What this is remediating
 
 Before #954 the kit flow was told `no brand names`, and the appliance clause named
-`"food processor"` as the *desired* output form. So a method that says
-*"Run the **Magimix Cook Expert** on a slow cook setting"* was stored as `slow cooker`,
-and *"the straight blade on your **OXO Good Grips Chef's Mandoline**"* as `mandoline` —
+`"food processor"` as the _desired_ output form. So a method that says
+_"Run the **Magimix Cook Expert** on a slow cook setting"_ was stored as `slow cooker`,
+and _"the straight blade on your **OXO Good Grips Chef's Mandoline**"_ as `mandoline` —
 in a kitchen holding **two mandolines** and **four-plus things that answer to "food
 processor"**. The names were discarded, not unknown: they were in the text the flow was
 handed.
 
 Phases 1 and 2 fixed the flow (it is now handed the manifest and told never to
 generalise a named appliance) and the display (an equipment-named label draws its own
-`equipmentIcons` pictogram, resolved *before* `kitchenTools`). Nothing re-asks the
+`equipmentIcons` pictogram, resolved _before_ `kitchenTools`). Nothing re-asks the
 recipes already stored. This is that pass.
 
 ## Order, and why it is this order
@@ -30,7 +30,7 @@ is pointed at it.**
 
 That is worse here than it is for the times backfill, and the difference is the reason
 this paragraph exists. Pointed at a project whose functions predate #954, a `--redo` run
-does not merely change nothing: the *old* flow answers, spending one AI call per recipe
+does not merely change nothing: the _old_ flow answers, spending one AI call per recipe
 to write the generalised label back again. Deploy first.
 
 For each of `dev` → `staging` → `prod`, in that order:
@@ -46,14 +46,48 @@ For each of `dev` → `staging` → `prod`, in that order:
 4. **Wait a minute or two.** The script's last line is the request landing, not the
    answer. The kit lists arrive as the trigger works through them.
 5. **Verify**: `node scripts/backfill-recipe-kit.mjs --project dev --verify`
-   Exit code 0 means every cookable recipe is stamped. It also prints each recipe's
-   stored labels — read a sample of those against the method text, because "is this the
+   Exit code 0 means every cookable recipe **currently carries** a `kitInferredAt`
+   stamp — not that this run is what stamped it, and not that every cookable recipe
+   is stampable at all. See "What exit code 0 does and does not prove" below before
+   treating it as a completeness signal. It also prints each recipe's stored
+   labels — read a sample of those against the method text, because "is this the
    right appliance?" is a judgement no exit code can make.
 
 Do not start `staging` until `dev` verifies clean, and do not start `prod` until
 `staging` does. Dev is a copy of staging data and staging a copy of prod
 ([data-refresh.md](../data-refresh.md)), so each run is a rehearsal of the next on
-realistic content.
+realistic content. Read the printed per-recipe list before moving on, not just the
+exit code — the next section is why.
+
+## What exit code 0 does and does not prove
+
+`--verify`'s exit code answers exactly one question: does every cookable recipe
+_currently_ carry a `kitInferredAt` stamp? It does **not** answer either of the two
+questions "this environment is done" would actually need, and both are tracked as
+follow-ups rather than fixed here:
+
+- **It cannot tell this sweep's stamp from an old one.** The check is presence, not
+  provenance. Interrupt `--apply --redo` partway — Ctrl-C, a dropped connection, the
+  one `gcloud` token fetched at startup expiring mid-run — and every recipe the
+  interrupted run never reached still carries whatever stamp it had before. In the
+  pre-remediation state that is the stamp the _pre-#954_ inference left, so
+  `--verify` prints `done` for those recipes exactly as it would for one this sweep
+  actually re-asked, and exits 0 on a sweep that stopped at recipe 40 of 200. A
+  `--since <ms>` run threshold — compare the stamp against the sweep's own start
+  time instead of merely checking presence — would close this, and is filed as a
+  follow-up rather than implemented here.
+- **A step-less cookable recipe can never verify clean.** `maybeInferKit`
+  deliberately returns without stamping when `recipe.steps.length === 0` — there is
+  no method to infer a kit from. That recipe counts PENDING forever; no re-run
+  closes it, so `--verify` can sit at exit 1 for an environment that has otherwise
+  fully processed. This is expected residue, not a stalled sweep — but the runbook
+  currently gives no way to tell the two apart from the exit code alone. Reporting
+  a step-less recipe as its own line, distinct from PENDING, is filed as a
+  follow-up rather than implemented here.
+
+Treat exit 0 as necessary, not sufficient: read the per-recipe listing, and know
+that a lingering PENDING may be a step-less recipe rather than an incomplete sweep,
+before deciding an environment is clean enough to move on from.
 
 ## `--redo` is required here, and a bare `--apply` is not enough
 
@@ -94,8 +128,8 @@ is exactly what a first attempt at this did.
 
 #954 left one question open deliberately, to be decided on real output rather than up
 front: **may an accessory be named as kit?** The manifest models accessories with an
-`owned` flag, and the evidence recipe's method names blades — *"the straight blade"*,
-*"4 mm slicing disc"*. Naming them would be genuinely useful and needs no schema change;
+`owned` flag, and the evidence recipe's method names blades — _"the straight blade"_,
+_"4 mm slicing disc"_. Naming them would be genuinely useful and needs no schema change;
 it also risks a longer, noisier strip.
 
 Judge it on the `staging --verify` output, before the production run. If it needs a
