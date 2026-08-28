@@ -61,7 +61,12 @@ foundation (#179).
   `describeRecipeScene` (the hero's art direction) established the shape;
   `identifyRecipeKit` (issue #882 — what kit a dish needs a cook to get out, which
   is almost never written down: "mash the potatoes" needs a masher the recipe
-  never names) is the second. Adding a third means adding a flow, not a field.
+  never names) is the second; `estimateRecipeTimes` (issue #952 phase 2 — how long
+  a recipe already in the library actually takes, re-asked against the definition
+  in `recipeFieldRules.ts` rather than restating it) is the third. It is
+  edge-triggered on a `timesRequestedAt` nonce rather than on create, unlike the
+  other two — the authoring paths already answer this question, so a fourth means
+  adding a flow, not a field.
 
 ## Per-user data — a deliberate exception
 
