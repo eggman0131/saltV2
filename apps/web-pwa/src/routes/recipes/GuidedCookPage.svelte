@@ -28,7 +28,7 @@
     ingredientLabel,
     addIngredientToShoppingList,
   } from '../../lib/cookIngredientIcons.js';
-  import { toolIcons } from '../../lib/kitchenToolService.js';
+  import { kitIcons } from '../../lib/kitIcons.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
@@ -665,8 +665,8 @@
                              sit here was a picture of the wrong thing beside
                              "baking tray", which is the defect this replaces. -->
                           <CanonIcon
-                            thumbnail={$toolIcons.toolIconFor(card.name)}
-                            version={$toolIcons.toolIconVersionFor(card.name)}
+                            thumbnail={$kitIcons.kitIconFor(card.name)}
+                            version={$kitIcons.kitIconVersionFor(card.name)}
                             name={card.name}
                             size={32}
                           />
@@ -1029,8 +1029,8 @@
                                the step's own words, so the two surfaces cannot
                                disagree about which bowl this is. -->
                             <CanonIcon
-                              thumbnail={$toolIcons.toolIconFor(note.container)}
-                              version={$toolIcons.toolIconVersionFor(note.container)}
+                              thumbnail={$kitIcons.kitIconFor(note.container)}
+                              version={$kitIcons.kitIconVersionFor(note.container)}
                               name={note.container}
                               size={28}
                             />

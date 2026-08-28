@@ -19,6 +19,7 @@ const {
   mockDefaultListId,
   mockSessions,
   mockEquipment,
+  mockEquipmentIcons,
   toolSink,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
@@ -30,9 +31,12 @@ const {
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
-    mockEquipment: makeStore<{ items: readonly { name: string }[] } | null>({
-      items: [{ name: 'Sage Pizzaiolo' }],
+    mockEquipment: makeStore<{ items: readonly { id: string; name: string }[] } | null>({
+      items: [{ id: 'eq-pizzaiolo', name: 'Sage Pizzaiolo' }],
     }),
+    // The equipment pictograms the strip prefers over the tool vocabulary (issue
+    // #954), keyed by item id exactly as `equipmentIcons` is.
+    mockEquipmentIcons: makeStore<Map<string, { thumbnail: string | null }>>(new Map()),
     // The REAL kitchenToolService is used — nothing about the lookup is
     // re-implemented here, because the lookup is what is under test. This is only
     // the seam its subscription reads from: `initKitchenToolSync` hands its
@@ -89,7 +93,10 @@ vi.mock('../src/lib/chatService.js', () => ({
   createChatSession: vi.fn(),
   sendMessage: vi.fn(),
 }));
-vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
+vi.mock('../src/lib/equipmentService.js', () => ({
+  equipment: mockEquipment,
+  equipmentIcons: mockEquipmentIcons,
+}));
 vi.mock('../src/lib/clipboardImage.js', () => ({
   clipboardImageReadSupported: () => false,
   readClipboardImage: vi.fn(),
@@ -185,6 +192,8 @@ beforeEach(() => {
   mockRecipes._set([]);
   mockGuidedPlan._set(null);
   mockFormula._set(null);
+  mockEquipment._set({ items: [{ id: 'eq-pizzaiolo', name: 'Sage Pizzaiolo' }] });
+  mockEquipmentIcons._set(new Map());
   // The app subscribes once, in App.svelte; this is that subscription, so the
   // strip reads the vocabulary exactly as it does in the running app.
   initKitchenToolSync();
@@ -309,6 +318,104 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     const tile = within(strip).getByTestId('canon-icon');
     expect(tile.getAttribute('style')).toContain('width: 40px');
     expect(tile.getAttribute('style')).toContain('height: 40px');
+  });
+
+  it('draws the OWNED item\u2019s picture, not the generic tool\u2019s (issue #954)', () => {
+    // The ordering that carries the whole fix. "Magimix Cocotte Slow Cook Pot"
+    // contains the token "pot", so `resolveKitchenTool` resolves it to the generic
+    // saucepan \u2014 a specific label losing its own picture to a vague one, which is
+    // exactly what the strip exists to prevent. Equipment is tried FIRST.
+    mockEquipment._set({
+      items: [
+        { id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' },
+        { id: 'eq-pizzaiolo', name: 'Sage Pizzaiolo' },
+      ],
+    });
+    mockEquipmentIcons._set(
+      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+    );
+    setTools([
+      tool({
+        id: 'saucepan',
+        label: 'pot',
+        thumbnail: 'https://example.com/kit/saucepan.webp',
+      }),
+    ]);
+    mockRecipes._set([
+      makeEntry({ kit: [{ label: 'Magimix Cocotte Slow Cook Pot', stepIds: [] }] }),
+    ]);
+    renderPage();
+
+    expect(screen.getByTestId('canon-icon-img')).toHaveAttribute(
+      'src',
+      'https://example.com/eq/cocotte.webp',
+    );
+    expect(kitLabels()).toEqual(['Magimix Cocotte Slow Cook Pot']);
+  });
+
+  it('still draws the tool pictogram for a generic label', () => {
+    // The other half of the contract: naming which appliance must not cost the
+    // ordinary kit its pictures. "large frying pan" names nothing in the manifest
+    // and falls straight through to the curated vocabulary.
+    mockEquipment._set({
+      items: [{ id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' }],
+    });
+    mockEquipmentIcons._set(
+      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+    );
+    setTools([
+      tool({
+        id: 'frying-pan',
+        label: 'large frying pan',
+        thumbnail: 'https://example.com/kit/pan.webp',
+        updatedAt: '2026-02-02T00:00:00.000Z',
+      }),
+    ]);
+    mockRecipes._set([makeEntry({ kit: [{ label: 'large frying pan', stepIds: [] }] })]);
+    renderPage();
+
+    expect(screen.getByTestId('canon-icon-img')).toHaveAttribute(
+      'src',
+      'https://example.com/kit/pan.webp?v=2026-02-02T00:00:00.000Z',
+    );
+  });
+
+  it('falls back to the tool vocabulary when the owned item has no drawing yet', () => {
+    // `equipmentIcons` generation is edge-triggered, so an item can be in the
+    // manifest with nothing drawn for it. That is a miss on the first vocabulary,
+    // not an answer \u2014 the label still gets the tool picture it had before.
+    mockEquipment._set({ items: [{ id: 'eq-oxo', name: 'OXO Mandoline' }] });
+    mockEquipmentIcons._set(new Map([['eq-oxo', { thumbnail: null }]]));
+    setTools([
+      tool({
+        id: 'mandoline',
+        label: 'mandoline',
+        thumbnail: 'https://example.com/kit/mandoline.webp',
+        updatedAt: '2026-02-02T00:00:00.000Z',
+      }),
+    ]);
+    mockRecipes._set([makeEntry({ kit: [{ label: 'OXO Mandoline', stepIds: [] }] })]);
+    renderPage();
+
+    expect(screen.getByTestId('canon-icon-img')).toHaveAttribute(
+      'src',
+      'https://example.com/kit/mandoline.webp?v=2026-02-02T00:00:00.000Z',
+    );
+  });
+
+  it('renders words with no picture when neither vocabulary knows the label', () => {
+    // The #882 graceful-miss contract, unchanged by the second vocabulary: a label
+    // nothing matches never borrows another item's picture.
+    mockEquipment._set({ items: [{ id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' }] });
+    mockEquipmentIcons._set(
+      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+    );
+    setTools([tool({ id: 'saucepan', label: 'saucepan' })]);
+    mockRecipes._set([makeEntry({ kit: [{ label: 'tagine', stepIds: [] }] })]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['tagine']);
+    expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
   it('renders each entry as a static pill — read, not pressed', () => {

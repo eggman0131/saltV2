@@ -93,7 +93,18 @@ vi.mock('../src/lib/chatService.js', () => ({
   createChatSession: vi.fn(),
   sendMessage: vi.fn(),
 }));
-vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
+vi.mock('../src/lib/equipmentService.js', () => ({
+  equipment: mockEquipment,
+  // The equipment pictogram store `kitIcons` reads (issue #954). Empty here: these
+  // fixtures name no owned appliance, so every kit label falls through to the tool
+  // vocabulary exactly as it did before.
+  equipmentIcons: {
+    subscribe(fn: (v: Map<string, never>) => void) {
+      fn(new Map<string, never>());
+      return () => {};
+    },
+  },
+}));
 vi.mock('../src/lib/clipboardImage.js', () => ({
   clipboardImageReadSupported: () => false,
   readClipboardImage: vi.fn(),

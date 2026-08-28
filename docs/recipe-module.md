@@ -493,6 +493,16 @@ a required field would empty the list of recipes written before this shipped.
   unrelated save, forever. Same shape as the hero image's control fields
   below, and the same consequence: an edit does NOT re-trigger inference —
   `redoRecipeKit` is the only way to ask again.
+- **A kit label resolves to a picture through TWO vocabularies since #954**, the
+  household's `equipmentManifest` first and `kitchenTools` second, composed once
+  in `apps/web-pwa/src/lib/kitIcons.ts` and used by every kit surface. The order
+  is load-bearing (a branded name contains generic tokens), and it also supersedes
+  #882's deferred "a manifest-item→tool-id mapping": there is nothing to map when
+  the label already names the item, and no static generic→specific link could ever
+  be right for four food processors used for four jobs. `unresolvedKitLabels`
+  applies the same exclusion so the curation queue does not offer a machine
+  `equipmentIcons` already draws. Full reasoning: `docs/canon-icons.md`
+  § "The fourth family".
 - **`isCookable(recipe.kind)` gates the call**, not `kind === 'outing'` — see
   "Schema extensions (kind discriminator)" above. An outing or a placeholder
   has nothing to get out and must never cost an AI call.
