@@ -1,10 +1,20 @@
 #!/usr/bin/env node
-// One-off: ask what kit every existing recipe needs (issue #882).
+// One-off: ask what kit every existing recipe needs (issues #882, #954).
 //
 //   node scripts/backfill-recipe-kit.mjs --project dev     --dry-run
 //   node scripts/backfill-recipe-kit.mjs --project dev     --apply
-//   node scripts/backfill-recipe-kit.mjs --project staging --apply
-//   node scripts/backfill-recipe-kit.mjs --project prod    --apply
+//   node scripts/backfill-recipe-kit.mjs --project dev     --verify
+//   node scripts/backfill-recipe-kit.mjs --project staging --apply --redo
+//   node scripts/backfill-recipe-kit.mjs --project prod    --apply --redo --confirm production
+//
+// ─── RUNBOOK: docs/runbooks/recipe-kit-backfill.md ────────────────────────────
+//
+// Read it before the first run of an environment. The short version, because the
+// order is the part that goes wrong: the kit branch of `onRecipeWritten` must be
+// DEPLOYED to the environment first. This script does not infer anything — it
+// asks — so running it against a project whose functions predate the change you
+// are remediating bumps a nonce that the OLD code answers, spending one AI call
+// per recipe to reproduce the very defect. `--verify` is how you find that out.
 //
 // Kit inference shipped as a branch of `onRecipeWritten`, which only fires on a
 // WRITE — so every recipe already in the library has no `kit` and would keep none
@@ -14,6 +24,20 @@
 //
 // SAFE TO RE-RUN. A document that already carries `kitInferredAt` is skipped, so a
 // second run reports "0 to ask" and writes nothing.
+//
+// ─── --redo, and why the skip could not simply be lifted (issue #954) ─────────
+//
+// #954 changed what a good answer IS: the flow now names the appliance the
+// household actually owns instead of generalising it away. Every recipe inferred
+// before that carries a generalised label and needs asking AGAIN — which the skip
+// above exists to prevent, so `--redo` is the flag that overrides it.
+//
+// It is not merely a filter change. `kitNeedsInference` declines on its first
+// line whenever `kitInferredAt` is present, so re-asking requires the stamp to be
+// DELETED, exactly as the `redoRecipeKit` callable does it. That write is built in
+// scripts/lib/recipeKitRequest.mjs, whose header carries the reasoning; the
+// original #954 remediation attempt reported a clean sweep having re-inferred
+// nothing, because bumping the nonce alone is a trigger invocation that declines.
 //
 // ─── It bumps the nonce; it does NOT call the flow ────────────────────────────
 //
@@ -46,8 +70,9 @@
 // conventions), and `onRecipeWritten` writes back to the same document partially
 // (`image`, `imageBrief`, and now `kit`). A full-document write from here would
 // clobber whatever the trigger had written concurrently. So every write is a REST
-// `PATCH` carrying `updateMask.fieldPaths=kitRequestedAt` and a one-field body:
-// exactly one field changes and nothing else on the document is even sent.
+// `PATCH` carrying an `updateMask` naming only the kit request fields: at most two
+// fields change and nothing else on the document is even sent. The exact mask and
+// body come from `planKitRequest` (scripts/lib/recipeKitRequest.mjs).
 //
 // It deliberately does NOT write `updatedAt` — nothing about the recipe changed in
 // any sense a human cares about, and moving `updatedAt` would reorder lists and
@@ -68,7 +93,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { createInterface } from 'node:readline';
+
+import { planKitRequest } from './lib/recipeKitRequest.mjs';
 
 // Mirrors scripts/backfill-recipe-attribution.mjs, including the env-var names, so
 // the three environments are named the same way wherever they are named.
@@ -109,12 +135,17 @@ function parseArgs(argv) {
   // attribution backfill defaults the other way, and this one is deliberately the
   // safer shape — every write here costs an AI call, so an accidental bare run
   // must cost nothing at all.
-  const args = { apply: false };
+  const args = { apply: false, verify: false, redo: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--apply') args.apply = true;
     else if (arg === '--dry-run') args.apply = false;
+    else if (arg === '--verify') args.verify = true;
+    else if (arg === '--redo') args.redo = true;
     else if (arg === '--project') args.project = argv[(i += 1)];
+    // Non-interactive confirmation for `--project prod`; see the gate below for
+    // why there is no readline prompt anywhere in this file.
+    else if (arg === '--confirm') args.confirm = argv[(i += 1)];
     else die(`Unknown argument: ${arg}`);
   }
   return args;
@@ -123,9 +154,12 @@ function parseArgs(argv) {
 function die(message) {
   console.error(`✖ ${message}`);
   console.error(
-    '\nUsage: node scripts/backfill-recipe-kit.mjs --project <dev|staging|prod> [--apply]',
+    '\nUsage: node scripts/backfill-recipe-kit.mjs --project <dev|staging|prod> [--apply] [--verify] [--redo]',
   );
   console.error('       (dry run by default — nothing is written without --apply)');
+  console.error('       --verify re-reads the stamp and the stored kit, and reports what is pending');
+  console.error('       --redo also asks recipes that already carry kitInferredAt, clearing it');
+  console.error('       writing to prod additionally needs --confirm production');
   process.exit(1);
 }
 
@@ -170,10 +204,23 @@ console.log(`Mode    : ${args.apply ? 'APPLY — one AI call per recipe' : 'DRY 
 
 // ─── Scan ─────────────────────────────────────────────────────────────────────
 
-// Masked to four small fields so a scan of the whole collection stays cheap — the
-// recipes themselves (ingredients, steps, prose) are never fetched. `steps` is not
+// The stored kit labels, for `--verify` to print. `kit` is an array of maps and
+// only `label` is wanted — `stepIds` is the method's business, not this script's.
+// Reading it costs nothing extra: it rides along on the same masked scan.
+function labelsOf(doc) {
+  return (doc.fields?.kit?.arrayValue?.values ?? [])
+    .map((v) => v.mapValue?.fields?.label?.stringValue)
+    .filter((label) => typeof label === 'string' && label.length > 0);
+}
+
+// Masked to five small fields so a scan of the whole collection stays cheap — the
+// recipes themselves (ingredients, prose) are never fetched. `steps` is not
 // masked in either: the trigger checks for an empty method itself, and pulling
-// every method here to pre-empt it would defeat the point of the mask.
+// every method here to pre-empt it would defeat the point of the mask. That is
+// also the limit of what `--verify` can check — it prints the labels for a human
+// to read against the method, because judging "does this name the right
+// appliance?" needs the method text and the manifest, which is the recipe page's
+// job and not a scan's.
 async function listRecipes() {
   const docs = [];
   let pageToken = '';
@@ -181,6 +228,7 @@ async function listRecipes() {
     const url =
       `${BASE}/recipes?pageSize=300` +
       '&mask.fieldPaths=kitInferredAt&mask.fieldPaths=title&mask.fieldPaths=kind' +
+      '&mask.fieldPaths=kit' +
       (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
     const page = await api(url);
     for (const doc of page.documents ?? []) {
@@ -190,7 +238,12 @@ async function listRecipes() {
         // Absent `kind` means `recipe` — the schema defaults it, and 21 of the
         // production recipes predate the field entirely.
         kind: doc.fields?.kind?.stringValue ?? 'recipe',
+        // The stamp is the whole of the done/pending question here, unlike the
+        // times backfill's: a kit redo DELETES the stamp rather than bumping a
+        // nonce past it, and a failed inference leaves it deleted, so a present
+        // stamp always answers the latest request. No comparison is needed.
         inferred: doc.fields?.kitInferredAt !== undefined,
+        labels: labelsOf(doc),
       });
     }
     pageToken = page.nextPageToken ?? '';
@@ -199,14 +252,41 @@ async function listRecipes() {
 }
 
 const recipes = await listRecipes();
+const cookable = recipes.filter((r) => COOKABLE_KINDS.has(r.kind));
+
+// ─── Verify ───────────────────────────────────────────────────────────────────
+//
+// Read-only, and the answer to the sequencing risk at the head of this file: it
+// is how you notice that the functions were never deployed, or that the
+// kill-switch is off, rather than reading a clean "asked N" summary and assuming
+// the answers landed. Run it after every apply.
+
+if (args.verify) {
+  const pending = cookable.filter((r) => !r.inferred);
+  for (const r of cookable) {
+    const labels = r.labels.length > 0 ? r.labels.join(', ') : '(none)';
+    console.log(`  ${r.inferred ? 'done   ' : 'PENDING'}  ${r.title}\n            ${labels}`);
+  }
+  console.log(`\nCookable recipes  : ${cookable.length}`);
+  console.log(`Inferred          : ${cookable.length - pending.length}`);
+  console.log(`Still pending     : ${pending.length}${pending.length === 0 ? ' ✔' : ' ✖'}`);
+  console.log('\n  Read the labels above against each recipe\'s method. A named appliance');
+  console.log('  the household owns should appear by name, not as its class.');
+  // Non-zero while anything is outstanding, so a "did it work" reads off the exit
+  // code rather than off the prose above it.
+  process.exit(pending.length === 0 ? 0 : 1);
+}
+
 const notCookable = recipes.filter((r) => !COOKABLE_KINDS.has(r.kind));
-const alreadyDone = recipes.filter((r) => COOKABLE_KINDS.has(r.kind) && r.inferred);
-const toAsk = recipes.filter((r) => COOKABLE_KINDS.has(r.kind) && !r.inferred);
+const alreadyDone = args.redo ? [] : cookable.filter((r) => r.inferred);
+const toAsk = args.redo ? cookable : cookable.filter((r) => !r.inferred);
 
 console.log(`Recipes found     : ${recipes.length}`);
 console.log(`Not cookable      : ${notCookable.length} (skipped — nothing to get out)`);
-console.log(`Already inferred  : ${alreadyDone.length} (skipped)`);
-console.log(`To ask            : ${toAsk.length}\n`);
+console.log(
+  `Already inferred  : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`,
+);
+console.log(`To ask            : ${toAsk.length}${args.redo ? ' (--redo: clearing kitInferredAt)' : ''}\n`);
 
 if (toAsk.length === 0) {
   console.log('✔ Nothing to do.');
@@ -214,27 +294,40 @@ if (toAsk.length === 0) {
 }
 
 if (!args.apply) {
-  for (const r of toAsk) console.log(`  would ask  ${r.id}  ${r.title}`);
+  for (const r of toAsk) {
+    console.log(`  would ask  ${r.id}  ${r.title}`);
+    if (args.redo && r.labels.length > 0) console.log(`             now: ${r.labels.join(', ')}`);
+  }
   console.log(`\n✔ Dry run: ${toAsk.length} recipe(s) would be asked for a kit list.`);
   console.log('  Nothing was written. Re-run with --apply to do it.');
   process.exit(0);
 }
 
 // ─── Confirm (production only) ────────────────────────────────────────────────
+//
+// A FLAG, never a readline prompt, and that is a scar rather than a preference
+// (issue #954 phase 3 context pointers). Run under `!` from a shell or through an
+// agent's Bash tool there is no TTY, so a readline question never settles: the
+// process prints the entire write plan and then hangs on a top-level await,
+// looking exactly like a crash mid-write when in fact nothing has been written at
+// all. `scripts/fix-recipe-range-timers.mjs` and `scripts/backfill-recipe-times.mjs`
+// take the flag for the same reason; the prompt this replaced is the thing not to
+// copy, and backfill-recipe-attribution.mjs still has one.
 
 if (args.project === 'prod') {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise((resolve) =>
-    rl.question(`Type "production" to ask ${toAsk.length} recipe(s) in ${env.project}: `, (a) => {
-      rl.close();
-      resolve(a.trim());
-    }),
-  );
-  if (answer !== 'production') {
-    console.error('✖ Not confirmed. Nothing written.');
+  if (args.confirm === undefined) {
+    console.error('✖ Writing to PRODUCTION needs confirmation. Nothing written.');
+    console.error('  Re-run with the confirmation as a flag:');
+    console.error(
+      `    node scripts/backfill-recipe-kit.mjs --project prod --apply${args.redo ? ' --redo' : ''} --confirm production`,
+    );
     process.exit(1);
   }
-  console.log('');
+  if (args.confirm !== 'production') {
+    console.error(`✖ --confirm must be exactly "production" (got "${args.confirm}").`);
+    process.exit(1);
+  }
+  console.log(`Confirmed via --confirm: asking ${toAsk.length} recipe(s) in ${env.project}.\n`);
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────
@@ -242,13 +335,17 @@ if (args.project === 'prod') {
 let asked = 0;
 const failures = [];
 for (const r of toAsk) {
-  const url = `${BASE}/recipes/${encodeURIComponent(r.id)}?updateMask.fieldPaths=kitRequestedAt`;
+  // What the trigger's `kitNeedsInference` guard reads: the nonce alone on an
+  // ordinary pass, and on `--redo` the nonce plus a DELETE of `kitInferredAt`
+  // (expressed as a path in the mask with no value in the body). Both halves and
+  // the reasoning are in scripts/lib/recipeKitRequest.mjs.
+  const { fieldPaths, fields } = planKitRequest(Date.now(), args.redo);
+  const mask = fieldPaths.map((path) => `updateMask.fieldPaths=${path}`).join('&');
+  const url = `${BASE}/recipes/${encodeURIComponent(r.id)}?${mask}`;
   try {
     await api(url, {
       method: 'PATCH',
-      // The nonce the trigger's `kitNeedsInference` guard reads. Firestore's REST
-      // encoding wants integers as strings; the field is a plain number on read.
-      body: JSON.stringify({ fields: { kitRequestedAt: { integerValue: String(Date.now()) } } }),
+      body: JSON.stringify({ fields }),
     });
     asked += 1;
     console.log(`  asked   ${r.id}  ${r.title}`);
