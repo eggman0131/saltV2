@@ -30,7 +30,7 @@ cost rather than a courtesy. When unsure, say so and ask before spinning up the 
 - **CLAUDE.md is binding.** If the feature can only be built by bending a rule in it, that is a finding to surface in Step 2 — not a detail to settle quietly during implementation.
 - **No bodges.** If the clean design needs the spec to change, say so and get agreement before the issue is posted. Never contort the architecture to fit a draft spec.
 - **Flag the simpler path.** If a different shape — or changing a repo rule — would be materially *simpler and more maintainable* (not merely easier or faster to write), raise it with the trade-off. Staying silent is a claim that the current shape is right.
-- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). There is no GitHub MCP server in this repo.
+- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 0 — Read back before spending anything
 

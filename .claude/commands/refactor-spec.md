@@ -17,7 +17,7 @@ You are designing, not building. The deliverable is a GitHub issue. Do not write
 - **CLAUDE.md is binding** — and a refactor is the most likely place to quietly drift from it. Layer map, adapter rules, data-model and Zod conventions all hold across the move.
 - **No bodges.** If the target shape can only be reached by bending a rule in CLAUDE.md, that is the finding: surface it in Step 2 and get agreement to change the rule, rather than shipping a structure that violates it.
 - **Flag the simpler path.** If the honest answer is a *different* target shape than the one I asked for — or that the churn isn't worth it at all — say so with the trade-off. "Simpler and more maintainable" is the bar; "less work" is not.
-- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). There is no GitHub MCP server in this repo.
+- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 0 — Behavior-preserving?
 

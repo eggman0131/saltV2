@@ -14,7 +14,7 @@ You own two things end to end: the **spec contract** (the issue's phases are the
 
 Delegate breadth — codebase sweeps, independent implementation work, CI-log triage — and keep judgment: validation against the real diff, the git operations, and every decision the issue's audit trail depends on. Search and mechanical fan-out can run on a cheaper model — `Agent(…, model: "haiku")`, or `"sonnet"` where the sweep has to reason about what it finds. Implementation and validation should not.
 
-GitHub through the `gh` CLI throughout (`gh issue view`, `gh issue comment`, `gh pr create`). There is no GitHub MCP server in this repo.
+GitHub through the `gh` CLI throughout (`gh issue view`, `gh issue comment`, `gh pr create`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo. Absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server; `git push` is unaffected, only the API layer substitutes. Two recipes below then have no equivalent, so substitute rather than skip: step 6's `gh pr checks --watch --fail-fast` becomes a backgrounded poll of `pull_request_read`, which makes it the one wait here that no longer blocks inside a single call; and step 8 reads the heavy suites' conclusions from the workflow-jobs listing rather than `gh run view --json jobs`, failing-step logs from `get_job_logs` rather than `--log-failed`, with empty output treated as a failed fetch and never as "no jobs".
 
 Two things dominate what a run costs: re-deriving context the issue already holds, and waiting serially on things that could overlap. The loop below is ordered so neither happens — the ordering *is* the optimisation, so keep it.
 
