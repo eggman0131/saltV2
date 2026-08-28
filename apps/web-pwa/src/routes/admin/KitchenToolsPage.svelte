@@ -19,7 +19,12 @@
     ListPage,
     TextField,
   } from '@salt/ui-components';
-  import { CANON_ICON_HIDDEN, unresolvedKitLabels } from '@salt/domain';
+  import {
+    CANON_ICON_HIDDEN,
+    resolveKitchenTool,
+    suggestKitchenToolParent,
+    unresolvedKitLabels,
+  } from '@salt/domain';
   import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
   import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
@@ -74,7 +79,16 @@
     };
   });
 
-  const queue = $derived(unresolvedKitLabels($recipes, plans, $kitchenTools));
+  // Each row carries the tool it probably belongs to, so the cheap action can be
+  // the obvious one. The suggestion is ADVISORY — `suggestKitchenToolParent`'s
+  // header says why a head noun is a good hint and a terrible rule — so it is
+  // only ever a button a person presses, never a fold that happens on its own.
+  const queue = $derived(
+    unresolvedKitLabels($recipes, plans, $kitchenTools).map((row) => ({
+      ...row,
+      suggestion: suggestKitchenToolParent(row.label, $kitchenTools),
+    })),
+  );
 
   const sortedTools = $derived(
     $kitchenTools.slice().sort((a, b) => a.label.localeCompare(b.label)),
@@ -111,6 +125,22 @@
     return formMatchers.split(',');
   }
 
+  // The name being typed already belongs to a drawn tool. A WARNING, never a
+  // refusal: `Small bowl` beside `Mixing bowl` is a deliberate second tool and the
+  // seeded vocabulary contains several such pairs, so a hard guard would forbid
+  // its own contents. What it stops is the accident — `Large frying pan` minted
+  // beside `Frying pan`, one more document, one more Gemini image, and plain
+  // "frying pan" still undrawn because a specific tool covers nothing but itself.
+  //
+  // `createKitchenTool`'s `ConflictError` is a different and stricter thing: an
+  // IDENTICAL slug, which would overwrite a curated tool. That one still refuses.
+  //
+  // Editing is exempt because a tool's own name resolves to itself; only a new
+  // one can be a near-duplicate of something already there.
+  const nearDuplicateOf = $derived(
+    isEditing || !formLabel.trim() ? null : resolveKitchenTool(formLabel, $kitchenTools),
+  );
+
   async function handleSave(): Promise<void> {
     const input = { label: formLabel, matchers: matcherList() };
     formError = '';
@@ -141,6 +171,22 @@
   let aliasFor = $state<string | null>(null);
   let aliasToolId = $state('');
   let aliasBusy = $state(false);
+  // Which queue row's one-click alias is in flight, by label. A row-level flag
+  // rather than a page-level one so the other rows stay usable.
+  let suggestBusy = $state<string | null>(null);
+
+  /**
+   * The queue's suggested alias, taken in one click. It reuses `addKitchenToolMatcher`
+   * — the same write the dialog performs — rather than adding a second path to the
+   * same effect: appending a phrase to `matchers` and saving is the whole of it.
+   */
+  async function acceptSuggestion(label: string, tool: KitchenToolDoc): Promise<void> {
+    suggestBusy = label;
+    const result = await addKitchenToolMatcher(tool, label);
+    suggestBusy = null;
+    if (result.kind === 'ok') addToast(`“${label}” now shows the ${tool.label}.`, 'success');
+    else addToast('Failed to add the alias.', 'destructive');
+  }
 
   const aliasChoices = $derived(sortedTools.map((t) => ({ value: t.id, label: t.label })));
 
@@ -282,8 +328,26 @@
                   >
                     {row.count}
                   </span>
+                  <!-- The row leads with the action that COSTS NOTHING. Aliasing
+                       reuses a picture the vocabulary already has; "New tool"
+                       spends a Gemini image and a document, and does it again for
+                       the next adjective. Where there is a likely parent, the
+                       one-click alias is solid and the other two are demoted; where
+                       there is not, "New tool" is the right first move and leads. -->
+                  {#if row.suggestion}
+                    {@const parent = row.suggestion}
+                    <Button
+                      size="sm"
+                      onclick={() => void acceptSuggestion(row.label, parent)}
+                      loading={suggestBusy === row.label}
+                      disabled={suggestBusy !== null}
+                      data-testid="kitchen-tool-queue-suggest"
+                    >
+                      Alias to {parent.label}
+                    </Button>
+                  {/if}
                   <Button
-                    variant="ghost"
+                    variant={row.suggestion ? 'ghost' : 'solid'}
                     size="sm"
                     onclick={() => openCreate(row.label)}
                     data-testid="kitchen-tool-queue-new"
@@ -296,7 +360,7 @@
                     onclick={() => openAlias(row.label)}
                     data-testid="kitchen-tool-queue-alias"
                   >
-                    Alias…
+                    {row.suggestion ? 'Another…' : 'Alias…'}
                   </Button>
                 </li>
               {/each}
@@ -462,6 +526,13 @@
         placeholder="e.g. masher, ricer"
         data-testid="kitchen-tool-matchers-input"
       />
+      {#if nearDuplicateOf}
+        <p class="text-sm text-amber-700" data-testid="kitchen-tool-duplicate-warning">
+          “{nearDuplicateOf.label}” already answers to that name. Saving draws a second picture of
+          the same thing — if it is the same thing, cancel and add these words to {nearDuplicateOf.label}
+          instead.
+        </p>
+      {/if}
       {#if formError}
         <span class="text-sm text-destructive" data-testid="kitchen-tool-error">{formError}</span>
       {/if}

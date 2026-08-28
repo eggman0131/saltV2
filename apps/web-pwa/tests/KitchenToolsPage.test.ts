@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen, waitFor, within } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Recipe } from '@salt/domain';
 import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
@@ -290,6 +290,79 @@ describe('KitchenToolsPage — the unresolved queue', () => {
 
     // Wait for the dialog to finish closing before the test ends, so its teardown
     // is not racing the next test's render.
+    await waitFor(() => expect(screen.queryByTestId('kitchen-tool-editor')).toBeNull());
+  });
+
+  it('leads with a one-click alias when the row has a likely parent', async () => {
+    // Production's real drift, reproduced: a `Large mixing bowl` document minted
+    // from the queue one row at a time, which then cannot name plain "mixing
+    // bowl" — the commonest kit label in the library. Curated a row at a time
+    // that is a second document and a second AI drawing of a bowl.
+    mockRecipes._set([recipeWithKit('r1', 'mixing bowl')]);
+    setTools([tool({ id: 'large-mixing-bowl', label: 'Large mixing bowl' })]);
+    render(KitchenToolsPage);
+
+    await waitFor(() => expect(queueRows()).toHaveLength(1));
+    const suggest = screen.getByTestId('kitchen-tool-queue-suggest');
+    // The button NAMES the tool, so accepting it is not a leap of faith.
+    expect(suggest).toHaveTextContent('Alias to Large mixing bowl');
+    // ...and the two expensive-or-slow actions are demoted behind it.
+    expect(screen.getByTestId('kitchen-tool-queue-new').className).toContain('salt-button--ghost');
+
+    await userEvent.click(suggest);
+
+    // ONE write, to the tool that already exists, and it is the matcher append —
+    // no second document, no second drawing.
+    await waitFor(() => expect(vi.mocked(upsertKitchenTool)).toHaveBeenCalledTimes(1));
+    const written = vi.mocked(upsertKitchenTool).mock.calls[0]![0];
+    expect(written).toMatchObject({
+      id: 'large-mixing-bowl',
+      matchers: ['mixing bowl'],
+      thumbnail: 'https://example.com/kit/x.webp',
+    });
+  });
+
+  it('keeps "New tool" the first move when nothing looks like a parent', async () => {
+    mockRecipes._set([recipeWithKit('r1', 'pasta machine')]);
+    setTools([tool({ id: 'large-mixing-bowl', label: 'Large mixing bowl' })]);
+    render(KitchenToolsPage);
+
+    await waitFor(() => expect(queueRows()).toHaveLength(1));
+    expect(screen.queryByTestId('kitchen-tool-queue-suggest')).toBeNull();
+    // A pasta machine is genuinely a new object; minting one is the right call and
+    // the row says so.
+    expect(screen.getByTestId('kitchen-tool-queue-new').className).toContain('salt-button--solid');
+  });
+
+  it('warns that a new name already belongs to a drawn tool — and still saves', async () => {
+    // The `Large frying pan` accident: a second document, a second image, and
+    // plain "frying pan" STILL undrawn, because a specific tool covers nothing but
+    // itself. The warning is the only thing in the flow that says so.
+    //
+    // It must not refuse. `Small bowl` beside `Mixing bowl` is a deliberate second
+    // tool that the seeded vocabulary itself contains, and a hard guard would
+    // forbid its own contents.
+    setTools([tool({ id: 'frying-pan', label: 'Frying pan' })]);
+    render(KitchenToolsPage);
+
+    await userEvent.click(screen.getByTestId('kitchen-tool-add'));
+    const input = await screen.findByTestId('kitchen-tool-label-input');
+    // `fireEvent.input`, not `userEvent.type`: a bits-ui dialog's focus trap eats
+    // per-keystroke events in jsdom once another dialog has been opened earlier in
+    // the file, and the field then stays empty while the test reads like a broken
+    // warning. Nothing here is testing the keyboard.
+    await fireEvent.input(input, { target: { value: 'Large frying pan' } });
+
+    const warning = await screen.findByTestId('kitchen-tool-duplicate-warning');
+    expect(warning).toHaveTextContent('Frying pan');
+
+    await userEvent.click(screen.getByTestId('kitchen-tool-save'));
+    await waitFor(() => expect(vi.mocked(upsertKitchenTool)).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(upsertKitchenTool).mock.calls[0]![0]).toMatchObject({
+      id: 'large-frying-pan',
+      label: 'Large frying pan',
+    });
+
     await waitFor(() => expect(screen.queryByTestId('kitchen-tool-editor')).toBeNull());
   });
 
