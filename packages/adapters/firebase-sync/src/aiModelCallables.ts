@@ -1,8 +1,6 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { AiModelRole } from '@salt/domain/schemas';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction } from './callFunction.js';
 
 // Browser → admin-only Phase 3 callables. CLAUDE.md rule #2: the Firebase SDK is
 // only touched here. The web service consumes these wrappers, never
@@ -26,16 +24,10 @@ export interface TestModelOutcome {
 export async function callListAiModels(
   forceRefresh = false,
 ): Promise<ReadResult<AiModelCatalog, DomainError>> {
-  try {
-    const fn = httpsCallable<{ forceRefresh: boolean }, AiModelCatalog>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'listAiModels',
-    );
-    const res = await fn({ forceRefresh });
-    return { kind: 'ok', value: res.data };
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ forceRefresh: boolean }, AiModelCatalog>({
+    name: 'listAiModels',
+    input: { forceRefresh },
+  });
 }
 
 /** Probes a single model (server-side); resolves to ok/error rather than throwing for a failed probe. */
@@ -43,14 +35,10 @@ export async function callTestModel(
   model: string,
   role?: AiModelRole,
 ): Promise<ReadResult<TestModelOutcome, DomainError>> {
-  try {
-    const fn = httpsCallable<{ model: string; role?: AiModelRole }, TestModelOutcome>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'testModel',
-    );
-    const res = await fn(role ? { model, role } : { model });
-    return { kind: 'ok', value: res.data };
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ model: string; role?: AiModelRole }, TestModelOutcome>({
+    name: 'testModel',
+    // The ternary, not `{ model, role }`: an absent role must stay OFF the
+    // payload rather than ride as `undefined`.
+    input: role ? { model, role } : { model },
+  });
 }

@@ -1,8 +1,7 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { ErrorCode, failure, type DomainError, type ReadResult } from '@salt/shared-types';
+import { ErrorCode, failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { IconUploadFamily, SetIconUploadInput } from '@salt/domain/schemas';
 import { classifyCallableError, type CallableErrorOverrides } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { invokeCallable } from './callFunction.js';
 
 // Browser → the setIconUpload callable (issue #892). CLAUDE.md rule #2: the
 // Firebase SDK is touched only here, and rule #3's Storage posture is why this is
@@ -42,13 +41,16 @@ export async function callSetIconUpload(
   imageBase64: string,
   contentType?: SetIconUploadInput['contentType'],
 ): Promise<ReadResult<void, DomainError>> {
+  // `invokeCallable` rather than `callFunction`: the `not-found` arm below runs
+  // AHEAD of the shared mapper and needs the raw rejection to read its code, so
+  // this keeps its own catch. Everything the two have in common — region,
+  // payload, the absent timeout — still comes from the one place.
   try {
-    const fn = httpsCallable<SetIconUploadInput, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'setIconUpload',
-    );
-    await fn({ family, id, imageBase64, ...(contentType ? { contentType } : {}) });
-    return { kind: 'ok', value: undefined };
+    await invokeCallable<SetIconUploadInput, { ok: true }>({
+      name: 'setIconUpload',
+      input: { family, id, imageBase64, ...(contentType ? { contentType } : {}) },
+    });
+    return success(undefined);
   } catch (err) {
     // The item was deleted under a page that was already open — expected, and
     // suppressed by the reporting policy rather than logged as a defect.

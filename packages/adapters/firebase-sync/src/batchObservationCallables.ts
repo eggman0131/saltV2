@@ -1,8 +1,6 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { SetObservationImageUploadInput } from '@salt/domain/schemas';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction } from './callFunction.js';
 
 // The observation photo (issue #812, phase 4 of epic #778). The browser reads a
 // local photo, base64-encodes it, and hands it to an AUTH-GATED CALLABLE which
@@ -26,25 +24,19 @@ export async function callSetObservationImageUpload(
   imageBase64: string,
   contentType?: SetObservationImageUploadInput['contentType'],
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<SetObservationImageUploadInput, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'setObservationImageUpload',
-    );
-    await fn({
+  // Every failure — a photo sharp would not decode, a bucket that would not take
+  // it, a dropped connection — offers the log the same thing: "try again". The
+  // CATEGORY still has to tell them apart (issue #916): a dropped connection is
+  // expected and suppressed, a bucket that would not take the photo is a server
+  // fault and must be reported. `callFunction` draws that line.
+  return callFunction<SetObservationImageUploadInput, { ok: true }, void>({
+    name: 'setObservationImageUpload',
+    input: {
       batchId,
       observationId,
       imageBase64,
       ...(contentType ? { contentType } : {}),
-    });
-    return success(undefined);
-  } catch (err) {
-    // Everything else — a photo sharp would not decode, a bucket that would not
-    // take it, a dropped connection — offers the log the same thing: "try again".
-    // The CATEGORY still has to tell them apart, though (issue #916): a dropped
-    // connection is expected and suppressed, a bucket that would not take the
-    // photo is a server fault and must be reported. `classifyCallableError` is
-    // what draws that line.
-    return failure(classifyCallableError(err));
-  }
+    },
+    project: () => undefined,
+  });
 }
