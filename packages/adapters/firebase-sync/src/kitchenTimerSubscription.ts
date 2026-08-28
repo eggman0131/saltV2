@@ -12,19 +12,22 @@ import { subscribeDocument } from './subscribeDocument.js';
 // subscription rather than a collection query, and the security rule proves
 // ownership from the path without ever reading the document.
 //
-// Read contract: an absent OR invalid document is "no timers" (log + null), NOT
-// a Failure — the same call the cook-session adapter makes, and for the same
-// reason. The document does not exist until the member starts their first
-// timer, so absence is the ordinary state on a fresh account rather than an
-// error, and a corrupt one is disposable: the next start writes a fresh
-// document over it. Writes never throw for operational errors; they cross the
-// boundary as Failure<DomainError> (Rule 10). This adapter must not import
-// @salt/observability (Rule 4).
+// Read contract: an ABSENT document is "no timers" — it does not exist until the
+// member starts their first timer, so absence is the ordinary state on a fresh
+// account rather than an error. A document the schema REFUSES is a different
+// thing and is answered differently since #928 Phase 2: logged, then
+// `StorageError`/`corruption` on `onError`, like every other single-document
+// read. Answering it with `null` too made a corrupt document indistinguishable
+// from the ordinary empty state, which is precisely the report the store needs
+// and the one thing `null` cannot carry. Writes never throw for operational
+// errors; they cross the boundary as Failure<DomainError> (Rule 10). This
+// adapter must not import @salt/observability (Rule 4) — the caller reports.
 
 const COLLECTION = 'kitchenTimers';
 
-// Subscribe to MY kitchen timers. Emits the parsed document, or null when it is
-// absent or fails validation.
+// Subscribe to MY kitchen timers. Emits the parsed document, or null when it
+// does not exist; a document that fails its schema is a Failure on onError,
+// never a null. See the header.
 export function subscribeKitchenTimers(
   uid: string,
   onDoc: (doc: KitchenTimersDoc | null) => void,
@@ -37,10 +40,6 @@ export function subscribeKitchenTimers(
       path: [COLLECTION, uid],
       schema: KitchenTimersSchema,
       label: 'KitchenTimersSchema',
-      // Absent OR invalid is "no timers" — see the header: the document does not
-      // exist until the first timer starts, and the next start writes a fresh one
-      // over a corrupt one.
-      onCorrupt: 'null',
     },
     onDoc,
     onError,

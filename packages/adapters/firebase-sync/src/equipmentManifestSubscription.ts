@@ -20,7 +20,6 @@ export function subscribeEquipmentManifest(
       path: [EQUIPMENT_MANIFEST_COLLECTION, EQUIPMENT_MANIFEST_DOC_ID],
       schema: EquipmentManifestSchema,
       label: 'EquipmentManifestSchema',
-      onCorrupt: 'error',
     },
     onManifest,
     onError,

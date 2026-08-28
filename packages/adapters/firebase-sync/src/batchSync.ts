@@ -85,7 +85,6 @@ export function subscribeBatch(
       path: [COLLECTION, batchId],
       schema: BatchSchema,
       label: 'BatchSchema',
-      onCorrupt: 'error',
     },
     onBatch,
     onError,

@@ -23,7 +23,6 @@ export function subscribeWeatherForecast(
       path: [COLLECTION, SINGLETON_DOC_ID],
       schema: WeatherForecastSchema,
       label: 'WeatherForecastSchema',
-      onCorrupt: 'error',
     },
     onForecast,
     onError,

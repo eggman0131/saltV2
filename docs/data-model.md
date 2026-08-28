@@ -137,8 +137,8 @@ is what differs, not the decision to validate:
 
 | Boundary | On failure |
 | --- | --- |
-| Adapter single-document read (e.g. `load(id)`) | return `Failure<DomainError>` (`{ kind: 'StorageError', reason: 'corruption' }`) — never throw across an internal layer seam |
-| Adapter list reads & realtime subscriptions | skip the invalid document, log it, return the valid subset; one corrupt document must not fail the whole read. Stream-level errors still surface via `onError` |
+| Adapter single-document read — one-shot (`load(id)`) **or live** (`subscribeDocument`) | log the rejection, then `Failure<DomainError>` (`{ kind: 'StorageError', reason: 'corruption' }`) — never throw across an internal layer seam, and never a `null`: `null` is what an ABSENT document delivers, so answering a refusal with one tells the caller the document was never written (#928) |
+| Adapter list reads & COLLECTION subscriptions | skip the invalid document, log it, return the valid subset; one corrupt document must not fail the whole read. Stream-level errors still surface via `onError` |
 | Callable CF entrypoints | `throw new HttpsError('invalid-argument', …)` — the Firebase callable protocol for rejecting bad client input, not an internal seam |
 | Firestore triggers | log and return; there is no caller to surface a `Failure` to |
 

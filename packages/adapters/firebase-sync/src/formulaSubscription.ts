@@ -49,7 +49,6 @@ export function subscribeFormula(
       path: [COLLECTION, recipeId],
       schema: FormulaSchema,
       label: 'FormulaSchema',
-      onCorrupt: 'error',
     },
     onFormula,
     onError,

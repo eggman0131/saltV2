@@ -23,7 +23,6 @@ export function subscribeDevSettings(
       path: [COLLECTION, SINGLETON_DOC_ID],
       schema: DevSettingsSchema,
       label: 'DevSettingsSchema',
-      onCorrupt: 'error',
     },
     onSettings,
     onError,

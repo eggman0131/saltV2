@@ -22,7 +22,6 @@ export function subscribeShoppingListsConfig(
       path: [CONFIG_COLLECTION, CONFIG_DOC_ID],
       schema: ShoppingListsConfigSchema,
       label: 'ShoppingListsConfigSchema',
-      onCorrupt: 'error',
     },
     onConfig,
     onError,

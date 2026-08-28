@@ -9,9 +9,11 @@ import { logRejection, type ParsedBy } from './schemaParsing.js';
 // Fourteen modules used to open a live listener on ONE document — a singleton, a
 // document keyed by a recipe, a week, a uid — and the clone scan scored
 // `devSettingsSync` against `appSettingsSync` at 1.00, with `weatherSync` a third
-// copy at 0.95. What differs between them is the collection, the key, the schema,
-// and what each does with a document that fails to parse. Those are the fields of
-// `DocumentRead`.
+// copy at 0.95. All that differs between them is the collection, the key and the
+// schema, which is exactly what `DocumentRead` now carries: three fields and no
+// boolean, so a fifteenth read has nothing to diverge on. What each does with a
+// refused document was the fourth field until #928 Phase 2, and is now the one
+// answer below.
 //
 // DELIBERATELY NOT EXPORTED FROM index.ts — see the note in subscribeCollection.ts.
 
@@ -26,29 +28,25 @@ export interface DocumentRead<T> {
   schema: ParsedBy<T>;
   /** The name a rejected document is logged under. See `logRejection`. */
   label: string;
-  /**
-   * What this read does with a document that fails its schema.
-   *
-   * `'error'` — a `StorageError`/`corruption` on `onError`, which is what
-   * CLAUDE.md's zod conventions ask of a single-document adapter read. The
-   * caller keeps whatever it was holding, so a document somebody wrote is never
-   * presented as one that was never written.
-   * `'null'`  — deliver `null`, indistinguishable to the caller from a document
-   * that does not exist. Only `subscribeCookSession` and
-   * `subscribeKitchenTimers`, both of which read genuinely disposable state that
-   * the next write replaces outright.
-   *
-   * The divergence is real and is left alone here: normalising it would change
-   * what two pages do with a corrupt document, which is a behaviour change and
-   * belongs in a commit that says so rather than inside a consolidation.
-   */
-  onCorrupt: 'error' | 'null';
 }
 
 /**
  * Subscribe to one document. Delivers the parsed document, or `null` when it does
  * not exist. Stream-level failures cross as a `DomainError` on `onError`, never
  * as a throw (Rule 10).
+ *
+ * A document the schema REFUSES is `{kind:'StorageError', reason:'corruption'}`
+ * on `onError` — never a `null` (#928 Phase 2). `null` means "no such document",
+ * and two reads used to answer a refusal with it: `subscribeCookSession` and
+ * `subscribeKitchenTimers`, on the grounds that both hold disposable state the
+ * next write replaces. That was wrong at the call site rather than merely
+ * inconsistent. `cookSessionService.applySnapshot` reads a `null` as the
+ * document being GONE, so a corrupt `cookSessions/{id}` either fired the "this
+ * cook was finished on another device" toast and evicted the user from cook
+ * mode, or — with an empty store — read as "no session yet" and let the page
+ * write a fresh session over the corrupt one. The caller now keeps what it
+ * holds and the corruption is reported, per `docs/data-model.md`'s
+ * single-document read row.
  *
  * `onError` has ONE signature across every single-document read (#928 finding
  * B2-009): the stream path always forwards the original Firestore error as a
@@ -80,8 +78,7 @@ export function subscribeDocument<T>(
       // One argument, always: the corruption Failure is synthetic and has no
       // Firestore error behind it, and its absent second argument is what tells
       // a caller this came from the parse and not from the stream.
-      if (read.onCorrupt === 'error') onError({ kind: 'StorageError', reason: 'corruption' });
-      else onDoc(null);
+      onError({ kind: 'StorageError', reason: 'corruption' });
     },
     (err) => onError(classifyFirestoreError(err), err),
   );

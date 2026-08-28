@@ -450,3 +450,52 @@ describe('cookSessionService — failures', () => {
     expect(reportSpy).not.toHaveBeenCalled();
   });
 });
+
+// ─── A corrupt session document (#928 Phase 2) ──────────────────────────────────
+//
+// `subscribeCookSession` used to answer a document its schema refused with
+// `null`, which is exactly what it delivers for a document that does not exist —
+// so `applySnapshot` read a corrupt session as one ENDED ON ANOTHER DEVICE and
+// evicted the user from cook mode, or, with an empty store, as "no session yet"
+// and let the page write a fresh session over the corrupt one. It is a
+// `StorageError`/`corruption` on `onError` now.
+//
+// These two rows are the pin. The first asserts the new behaviour; the second is
+// the branch it must NOT have broken, because both arrive at the same store and
+// only the adapter distinguishes them.
+describe('cookSessionService — a document the schema refused', () => {
+  it('keeps the session it holds, and does not report the cook as ended', () => {
+    const { emit, emitError } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+    const held = makeSession({ checkedIngredientIds: ['ing-1'] });
+    emit(held);
+
+    // No rawError: the corruption Failure comes from the PARSE, which has no
+    // Firestore error behind it. That is the adapter's own contract, and passing
+    // one here would test a call the adapter never makes.
+    emitError({ kind: 'StorageError', reason: 'corruption' });
+
+    expect(get(cookSession)).toEqual(held);
+    expect(get(cookSessionEnded)).toBe(false);
+    expect(get(isLoadingCookSession)).toBe(false);
+    // The payload, not merely that a spy fired (UT-A1). `StorageError` is a
+    // reported category under §7.6, which is what makes this change a gain: the
+    // corruption is now visible instead of silent.
+    expect(reportSpy).toHaveBeenCalledWith(
+      { kind: 'StorageError', reason: 'corruption' },
+      'StorageError',
+    );
+  });
+
+  it('still treats a genuinely deleted document as the cook ending elsewhere', () => {
+    const { emit } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+    emit(makeSession());
+
+    emit(null);
+
+    expect(get(cookSession)).toBeNull();
+    expect(get(cookSessionEnded)).toBe(true);
+    expect(reportSpy).not.toHaveBeenCalled();
+  });
+});

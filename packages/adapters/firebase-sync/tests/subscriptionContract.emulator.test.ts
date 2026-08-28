@@ -90,18 +90,19 @@
  * excludes a document missing the ordered field, so nothing was ever skipped.
  * The log assertion turns that silent pass into a red.
  *
- * EVERY single-document row asserts that same bound log, and that is #928
- * Phase 1's doing rather than this file's. It used to be the two `'null'` rows
- * only, because eight of the eleven `'error'` reads did not log a refused
- * document at all — the `logsRejection` field, finding B2-008, recorded here as
- * a divergence rather than papered over. Phase 1 deleted the field, so all
- * fourteen log identically and the assertion applies uniformly, which is
- * strictly more than this file asserted before.
+ * EVERY single-document row asserts that same bound log, and answers a refused
+ * document the same way, and that is #928's doing rather than this file's. This
+ * table used to carry an `onCorrupt` field recording two divergences it had
+ * found: eight of fourteen reads logged nothing (`logsRejection`, finding
+ * B2-008), and two answered a refusal with `null` rather than a `Failure`.
+ * Phase 1 deleted the first and Phase 2 the second, so there is one outcome to
+ * assert and it is asserted on all thirteen rows — strictly more than this file
+ * asserted before, from a table with one fewer axis.
  *
- * The log is worth binding to a document id on the `'error'` rows for the same
- * reason it is on the collection rows, and NOT for the reason an earlier cut of
- * this file gave. That cut claimed a `StorageError`/`corruption` on `onError`
- * cannot be produced by a document the read never saw; that is false.
+ * The log is worth binding to a document id for the same reason it is on the
+ * collection rows, and NOT for the reason an earlier cut of this file gave.
+ * That cut claimed a `StorageError`/`corruption` on `onError` cannot be produced
+ * by a document the read never saw; that is false.
  * `firestoreErrors.ts` maps the Firestore code `data-loss` to exactly
  * `{kind:'StorageError', reason:'corruption'}`, and every row passes stream
  * errors through `classifyFirestoreError`, so a stream-level `data-loss`
@@ -117,10 +118,11 @@
  * falsifying, where on seven of them it used to be vacuously true. Asserted
  * uniformly rather than from a hand-kept list (UT-E1).
  *
- * The two `'null'` rows need the log hardest — there `null` is by design
- * indistinguishable from "absent" to the caller, so the log is the only thing
- * that says the null came from a rejection — but they no longer need it
- * ALONE, which is the point of the paragraph above.
+ * Each row also asserts that NOTHING was delivered for the refused document.
+ * That is the assertion Phase 2 bought: `subscribeCookSession` and
+ * `subscribeKitchenTimers` used to hand the caller a `null`, which is what an
+ * absent document hands it, so a corrupt cook session read as one that had been
+ * ended on another device.
  *
  * ─── Seeding goes through the emulator's REST door, not a client ─────────────
  * Every row seeds with `seed()`, which writes through the Firestore emulator's
@@ -1088,38 +1090,14 @@ interface DocumentCase {
   /** Recognise the seeded document among what was delivered. */
   matches: (d: unknown) => boolean;
   /**
-   * What this subscription ACTUALLY does with a document that fails its schema.
-   *
-   * `'error'` — `onError({kind:'StorageError', reason:'corruption'})`, which is
-   * what CLAUDE.md's zod conventions require of a single-document adapter read.
-   * `'null'`  — logs and delivers `null`, indistinguishable to the caller from
-   * a document that does not exist.
-   *
-   * Eleven rows are `'error'`; `subscribeCookSession` and
-   * `subscribeKitchenTimers` are `'null'`. That divergence was found BY this
-   * table and is recorded here rather than normalised away, because a
-   * characterisation test's job is to state what the code does today — #928 can
-   * then unify it as a deliberate, visible behaviour change instead of a silent
-   * one buried inside a consolidation.
-   *
-   * Both outcomes carry the same two extra assertions, and #928 Phase 1 is why
-   * the `'error'` rows carry the first of them: that the parse loop LOGGED the
-   * rejection, naming this document, and that no `rawError` rode alongside.
-   * Neither is redundant with the outcome itself — a corruption `DomainError` is
-   * also what `firestoreErrors.ts` returns for the Firestore code `data-loss`,
-   * so a stream-level failure produces it with nothing read at all, and a `null`
-   * is by design indistinguishable from "absent". The bound log is emitted only
-   * by the parse, and the absent second argument only by the parse path.
+   * The document id the parse loop will name in its rejection log. REQUIRED, and
+   * that is the guard: every row asserts the bound log, so a row added without
+   * one does not compile. Stricter than the runtime check it replaced, which
+   * could only fail after the table was already built. A function, because for
+   * `subscribeKitchenTimers` the id IS the subscriber's uid and is only knowable
+   * inside a test.
    */
-  onCorrupt: 'error' | 'null';
-  /**
-   * The document id the parse loop will name in its rejection log. Every row
-   * asserts that log since #928 Phase 1 made all fourteen single-document reads
-   * log identically, so every row must name one — the guard below fails a row
-   * that does not. A function, because for `subscribeKitchenTimers` the id IS
-   * the subscriber's uid and is only knowable inside a test.
-   */
-  corruptDocId?: () => string;
+  corruptDocId: () => string;
   /**
    * Seed a VALID document of the same schema at a DIFFERENT key in the same
    * collection, chosen so `matches` REJECTS it. REQUIRED on every row: a keyed
@@ -1141,7 +1119,6 @@ const has = (d: unknown, key: string, value: unknown): boolean =>
 const documentCases: DocumentCase[] = [
   {
     name: 'subscribeAppSettings',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeAppSettings(on, err),
     seed: () => writeAs(['appSettings', 'singleton'], fx.appSettings()),
     corrupt: () => writeAs(['appSettings', 'singleton'], { schemaVersion: 'nope' }),
@@ -1156,7 +1133,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeBatch',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeBatch(BATCH_ID, on, err),
     seed: () => writeAs(['batches', BATCH_ID], fx.batch(BATCH_ID)),
     corrupt: () => writeAs(['batches', BATCH_ID], CORRUPT),
@@ -1169,7 +1145,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeCookSession',
-    onCorrupt: 'null',
     subscribe: (on, err) => subscribeCookSession('cook-1', on, err),
     seed: () => writeAs(['cookSessions', 'cook-1'], fx.cookSession('cook-1', ownerUid())),
     // Keep ownerUid valid so the doc is READABLE; only the rest is corrupt. A
@@ -1186,7 +1161,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeDevSettings',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeDevSettings(on, err),
     seed: () => writeAs(['devSettings', 'singleton'], fx.devSettings()),
     corrupt: () => writeAs(['devSettings', 'singleton'], { schemaVersion: 'nope' }),
@@ -1199,7 +1173,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeEquipmentManifest',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeEquipmentManifest(on, err),
     seed: () => writeAs(['equipmentManifest', 'current'], fx.equipmentManifest()),
     corrupt: () => writeAs(['equipmentManifest', 'current'], CORRUPT),
@@ -1216,7 +1189,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeFormula',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeFormula('r1', on, err),
     seed: () => writeAs(['formulas', 'r1'], fx.formula('r1')),
     corrupt: () => writeAs(['formulas', 'r1'], CORRUPT),
@@ -1229,7 +1201,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeGuidedPlan',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeGuidedPlan('r1', on, err),
     seed: () => writeAs(['guidedPlans', 'r1'], fx.guidedPlan('r1')),
     corrupt: () => writeAs(['guidedPlans', 'r1'], CORRUPT),
@@ -1242,7 +1213,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeKitchenTimers',
-    onCorrupt: 'null',
     subscribe: (on, err) => subscribeKitchenTimers(ownerUid(), on, err),
     seed: () => writeAs(['kitchenTimers', ownerUid()], fx.kitchenTimers(ownerUid())),
     corrupt: () => writeAs(['kitchenTimers', ownerUid()], { ownerUid: ownerUid(), timers: 'nope' }),
@@ -1259,7 +1229,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeMealPlanConfig',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeMealPlanConfig(on, err),
     seed: () => writeAs(['mealPlanConfig', 'singleton'], fx.mealPlanConfig()),
     corrupt: () => writeAs(['mealPlanConfig', 'singleton'], CORRUPT),
@@ -1272,7 +1241,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeMealPlanTemplate',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeMealPlanTemplate(on, err),
     seed: () => writeAs(['mealPlanTemplate', 'singleton'], fx.mealPlanTemplate()),
     corrupt: () => writeAs(['mealPlanTemplate', 'singleton'], CORRUPT),
@@ -1289,7 +1257,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeMealPlanWeek',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeMealPlanWeek(WEEK_START, on, err),
     seed: () => writeAs(['mealPlans', WEEK_START], fx.mealPlanWeek(WEEK_START)),
     corrupt: () => writeAs(['mealPlans', WEEK_START], CORRUPT),
@@ -1302,7 +1269,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeShoppingListsConfig',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeShoppingListsConfig(on, err),
     seed: () => writeAs(['shoppingListsConfig', 'singleton'], fx.shoppingListsConfig(LIST_ID)),
     corrupt: () => writeAs(['shoppingListsConfig', 'singleton'], { defaultListId: 42 }),
@@ -1319,7 +1285,6 @@ const documentCases: DocumentCase[] = [
   },
   {
     name: 'subscribeWeatherForecast',
-    onCorrupt: 'error',
     subscribe: (on, err) => subscribeWeatherForecast(on, err),
     seed: () => writeAs(['weatherForecast', 'singleton'], fx.weatherForecast()),
     corrupt: () => writeAs(['weatherForecast', 'singleton'], CORRUPT),
@@ -1382,15 +1347,6 @@ describe('subscription contract — table coverage', () => {
     for (const c of documentCases) {
       expect(c.excluded, `${c.name} seeds nothing its read must exclude`).toBeTruthy();
       expect(c.excluded.what, `${c.name} does not say what its decoy is`).toBeTruthy();
-    }
-  });
-
-  it('every document row names the document id its parse loop will log', () => {
-    for (const c of documentCases) {
-      expect(
-        c.corruptDocId,
-        `${c.name} asserts the rejection log but names no document id`,
-      ).toBeTruthy();
     }
   });
 
@@ -1807,7 +1763,7 @@ describe.each(documentCases)('$name (document)', (c) => {
     }
   });
 
-  it(`handles a document that fails its schema by delivering ${c.onCorrupt}`, async () => {
+  it('answers a document that fails its schema with a corruption Failure', async () => {
     const logged = vi.spyOn(console, 'error');
     const seen: unknown[] = [];
     const errors: DomainError[] = [];
@@ -1822,38 +1778,37 @@ describe.each(documentCases)('$name (document)', (c) => {
       },
     );
     try {
-      // Settle the initial (absent) snapshot first, so the null this row may
-      // deliver for the corrupt document is distinguishable from that one.
+      // Settle the initial (absent) snapshot first. It delivers a `null` of its
+      // own, so `before` has to be taken after it for the no-delivery assertion
+      // below to mean anything.
       await waitFor(() => seen.length > 0, CONVERGENCE_MS, `${c.name} initial snapshot`);
       const before = seen.length;
       await c.corrupt();
 
-      if (c.onCorrupt === 'error') {
-        await waitFor(() => errors.length > 0, CONVERGENCE_MS, `${c.name} corruption error`);
-        expect(errors[0]).toMatchObject({ kind: 'StorageError', reason: 'corruption' });
-      } else {
-        await waitFor(
-          () => seen.length > before,
-          CONVERGENCE_MS,
-          `${c.name} delivery for the corrupt document`,
-        );
-        expect(seen[seen.length - 1]).toBeNull();
-        expect(errors).toEqual([]);
-      }
+      await waitFor(() => errors.length > 0, CONVERGENCE_MS, `${c.name} corruption error`);
+      expect(errors[0]).toMatchObject({ kind: 'StorageError', reason: 'corruption' });
 
-      // Both outcomes, from here down. Neither of the two assertions above
-      // proves a document was READ and REFUSED: `{kind:'StorageError',
-      // reason:'corruption'}` is also what classifyFirestoreError returns for
-      // the Firestore code `data-loss`, so a stream-level failure satisfies the
-      // `'error'` branch with nothing read at all, and a `null` is by design
-      // indistinguishable from "absent". These two do.
+      // …and NOT a delivery. `subscribeCookSession` and `subscribeKitchenTimers`
+      // used to answer a refused document with `null`, which is what an ABSENT
+      // document delivers — so the caller could not tell a corrupt session from
+      // a deleted one (#928 Phase 2). Nothing new may reach `onDoc` here.
+      expect(
+        seen.length,
+        `${c.name} delivered for a document its schema refused — a caller cannot ` +
+          'tell that from a document that does not exist',
+      ).toBe(before);
+
+      // The corruption assertion above does not prove a document was READ and
+      // REFUSED: `{kind:'StorageError', reason:'corruption'}` is also what
+      // classifyFirestoreError returns for the Firestore code `data-loss`, so a
+      // stream-level failure satisfies it with nothing read at all. These two do.
 
       // The rejection log, bound to THIS document id — emitted only by the
       // parse. An unbound `failed validation` would be satisfied by a rejection
       // of any document at all. Every single-document read logs identically
-      // since #928 Phase 1 deleted `logsRejection`, which is why this is no
-      // longer the `'null'` rows' assertion alone.
-      const wanted = `Document ${c.corruptDocId!()} failed validation`;
+      // since #928 Phase 1 deleted `logsRejection`, which is why this runs on
+      // every row rather than on two of them.
+      const wanted = `Document ${c.corruptDocId()} failed validation`;
       expect(
         logged.mock.calls.some(([first]) => typeof first === 'string' && first.includes(wanted)),
         `${c.name} answered a refused document without logging "${wanted}" — nothing here ` +

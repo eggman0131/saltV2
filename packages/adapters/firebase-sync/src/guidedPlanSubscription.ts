@@ -58,7 +58,6 @@ export function subscribeGuidedPlan(
       path: [COLLECTION, recipeId],
       schema: GuidedPlanSchema,
       label: 'GuidedPlanSchema',
-      onCorrupt: 'error',
     },
     onPlan,
     onError,
