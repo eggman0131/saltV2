@@ -1,7 +1,7 @@
 import { derived } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { isCanonIconRenderable, resolveEquipmentItem } from '@salt/domain';
-import type { EquipmentManifest } from '@salt/domain';
+import type { EquipmentItem, EquipmentManifest } from '@salt/domain';
 import type { EquipmentIconDoc } from '@salt/domain/schemas';
 import { toolIcons } from './kitchenToolService.js';
 import type { ToolIconLookup } from './kitchenToolService.js';
@@ -31,6 +31,16 @@ import { equipment, equipmentIcons } from './equipmentService.js';
 // sentinel) through `isCanonIconRenderable`, so "not drawn yet" and "hidden by the
 // user" read the same as "not in the vocabulary".
 //
+// A RESOLVED ITEM IS AUTHORITATIVE — ITS MISS IS NOT THE TOOL VOCABULARY'S CUE.
+// Once `resolveEquipmentItem` says a label names an owned item, that answer
+// stands: a missing drawing on THAT item degrades to no tile, never to
+// `resolveKitchenTool` on the same label. Staging has 15 of 20 `equipmentIcons`
+// at `thumbnail: null` today, including both owned mandolines, so falling
+// through would draw "OXO Good Grips Chef's Mandoline Slicer 2.0" as the
+// GENERIC mandoline pictogram — the picture of neither mandoline this household
+// owns, and precisely the defect #954 opened on. The tool vocabulary is
+// consulted only when equipment resolves to NOTHING at all.
+//
 // A DERIVED STORE OF A LOOKUP rather than plain functions, for the reason
 // `ingredientIcons` and `toolIcons` are: a plain function reading snapshots has no
 // tracked dependency, so a manifest arriving after first paint — exactly what
@@ -52,16 +62,22 @@ function lookupFor(
 ): KitIconLookup {
   const items = manifest?.items ?? [];
 
-  // The owned item's icon, or null — which covers "no such item", "no icon
-  // authored yet" and "hidden", all of which fall through to the tool vocabulary
-  // and then to bare words.
-  const ownedIcon = (
-    label: string | null | undefined,
-  ): { thumbnail: string; version: string | number | undefined } | null => {
+  // Does this label name an item the household owns? Resolved once and reused
+  // by both lookups below, because the answer — not just the icon it produces —
+  // is what gates the fall-through to the tool vocabulary.
+  const ownedItem = (label: string | null | undefined): EquipmentItem | null => {
     const name = label?.trim();
     if (!name) return null;
-    const item = resolveEquipmentItem(name, items);
-    if (!item) return null;
+    return resolveEquipmentItem(name, items);
+  };
+
+  // The resolved item's icon, or null — "no icon authored yet" and "hidden" both
+  // fold to null here. Unlike a miss on `ownedItem`, this null does NOT fall
+  // through to the tool vocabulary (see the header comment): a resolved item
+  // with nothing drawn renders no tile, not a different object's picture.
+  const ownedIcon = (
+    item: EquipmentItem,
+  ): { thumbnail: string; version: string | number | undefined } | null => {
     const icon = icons.get(item.id);
     const thumbnail = icon?.thumbnail ?? null;
     if (thumbnail === null || !isCanonIconRenderable(thumbnail)) return null;
@@ -73,11 +89,12 @@ function lookupFor(
 
   return {
     kitIconFor(label) {
-      return ownedIcon(label)?.thumbnail ?? tools.toolIconFor(label);
+      const item = ownedItem(label);
+      return item ? (ownedIcon(item)?.thumbnail ?? null) : tools.toolIconFor(label);
     },
     kitIconVersionFor(label) {
-      const owned = ownedIcon(label);
-      return owned ? owned.version : tools.toolIconVersionFor(label);
+      const item = ownedItem(label);
+      return item ? ownedIcon(item)?.version : tools.toolIconVersionFor(label);
     },
   };
 }

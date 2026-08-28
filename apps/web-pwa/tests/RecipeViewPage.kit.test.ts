@@ -31,7 +31,16 @@ const {
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
-    mockEquipment: makeStore<{ items: readonly { id: string; name: string }[] } | null>({
+    // `accessories` is optional here (unlike the real `EquipmentItem`) because
+    // most cases in this file never need one; `resolveEquipmentItem` treats a
+    // missing array the same as an empty one.
+    mockEquipment: makeStore<{
+      items: readonly {
+        id: string;
+        name: string;
+        accessories?: readonly { id: string; name: string; owned: boolean; included: boolean }[];
+      }[];
+    } | null>({
       items: [{ id: 'eq-pizzaiolo', name: 'Sage Pizzaiolo' }],
     }),
     // The equipment pictograms the strip prefers over the tool vocabulary (issue
@@ -321,18 +330,31 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
   });
 
   it('draws the OWNED item\u2019s picture, not the generic tool\u2019s (issue #954)', () => {
-    // The ordering that carries the whole fix. "Magimix Cocotte Slow Cook Pot"
-    // contains the token "pot", so `resolveKitchenTool` resolves it to the generic
-    // saucepan \u2014 a specific label losing its own picture to a vague one, which is
-    // exactly what the strip exists to prevent. Equipment is tried FIRST.
+    // The ordering that carries the whole fix, exercised against the REAL
+    // manifest shape: "Cocotte Slow Cook Pot" is an ACCESSORY of the Magimix
+    // Cook Expert, not an item of its own -- that is how `equipmentManifest`
+    // actually stores it (confirmed against staging). The kit flow writes the
+    // owning item's leading word alongside the accessory's name, so the label is
+    // "Magimix Cocotte Slow Cook Pot" -- which contains the token "pot", so
+    // `resolveKitchenTool` would resolve it to the generic saucepan: a specific
+    // label losing its own picture to a vague one, exactly what the strip exists
+    // to prevent. Equipment is tried FIRST, and an accessory match resolves to
+    // the OWNING item's picture (an accessory has no icon of its own --
+    // `equipmentIcons` is keyed by item id).
     mockEquipment._set({
       items: [
-        { id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' },
+        {
+          id: 'eq-magimix',
+          name: 'Magimix Cook Expert',
+          accessories: [
+            { id: 'acc-cocotte', name: 'Cocotte Slow Cook Pot', owned: true, included: false },
+          ],
+        },
         { id: 'eq-pizzaiolo', name: 'Sage Pizzaiolo' },
       ],
     });
     mockEquipmentIcons._set(
-      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+      new Map([['eq-magimix', { thumbnail: 'https://example.com/eq/magimix.webp' }]]),
     );
     setTools([
       tool({
@@ -348,7 +370,7 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
 
     expect(screen.getByTestId('canon-icon-img')).toHaveAttribute(
       'src',
-      'https://example.com/eq/cocotte.webp',
+      'https://example.com/eq/magimix.webp',
     );
     expect(kitLabels()).toEqual(['Magimix Cocotte Slow Cook Pot']);
   });
@@ -358,10 +380,10 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     // ordinary kit its pictures. "large frying pan" names nothing in the manifest
     // and falls straight through to the curated vocabulary.
     mockEquipment._set({
-      items: [{ id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' }],
+      items: [{ id: 'eq-magimix', name: 'Magimix Cook Expert' }],
     });
     mockEquipmentIcons._set(
-      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+      new Map([['eq-magimix', { thumbnail: 'https://example.com/eq/magimix.webp' }]]),
     );
     setTools([
       tool({
@@ -380,10 +402,16 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     );
   });
 
-  it('falls back to the tool vocabulary when the owned item has no drawing yet', () => {
+  it('shows no tile -- never the tool vocabulary\u2019s picture -- when the owned item has no drawing yet (issue #954)', () => {
     // `equipmentIcons` generation is edge-triggered, so an item can be in the
-    // manifest with nothing drawn for it. That is a miss on the first vocabulary,
-    // not an answer \u2014 the label still gets the tool picture it had before.
+    // manifest with nothing drawn for it: staging has 15 of its 20 equipment
+    // icons at `thumbnail: null` today, including BOTH owned mandolines. Once the
+    // label resolves to an owned item, that resolution is authoritative --
+    // falling through to `resolveKitchenTool` would draw a DIFFERENT object's
+    // picture (the generic mandoline) under this item's name, exactly the defect
+    // #954 opened on. The correct degrade is words with no picture -- the same
+    // graceful miss #882 established -- not a borrowed tool drawing. (This test
+    // used to pin the wrong contract: it asserted the tool picture WAS shown.)
     mockEquipment._set({ items: [{ id: 'eq-oxo', name: 'OXO Mandoline' }] });
     mockEquipmentIcons._set(new Map([['eq-oxo', { thumbnail: null }]]));
     setTools([
@@ -397,18 +425,16 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     mockRecipes._set([makeEntry({ kit: [{ label: 'OXO Mandoline', stepIds: [] }] })]);
     renderPage();
 
-    expect(screen.getByTestId('canon-icon-img')).toHaveAttribute(
-      'src',
-      'https://example.com/kit/mandoline.webp?v=2026-02-02T00:00:00.000Z',
-    );
+    expect(kitLabels()).toEqual(['OXO Mandoline']);
+    expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
   it('renders words with no picture when neither vocabulary knows the label', () => {
     // The #882 graceful-miss contract, unchanged by the second vocabulary: a label
     // nothing matches never borrows another item's picture.
-    mockEquipment._set({ items: [{ id: 'eq-cocotte', name: 'Magimix Cocotte Slow Cook Pot' }] });
+    mockEquipment._set({ items: [{ id: 'eq-magimix', name: 'Magimix Cook Expert' }] });
     mockEquipmentIcons._set(
-      new Map([['eq-cocotte', { thumbnail: 'https://example.com/eq/cocotte.webp' }]]),
+      new Map([['eq-magimix', { thumbnail: 'https://example.com/eq/magimix.webp' }]]),
     );
     setTools([tool({ id: 'saucepan', label: 'saucepan' })]);
     mockRecipes._set([makeEntry({ kit: [{ label: 'tagine', stepIds: [] }] })]);

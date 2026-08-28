@@ -37,6 +37,25 @@ import type { EquipmentItem } from '../entities/EquipmentItem.js';
 // one item ("Kenwood", with two Kenwoods in the manifest) returns null and falls
 // through to the tool vocabulary and then to bare words — the #882 graceful-miss
 // contract. Borrowing one of two pictures at random is worse than showing none.
+// This applies on EVERY path, exact match included: `normaliseName` strips model
+// numbers, so "OXO Good Grips 2.0" and "OXO Good Grips 3.0" fold to the same
+// string, and a naive `.find` would silently hand the label to whichever one
+// happened to come first. Two items tying on the same normalised name say
+// nothing, exactly as two items tying on the subset rule below do.
+//
+// ACCESSORIES RESOLVE TO THEIR OWNING ITEM. The manifest stores an accessory
+// under its item ("Cocotte Slow Cook Pot" is one of the Magimix Cook Expert's),
+// and the kit flow is licensed to name one — so a label can be the item's
+// leading word plus an accessory's name ("Magimix Cocotte Slow Cook Pot",
+// "FoodSaver Fresh Container") rather than the item's own name. Neither
+// accessory has an icon of its own — `equipmentIcons` is keyed by item id, not
+// accessory id — so the owning item IS the right identity to resolve to; there
+// is no separate "accessory" result to invent. The same two-part rule governs
+// it: the label must still carry the OWNING item's leading word (never a bare
+// accessory name floating free of its maker — that is what keeps "container"
+// failing against FoodSaver's owned "Fresh Container", the same way "pot" fails
+// against the Cocotte), and every word the item's own name does not already
+// explain must belong to that one accessory.
 //
 // Both sides fold through canon's `normaliseName`, the same normaliser
 // `resolveKitchenTool` uses, so case, punctuation, hyphens and plurals cannot
@@ -53,9 +72,12 @@ export function resolveEquipmentItem(
 
   // Exact first, and it wins outright: when one item is called exactly this, no
   // longer name that merely contains the same words can be a better answer.
-  // ("Magimix Cook Expert" must not be beaten by "Magimix Cook Expert XL".)
-  const exact = items.find((item) => normaliseName(item.name) === target);
-  if (exact) return exact;
+  // ("Magimix Cook Expert" must not be beaten by "Magimix Cook Expert XL".) But
+  // "outright" only holds when exactly one item claims it — a tie here is the
+  // same ambiguity the subset rule below refuses to guess through.
+  const exactMatches = items.filter((item) => normaliseName(item.name) === target);
+  if (exactMatches.length > 1) return null; // two items answer to this exactly — say nothing
+  if (exactMatches.length === 1) return exactMatches[0]!;
 
   let match: EquipmentItem | null = null;
   for (const item of items) {
@@ -69,6 +91,15 @@ export function resolveEquipmentItem(
         subset = false;
         break;
       }
+    }
+    if (!subset) {
+      // The item's own name does not cover every word — maybe the rest is one
+      // of ITS owned accessories, named alongside the item's leading word.
+      const extra = [...labelTokens].filter((word) => !own.has(word));
+      subset = (item.accessories ?? []).some((accessory) => {
+        const accTokens = new Set(normaliseName(accessory.name).split(' ').filter(Boolean));
+        return extra.length > 0 && extra.every((word) => accTokens.has(word));
+      });
     }
     if (!subset) continue;
     if (match) return null; // two owned items answer to this — say nothing
