@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v02.md §8.25 v0.2.3 -->
+<!-- spec: ui-spec-v13.md §8.31 v0.13 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { EmptyStateProps } from './EmptyState.types';

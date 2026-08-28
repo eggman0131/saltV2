@@ -1,4 +1,4 @@
-// spec: ui-spec-v03.md §1.3 v0.3; ui-spec-v04.md §2 v0.4
+// spec: ui-spec-v02.md §1.3 v0.2.17; ui-spec-v04.md §2 v0.4
 
 // Primitives
 export { default as Button } from './primitives/Button/Button.svelte';

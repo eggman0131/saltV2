@@ -1,4 +1,4 @@
-// spec: ui-spec-v02.md §9.2 v0.2.3
+// spec: ui-spec-v13.md §1 v0.13
 import type { Snippet } from 'svelte';
 
 export type FormPageProps = {

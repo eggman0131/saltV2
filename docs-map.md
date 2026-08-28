@@ -60,7 +60,7 @@ fails CI on a row that routes nothing or links to a file that is gone.
   than inventing tokens.
   Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
 
-- **ui-spec-v02 → v12 are cumulative, never superseding.** v0.2 holds the
+- **ui-spec-v02 → v13 are cumulative, never superseding.** v0.2 holds the
   foundations (boundaries, package surface, event naming, styling rules) and stays
   in force for every later version; each later spec only adds components —
   [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
@@ -83,7 +83,15 @@ fails CI on a row that routes nothing or links to a file that is gone.
   [v12](docs/design/ui-spec-v12.md) `PictogramPill` (a drawn object, named — the
   40px pictogram and its words in one static pill; §8.30.2 records why a `Chip`
   is the wrong container for a picture and why no size variant was added to fix
-  it). Touching
+  it),
+  [v13](docs/design/ui-spec-v13.md) `FormPage` (§1), the `DetailPage` **base**
+  contract (§2 — v07 only ever specified its fill mode), `EmptyState` (§8.31)
+  and `ErrorState` (§8.32). v13 is the odd one out and §0.1 says why: these four
+  shipped with no spec at all, behind provenance headers citing sections that do
+  not exist, so it ratifies what is already live rather than planning something
+  new. Read §8.31.2 before reaching for either state panel — empty is
+  `role="status"` and error is `role="alert"`, and that split is why there are
+  two components and not one with a `tone`. Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

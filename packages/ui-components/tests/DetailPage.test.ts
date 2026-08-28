@@ -1,6 +1,8 @@
 // spec: ui-spec-v07.md §1.7 v0.7
 // Covers the fill mode only. The rest of DetailPage (header, actions, metadata
-// aside) is spec'd in ui-spec-v02.md §9.3 and exercised through the app's page tests.
+// aside) is spec'd in ui-spec-v13.md §2 and exercised through the app's page tests.
+// It used to say v02 §9.3, which is a section this repo has never had — see
+// v13 §0.1 for how four components ended up citing one.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
