@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Merge queue. GitHub builds each queued PR onto the CURRENT main on a
+  # `gh-readonly-queue/main/...` ref and runs this workflow there, so the
+  # semantic collision that "require branches to be up to date" exists to
+  # catch — two PRs each green apart, broken together — is caught in the
+  # queue instead of by a hand-driven "Update branch" round-trip, and never
+  # on main itself.
+  #
+  # The trigger is on the WORKFLOW, not on individual jobs, and it has to
+  # stay that way: every required status check in the "Main branch" ruleset
+  # lives in this file, and a required context that never reports on a
+  # merge_group event blocks the queue forever.
+  merge_group:
 
 permissions:
   contents: read
@@ -20,16 +32,22 @@ permissions:
 # NEVER cancels a push to main: each main commit's run is the staging-deploy gate
 # (deploy-staging.yml fires on this workflow's completion), so cancelling one
 # would silently skip a deploy.
+#
+# Nor a merge_group run: a queue entry is a merge candidate, and GitHub already
+# cancels its runs itself when it re-forms the batch. Each entry gets its own
+# `gh-readonly-queue/main/pr-N-<sha>` ref, so the group key never collides with
+# a PR's run or with main's.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Decide whether a PR touches app code. The heavy emulator + Playwright
-  # suites are skipped for non-app PRs (docs / CI / tooling — see the allowlist
-  # below), but this workflow still TRIGGERS on every PR so the required status checks report
-  # (a skipped required job passes; an un-triggered one would block merge
-  # forever waiting on a context that never appears).
+  # Decide whether the change under test touches app code — a PR's diff, or a
+  # merge-queue batch's. The heavy emulator + Playwright suites are skipped for
+  # non-app changes (docs / CI / tooling — see the allowlist below), but this
+  # workflow still TRIGGERS on every PR and every queue entry so the required
+  # status checks report (a skipped required job passes; an un-triggered one
+  # would block merge forever waiting on a context that never appears).
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -44,20 +62,38 @@ jobs:
       - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
 
-          # Non-PR events (push to main) always run the full suite — main is the
-          # deploy source and must stay genuinely green. Nothing to rebase
-          # against, so uptodate is trivially true.
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "Event '$EVENT_NAME' is not a pull_request — running full CI."
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "uptodate=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # Which two commits bound "the change under test" depends on the event:
+          #   pull_request — the PR's base..head.
+          #   merge_group  — the queue candidate's base..head, i.e. every PR in
+          #                  the batch stacked on current main. Diffing those
+          #                  keeps the non-app allowlist working in the queue, so
+          #                  a docs-only PR still skips the heavy suites there
+          #                  rather than paying for them twice.
+          #   push to main — nothing to compare against, and main is the deploy
+          #                  source that must stay genuinely green: full suite.
+          case "$EVENT_NAME" in
+            pull_request)
+              BASE_SHA="$PR_BASE_SHA"
+              HEAD_SHA="$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              BASE_SHA="$MG_BASE_SHA"
+              HEAD_SHA="$MG_HEAD_SHA"
+              ;;
+            *)
+              echo "Event '$EVENT_NAME' is neither pull_request nor merge_group — running full CI."
+              echo "code=true" >> "$GITHUB_OUTPUT"
+              echo "uptodate=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
 
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
           echo "Changed files:"
@@ -92,23 +128,30 @@ jobs:
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
-          # Up-to-date gate. The "Main" ruleset uses
-          # strict_required_status_checks_policy (= "require branches to be up
-          # to date before merging"), so a branch behind origin/main CANNOT
-          # merge until it is rebased — and that rebase re-triggers this whole
-          # workflow. Running the heavy emulator + Playwright suites on a branch
-          # that is already behind is therefore pure waste: the result is thrown
-          # away at rebase. When behind, mark uptodate=false so the heavy jobs
-          # skip (a skipped required check passes; strict mode still blocks the
-          # merge until the branch is updated, at which point CI runs for real).
+          # Up-to-date gate — pull_request only. Running the heavy emulator +
+          # Playwright suites on a branch that is behind origin/main tells you
+          # about a combination that will never be merged, so when behind we
+          # mark uptodate=false and the heavy jobs skip (a skipped required
+          # check passes).
+          #
+          # This is safe BECAUSE of the merge queue, not in spite of it: the
+          # queue re-runs this workflow on the PR restacked onto current main,
+          # which is up to date by construction, so the suites the PR run
+          # skipped are the very ones the queue run executes for real. Before
+          # the queue, the same skip leaned on the "Main branch" ruleset being
+          # strict (a behind-branch had to rebase, re-triggering CI); it stays
+          # correct under either configuration, and correct for the right
+          # reason under the queue.
+          #
+          # A merge_group run is never gated: its head IS main plus the batch.
           # Only meaningful when code=true (the heavy suites would otherwise run).
           uptodate=true
-          if [ "$code" = "true" ]; then
+          if [ "$code" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch --no-tags origin main
             if git merge-base --is-ancestor FETCH_HEAD "$HEAD_SHA"; then
               echo "Branch is up to date with origin/main — heavy suites will run."
             else
-              echo "Branch is behind origin/main — rebase required before merge; skipping heavy suites this run."
+              echo "Branch is behind origin/main — the merge queue will run the heavy suites against real main; skipping them this run."
               uptodate=false
             fi
           fi
