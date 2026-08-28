@@ -97,6 +97,12 @@ export {
   removeRule,
   editRule,
   equipmentIconAwaitingApproval,
+  // The display-time join from a free-text kit label to the item this household
+  // actually owns (issue #954) — the specific half of the question
+  // `resolveKitchenTool` answers generically. Tried FIRST by the callers of both:
+  // a branded name contains generic tokens ("…Slow Cook Pot"), so the tool
+  // vocabulary would otherwise claim it.
+  resolveEquipmentItem,
 } from './equipment/index.js';
 
 // Shopping list module — published surface.

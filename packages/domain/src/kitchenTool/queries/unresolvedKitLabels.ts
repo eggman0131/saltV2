@@ -1,4 +1,6 @@
 import { normaliseName } from '../../canon/index.js';
+import { resolveEquipmentItem } from '../../equipment/index.js';
+import type { EquipmentItem } from '../../equipment/index.js';
 import { resolveKitchenTool } from './resolveKitchenTool.js';
 import type { KitchenToolDoc } from '../../schemas/kitchenTool.js';
 
@@ -24,6 +26,14 @@ import type { KitchenToolDoc } from '../../schemas/kitchenTool.js';
 // notion of "unmatched": if the queue disagreed with the renderer by so much as a
 // plural, it would either hide a real gap or offer a row that nothing on screen
 // is missing.
+//
+// AND WITH `resolveEquipmentItem` FIRST, for exactly that reason (issue #954).
+// Since the kit flow gained the manifest, a label can be an appliance this
+// household owns — "Magimix Cook Expert" — and those already have pictograms, in
+// `equipmentIcons`. A queue that did not exclude them would invite someone to draw
+// a `kitchenTools` cartoon of a Magimix that Salt already holds a drawing of, and
+// the row would never clear: adding the tool would not change what the strip
+// renders, because the strip resolves equipment first too.
 
 /** The shape this query reads off a recipe — a full `Recipe` satisfies it. */
 export interface KitLabelSource {
@@ -54,6 +64,7 @@ export function unresolvedKitLabels(
   recipes: readonly KitLabelSource[],
   plans: readonly ContainerSource[],
   tools: readonly KitchenToolDoc[],
+  equipment: readonly EquipmentItem[],
 ): UnresolvedKitLabel[] {
   const mentions: string[] = [];
   for (const recipe of recipes) {
@@ -84,6 +95,10 @@ export function unresolvedKitLabels(
     // A name that normalises away entirely ("500g", "2") names no tool and never
     // could — it is a quantity that wandered into a container field.
     if (!key) continue;
+    // Equipment first, and in the same order the renderer tries them — a branded
+    // name contains generic tokens ("…Slow Cook Pot"), so asking the tool
+    // vocabulary first would answer for a label the strip never shows a tool for.
+    if (resolveEquipmentItem(name, equipment)) continue;
     if (resolveKitchenTool(name, tools)) continue;
     let group = groups.get(key);
     if (!group) {

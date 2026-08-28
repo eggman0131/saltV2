@@ -10,6 +10,7 @@ const {
   readEquipmentContext,
   equipmentSectionForChef,
   equipmentSectionForLibrarian,
+  equipmentSectionForKit,
 } = await import('../../src/flows/equipmentContext.js');
 
 beforeEach(() => {
@@ -189,8 +190,25 @@ describe('equipment prompt framings', () => {
     expect(section).toContain('NOT a menu');
   });
 
-  it('omits both sections entirely when there is no equipment context', () => {
+  it('gives the kit flow licence to NAME which one, and no licence to introduce one', () => {
+    // The third framing (issue #954). It sits between the other two on purpose: the
+    // chef may choose equipment, the librarian may only preserve it, and the kit
+    // flow may resolve a class the method already reached for into the item the
+    // household actually owns.
+    const section = equipmentSectionForKit(context);
+    expect(section).toContain(context);
+    expect(section).toContain('NEVER generalise a named appliance back to a generic one');
+    expect(section).toContain('VERBATIM');
+    expect(section).toContain('NOT owned are unavailable');
+    // The limit — naming which appliance must not become adding one.
+    expect(section).toContain('NOT a licence to introduce one');
+    // And the generic path survives: a frying pan is still a frying pan.
+    expect(section).toContain('If nothing here does the job');
+  });
+
+  it('omits every section entirely when there is no equipment context', () => {
     expect(equipmentSectionForChef('')).toBe('');
     expect(equipmentSectionForLibrarian('')).toBe('');
+    expect(equipmentSectionForKit('')).toBe('');
   });
 });

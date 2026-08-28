@@ -1,6 +1,6 @@
 <script lang="ts">
   import { PictogramPill } from '@salt/ui-components';
-  import { toolIcons } from '../../lib/kitchenToolService.js';
+  import { kitIcons } from '../../lib/kitIcons.js';
   import type { RecipeKitEntryDoc } from '@salt/domain/schemas';
 
   // The kit a step reaches for (issue #882), in the chip vocabulary the first-use row
@@ -37,8 +37,8 @@
     <li class="shrink-0 max-w-full">
       <PictogramPill
         label={entry.label}
-        thumbnail={$toolIcons.toolIconFor(entry.label)}
-        version={$toolIcons.toolIconVersionFor(entry.label)}
+        thumbnail={$kitIcons.kitIconFor(entry.label)}
+        version={$kitIcons.kitIconVersionFor(entry.label)}
         data-testid="cook-step-kit-chip"
       />
     </li>
