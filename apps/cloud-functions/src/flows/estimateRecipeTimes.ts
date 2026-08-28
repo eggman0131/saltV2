@@ -21,14 +21,26 @@ import { resolveModel } from '../ai/resolveModel.js';
 // definition, so the model fell back on published-recipe convention — the
 // already-weighed counter, and no washing up. This flow is what re-asks.
 //
-// ─── The definition is IMPORTED, never restated ───────────────────────────────
+// ─── The FIELD DEFINITIONS are imported; the ESTIMATION HEURISTICS are not ────
 //
 // The system prompt below interpolates `TIME_RULES` from recipeFieldRules — the
-// very text the librarian and both extractors are given. That is the load-bearing
-// choice in this file. A backfill that re-estimated against its own hand-written
-// definition would leave the library split between two definitions again, which is
-// the exact failure this issue exists to end (and the #785 twin returning). If the
-// definition changes, both the new recipes and the backfilled ones move together.
+// very text the librarian and both extractors are given for what the three fields
+// MEAN. That half is shared, and it is the load-bearing choice in this file: a
+// backfill that re-estimated against its own hand-written field definitions would
+// leave the library split between two of them again, which is the exact failure
+// this issue exists to end (and the #785 twin returning). If the definitions
+// change, both the new recipes and the backfilled ones move together.
+//
+// The `## How to estimate` block below TIME_RULES is a SEPARATE, flow-local half:
+// the heuristics that turn the definitions into three numbers — scale prep with
+// servings, a step timer is a floor, heat vs. unattended wait, overlapping work
+// counts once, "a competent home cook doing only this", round to a human number.
+// Those are NOT shared with `recipeFieldRules.ts` or with the three authoring
+// paths, and the two texts can drift from each other independently. Precise
+// claim, because it is easy to overstate from the TIME_RULES import above: a
+// chat-authored recipe and a backfilled one of the same dish are measured
+// against the SAME field definitions, not against one shared estimation policy.
+// Unifying the two is deliberately deferred to its own follow-up issue.
 //
 // ─── What it is NOT allowed to do ─────────────────────────────────────────────
 //

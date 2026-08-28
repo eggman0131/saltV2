@@ -101,10 +101,14 @@ describe('reconcileEstimatedTimes', () => {
 });
 
 describe('estimateRecipeTimesFlow', () => {
-  it('asks against the SHARED definition, not a copy of it', async () => {
-    // The load-bearing assertion of this file. If the backfill ever measures
-    // recipes against its own hand-written definition, the library goes back to
-    // being split between two of them — which is the whole of issue #952.
+  it('asks against the SHARED field DEFINITIONS, not a copy of them', async () => {
+    // The load-bearing assertion of this file — precise about which half is
+    // shared. If the backfill ever measures recipes against its own
+    // hand-written field definitions, the library goes back to being split
+    // between two of them — which is the whole of issue #952. The estimation
+    // HEURISTICS below TIME_RULES are a separate, flow-local half not covered
+    // by this assertion — see the "FIELD DEFINITIONS... ESTIMATION HEURISTICS"
+    // header comment in estimateRecipeTimes.ts.
     respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55 });
     await estimateRecipeTimesFlow(input);
     const { system } = mockGenerate.mock.calls[0]![0] as { system: string };

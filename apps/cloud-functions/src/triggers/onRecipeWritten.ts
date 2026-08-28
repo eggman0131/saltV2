@@ -3,7 +3,12 @@ import { getStorage } from 'firebase-admin/storage';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
-import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
+import {
+  RecipeSchema,
+  DevSettingsSchema,
+  type RecipeDoc,
+  type EstimateRecipeTimesOutput,
+} from '@salt/domain/schemas';
 import { componentDisplayLines, isCookable } from '@salt/domain';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
@@ -351,7 +356,57 @@ async function maybeInferKit(
  */
 export function timesNeedEstimate(before: DocumentSnapshot | undefined, after: RecipeDoc): boolean {
   if (after.timesRequestedAt === undefined) return false; // nobody asked
-  return before?.data()?.['timesRequestedAt'] !== after.timesRequestedAt;
+  // "A create does not fire it" is only true here: without this line, a create
+  // whose payload happened to carry the nonce would read as a "nonce changed"
+  // (undefined !== N) and fire — the guard's whole contract, restated at
+  // `maybeInferKit`'s sibling reasoning above. No live path creates a recipe
+  // carrying the nonce today (this is a claim/code mismatch, not a live defect —
+  // #952 phase 2 review, should-fix 5), but it is what makes the comment above
+  // true rather than true "usually".
+  if (!before?.exists) return false;
+  return before.data()?.['timesRequestedAt'] !== after.timesRequestedAt;
+}
+
+/**
+ * Floors the WRITTEN total at the stored total whenever the stored total already
+ * exceeded stored `prep + cook` (issue #952 phase 2 review, blocking 1).
+ *
+ * The flow is deliberately never shown the stored triple (see
+ * `estimateRecipeTimes.ts` → "It is not shown the stored times, deliberately"),
+ * and for `prep`/`cook` that is right — the stored numbers are wrong in a KNOWN
+ * direction, low. It is NOT right for `total`: when the stored total already
+ * exceeds stored prep + cook, that excess is a real unattended wait (a prove, a
+ * marinade, a chill), and a wait is frequently recorded ONLY in that number —
+ * often as prose with no `step.timer`, which leaves the flow's inputs with no
+ * arithmetic route back to it. Overwriting it unconditionally would destroy
+ * exactly the number issue #952's own `reconcileEstimatedTimes` doc comment
+ * calls out as legitimate ("an excess is an unattended wait, and those are
+ * real"), irreversibly, on a one-off sweep of the whole library.
+ *
+ * "The stored total already exceeded stored prep + cook" is exactly the signal
+ * "this document records a real wait" — so that, and only that, is floored.
+ * `prep`/`cook` are still overwritten unconditionally: they carry no such
+ * signal, and the direction they are wrong in is the one this backfill exists to
+ * fix. A returned `totalTimeMinutes: null` is covered the same way: `null` must
+ * not erase a stored total that recorded a wait, so it floors to the stored
+ * total exactly as a too-low number would.
+ */
+function floorTotalAtStoredWait(
+  stored: Readonly<{
+    prepTimeMinutes: number | null;
+    cookTimeMinutes: number | null;
+    totalTimeMinutes: number | null;
+  }>,
+  estimated: EstimateRecipeTimesOutput,
+): EstimateRecipeTimesOutput {
+  const storedParts = (stored.prepTimeMinutes ?? 0) + (stored.cookTimeMinutes ?? 0);
+  const storedRecordsWait =
+    stored.totalTimeMinutes !== null && stored.totalTimeMinutes > storedParts;
+  if (!storedRecordsWait) return estimated;
+  return {
+    ...estimated,
+    totalTimeMinutes: Math.max(estimated.totalTimeMinutes ?? 0, stored.totalTimeMinutes as number),
+  };
 }
 
 /**
@@ -421,10 +476,13 @@ async function maybeEstimateTimes(
       })),
     });
     // No `withAiTimeout` wrapper here (issue #915): the flow owns its budget.
+    // Floor the total at a stored wait (blocking 1 above) before it is written —
+    // prep/cook pass through unchanged.
+    const finalTimes = floorTotalAtStoredWait(recipe.metadata, times);
     await getFirestore().collection('recipes').doc(id).update({
-      'metadata.prepTimeMinutes': times.prepTimeMinutes,
-      'metadata.cookTimeMinutes': times.cookTimeMinutes,
-      'metadata.totalTimeMinutes': times.totalTimeMinutes,
+      'metadata.prepTimeMinutes': finalTimes.prepTimeMinutes,
+      'metadata.cookTimeMinutes': finalTimes.cookTimeMinutes,
+      'metadata.totalTimeMinutes': finalTimes.totalTimeMinutes,
       // Stamped in the SAME update as the answer, so "estimated" and "has the
       // new numbers" cannot disagree. The request nonce is left in place rather
       // than deleted — deleting it would read as a nonce change on this write's

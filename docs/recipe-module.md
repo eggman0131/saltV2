@@ -167,6 +167,19 @@ did **not** create), and the cook plan still starts a dish at
 `serve − cookTimeMinutes` — the decisions recorded below at *The cook plan*. That
 start clock excludes prep on purpose and is tracked separately as #953.
 
+**Phase 2 (backfill) shares the definitions, not the estimation policy.** The
+`estimateRecipeTimes` flow that re-asks the ~59 pre-#952 recipes interpolates
+`TIME_RULES` from `recipeFieldRules.ts` — the same field-meaning text quoted
+above — so a backfilled recipe and a freshly-authored one are judged against the
+same statement of what `prepTimeMinutes`/`cookTimeMinutes`/`totalTimeMinutes`
+**mean**. It is precise to stop there: the flow's own `## How to estimate` block
+(scale prep with servings, a step timer is a floor, heat vs. unattended wait,
+overlapping work counts once, "a competent home cook doing only this", round to
+a human number) is a separate, flow-local set of heuristics for turning that
+definition into three numbers, and it is **not** shared with `recipeFieldRules.ts`
+or with the three authoring paths — the two texts can drift from each other
+independently. Unifying them is deferred to its own follow-up issue.
+
 ### Schema extensions (issue #180)
 
 Three additive fields were added after the Phase-1/2 hand-entry stress-test

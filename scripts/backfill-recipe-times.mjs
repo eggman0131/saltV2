@@ -86,6 +86,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { isTimesEstimated } from './lib/recipeTimesEstimated.mjs';
 
 // Mirrors scripts/backfill-recipe-kit.mjs, including the env-var names, so the
 // three environments are named the same way wherever they are named.
@@ -239,8 +240,8 @@ async function listRecipes() {
   do {
     const url =
       `${BASE}/recipes?pageSize=300` +
-      '&mask.fieldPaths=timesEstimatedAt&mask.fieldPaths=title&mask.fieldPaths=kind' +
-      '&mask.fieldPaths=metadata' +
+      '&mask.fieldPaths=timesEstimatedAt&mask.fieldPaths=timesRequestedAt' +
+      '&mask.fieldPaths=title&mask.fieldPaths=kind&mask.fieldPaths=metadata' +
       (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
     const page = await api(url);
     for (const doc of page.documents ?? []) {
@@ -250,7 +251,14 @@ async function listRecipes() {
         // Absent `kind` means `recipe` — the schema defaults it, and the oldest
         // production recipes predate the field entirely.
         kind: doc.fields?.kind?.stringValue ?? 'recipe',
-        estimated: doc.fields?.timesEstimatedAt !== undefined,
+        // `timesEstimatedAt >= timesRequestedAt`, not merely "stamped at all"
+        // (issue #952 phase 2 review, should-fix 1): on a `--redo` pass, a
+        // recipe whose second estimate FAILS keeps its first run's older
+        // stamp, which must read as still-pending, never as done.
+        estimated: isTimesEstimated(
+          readNumber(doc.fields?.timesRequestedAt),
+          readNumber(doc.fields?.timesEstimatedAt),
+        ),
         times: timesOf(doc),
       });
     }

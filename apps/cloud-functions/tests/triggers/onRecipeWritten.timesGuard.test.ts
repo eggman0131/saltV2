@@ -55,6 +55,17 @@ describe('onRecipeWritten — timesNeedEstimate', () => {
     expect(timesNeedEstimate(snapshot(null), recipe())).toBe(false);
   });
 
+  it('does NOT estimate on create even when the create carries the request nonce', () => {
+    // The comment's whole claim — "a create does not fire it" — only actually
+    // held for a create with no nonce (both cases above). Pin the case that
+    // makes the claim true in general: a document that does not exist yet has
+    // no `before` snapshot at all, so `before?.exists` must gate the branch
+    // before the nonce comparison ever runs.
+    const after = recipe({ timesRequestedAt: 1_700_000_000_000 });
+    expect(timesNeedEstimate(undefined, after)).toBe(false);
+    expect(timesNeedEstimate(snapshot(null), after)).toBe(false);
+  });
+
   it('does NOT estimate merely because the recipe has never been backfilled', () => {
     // Every pre-#952 recipe looks like this on every unrelated save.
     const after = recipe();
