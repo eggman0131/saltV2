@@ -26,6 +26,20 @@ Two things dominate what a run costs: re-deriving context the issue already hold
 - **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would each have run unprompted — and when you are a campaign worker, a permission stop blocks on a human who is not watching.
 - Everything else: make the call, record it, continue.
 
+### An invariant you state, you make mechanical — or you state its limits
+
+Every code PR in campaign #1064 shipped the same defect: a safety property asserted in a header comment, a doc, a PR body or a test name, which the code did not actually guarantee. Five for five, all green on every gate. There is no lint rule for "this sentence is true", so this convention is the only control there is.
+
+Before writing a sentence claiming the code always, never or only does something:
+
+- **Pin it, or qualify it.** Either add a test that goes red when the property breaks — verified red by breaking the property first, not merely written — or state the claim with its actual boundary. The unqualified absolute nobody can falsify is the failure mode; a claim stated precisely enough to check is a good outcome even when checking falsifies it.
+- **Read it as an adversary holding the diff.** Which input, which state, which second construction path makes the sentence false?
+- **When you fix one instance, look at its neighbours.** The commonest way a true sentence goes false is a later fix introducing a second path the sentence never contemplated.
+
+Worked example (#1067). The script printed `Mode : APPLY — one AI call per recipe` and its DoD called `--verify` a read-only pre-flight. `--verify` in fact `process.exit`ed before the production confirm gate and the write loop, so a real run reported `Still pending : 0 ✔` and exit 0 having written nothing. The pin was one test: spawn the real CLI with `--project prod --apply --redo --confirm production --verify` and assert it refuses.
+
+Do not try to build a lint rule for this. The campaign's five instances were falsified by five different mechanisms — a wrong operand, a control-flow exit, a set membership that changes over time, a second construction path, a self-consistent assertion — and share no syntactic signature.
+
 ---
 
 ## Setup (once)
