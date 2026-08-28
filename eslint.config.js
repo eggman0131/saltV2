@@ -122,6 +122,58 @@ const DOMAIN_BROWSER_GLOBALS_MESSAGE =
 
 // Stage 1–4 / stage 5 internals that must only be reached via findClosestMatch
 // (or, in domain itself, matchOrCreate). Apps must never call these directly.
+// @salt/firebase-sync — the SDK entry points that exist exactly once (issue #928).
+//
+// `onSnapshot`, `getFunctions` and `httpsCallable` are how a live read and a
+// callable are STARTED, and the package spent most of its life with 14 copies of
+// the first and 30 of the last two. Each copy was free to answer a corrupt
+// document differently, forward a raw error or not, forget `success()`, or omit
+// the client timeout its Cloud Function needed — and every one of those actually
+// happened (#928 findings B2-008, B2-009, B2-010, B2-014, B2-015). Collapsing
+// them onto three helpers fixed the instances; this is what stops the next copy,
+// because a copy is now a lint error rather than a code-review catch.
+//
+// The three helpers below are the exemption, granted by SCOPE (they are excluded
+// from the block carrying this rule) rather than by an allowlist inside it. A
+// module that genuinely needs its own entry point carries an `eslint-disable`
+// with the reason written AT THE LINE — `init.ts`'s emulator wiring is the one
+// such case today — so a fourth exemption is visible in a diff instead of buried
+// in a config array.
+// The restrictions every file in the package carries, helpers included. Named
+// once because two config blocks below need the identical list — see the second
+// block for why it cannot simply be inherited.
+// (`forbidGroup` is a function declaration, so it is hoisted above this line.)
+const FIREBASE_SYNC_PATTERNS = [
+  ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
+  ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+  ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
+  ...forbidGroup(
+    ['@salt/observability', '@salt/observability/*'],
+    'Adapters must not import each other. Compose them at the application layer.',
+  ),
+];
+
+const FIREBASE_SYNC_HELPERS = [
+  'packages/adapters/firebase-sync/src/subscribeCollection.ts',
+  'packages/adapters/firebase-sync/src/subscribeDocument.ts',
+  'packages/adapters/firebase-sync/src/callFunction.ts',
+];
+
+const FIREBASE_SYNC_SDK_ENTRY_POINTS = [
+  {
+    name: 'firebase/firestore',
+    importNames: ['onSnapshot'],
+    message:
+      'Start a live read through subscribeCollection.ts or subscribeDocument.ts, not onSnapshot directly (issue #928). Those two own the parse loop, the rejection log and the onError contract; a fifteenth private listener is free to diverge on all three.',
+  },
+  {
+    name: 'firebase/functions',
+    importNames: ['getFunctions', 'httpsCallable'],
+    message:
+      'Call a Cloud Function through callFunction.ts, not httpsCallable directly (issue #928). It owns the region, the traceparent payload field, the client timeout and classifyCallableError; a thirty-first private wrapper is free to forget any of them.',
+  },
+];
+
 const STAGE_INTERNAL_NAMES = ['tokenMatch', 'stringSimilarity', 'synonymMatch', 'embedMatch'];
 const STAGE_INTERNAL_SUBPATHS = [
   '@salt/domain/**/queries/tokenMatch*',
@@ -417,19 +469,27 @@ export default [
   {
     files: ['packages/adapters/firebase-sync/**/*.ts'],
     rules: {
+      'no-restricted-imports': ['error', { patterns: FIREBASE_SYNC_PATTERNS }],
+    },
+  },
+
+  // @salt/firebase-sync, minus the three helpers — the SDK entry points that
+  // exist exactly once. See FIREBASE_SYNC_SDK_ENTRY_POINTS above for why.
+  //
+  // A SECOND block rather than a `paths` added to the one above, because
+  // `no-restricted-imports` is replaced wholesale by the last config that sets
+  // it: the helpers match only the first block and keep every restriction it
+  // carries, while everything else matches this one and gets those restrictions
+  // plus the entry-point paths. Hence `FIREBASE_SYNC_PATTERNS` is repeated here
+  // — dropping it would silently un-restrict IndexedDB, PostHog and the sibling
+  // adapter for the whole package.
+  {
+    files: ['packages/adapters/firebase-sync/**/*.ts'],
+    ignores: FIREBASE_SYNC_HELPERS,
+    rules: {
       'no-restricted-imports': [
         'error',
-        {
-          patterns: [
-            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
-            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
-            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
-            ...forbidGroup(
-              ['@salt/observability', '@salt/observability/*'],
-              'Adapters must not import each other. Compose them at the application layer.',
-            ),
-          ],
-        },
+        { patterns: FIREBASE_SYNC_PATTERNS, paths: FIREBASE_SYNC_SDK_ENTRY_POINTS },
       ],
     },
   },
@@ -528,12 +588,20 @@ export default [
     },
   },
 
+  // The firebase-sync fixtures re-declare what they are proving, because this
+  // block is the LAST config to set `no-restricted-imports` for these files and
+  // therefore replaces the package blocks above wholesale. `paths` is here for
+  // the same reason it is up there: `no-raw-listener.ts` proves the SDK
+  // entry-point rule errors, and a fixture that config never reaches would
+  // report nothing and fail as "expected a lint error but got none" — which is
+  // exactly how this was caught.
   {
     files: ['packages/adapters/firebase-sync/src/__boundary_tests__/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          paths: FIREBASE_SYNC_SDK_ENTRY_POINTS,
           patterns: [
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),

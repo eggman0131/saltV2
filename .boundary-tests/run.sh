@@ -23,6 +23,7 @@ packages/domain/src/__boundary_tests__/no-indexeddb.ts|domain cannot import Inde
 packages/domain/src/__boundary_tests__/no-node-builtin.ts|domain cannot import Node built-ins (pure layer)
 packages/domain/src/__boundary_tests__/no-browser-global.ts|domain cannot touch browser globals (pure layer)
 packages/adapters/firebase-sync/src/__boundary_tests__/no-indexeddb.ts|firebase-sync cannot import IndexedDB packages
+packages/adapters/firebase-sync/src/__boundary_tests__/no-raw-listener.ts|firebase-sync cannot reach onSnapshot/getFunctions/httpsCallable outside the three helpers
 packages/domain/src/canon/__boundary_tests__/no-cross-module-subpath.ts|canon cannot import sibling module internals (subpath)
 packages/domain/src/canon/__boundary_tests__/no-coordinator.ts|canon cannot import a coordinator
 packages/domain/src/auth/__boundary_tests__/no-cross-module-subpath.ts|auth cannot import sibling module internals (subpath)
