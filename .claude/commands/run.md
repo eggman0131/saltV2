@@ -189,6 +189,7 @@ The pre-commit hook is not a formality — it runs `lint-staged` (prettier `--wr
 - give the commit a generous Bash timeout. 40–60s is normal, and a commit that looks hung usually isn't.
 - prettier **rewrites files during the commit**, so what lands can differ from what you validated a moment ago. Check `git status --short` afterwards and amend if the hook left anything behind.
 - the overlap with step 3 is deliberate belt-and-braces, not licence to skip those gates earlier. By the time the hook catches something you have already written the commit message twice.
+- **it covers typecheck and depcruise only.** There is no `pre-push` hook — it ran the full suite on every push, a third run of what step 3 had just run and CI would run again, and it was deleted for that. So step 3's `pnpm test` is the only local run of the suite there is: skip it and the first thing to notice a broken test is CI, seven minutes after you have moved on.
 
 ### 6. Push, and start CI in the background
 
@@ -199,6 +200,8 @@ git fetch --no-tags origin main
 git rebase origin/main    # no-op when already current
 git push -u origin <type>/<slug>-ISSUE_NUMBER
 ```
+
+**Pushing runs no gates.** No hook fires on push, so the push itself proves nothing — step 3 is where the suite ran, and CI is what re-checks it. A push that takes minutes is the network, not a test run; do not kill it waiting for output that is not coming.
 
 **Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main` — the "Main" ruleset is strict, so a behind-branch must rebase before it can merge anyway, and that rebase re-triggers CI. `auto-update-prs.yml` does that automatically, but only for PRs with auto-merge enabled, which a `/run` draft is not: yours is yours to rebase. Push while behind and you get a green tick for suites that never ran (step 8). Add `--force-with-lease` only when the rebase actually rewrote commits.
 

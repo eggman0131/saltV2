@@ -9,8 +9,8 @@
 // in a worktree `core.hooksPath` points at a directory that does not exist
 // there, and in a clone it is not set at all (husky's `prepare` writes it into
 // `.git/config`, which is not cloned). Either way `pre-commit` (lint-staged,
-// typecheck, depcruise), `commit-msg` (commitlint) and `pre-push` (`pnpm test`)
-// silently do nothing until something runs `pnpm install`. Running that install
+// typecheck, depcruise) and `commit-msg` (commitlint) silently do nothing until
+// something runs `pnpm install`. Running that install
 // is what this script is for, and restoring the gates is why it is worth firing
 // unconditionally rather than leaving it to whoever remembers.
 //
