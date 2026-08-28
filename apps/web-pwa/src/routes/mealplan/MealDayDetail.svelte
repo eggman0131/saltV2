@@ -31,6 +31,8 @@
     type RecipeKind,
   } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
+  import { onDestroy } from 'svelte';
+  import { flushMealPlanWrites } from '../../lib/mealPlanService.js';
   import WeatherSummary from './WeatherSummary.svelte';
   import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
 
@@ -290,6 +292,15 @@
       noteEl.style.height = `${noteEl.scrollHeight}px`;
     }
   });
+
+  // Write timing lives in the service (issue #940) — this component still owns
+  // no day keys and no write shape, only the two moments at which "the user has
+  // stopped typing" is known here and nowhere else: leaving a field, and the
+  // sheet going away. The debounce alone would lose the last edit when the sheet
+  // is dismissed inside its window; blur alone never fires for Playwright's
+  // `fill()`. Hence both, and hence the one service import in an otherwise
+  // prop-driven component.
+  onDestroy(() => void flushMealPlanWrites());
 </script>
 
 <!-- Detail (Phase 2, #469): three stacked blocks, top→bottom —
@@ -334,6 +345,9 @@
         // re-seed above — that one needs the field empty, this one needs it
         // written. Read the DOM value here too, for the same reason.
         else if (e.currentTarget.value.trim()) attachPlaceholder();
+        // Last, so the re-seed / placeholder edits queued just above ride out
+        // with the note itself in one document write (issue #940).
+        void flushMealPlanWrites();
       }}
       data-testid={`${testid}-note`}></textarea>
 
@@ -577,8 +591,10 @@
         {#if noteShown}
           <!-- The note itself, on its own line under the name (ml-11 = the avatar
              plus the row gap). Still fire-and-forget per keystroke — the parent
-             owns the write; opening it here pins the row so clearing the text
-             mid-edit cannot yank the field out from under the caret. -->
+             owns the write, and since #940 the service coalesces the burst into
+             one document write, which blur flushes. Opening it here pins the row
+             so clearing the text mid-edit cannot yank the field out from under
+             the caret. -->
           <input
             class="ml-11 h-8 rounded-md border bg-background px-2 text-sm"
             placeholder="Add a note (e.g. portion for tomorrow)"
@@ -587,6 +603,7 @@
               notesOpen[m.id] = true;
               onAttendeeNote(m.id, e.currentTarget.value);
             }}
+            onblur={() => void flushMealPlanWrites()}
             aria-label={`${m.name} note`}
             data-testid={`${testid}-attnote-${m.id}`}
           />

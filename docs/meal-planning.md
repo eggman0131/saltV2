@@ -132,6 +132,24 @@ editing the *same* week simultaneously — acceptable for a single small
 household. Per-day documents were rejected as over-engineering for the
 concurrency profile.
 
+**Writes are coalesced, applies are not** (issue #940). Typing a dinner used to
+issue a whole-week `setDoc` per keystroke, fanned out to every family device.
+`mealPlanService` now splits the two halves of `persistWeek`: the optimistic
+store apply stays **synchronous**, and only the `setDoc` is debounced, keyed by
+the week document and flushed on blur and on the day sheet's teardown. The apply
+cannot be deferred — every mutator rebuilds the week from the store, so a
+deferred apply would let two edits to the same day build on the same stale
+document and discard one another.
+
+What that costs, stated plainly: an edit is lost if the tab or the process dies
+inside the window — at most the last 400 ms of typing, and pending writes are
+held in memory only because persisting them would need browser storage (CLAUDE.md
+Rule 3). A dropped connection loses nothing extra; the flush still calls `setDoc`
+and `persistentLocalCache` queues it. And the clobber window above **widens** by
+up to 400 ms: two devices editing the same week now have that much longer in
+which the later flush replaces the whole document, including the other's fields.
+That is the same LWW contract, given a longer fuse — not a new failure mode.
+
 ## Member references
 
 Store `memberId` only. Names, initials, and avatars are resolved at **display
