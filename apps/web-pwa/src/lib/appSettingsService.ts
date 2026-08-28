@@ -13,6 +13,7 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 // Admin-managed AI model settings (Phase 1 + Phase 2). Subscribes to the
 // per-environment `appSettings/singleton` doc. Each role defaults to today's
@@ -65,12 +66,12 @@ export function initAppSettingsSync(): () => void {
       _isCorrupt.set(false);
       _isLoading.set(false);
     },
-    (err) => {
+    subscriptionErrorHandler((err) => {
       // A corrupt doc surfaces here; keep the store null so effective config
       // falls back to defaults, and flag corruption for the UI.
       _isCorrupt.set(err.kind === 'StorageError' && err.reason === 'corruption');
       _isLoading.set(false);
-    },
+    }),
   );
   return () => {
     unsub?.();
