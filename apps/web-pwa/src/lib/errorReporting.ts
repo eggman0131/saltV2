@@ -1,6 +1,7 @@
 import type { ErrorReportingPort } from '@salt/domain';
 import type { DomainError, ReadResult, Result } from '@salt/shared-types';
 import { isAuthTransitioning } from '@salt/firebase-sync';
+import { getErrorReporter } from './errorReporter.js';
 
 // Shared report path for realtime-subscription onError sites across the service
 // layer (canon/chat/recipe/shopping). The category gate ("report the unexpected,
@@ -23,6 +24,36 @@ export function reportSubscriptionError(
 ): void {
   if (err.kind === 'AuthError' && isAuthTransitioning()) return;
   errors.report(rawError ?? err, err.kind);
+}
+
+// The default shape of a subscription onError handler (issue #1053).
+//
+// Wrap whatever the call site already does and reporting comes for free:
+//
+//   subscribeMembers(onSnapshot, subscriptionErrorHandler(() => stopSpinner()))
+//
+// Report FIRST, then the caller's work, so a throw in caller code cannot lose
+// the report. report() is best-effort and cannot itself throw (Rule 10,
+// posthogErrorReportingAdapter.ts), so nothing is risked by going first.
+//
+// This adds a side-effect and nothing else: no control flow, no return value, no
+// UI. A handler that deliberately shows the user nothing keeps showing nothing —
+// reporting is telemetry, not a toast.
+//
+// The returned handler's SECOND PARAMETER IS OPTIONAL, and that is load-bearing.
+// `(err, rawError?) => void` is assignable to a parameter typed
+// `(err) => void`, so one handler fits both adapter arities — the eight
+// one-argument subscription signatures in firebase-sync AND the two-argument
+// ones — with no call-site branching. When #928 Phase 1 widens those eight, the
+// raw Firestore error (which carries the real stack) starts flowing through to
+// PostHog here with ZERO change at any call site. Do not narrow it.
+export function subscriptionErrorHandler(
+  onError?: (err: DomainError) => void,
+): (err: DomainError, rawError?: unknown) => void {
+  return (err, rawError) => {
+    reportSubscriptionError(getErrorReporter(), err, rawError);
+    onError?.(err);
+  };
 }
 
 // Shared report path for WRITE/COMMAND failures across the service layer

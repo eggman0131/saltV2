@@ -35,6 +35,7 @@ import { ErrorCode, failure, success, type DomainError, type ReadResult } from '
 import { trackUsageEvent } from '@salt/observability';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 // Meal planning service (issue #169). Subscribes to the two singletons (config +
 // template) once and to the currently-selected week, re-subscribing as the user
@@ -212,7 +213,7 @@ function subscribeWeekDoc(start: string): void {
         _weeks.update((weeks) => (w ? { ...weeks, [start]: w } : without(weeks, start)));
         setLoading(start, false);
       },
-      () => setLoading(start, false),
+      subscriptionErrorHandler(() => setLoading(start, false)),
     ),
   );
 }
@@ -336,18 +337,18 @@ export function initMealPlanSync(): () => void {
       // kitchen's first guess was the wrong week identity entirely.
       syncKitchenSubscriptions();
     },
-    () => {
-      // Config load errors leave the last-known config (or null) in place; the
-      // adapter reports per the observability gate, nothing to do here.
-    },
+    // Config load errors leave the last-known config (or null) in place; the
+    // handler reports the failure to the category gate before doing so, which is
+    // all there is to do here.
+    subscriptionErrorHandler(),
   );
   templateUnsub = subscribeMealPlanTemplate(
     (t) => {
       _template.set(t);
     },
-    () => {
-      // As above — template errors leave the last-known template in place.
-    },
+    // As above — template errors leave the last-known template in place, and are
+    // reported by the handler.
+    subscriptionErrorHandler(),
   );
   syncWeekSubscription();
   return () => {

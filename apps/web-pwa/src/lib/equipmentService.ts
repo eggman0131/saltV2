@@ -24,6 +24,7 @@ import type { EquipmentManifest, EquipmentManifestPort } from '@salt/domain';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 export type { IdentifyEquipmentResult, PopulateEquipmentEntryResult };
 
@@ -87,9 +88,9 @@ export function initEquipmentSync(): () => void {
       _equipment.set(manifest);
       _isLoadingEquipment.set(false);
     },
-    (_err) => {
+    subscriptionErrorHandler(() => {
       _isLoadingEquipment.set(false);
-    },
+    }),
   );
 
   // The icon collection rides along on the same lifecycle. It has no loading
@@ -99,9 +100,10 @@ export function initEquipmentSync(): () => void {
   const unsubIcons = subscribeEquipmentIcons(
     (icons) => _equipmentIcons.set(icons),
     // A failed icon read costs the pictograms and nothing else — the kit list
-    // still works — so it is swallowed here rather than surfaced. The adapter
-    // has already categorised it.
-    (_err) => {},
+    // still works — so nothing is surfaced to the user here. It is still
+    // REPORTED: the handler sends it to the category gate before doing (in this
+    // case) no store work at all.
+    subscriptionErrorHandler(),
   );
 
   return () => {

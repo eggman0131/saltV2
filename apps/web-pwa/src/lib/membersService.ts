@@ -12,6 +12,7 @@ import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, derived, get, toStore } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 // ─── Reactive stores ─────────────────────────────────────────────────────────
 
@@ -34,11 +35,11 @@ export function initMembersSync(): () => void {
       _members.set(list);
       _isLoadingMembers.set(false);
     },
-    (_err) => {
+    subscriptionErrorHandler(() => {
       // A stream-level error (e.g. permission-denied) leaves the roster empty;
       // stop the spinner so the UI can settle rather than hang.
       _isLoadingMembers.set(false);
-    },
+    }),
   );
   return unsub;
 }

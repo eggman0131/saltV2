@@ -3,6 +3,7 @@ import type { DevSettingsDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 // Development settings service (issue #238). Subscribes to the per-environment
 // `devSettings/singleton` doc. Holds the AI-image generation kill-switches (canon
@@ -40,7 +41,7 @@ export function initDevSettingsSync(): () => void {
       _settings.set(s);
       _isLoading.set(false);
     },
-    () => _isLoading.set(false),
+    subscriptionErrorHandler(() => _isLoading.set(false)),
   );
   return () => {
     unsub?.();

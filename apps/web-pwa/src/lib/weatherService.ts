@@ -5,6 +5,7 @@ import { startUserActionSpan } from '@salt/observability';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { appSettings } from './appSettingsService.js';
+import { subscriptionErrorHandler } from './errorReporting.js';
 
 // Weather forecast cache subscription + on-access refresh (issue #382, Phase 3).
 // Mirrors appSettingsService.ts: subscribe to the weatherForecast/singleton cache
@@ -36,10 +37,10 @@ export function initWeatherSync(): () => void {
     (f) => {
       _forecast.set(f);
     },
-    () => {
-      // A corrupt or errored cache doc leaves the last-known forecast in place
-      // (or null if none loaded); the planner renders no weather either way.
-    },
+    // A corrupt or errored cache doc leaves the last-known forecast in place
+    // (or null if none loaded); the planner renders no weather either way — but
+    // the failure is reported, so a dead cache is not invisible.
+    subscriptionErrorHandler(),
   );
   return () => {
     unsub?.();
