@@ -195,6 +195,16 @@ export {
 } from './identifyRecipeKit.js';
 export type { IdentifyRecipeKitInput } from './identifyRecipeKit.js';
 
+// estimateRecipeTimes (issue #952, phase 2) — "how long does this ACTUALLY take?",
+// re-asked of a recipe already in the library against the definition phase 1 put
+// in recipeFieldRules. It answers three numbers and touches nothing else.
+export {
+  EstimateRecipeTimesInputSchema,
+  EstimateRecipeTimesAIOutputSchema,
+  EstimateRecipeTimesOutputSchema,
+} from './estimateRecipeTimes.js';
+export type { EstimateRecipeTimesInput, EstimateRecipeTimesOutput } from './estimateRecipeTimes.js';
+
 export {
   CategoriseRecipeInputSchema,
   CategoriseRecipeAIOutputSchema,
