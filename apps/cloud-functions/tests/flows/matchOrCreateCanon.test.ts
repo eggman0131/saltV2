@@ -354,3 +354,52 @@ describe('buildMatchOrCreatePorts', () => {
     expect(ports.isDerivedName).toBe(override);
   });
 });
+
+// ─── cleanInput carries every declared field (issue #937, Phase 2) ────────────
+//
+// `rawText` is declared on the wire schema, declared on the domain input,
+// consumed by the arbitration prompt, supplied by the shopping-list trigger and
+// by the recipe batch, and documented as forwarded — and the callable was the one
+// entry point that declared it and then dropped it before the domain saw it. No
+// client sends it today, so this closes a trap for the next caller rather than
+// fixing a live symptom.
+describe('matchOrCreateCanon flow — rawText reaches arbitration', () => {
+  it('forwards rawText from the callable input onto the arbitration request', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'new',
+      canonName: 'Tinned Tomatoes',
+      aisleId: 'produce',
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    await (matchOrCreateCanonFlow as Function)({
+      rawName: 'tinned tomatoes',
+      rawText: '2 x 400g tins of chopped tomatoes',
+    });
+
+    expect(mockArbitrate).toHaveBeenCalledWith(
+      expect.objectContaining({ rawText: '2 x 400g tins of chopped tomatoes' }),
+    );
+  });
+
+  it('omits rawText from the arbitration request when the caller sends none', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'new',
+      canonName: 'Tinned Tomatoes',
+      aisleId: 'produce',
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    await (matchOrCreateCanonFlow as Function)({ rawName: 'tinned tomatoes' });
+
+    expect(mockArbitrate).toHaveBeenCalledWith(
+      expect.not.objectContaining({ rawText: expect.anything() }),
+    );
+  });
+});

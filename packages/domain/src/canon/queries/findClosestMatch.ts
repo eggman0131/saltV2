@@ -55,7 +55,10 @@ export function findClosestMatch(
       skipReason: null,
     });
     if (winners.length === 1) {
-      return { kind: 'match', candidate: { item: winners[0]!, confidence: 1.0, stage: 1 } };
+      return {
+        kind: 'match',
+        candidate: { item: winners[0]!, confidence: 1.0, stage: 1, supportedStages: [1] },
+      };
     }
     if (winners.length > 1) {
       return {
@@ -64,6 +67,7 @@ export function findClosestMatch(
           item,
           confidence: 1.0,
           stage: 1 as MatchCandidate['stage'],
+          supportedStages: [1] as MatchCandidate['supportedStages'],
         })),
       };
     }
@@ -97,7 +101,10 @@ export function findClosestMatch(
     });
     if (passed && best !== undefined) {
       if (bestScore - secondScore >= ambiguityGap) {
-        return { kind: 'match', candidate: { item: best.item, confidence: best.score, stage: 2 } };
+        return {
+          kind: 'match',
+          candidate: { item: best.item, confidence: best.score, stage: 2, supportedStages: [2] },
+        };
       }
       const nearTies = scored.filter((c) => c.score >= MATCH_THRESHOLDS.stage2Stop);
       return {
@@ -106,6 +113,7 @@ export function findClosestMatch(
           item: c.item,
           confidence: c.score,
           stage: 2 as MatchCandidate['stage'],
+          supportedStages: [2] as MatchCandidate['supportedStages'],
         })),
       };
     }
@@ -132,7 +140,10 @@ export function findClosestMatch(
       skipReason: null,
     });
     if (synMatches.length === 1) {
-      return { kind: 'match', candidate: { item: synMatches[0]!, confidence: 1.0, stage: 3 } };
+      return {
+        kind: 'match',
+        candidate: { item: synMatches[0]!, confidence: 1.0, stage: 3, supportedStages: [3] },
+      };
     }
     if (synMatches.length > 1) {
       return {
@@ -141,6 +152,7 @@ export function findClosestMatch(
           item,
           confidence: 1.0,
           stage: 3 as MatchCandidate['stage'],
+          supportedStages: [3] as MatchCandidate['supportedStages'],
         })),
       };
     }
@@ -174,7 +186,10 @@ export function findClosestMatch(
     });
     if (passed && best !== undefined) {
       if (bestScore - secondScore >= ambiguityGap) {
-        return { kind: 'match', candidate: { item: best.item, confidence: best.score, stage: 4 } };
+        return {
+          kind: 'match',
+          candidate: { item: best.item, confidence: best.score, stage: 4, supportedStages: [4] },
+        };
       }
       const nearTies = scored.filter((c) => c.score >= MATCH_THRESHOLDS.stage4Stop);
       return {
@@ -183,6 +198,7 @@ export function findClosestMatch(
           item: c.item,
           confidence: c.score,
           stage: 4 as MatchCandidate['stage'],
+          supportedStages: [4] as MatchCandidate['supportedStages'],
         })),
       };
     }

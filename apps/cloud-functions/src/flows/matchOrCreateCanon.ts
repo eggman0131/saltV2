@@ -139,10 +139,16 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
   async (input) => {
     ensureObservabilityInitialised();
 
+    // Every field the wire schema declares, on the same conditional-spread
+    // pattern. `rawText` was declared, typed by the client caller and consumed by
+    // the arbitration prompt, but dropped here — the one entry point that
+    // advertised it and threw it away (issue #937). No caller sends it yet, so
+    // this closes a trap rather than fixing a live symptom.
     const cleanInput: MatchOrCreateInput = {
       rawName: input.rawName,
       ...(input.selectedAisleId !== undefined && { selectedAisleId: input.selectedAisleId }),
       ...(input.forceCreate !== undefined && { forceCreate: input.forceCreate }),
+      ...(input.rawText !== undefined && { rawText: input.rawText }),
     };
 
     // Trace context is extracted at the callable entrypoint (index.ts) and

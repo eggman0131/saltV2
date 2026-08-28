@@ -195,3 +195,42 @@ describe('findClosestMatch — no match', () => {
     expect(findClosestMatch([], 'tomato').kind).toBe('none');
   });
 });
+
+// Additive (issue #937, Phase 2). A candidate this function returns was built at
+// exactly one stage, so its provenance is that stage and nothing else — the
+// accumulation across signals happens later, in `buildShortlist`. Asserted rather
+// than assumed because the degraded AI-failure fallback now reads this field to
+// decide whether edit distance is a candidate's ONLY support, and a stage that
+// forgot to populate it would not fail to compile once the field exists.
+describe('findClosestMatch — candidate provenance', () => {
+  it('records the constructing stage as the sole supporting signal', () => {
+    const cases: Array<{ query: string; items: readonly CanonItem[]; stage: number }> = [
+      { query: 'tomato', items: catalog, stage: 1 },
+      {
+        query: 'extra virgin olive oil',
+        items: [item({ id: 'x', name: 'Extra Virgin Olive Oil Sauce' })],
+        stage: 2,
+      },
+      { query: 'evoo', items: catalog, stage: 3 },
+      { query: 'buttter', items: [item({ id: '3', name: 'Butter' })], stage: 4 },
+    ];
+
+    for (const { query, items, stage } of cases) {
+      const result = findClosestMatch(items, query);
+      expect(result.kind, query).toBe('match');
+      if (result.kind === 'match') {
+        expect(result.candidate.stage, query).toBe(stage);
+        expect(result.candidate.supportedStages, query).toEqual([stage]);
+      }
+    }
+  });
+
+  it('records provenance on ambiguous candidates too', () => {
+    const twins = [item({ id: 'a', name: 'Tomato' }), item({ id: 'b', name: 'tomato' })];
+    const result = findClosestMatch(twins, 'tomato');
+    expect(result.kind).toBe('ambiguous');
+    if (result.kind === 'ambiguous') {
+      for (const c of result.candidates) expect(c.supportedStages).toEqual([1]);
+    }
+  });
+});
