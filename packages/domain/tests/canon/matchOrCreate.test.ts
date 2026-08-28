@@ -1283,6 +1283,47 @@ describe('degraded fallback reads supporting signals, not the top-scoring one', 
   });
 });
 
+// Regression E (issue #937, B1). `classifyOne` builds the `needs_ai` shortlist
+// two ways: a stage1to4 'none' result goes through `buildShortlist`, which
+// accumulates `supportedStages` across signals — the path the cases above
+// exercise. A stage1to4 'ambiguous' result instead takes `stage1to4.candidates`
+// straight from `findClosestMatch`, where `runScoredStage` stamps every
+// candidate `supportedStages: [stage]` — for a stage-4 near-tie, `[4]`
+// regardless of what token overlap says. That needs a ≥2-item catalog that
+// reaches `kind: 'ambiguous'` at stage 4 — every case above uses a one-item
+// catalog, which can only ever reach `kind: 'none'`, which is why none of them
+// caught this.
+//
+// "Self Raising Flor" / "Self Rising Flour" vs input "self raising flour":
+// both score token overlap 0.667 (over aiThreshold 0.60) and Levenshtein 0.944
+// (over stage4Stop 0.85, gap 0.0 < ambiguityGap) — a genuine stage-4 ambiguous
+// tie where token overlap ALSO supports both candidates.
+describe('degraded fallback on an ambiguous stage-4 shortlist (#937 B1)', () => {
+  it('falls back to an existing candidate instead of minting a third item', async () => {
+    const flor = canonItem({ id: 'flor1', name: 'Self Raising Flor' });
+    const flour = canonItem({ id: 'flour1', name: 'Self Rising Flour' });
+    const { run, store } = makePipeline({
+      items: [flor, flour],
+      arbitration: {
+        arbitrate: async () => ({
+          kind: 'err',
+          error: { kind: 'NetworkError', reason: 'transient' },
+        }),
+      },
+    });
+
+    const result = await run('self raising flour');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect([flor.id, flour.id]).toContain(result.value.item.id);
+    }
+    // Bound to one of the two existing items, not a third `needs_approval` one.
+    expect(store.items).toHaveLength(2);
+  });
+});
+
 // Regression D. `MatchLogBuilder.start` resets inputItemCount to 0, and the
 // forceCreate branch used to return above the line that set it — so every forced
 // creation reported a canon snapshot of 0 into `canon.match` and Cloud Logging.

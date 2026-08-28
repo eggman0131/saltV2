@@ -293,7 +293,7 @@ async function classifyOne(
       kind: 'needs_ai',
       input,
       normalisedName,
-      shortlist: [...stage1to4.candidates],
+      shortlist: enrichAmbiguousSupport(stage1to4.candidates, normalisedName),
       reason: 'ambiguous_near_tie',
       aisles,
       logBuilder,
@@ -612,6 +612,43 @@ function buildShortlist(
 /** Adds a stage to a provenance list, keeping it deduplicated and ascending. */
 function withStage(stages: readonly MatchStage[], stage: MatchStage): readonly MatchStage[] {
   return stages.includes(stage) ? stages : [...stages, stage].sort((a, b) => a - b);
+}
+
+/**
+ * `findClosestMatch`'s 'ambiguous' result hands back candidates straight from
+ * `runScoredStage`, which stamps every one of them `supportedStages: [stage]`
+ * — the single stage that produced the near-tie, with no visibility into
+ * whether a DIFFERENT signal also clears `aiThreshold` for the same
+ * candidate. That is exactly what the degraded AI-failure fallback in
+ * `applyClassification` needs: a stage-4 near-tie where token overlap ALSO
+ * supports a candidate must not read as "edit distance is the only support"
+ * and fall through to `persistNew` (issue #937 B1).
+ *
+ * Re-scores each candidate against stage 2 (token overlap) and stage 4
+ * (string similarity) through the same accumulator `buildShortlist` uses,
+ * folding any signal at or above `aiThreshold` into `supportedStages`.
+ * Membership is untouched — this only enriches the field on the candidates
+ * `findClosestMatch` already selected, never adds or drops one — and
+ * `confidence`/`stage` are left as-is: they still record the top-scoring
+ * signal from the stage that actually produced this candidate list.
+ */
+function enrichAmbiguousSupport(
+  candidates: readonly MatchCandidate[],
+  normalisedName: string,
+): MatchCandidate[] {
+  return candidates.map((c) => {
+    const normItem = normaliseName(c.item.name);
+    let supportedStages = c.supportedStages;
+    for (const [stage, score] of [
+      [2, tokenMatch(normalisedName, normItem)],
+      [4, stringSimilarity(normalisedName, normItem)],
+    ] as const) {
+      if (score >= MATCH_THRESHOLDS.aiThreshold) {
+        supportedStages = withStage(supportedStages, stage);
+      }
+    }
+    return supportedStages === c.supportedStages ? c : { ...c, supportedStages };
+  });
 }
 
 // Takes the whole `ports` bag rather than just `store` so the synonym guard

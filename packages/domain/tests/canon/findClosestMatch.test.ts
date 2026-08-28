@@ -25,6 +25,15 @@ const catalog: readonly CanonItem[] = [
   item({ id: '4', name: 'Peanut Butter', synonyms: [] }),
 ];
 
+// More than 5 items — needed so the top-5 slice in `runScoredStage` is
+// actually reachable (see the structural-parity block below).
+const bigCatalog: readonly CanonItem[] = [
+  ...catalog,
+  item({ id: '5', name: 'Basil', synonyms: [] }),
+  item({ id: '6', name: 'Oregano', synonyms: [] }),
+  item({ id: '7', name: 'Garlic', synonyms: [] }),
+];
+
 describe('findClosestMatch — stage 1: exact normalised name match', () => {
   it('returns stage 1 match for exact name after normalisation', () => {
     const result = findClosestMatch(catalog, '  TOMATO  ');
@@ -242,8 +251,13 @@ describe('findClosestMatch — candidate provenance', () => {
 // the duplication carried — but only for as long as they stay merged, and nothing
 // stops a later edit inlining one of them again. These assertions are what make
 // the property survive that: they compare the two stages' emitted StageLogs
-// directly, so a threshold or gap change landing in one half and not the other
-// fails here rather than in production telemetry months later.
+// directly, so a divergence in the gap convention on miss and pass,
+// `consideredCount`, `skipReason`, the StageLog key set, or the top-5 slicing
+// landing in one half and not the other fails here rather than in production
+// telemetry months later. A per-stage threshold value itself is NOT pinned by
+// this block — both gap assertions derive their expectation from the same
+// emitted log, so they are self-consistent with any threshold; only a
+// gap-CONVENTION change is caught.
 //
 // Deliberately NOT asserted against stages 1 and 3: those are set-membership
 // shaped and use a different gap convention (1.0 single / 0.0 tie / null miss),
@@ -307,7 +321,22 @@ describe('findClosestMatch — stages 2 and 4 stay structurally identical', () =
       const s = stages.get(stage)!;
       expect(s.consideredCount, `stage ${stage}`).toBe(catalog.length);
       expect(s.skipReason, `stage ${stage}`).toBeNull();
-      expect(s.topCandidates.length, `stage ${stage}`).toBeLessThanOrEqual(5);
     }
+  });
+
+  // A 4-item catalog can never exercise the top-5 slice — the bound is
+  // unreachable, and the two stages are never actually compared to each
+  // other, so a re-inlined stage 4 sliced to e.g. `slice(0, 2)` would still
+  // pass a `toBeLessThanOrEqual(5)` assertion taken per stage. `bigCatalog`
+  // has more than five items, all scoring well below both stop thresholds
+  // against 'tomato paste' (verified: token and Levenshtein both ≤ 0.5), so
+  // both stages miss, both log to completion, and the slice is compared
+  // directly between the two stages rather than against a constant.
+  it('slices to the same top-5 bound in both stages — compared to each other, not just to 5', () => {
+    const stages = stagesFor(bigCatalog, 'tomato paste');
+    const s2 = stages.get(2)!;
+    const s4 = stages.get(4)!;
+    expect(s2.topCandidates.length).toBeLessThanOrEqual(5);
+    expect(s4.topCandidates.length).toBe(s2.topCandidates.length);
   });
 });
