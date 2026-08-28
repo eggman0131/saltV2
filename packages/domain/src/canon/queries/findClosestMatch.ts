@@ -55,7 +55,10 @@ export function findClosestMatch(
       skipReason: null,
     });
     if (winners.length === 1) {
-      return { kind: 'match', candidate: { item: winners[0]!, confidence: 1.0, stage: 1 } };
+      return {
+        kind: 'match',
+        candidate: { item: winners[0]!, confidence: 1.0, stage: 1, supportedStages: [1] },
+      };
     }
     if (winners.length > 1) {
       return {
@@ -64,6 +67,7 @@ export function findClosestMatch(
           item,
           confidence: 1.0,
           stage: 1 as MatchCandidate['stage'],
+          supportedStages: [1] as MatchCandidate['supportedStages'],
         })),
       };
     }
@@ -71,44 +75,17 @@ export function findClosestMatch(
 
   // Stage 2: token overlap — score all items, take top 5
   {
-    const t0 = Date.now();
-    const scored = items.map((item) => ({
-      item,
-      score: tokenMatch(target, normaliseName(item.name)),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, 5);
-    const best = top[0];
-    const bestScore = best?.score ?? 0;
-    const passed = bestScore >= MATCH_THRESHOLDS.stage2Stop;
-    const secondScore = top[1]?.score ?? 0;
-    const gap = passed ? bestScore - secondScore : bestScore - MATCH_THRESHOLDS.stage2Stop;
-    log?.addStage({
+    const result = runScoredStage({
+      items,
+      target,
+      ambiguityGap,
+      log,
       stage: 2,
       stageName: 'token_overlap',
-      threshold: MATCH_THRESHOLDS.stage2Stop,
-      passed,
-      consideredCount: items.length,
-      durationMs: Date.now() - t0,
-      topCandidates: top.map((c) => ({ itemId: c.item.id, itemName: c.item.name, score: c.score })),
-      bestScore,
-      gap,
-      skipReason: null,
+      scorer: tokenMatch,
+      stop: MATCH_THRESHOLDS.stage2Stop,
     });
-    if (passed && best !== undefined) {
-      if (bestScore - secondScore >= ambiguityGap) {
-        return { kind: 'match', candidate: { item: best.item, confidence: best.score, stage: 2 } };
-      }
-      const nearTies = scored.filter((c) => c.score >= MATCH_THRESHOLDS.stage2Stop);
-      return {
-        kind: 'ambiguous',
-        candidates: nearTies.map((c) => ({
-          item: c.item,
-          confidence: c.score,
-          stage: 2 as MatchCandidate['stage'],
-        })),
-      };
-    }
+    if (result) return result;
   }
 
   // Stage 3: synonym exact match
@@ -132,7 +109,10 @@ export function findClosestMatch(
       skipReason: null,
     });
     if (synMatches.length === 1) {
-      return { kind: 'match', candidate: { item: synMatches[0]!, confidence: 1.0, stage: 3 } };
+      return {
+        kind: 'match',
+        candidate: { item: synMatches[0]!, confidence: 1.0, stage: 3, supportedStages: [3] },
+      };
     }
     if (synMatches.length > 1) {
       return {
@@ -141,6 +121,7 @@ export function findClosestMatch(
           item,
           confidence: 1.0,
           stage: 3 as MatchCandidate['stage'],
+          supportedStages: [3] as MatchCandidate['supportedStages'],
         })),
       };
     }
@@ -148,45 +129,95 @@ export function findClosestMatch(
 
   // Stage 4: Levenshtein string similarity — score all items, take top 5
   {
-    const t0 = Date.now();
-    const scored = items.map((item) => ({
-      item,
-      score: stringSimilarity(target, normaliseName(item.name)),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, 5);
-    const best = top[0];
-    const bestScore = best?.score ?? 0;
-    const passed = bestScore >= MATCH_THRESHOLDS.stage4Stop;
-    const secondScore = top[1]?.score ?? 0;
-    const gap = passed ? bestScore - secondScore : bestScore - MATCH_THRESHOLDS.stage4Stop;
-    log?.addStage({
+    const result = runScoredStage({
+      items,
+      target,
+      ambiguityGap,
+      log,
       stage: 4,
       stageName: 'string_similarity',
-      threshold: MATCH_THRESHOLDS.stage4Stop,
-      passed,
-      consideredCount: items.length,
-      durationMs: Date.now() - t0,
-      topCandidates: top.map((c) => ({ itemId: c.item.id, itemName: c.item.name, score: c.score })),
-      bestScore,
-      gap,
-      skipReason: null,
+      scorer: stringSimilarity,
+      stop: MATCH_THRESHOLDS.stage4Stop,
     });
-    if (passed && best !== undefined) {
-      if (bestScore - secondScore >= ambiguityGap) {
-        return { kind: 'match', candidate: { item: best.item, confidence: best.score, stage: 4 } };
-      }
-      const nearTies = scored.filter((c) => c.score >= MATCH_THRESHOLDS.stage4Stop);
-      return {
-        kind: 'ambiguous',
-        candidates: nearTies.map((c) => ({
-          item: c.item,
-          confidence: c.score,
-          stage: 4 as MatchCandidate['stage'],
-        })),
-      };
-    }
+    if (result) return result;
   }
 
   return { kind: 'none' };
+}
+
+/**
+ * Stages 2 and 4 are one procedure run with a different scorer: score every item,
+ * sort, log the top 5, then either match on a clear gap or hand back the near-ties
+ * as ambiguous. The two copies differed in exactly four things — the scorer, the
+ * stage ordinal, the stage name and the stop threshold — so they are the four
+ * parameters here.
+ *
+ * Written once because the duplication's only real cost was divergence: a future
+ * threshold or gap change would land in one half and not the other, silently. The
+ * structural-parity test in `findClosestMatch.test.ts` is what keeps that true
+ * from here, since a helper can always be inlined again by a later edit.
+ *
+ * Returns `null` for "this stage did not decide", so the caller falls through to
+ * the next one. Note that a stage log is emitted either way — falling through is
+ * not the same as being skipped, and `passed: false` records the attempt.
+ *
+ * Stages 1 and 3 are deliberately NOT folded in. They are set-membership shaped
+ * (a winner list, not a score ranking) and use a different `gap` convention —
+ * 1.0 for a single winner, 0.0 for a tie, null for a miss — documented in
+ * docs/matching-pipeline.md. Forcing them through this shape would mean
+ * parameterising the gap arithmetic too, at which point the "one procedure" claim
+ * stops being true.
+ */
+function runScoredStage(params: {
+  readonly items: readonly CanonItem[];
+  readonly target: string;
+  readonly ambiguityGap: number;
+  readonly log: MatchLogBuilder | undefined;
+  readonly stage: 2 | 4;
+  readonly stageName: 'token_overlap' | 'string_similarity';
+  readonly scorer: (normA: string, normB: string) => number;
+  readonly stop: number;
+}): FindClosestMatchResult | null {
+  const { items, target, ambiguityGap, log, stage, stageName, scorer, stop } = params;
+  const t0 = Date.now();
+  const scored = items.map((item) => ({
+    item,
+    score: scorer(target, normaliseName(item.name)),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, 5);
+  const best = top[0];
+  const bestScore = best?.score ?? 0;
+  const passed = bestScore >= stop;
+  const secondScore = top[1]?.score ?? 0;
+  const gap = passed ? bestScore - secondScore : bestScore - stop;
+  log?.addStage({
+    stage,
+    stageName,
+    threshold: stop,
+    passed,
+    consideredCount: items.length,
+    durationMs: Date.now() - t0,
+    topCandidates: top.map((c) => ({ itemId: c.item.id, itemName: c.item.name, score: c.score })),
+    bestScore,
+    gap,
+    skipReason: null,
+  });
+  if (!passed || best === undefined) return null;
+  if (bestScore - secondScore >= ambiguityGap) {
+    return {
+      kind: 'match',
+      candidate: { item: best.item, confidence: best.score, stage, supportedStages: [stage] },
+    };
+  }
+  const nearTies = scored.filter((c) => c.score >= stop);
+  return {
+    kind: 'ambiguous',
+    candidates: nearTies.map((c) => ({
+      item: c.item,
+      confidence: c.score,
+      stage,
+      supportedStages: [stage],
+    })),
+  };
 }

@@ -14,6 +14,8 @@ The pipeline is invoked from two server-side entry points:
 
 2. **`onShoppingListItemWrite` Firestore trigger** — fires on every write to `shoppingLists/{listId}/items/{itemId}`. Idempotency: skips when `matchState !== 'pending'` or `canonId` is already set (CF own write). Before matching, runs `parseShoppingListEntry` (deterministic) to split the raw entry into a clean item name, an optional trailing context note, and optional structured `amount` (number) and `unit` (string); for compound entries (≥3 words) where neither context nor a structured amount was extracted, falls back to the `EntryParsePort` AI adapter and degrades gracefully on failure. The clean name and the original `rawText` are fed to `matchOrCreate` via `buildMatchOrCreatePorts`; `rawText` is forwarded as optional context to the arbitration AI prompt when it differs from the normalised name. On success, if the name changed and the item's `notes` field is currently empty, writes `rawText: cleanName` and `notes: context` atomically with `canonId` and `matchState`. Writes `canonId`, `matchState` (`matched` | `needs_approval` | `failed`), and — when parsed — `amount` and `unit` back to the item document on both success and failure paths. This is the matching entry point for shopping list adds.
 
+Both server entry points build their ports through `buildMatchOrCreatePorts`, which reads `productForms` once per invocation and supplies the `isDerivedName` predicate the synonym guard consults — so a name a product form already claims ("garlic clove" against a Garlic Bulbs form) is never recorded as a synonym of the parent, whichever route the text arrived on. Before issue #937 only the recipe-canonicalisation batch and the client fast path supplied it, and the callable and the trigger wrote the derivation into the identity field. The recipe batch still passes its own predicate as an explicit override, because its `forms` array is mutable: a form minted mid-batch must protect the next ingredient in the same recipe, which a snapshot taken in the builder cannot do. Two limits are worth stating plainly rather than implying: a `productForms` read that **fails** omits the predicate and the append proceeds exactly as it did before the guard existed (Rule 10 — degrade, never a blanket refusal to record synonyms); and this covers ports built by that function, not every possible caller — the browser fast path assembles its own bag in `canonService.ts` and supplies its own predicate from the canon subscription.
+
 The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF callable; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
 
 `findClosestMatch` is the only stage 1–4 entry point, and neither app may reach past it to `tokenMatch`, `stringSimilarity`, `synonymMatch` or `embedMatch` (stage 5): `no-restricted-imports` in `eslint.config.js` forbids all four by name off `@salt/domain` and by deep subpath, with a `__boundary_tests__` fixture per app asserting the error. That lint rule is the whole guarantee — do not read it as "these are not exported", because `embedMatch` is on the canon barrel (`packages/domain/src/canon/index.ts`).
@@ -65,7 +67,7 @@ flowchart TD
     ARB -->|AI 'new' from non-empty shortlist| NEWCHK{canonName already\nin snapshot?}
     NEWCHK -->|yes| AIMATCH
     NEWCHK -->|no| CREATEAI2[Create new w/ AI metadata]
-    ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence\nnon-stage-4 candidate; needs_approval\nstage-4-only shortlist creates new\nReturn ai_arbitrated]
+    ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence candidate\nnot supported SOLELY by stage 4; needs_approval\nstage-4-only shortlist creates new\nReturn ai_arbitrated]
 
     MATCH --> LOG[Log canon.match path=cf]
     AIMATCH --> LOG
@@ -100,7 +102,7 @@ Normalised Levenshtein distance. Threshold **0.85**. Same ambiguity-gap rule as 
 
 ### Stage 5 — Embedding cosine
 
-Gemini embedding of the query, cosine similarity against every canon item with a stored embedding. Threshold **0.75**. Embedding *never* auto-matches on its own — it only feeds the shortlist. Tie-break favours already-approved items so the review queue isn't padded.
+Gemini embedding of the query, cosine similarity against every canon item with a stored embedding. Threshold **0.75**. Embedding _never_ auto-matches on its own — it only feeds the shortlist. Tie-break favours already-approved items so the review queue isn't padded.
 
 ### Stage 6 — Merged shortlist + AI arbitration
 
@@ -133,19 +135,19 @@ The pipeline falls back to the **highest-confidence shortlist candidate that is 
 
 #### Stage 4 (edit distance) is AI-confirm-only
 
-Edit-distance (stage-4) candidates in the `[0.60, 0.85)` band are spelling coincidences, not confident matches — `"olives"` and `"limes"` normalise to `"olive"`/`"lime"` and score exactly **0.60** Levenshtein. Such a candidate binds **only** when the AI returns a positive `kind: 'match'` for it. It never binds via the lone-candidate shortcut (Stage 6, above) nor via this degraded fallback. A stage-4-only shortlist therefore resolves to a **new item** on AI error / unknown-id / `no-match`, rather than silently merging unrelated foods. Token overlap (stage 2) and embedding (stage 5) candidates remain valid fallback targets. Genuine typos are unaffected: they either clear stage 4's 0.85 stop or normalise to an exact stage-1 hit inside `findClosestMatch`, never reaching this band.
+Edit-distance (stage-4) candidates in the `[0.60, 0.85)` band are spelling coincidences, not confident matches — `"olives"` and `"limes"` normalise to `"olive"`/`"lime"` and score exactly **0.60** Levenshtein. Such a candidate binds **only** when the AI returns a positive `kind: 'match'` for it. It never binds via the lone-candidate shortcut (Stage 6, above) nor via this degraded fallback. A shortlist candidate supported **only** by edit distance therefore resolves to a **new item** on AI error / unknown-id / `no-match`, rather than silently merging unrelated foods. Token overlap (stage 2) and embedding (stage 5) candidates remain valid fallback targets — including a candidate that edit distance ALSO supports, and even when edit distance is the signal that scored it highest. The fallback reads `MatchCandidate.supportedStages` (every signal above `aiThreshold`), not `stage` (the single top-scoring one): reading `stage` there meant a candidate that token overlap genuinely backed was skipped whenever its Levenshtein score came out higher — "chick pea flour" against "Chick Pea Flakes", token 0.667 / Levenshtein 0.800 — minting a new item where the pipeline promised to bind an existing one (issue #937). The lone-candidate shortcut at Stage 6 deliberately still reads `stage`, because it asks the other question — "is token overlap the STRONGEST support" — and widening it is exactly what #248 removed. Genuine typos are unaffected: they either clear stage 4's 0.85 stop or normalise to an exact stage-1 hit inside `findClosestMatch`, never reaching this band.
 
 The empty-shortlist case is different: with no candidates to fall back to, AI error or `'no-match'` results in a fresh create (with whatever aisle/metadata arbitration managed to return, or none). All four entry points (canon add, shopping list add, recipe add, recipe ingredient update) inherit this same rule via the shared CF.
 
-**Failsafe before `persistNew` (every `AI 'new'` path — empty-shortlist, `forceCreate`, and non-empty-shortlist):** After arbitration returns a `canonName` for the new item, `applyClassification` runs `findSnapshotMatch(canonName, snapshot)` before calling `persistNew`. If the name already exists in the snapshot (e.g., the AI correctly returns "Garlic" for a raw input of "1 head of garlic" that scored below threshold on stages 1–4), the pipeline resolves to the existing item as `ai_arbitrated` rather than creating a duplicate. This guard is needed because callers such as `authorRecipe` may pass raw ingredient text — quantity/unit tokens collapse stage 1–4 scores below threshold, landing on the empty-shortlist path, yet the AI often identifies the right canonical name. The guard is applied identically on the non-empty-shortlist branch: a shortlist full of near-misses is what proves the AI's answer is often an *existing* item under a rawName that failed every deterministic stage, so a non-empty shortlist makes a duplicate more likely, not less — guarding only the empty case had it backwards.
+**Failsafe before `persistNew` (every `AI 'new'` path — empty-shortlist, `forceCreate`, and non-empty-shortlist):** After arbitration returns a `canonName` for the new item, `applyClassification` runs `findSnapshotMatch(canonName, snapshot)` before calling `persistNew`. If the name already exists in the snapshot (e.g., the AI correctly returns "Garlic" for a raw input of "1 head of garlic" that scored below threshold on stages 1–4), the pipeline resolves to the existing item as `ai_arbitrated` rather than creating a duplicate. This guard is needed because callers such as `authorRecipe` may pass raw ingredient text — quantity/unit tokens collapse stage 1–4 scores below threshold, landing on the empty-shortlist path, yet the AI often identifies the right canonical name. The guard is applied identically on the non-empty-shortlist branch: a shortlist full of near-misses is what proves the AI's answer is often an _existing_ item under a rawName that failed every deterministic stage, so a non-empty shortlist makes a duplicate more likely, not less — guarding only the empty case had it backwards.
 
-| AI response (non-empty shortlist) | Pipeline action | Decision returned |
-|---|---|---|
-| `match` with valid `itemId` | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present | `ai_arbitrated` |
-| `match` with unknown `itemId` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
-| `new` (with metadata) | Snapshot-name guard first (see above); if `canonName` already exists, resolve to it as `ai_arbitrated` — otherwise create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` / `ai_arbitrated` |
-| `no-match` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
-| Error | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
+| AI response (non-empty shortlist) | Pipeline action                                                                                                                                                                                            | Decision returned           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `match` with valid `itemId`       | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present                                                                                                                              | `ai_arbitrated`             |
+| `match` with unknown `itemId`     | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new                                                                                           | `ai_arbitrated` / `created` |
+| `new` (with metadata)             | Snapshot-name guard first (see above); if `canonName` already exists, resolve to it as `ai_arbitrated` — otherwise create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` / `ai_arbitrated` |
+| `no-match`                        | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new                                                                                           | `ai_arbitrated` / `created` |
+| Error                             | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new                                                                                           | `ai_arbitrated` / `created` |
 
 ### Why fall back rather than create new
 
@@ -159,13 +161,13 @@ A non-empty shortlist means at least one item scored above `aiThreshold` (0.60) 
 
 ### What changed: the `pendingChanges` record (issue #193)
 
-`needs_approval` says *look at this*; `reasoning` says *why the AI decided what it did*, and only when arbitration ran. Neither says **what actually changed on the item** — and one of the flags is not the pipeline's doing at all. `CanonItem.pendingChanges` closes that gap: an optional, additive array of structured records written at the pure-domain set-sites of `needs_approval`, cleared on approve.
+`needs_approval` says _look at this_; `reasoning` says _why the AI decided what it did_, and only when arbitration ran. Neither says **what actually changed on the item** — and one of the flags is not the pipeline's doing at all. `CanonItem.pendingChanges` closes that gap: an optional, additive array of structured records written at the pure-domain set-sites of `needs_approval`, cleared on approve.
 
-| Kind | Recorded by | Says |
-| --- | --- | --- |
-| `synonym_added` | `appendCanonSynonym` | the normalised `synonym` it appended, plus the `rawInput` it came from when the two differ |
-| `created` | `createCanonItem` (only when the new item needs approval) | the item was newly minted, plus its `rawInput` |
-| `aisle_cleared` | `mergeAisles` / `deleteAisles`, **unassign path only** | the item lost its aisle to the user's own aisle admin — `origin` (`aisle_merge` \| `aisle_delete`) is what lets the UI attribute it to a human action rather than an AI one. `fromAisleId` is provenance only: that aisle has just been merged away or deleted, so it never resolves to a name and is never displayed |
+| Kind            | Recorded by                                               | Says                                                                                                                                                                                                                                                                                                                  |
+| --------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `synonym_added` | `appendCanonSynonym`                                      | the normalised `synonym` it appended, plus the `rawInput` it came from when the two differ                                                                                                                                                                                                                            |
+| `created`       | `createCanonItem` (only when the new item needs approval) | the item was newly minted, plus its `rawInput`                                                                                                                                                                                                                                                                        |
+| `aisle_cleared` | `mergeAisles` / `deleteAisles`, **unassign path only**    | the item lost its aisle to the user's own aisle admin — `origin` (`aisle_merge` \| `aisle_delete`) is what lets the UI attribute it to a human action rather than an AI one. `fromAisleId` is provenance only: that aisle has just been merged away or deleted, so it never resolves to a name and is never displayed |
 
 Properties worth not rediscovering:
 
@@ -195,15 +197,15 @@ renames them — `id` becomes `canon_correlation_id` (PostHog) or `correlationId
 [Adapter serialisation](#adapter-serialisation) before writing a query against
 either destination.
 
-| Field | Type | Source |
-|---|---|---|
-| `id` | string | One per resolution |
-| `rawInput` | string | Caller's `rawName` |
-| `normalizedInput` | string | `normaliseName(rawName)` |
-| `inputItemCount` | number | Size of canon snapshot considered |
-| `totalDurationMs` | number | Wall-clock for the resolution |
-| `finalDecision` | `'matched' \| 'created' \| 'ai_arbitrated'` | Final outcome |
-| `finalItemId` / `finalItemName` | string \| null | Resolved `CanonItem` |
+| Field                           | Type                                        | Source                                                                                                                                                                                                |
+| ------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                            | string                                      | One per resolution                                                                                                                                                                                    |
+| `rawInput`                      | string                                      | Caller's `rawName`                                                                                                                                                                                    |
+| `normalizedInput`               | string                                      | `normaliseName(rawName)`                                                                                                                                                                              |
+| `inputItemCount`                | number                                      | Size of canon snapshot considered. Recorded before the `forceCreate` branch, so a forced creation reports the real snapshot size rather than the 0 `MatchLogBuilder.start` resets it to (issue #937). |
+| `totalDurationMs`               | number                                      | Wall-clock for the resolution                                                                                                                                                                         |
+| `finalDecision`                 | `'matched' \| 'created' \| 'ai_arbitrated'` | Final outcome                                                                                                                                                                                         |
+| `finalItemId` / `finalItemName` | string \| null                              | Resolved `CanonItem`                                                                                                                                                                                  |
 
 The `'fast' | 'cf'` path discriminator is **not** a field on the entry — it is a
 second argument the adapter passes alongside it, which is why the same entry can
@@ -213,18 +215,18 @@ be emitted from either side unchanged.
 
 Each stage record is one entry in the `stages[]` array. Fields and types are identical across fast-path and CF emissions.
 
-| Field | Type | Notes |
-|---|---|---|
-| `stage` | number (1–4) | Stage ordinal |
-| `stageName` | `'exact_name' \| 'token_overlap' \| 'synonym' \| 'string_similarity'` | Stable identifier |
-| `threshold` | number | Stop threshold for the stage |
-| `passed` | boolean | Whether the stage produced ≥1 candidate above threshold |
-| `consideredCount` | number | Items scored at this stage (= canon snapshot size for 1–4) |
-| `durationMs` | number | Stage wall-clock |
-| `topCandidates[]` | `{ itemId, itemName, score }[]` | Top 5 candidates by score (stages 2 & 4 always; stages 1 & 3 only when `passed`) |
-| `bestScore` | number \| null | Highest score this stage observed (1.0 for stages 1 & 3 hits) |
-| `gap` | number \| null | Stage 1: 1.0 single / 0.0 tie / null miss. Stage 2/4: (best − second) when `passed`, else (best − threshold). Stage 3: same convention as stage 1. |
-| `skipReason` | `null` for stages 1–4 | Reserved for stages 5–6 |
+| Field             | Type                                                                  | Notes                                                                                                                                              |
+| ----------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`           | number (1–4)                                                          | Stage ordinal                                                                                                                                      |
+| `stageName`       | `'exact_name' \| 'token_overlap' \| 'synonym' \| 'string_similarity'` | Stable identifier                                                                                                                                  |
+| `threshold`       | number                                                                | Stop threshold for the stage                                                                                                                       |
+| `passed`          | boolean                                                               | Whether the stage produced ≥1 candidate above threshold                                                                                            |
+| `consideredCount` | number                                                                | Items scored at this stage (= canon snapshot size for 1–4)                                                                                         |
+| `durationMs`      | number                                                                | Stage wall-clock                                                                                                                                   |
+| `topCandidates[]` | `{ itemId, itemName, score }[]`                                       | Top 5 candidates by score (stages 2 & 4 always; stages 1 & 3 only when `passed`)                                                                   |
+| `bestScore`       | number \| null                                                        | Highest score this stage observed (1.0 for stages 1 & 3 hits)                                                                                      |
+| `gap`             | number \| null                                                        | Stage 1: 1.0 single / 0.0 tie / null miss. Stage 2/4: (best − second) when `passed`, else (best − threshold). Stage 3: same convention as stage 1. |
+| `skipReason`      | `null` for stages 1–4                                                 | Reserved for stages 5–6                                                                                                                            |
 
 #### Per-stage outcomes
 
@@ -241,26 +243,28 @@ These stages run only on the CF (the client fast-path never embeds or arbitrates
 
 **Stage 5 — `embedding`** (threshold 0.75)
 
-| Field | Notes |
-|---|---|
-| `topCandidates[].score` | Cosine similarity |
-| `topCandidates[].reason` | `cosine:<score>` for traceability |
-| `bestScore` | Best cosine observed; null if skipped |
-| `gap` | best − stage5Stop (negative when not passing) |
-| `skipReason` | `'no_items'` (no canon items have an embedding) or `'embedding_error'` (port returned err); `null` when the stage ran |
+| Field                    | Notes                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `topCandidates[].score`  | Cosine similarity                                                                                                     |
+| `topCandidates[].reason` | `cosine:<score>` for traceability                                                                                     |
+| `bestScore`              | Best cosine observed; null if skipped                                                                                 |
+| `gap`                    | best − stage5Stop (negative when not passing)                                                                         |
+| `skipReason`             | `'no_items'` (no canon items have an embedding) or `'embedding_error'` (port returned err); `null` when the stage ran |
 
 **Stage 6 — merged shortlist** (`aiThreshold` 0.60)
 
-Stage 6 is implicit in `matchOrCreate`'s `buildShortlist`: it merges stage 5's passing embeddings with token overlap ≥ 0.60 and string similarity ≥ 0.60, deduplicates by item id (highest-confidence wins), and orders by confidence. There is no separate `StageLog` entry for stage 6 today; arbitration over the resulting shortlist is captured in the top-level `arbitration` field instead:
+Stage 6 is implicit in `matchOrCreate`'s `buildShortlist`: it merges stage 5's passing embeddings with token overlap ≥ 0.60 and string similarity ≥ 0.60, deduplicates by item id (highest-confidence wins), and orders by confidence. A merged candidate records provenance in two fields that answer two different questions: `confidence` and `stage` are the best score and the single signal that produced it (ties keep the earlier winner), while `supportedStages` accumulates EVERY signal that cleared `aiThreshold` — ascending, deduplicated, and always containing `stage`. The degraded fallback reads `supportedStages`; the lone-candidate shortcut reads `stage`. `supportedStages` is a required field precisely so a future construction site cannot omit provenance and be read as "supported only by `stage`". There is no separate `StageLog` entry for stage 6 today; arbitration over the resulting shortlist is captured in the top-level `arbitration` field instead:
 
-| `arbitration` field | Notes |
-|---|---|
-| `reason` | `'ambiguous_near_tie' \| 'near_miss_shortlist' \| 'aisle_suggestion'` |
-| `candidatesIn` | Shortlist size at arbitration time |
-| `aislesIn` | Aisle list size sent to the AI |
-| `prompt` / `rawResponse` | Truncated to 2000 chars where the property cap applies |
-| `outcome` | `'match' \| 'new' \| 'no-match' \| 'error'` |
-| `durationMs` | AI call wall-clock |
+`buildShortlist` is not the only construction site: a `reason: 'ambiguous_near_tie'` shortlist never reaches stage 5/6 at all — `findClosestMatch` already returned an `'ambiguous'` near-tie at stage 2 or 4, each candidate stamped `supportedStages: [stage]` by `runScoredStage` with no visibility into the other signal. `classifyOne` runs `enrichAmbiguousSupport` on that list before arbitration, re-scoring every candidate against stage 2 and stage 4 through the same accumulator `buildShortlist` uses and folding in any signal that also clears `aiThreshold`. Membership is untouched — only `supportedStages` is enriched — so the degraded fallback sees complete provenance regardless of which of the two `needs_ai` paths produced the shortlist.
+
+| `arbitration` field      | Notes                                                                 |
+| ------------------------ | --------------------------------------------------------------------- |
+| `reason`                 | `'ambiguous_near_tie' \| 'near_miss_shortlist' \| 'aisle_suggestion'` |
+| `candidatesIn`           | Shortlist size at arbitration time                                    |
+| `aislesIn`               | Aisle list size sent to the AI                                        |
+| `prompt` / `rawResponse` | Truncated to 2000 chars where the property cap applies                |
+| `outcome`                | `'match' \| 'new' \| 'no-match' \| 'error'`                           |
+| `durationMs`             | AI call wall-clock                                                    |
 
 ### Adapter serialisation
 
@@ -302,6 +306,7 @@ A recipe canonicalises many ingredient names at once (a 35-ingredient recipe). T
   3. **Apply** — `applyClassification(classification, arbOutcome, snapshot, ports)` applies the classification + AI result and persists via `ports.store.upsert`, **in order**, folding each resolved `CanonItem` back into the snapshot so later inputs see it.
 
   Returns an order-preserving array of `MatchOrCreateResult`.
+
 - **`matchOrCreate(input, ports)`** — unchanged public signature, now a one-line alias: `(await matchOrCreateBatch([input], ports))[0]`. The hot single-item path (add-item, shopping-list trigger, single ingredient update) runs through the same three phases with a batch of one — a one-element embed call, one classify, at most one arbitrate. Negligible overhead; zero behavioural difference.
 
 The single source of truth for matching behaviour is the `classifyOne` → arbitrate → `applyClassification` chain; there is no separate per-item resolver and no second implementation to keep in step. The parity test below confirms `batch([x])` behaves like `batch([x, y, z])` for the same `x` — true by construction — rather than reconciling two code paths.
@@ -325,7 +330,7 @@ Identity is structural — single-item is literally `matchOrCreateBatch([input])
 - Running each input of a fixed corpus as its own `batch([x])` against an accumulating store yields the same per-input `decision`, resolved item id, synonyms, and `needs_approval` as running them all as one `batch([x, y, z])`.
 - Two inputs resolving to the same new item produce a single canon item (intra-batch dedup).
 
-Arbitration stays per-unmatched-item; batching the arbitration *prompt* is out of scope.
+Arbitration stays per-unmatched-item; batching the arbitration _prompt_ is out of scope.
 
 ---
 
@@ -361,14 +366,14 @@ The predicate is pure domain (`packages/domain`); the canon-id set is built from
 
 ## Thresholds at a glance
 
-| Constant | Value | Used at |
-|---|---|---|
-| `stage1Stop` | 1.0 | Stage 1 normalised exact match (sentinel) |
-| `stage2Stop` | 0.80 | Stage 2 token overlap stop |
-| `stage3Stop` | 1.0 | Stage 3 synonym exact match (sentinel) |
-| `stage4Stop` | 0.85 | Stage 4 string similarity stop |
-| `stage5Stop` | 0.75 | Stage 5 embedding stop |
-| `aiThreshold` | 0.60 | Stage 6 near-miss collection |
-| `ambiguityGap` | 0.05 | Stages 2 & 4 auto-match gap |
+| Constant       | Value | Used at                                   |
+| -------------- | ----- | ----------------------------------------- |
+| `stage1Stop`   | 1.0   | Stage 1 normalised exact match (sentinel) |
+| `stage2Stop`   | 0.80  | Stage 2 token overlap stop                |
+| `stage3Stop`   | 1.0   | Stage 3 synonym exact match (sentinel)    |
+| `stage4Stop`   | 0.85  | Stage 4 string similarity stop            |
+| `stage5Stop`   | 0.75  | Stage 5 embedding stop                    |
+| `aiThreshold`  | 0.60  | Stage 6 near-miss collection              |
+| `ambiguityGap` | 0.05  | Stages 2 & 4 auto-match gap               |
 
 All constants live in [`packages/domain/src/canon/queries/matchThresholds.ts`](../packages/domain/src/canon/queries/matchThresholds.ts).

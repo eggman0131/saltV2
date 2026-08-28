@@ -85,5 +85,10 @@ export async function embedMatch(
     skipReason: null,
   });
 
-  return passing.map((c) => ({ item: c.item, confidence: c.score, stage: 5 }));
+  return passing.map((c) => ({
+    item: c.item,
+    confidence: c.score,
+    stage: 5 as const,
+    supportedStages: [5 as const],
+  }));
 }

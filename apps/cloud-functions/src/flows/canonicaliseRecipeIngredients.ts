@@ -78,7 +78,7 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // recorded as a synonym — i.e. as another name for its own parent. Reading
       // `forms` through the closure rather than copying it is deliberate: a form
       // minted mid-batch below protects the very next item in the same recipe.
-      const ports = buildMatchOrCreatePorts(batchSpan, activeTraceparent(), {
+      const ports = await buildMatchOrCreatePorts(batchSpan, activeTraceparent(), {
         isDerivedName: (name) => resolveProductForm(name, forms) !== null,
       });
 

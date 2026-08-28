@@ -705,4 +705,32 @@ describe('onShoppingListItemWrite', () => {
       );
     });
   });
+
+  // ─── The derived-name guard reaches this trigger (issue #937, Phase 1) ──────
+  //
+  // `buildMatchOrCreatePorts` now reads productForms and supplies `isDerivedName`
+  // by default, which is what stops this trigger recording "garlic clove" as a
+  // synonym of Garlic Bulbs. That default is only worth anything if the ports the
+  // domain receives are the RESOLVED bag: the builder is async now, and a missing
+  // `await` would hand `matchOrCreate` a Promise whose `isDerivedName` is
+  // undefined — silently restoring the exact behaviour this phase removes, with
+  // no type error at the call site (`MatchOrCreatePorts` fields are all optional
+  // to read off `any`-shaped mocks). The end-to-end refusal itself is asserted
+  // against the real builder in tests/flows/matchOrCreateCanon.test.ts.
+  describe('port construction', () => {
+    it('awaits the ports builder, so the resolved bag reaches matchOrCreate', async () => {
+      const resolvedPorts = { isDerivedName: (name: string) => name === 'garlic cloves' };
+      mockBuildPorts.mockImplementationOnce(
+        () => Promise.resolve(resolvedPorts) as unknown as Record<string, unknown>,
+      );
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(expect.anything(), resolvedPorts);
+    });
+  });
 });
