@@ -69,6 +69,8 @@
     // (never denormalised onto the plan doc). Missing/deleted ids are skipped.
     // Optional: the weekday-keyed template editor omits it and stays recipe-free.
     recipes?: readonly Recipe[];
+    // The same recipes indexed by id (#940). See `MealDayDetail`.
+    recipesById?: ReadonlyMap<string, Recipe> | undefined;
     testid: string;
     // Today's row wears its date in a filled teal disc, so the eye lands on it
     // without reading. Date-only, so the weekday-keyed template editor omits it.
@@ -106,6 +108,7 @@
     day,
     members,
     recipes = [],
+    recipesById,
     testid,
     isToday = false,
     weather,
@@ -130,10 +133,10 @@
   // since they were attached — are skipped so a broken row is never rendered.
   // (Also derived inside MealDayDetail, for its own list: three prop-derived
   // lines in each file beats a shared helper module for two consumers.)
+  // Resolved through the id index (#940); same fallback rule as MealDayDetail.
+  const lookup = $derived(recipesById ?? new Map(recipes.map((r) => [r.id, r])));
   const attachedRecipes = $derived(
-    day.recipeIds
-      .map((id) => recipes.find((r) => r.id === id))
-      .filter((r): r is Recipe => r !== undefined),
+    day.recipeIds.map((id) => lookup.get(id)).filter((r): r is Recipe => r !== undefined),
   );
 
   // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
@@ -444,6 +447,7 @@
         {day}
         {members}
         {recipes}
+        {recipesById}
         {testid}
         {weather}
         {dateKey}

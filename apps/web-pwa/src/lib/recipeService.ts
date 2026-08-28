@@ -53,7 +53,7 @@ import { failure, success, type DomainError, type ReadResult } from '@salt/share
 import { currentMember } from './membersService.js';
 import { getCanonItemsSnapshot } from './canonService.js';
 import { getProductFormsSnapshot } from './productFormService.js';
-import { writable, get } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
 // Recipe service (issue #179, Phase 2). An optimistic store over the Phase 1
@@ -65,6 +65,24 @@ import type { Readable } from 'svelte/store';
 
 const _recipes = writable<readonly Recipe[]>([]);
 export const recipes: Readable<readonly Recipe[]> = _recipes;
+
+/**
+ * The same recipes, indexed by id (issue #940, Phase 3).
+ *
+ * Resolving a plan's `recipeIds` used to be `recipes.find(...)` per id, per row,
+ * re-run on every week snapshot — O(rows × ids × |recipes|) over a store that
+ * holds the whole house's recipes. The index is derived, so it is rebuilt once
+ * per change to `recipes` and shared by every consumer, rather than per
+ * component.
+ *
+ * ADDED beside the array, never replacing it: `recipes` has consumers outside
+ * the planner that genuinely want a list — the pickers, the recipe list page.
+ * Mirrors `membersService`'s `byId` construction, which exists for this reason.
+ */
+export const recipesById: Readable<ReadonlyMap<string, Recipe>> = derived(
+  _recipes,
+  (list) => new Map(list.map((r) => [r.id, r])),
+);
 
 // Synchronous snapshot of the recipes store. Used by the e2e bridge to assert
 // the parsed/canonical ingredient structure that lives in the store but is only

@@ -11,6 +11,7 @@
     DialogFooter,
   } from '@salt/ui-components';
   import { push, router } from 'svelte-spa-router';
+  import { formatChatTimestamp } from '../../lib/dateFormat.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { readMealParam, withMealParam } from '../../lib/mealReturn.js';
   import {
@@ -56,15 +57,6 @@
     if (result.kind !== 'ok') {
       addToast('Failed to delete chat.', 'destructive');
     }
-  }
-
-  function formatDate(iso: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(new Date(iso));
   }
 </script>
 
@@ -121,7 +113,7 @@
           >
             <span class="block truncate font-medium">{session.title}</span>
             <span class="block text-xs text-muted-foreground">
-              {formatDate(session.updatedAt)}{#if session.recipeId}
+              {formatChatTimestamp(session.updatedAt)}{#if session.recipeId}
                 · recipe{/if}
             </span>
           </button>

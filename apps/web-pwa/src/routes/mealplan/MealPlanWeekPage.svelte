@@ -31,10 +31,11 @@
   import WeekShopSheet from './WeekShopSheet.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { kindOf } from '../recipes/recipeKind.js';
+  import { formatDayKey } from '../../lib/dateFormat.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
-  import { recipes } from '../../lib/recipeService.js';
+  import { recipes, recipesById } from '../../lib/recipeService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import {
     currentWeek,
@@ -263,18 +264,12 @@
     return () => observer.disconnect();
   });
 
-  // Friendly labels for the week range and each day, formatted from the UTC date.
-  function fmt(date: string, opts: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(
-      new Date(`${date}T00:00:00.000Z`),
-    );
-  }
   function rangeOf(ds: string[], withYear: boolean): string {
     if (ds.length !== 7) return '';
     const end: Intl.DateTimeFormatOptions = withYear
       ? { day: 'numeric', month: 'short', year: 'numeric' }
       : { day: 'numeric', month: 'short' };
-    return `${fmt(ds[0]!, { day: 'numeric', month: 'short' })} – ${fmt(ds[6]!, end)}`;
+    return `${formatDayKey(ds[0]!, { day: 'numeric', month: 'short' })} – ${formatDayKey(ds[6]!, end)}`;
   }
 
   // The header range stays the PRIMARY week's even when next week is appended:
@@ -372,7 +367,7 @@
       .filter((date) => date >= todayDate)
       .flatMap((date) =>
         (days[date]?.recipeIds ?? [])
-          .map((id) => $recipes.find((r) => r.id === id))
+          .map((id) => $recipesById.get(id))
           .filter((r): r is Recipe => r !== undefined && takesIngredients(kindOf(r)))
           .map((recipe) => ({ date, recipe })),
       );
@@ -827,9 +822,9 @@
              this binding, and tapping a row still means "this is the day I am
              looking at" — only the presentation differs. -->
         <MealDayEditor
-          label={fmt(date, { weekday: 'short' })}
-          sublabel={fmt(date, { day: 'numeric' })}
-          sheetTitle={fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+          label={formatDayKey(date, { weekday: 'short' })}
+          sublabel={formatDayKey(date, { day: 'numeric' })}
+          sheetTitle={formatDayKey(date, { weekday: 'long', day: 'numeric', month: 'long' })}
           bind:open={
             () => !isSplit && openDay === date,
             (v) => {
@@ -843,6 +838,7 @@
           {day}
           members={$members}
           recipes={$recipes}
+          recipesById={$recipesById}
           testid={`day-${date}`}
           isToday={date === todayDate}
           weather={$weatherForecast?.days[date]}
@@ -880,7 +876,7 @@
           ? 'font-medium text-foreground'
           : 'text-muted-foreground'}"
       >
-        {fmt(d, { weekday: 'long', day: 'numeric', month: 'short' })}
+        {formatDayKey(d, { weekday: 'long', day: 'numeric', month: 'short' })}
       </span>
       <Button
         variant={isShop && shop?.slot === 'am' ? 'solid' : 'outline'}
@@ -1161,7 +1157,7 @@
                  uses. A detail with no date on it would be a regression against the
                  sheet, which always says which day it opened. -->
             <h2 class="text-base font-semibold text-foreground" data-testid="day-pane-title">
-              {fmt(paneDate, { weekday: 'long', day: 'numeric', month: 'long' })}
+              {formatDayKey(paneDate, { weekday: 'long', day: 'numeric', month: 'long' })}
             </h2>
 
             <!-- `testid="day-pane"`, never the day's own: this renders the SAME
@@ -1171,6 +1167,7 @@
               day={paneDay}
               members={$members}
               recipes={$recipes}
+              recipesById={$recipesById}
               testid="day-pane"
               weather={$weatherForecast?.days[paneDate]}
               dateKey={paneDate}

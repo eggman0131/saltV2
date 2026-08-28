@@ -75,6 +75,7 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   myTimers: mockMyTimers,
 }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
+  flushMealPlanWrites: vi.fn().mockResolvedValue(undefined),
   kitchenWeeks: mockKitchenWeeks,
   kitchenAnchorDate: mockKitchenAnchorDate,
   subscribeKitchenWeeks: mockSubscribeKitchenWeeks,

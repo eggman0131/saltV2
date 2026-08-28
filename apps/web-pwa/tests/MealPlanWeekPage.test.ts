@@ -126,6 +126,12 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/membersService.js', () => ({ members: mockMembers }));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
+  // The id index the planner resolves `recipeIds` through (#940). Derived from
+  // the same stub, so a test that seeds `mockRecipes` needs no second seed.
+  recipesById: {
+    subscribe: (run: (m: ReadonlyMap<string, Recipe>) => void) =>
+      mockRecipes.subscribe((list: readonly Recipe[]) => run(new Map(list.map((r) => [r.id, r])))),
+  },
   buildRecipeAddPlan: mockBuildRecipeAddPlan,
   buildMadeSubRows: vi.fn(() => []),
   commitRecipeAddPlan: mockCommitRecipeAddPlan,
@@ -140,6 +146,7 @@ vi.mock('../src/lib/shoppingDayService.js', () => ({
   clearShopDay: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
+  flushMealPlanWrites: vi.fn().mockResolvedValue(undefined),
   currentWeek: mockWeek,
   selectedStartDate: mockStart,
   isLoadingMealPlanWeek: mockLoading,
@@ -179,6 +186,7 @@ import {
   addWeekAttendee,
   setWeekAttendeeHomeTime,
   setWeekAttendeeNote,
+  flushMealPlanWrites,
 } from '../src/lib/mealPlanService.js';
 import { addToast } from '../src/lib/toastStore.js';
 import { setShopDay, clearShopDay } from '../src/lib/shoppingDayService.js';
@@ -512,6 +520,50 @@ describe('MealPlanWeekPage', () => {
     });
     await waitFor(() => expect(vi.mocked(setWeekDayNote)).toHaveBeenCalled());
     expect(vi.mocked(setWeekDayNote).mock.calls[0]![0]).toBe('2026-06-08');
+  });
+
+  // Write coalescing (issue #940) defers the `setDoc`, so the two moments the
+  // SERVICE cannot see — the caret leaving a field, and the sheet going away —
+  // have to be signalled from here. Without these the last thing typed sits in
+  // a 400 ms timer that a dismissal throws away. The service-level tests prove
+  // the flush works; these prove it is actually called.
+  it('flushes the coalesced write when the meal field is blurred', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    const note = screen.getByTestId('day-2026-06-08-note');
+    await fireEvent.input(note, { target: { value: 'Pasta' } });
+    expect(vi.mocked(flushMealPlanWrites)).not.toHaveBeenCalled();
+
+    await fireEvent.blur(note);
+
+    expect(vi.mocked(flushMealPlanWrites)).toHaveBeenCalled();
+  });
+
+  it('flushes the coalesced write when an attendee note is blurred', async () => {
+    mockWeek._set(dayWithAliceNote(''));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    await fireEvent.click(screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org'));
+    const note = await screen.findByTestId('day-2026-06-08-attnote-alice@e.org');
+    await fireEvent.input(note, { target: { value: 'late' } });
+    expect(vi.mocked(flushMealPlanWrites)).not.toHaveBeenCalled();
+
+    await fireEvent.blur(note);
+
+    expect(vi.mocked(flushMealPlanWrites)).toHaveBeenCalled();
+  });
+
+  it('flushes the coalesced write when the day sheet is torn down', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    await fireEvent.input(screen.getByTestId('day-2026-06-08-note'), {
+      target: { value: 'Pasta' },
+    });
+    expect(vi.mocked(flushMealPlanWrites)).not.toHaveBeenCalled();
+
+    cleanup();
+
+    expect(vi.mocked(flushMealPlanWrites)).toHaveBeenCalled();
   });
 
   it('toggles an attendee and reveals a savable blank home-time', async () => {
@@ -911,7 +963,8 @@ describe('MealPlanWeekPage', () => {
     const toggle = screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
-    // One tap reveals it, and typing saves per keystroke (fire-and-forget).
+    // One tap reveals it, and typing reaches the service per keystroke — it is
+    // the service that coalesces those into one document write (issue #940).
     await fireEvent.click(toggle);
     expect(await screen.findByTestId('day-2026-06-08-attnote-alice@e.org')).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');

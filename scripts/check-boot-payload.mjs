@@ -38,7 +38,22 @@ const ASSETS = join(DIST, 'assets');
 // Gzipped ceiling for the whole boot graph. Measured at 479.47 kB on the #813
 // production build, so this leaves ~20 kB of headroom for ordinary growth.
 // Raising it is a deliberate act: say in the PR what got bigger and why.
-const BOOT_GZIP_CEILING_KB = 500;
+//
+// Raised 500 -> 501 in #1076 (issue #940), authorised by Daniel ("bump the
+// ceiling and merge 940") rather than assumed. Pre-#940 headroom against the
+// old 500 KB ceiling was already down to 706 B (baseline fda5e56a measured
+// 499.31 kB gz); #940's write-coalescing work added +785 B of boot-graph
+// code — mealPlanService +397 B (the coalescer itself), dateFormat +274 B (a
+// new shared module replacing ten inline Intl.DateTimeFormat builders, also
+// reused by five lazy call sites), MealDayEditor +93 B (id-indexed recipe
+// lookup), recipeService +21 B (recipesById derived store) — pushing the
+// measured total to 500.11 kB, over the old ceiling by ~113 B. None of it is
+// accidental eager import, dead code, or test-only leakage; every byte is
+// #940 feature code reached through MealPlanWeekPage/MealDayEditor, both
+// already in the eager boot graph before this PR. 501 KB clears the observed
+// 500.09-500.11 kB CI jitter with a deliberately small (~0.9 KB) margin —
+// not rounded up for comfort, so the gate stays tight.
+const BOOT_GZIP_CEILING_KB = 501;
 
 // Raw (un-gzipped) ceiling for the settings page's own chunk. Leaflet is 145 kB
 // and Phase 2 moved it out; the chunk measured 34.4 kB after, against 183.7 kB

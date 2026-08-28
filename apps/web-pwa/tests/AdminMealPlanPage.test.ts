@@ -23,6 +23,7 @@ vi.mock('../src/lib/membersService.js', () => ({
   isLoadingMembers: mockIsLoadingMembers,
 }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
+  flushMealPlanWrites: vi.fn().mockResolvedValue(undefined),
   mealPlanTemplate: mockTemplate,
   firstDayOfWeek: mockFirstDay,
   saveFirstDayOfWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

@@ -222,6 +222,10 @@ function subscribeWeekDoc(start: string): void {
 // so navigating back to it shows the loading state and re-reads, exactly as a
 // first visit does.
 function unsubscribeWeekDoc(start: string): void {
+  // A coalesced write still waiting on its timer must go out before we forget
+  // the week (issue #940). The pending document is held by the coalescer, not
+  // read from `_weeks`, so clearing the store below cannot strand it.
+  void weekWrites.flush(start);
   weekUnsubs.get(start)?.();
   weekUnsubs.delete(start);
   latestWeekUpdatedAt.delete(start);
@@ -424,6 +428,10 @@ function weekIsKnown(start: string): boolean {
 function editWeekDay(
   dateKey: string,
   apply: (week: MealPlanWeek) => MealPlanWeek,
+  // Coalesce the write, for a field typed a character at a time. Everything else
+  // is one deliberate tap and writes at once — see `persistWeek` vs
+  // `persistWeekNow` and the note on which mutators opt in (issue #940).
+  coalesce = false,
 ): Promise<ReadResult<void, DomainError>> {
   const start = weekStartFor(dateKey, firstDay());
   if (!weekIsKnown(start)) {
@@ -435,11 +443,193 @@ function editWeekDay(
       }),
     );
   }
-  return persistWeek(apply(weekObjectFor(start)));
+  const next = apply(weekObjectFor(start));
+  return coalesce ? persistWeek(next) : persistWeekNow(next);
 }
 
-// Stamp updatedAt, update the store optimistically, then persist. The target
-// document is the week's own `startDate` — the object carries where it belongs.
+// ─── Write coalescing (issue #940) ────────────────────────────────────────────
+//
+// A planner note is typed a character at a time, and every keystroke used to
+// issue a full-document `setDoc` of the whole seven-day week — nineteen writes
+// for "Spaghetti bolognese", each one fanned out to every family device's
+// realtime listener. The write is coalesced HERE, at the service, because the
+// four note mutators are reached from two pages and a per-component fix covers
+// whichever component remembered.
+//
+// ONLY THOSE FOUR COALESCE. Chef, attendee, guests, recipes and load-template
+// write immediately: each is one deliberate tap, so there is no burst to merge,
+// and deferring one means a reload inside the window silently discards an edit
+// the user had finished making. `e2e/mealplan.spec.ts` asserts those survive a
+// reload, and it is right to.
+//
+// The split that makes this safe: the OPTIMISTIC STORE APPLY stays synchronous
+// and only the `setDoc` is deferred. Every week mutator rebuilds the document
+// from `_weeks` (see `editWeekDay`), so a deferred apply would let two edits to
+// different fields of the same day both build on the same stale week and the
+// second silently discard the first.
+//
+// What this does and does not guarantee:
+//  - Edits made inside one window are NOT lost: each apply rebuilds from the
+//    store, so the last pending document contains all of them.
+//  - Pending writes live in memory only; persisting them would need browser
+//    storage, which CLAUDE.md Rule 3 forbids. The flush points are therefore what
+//    bound the loss: blur, sheet teardown, and `pagehide`/tab-hide. A reload or a
+//    closed tab is ordinary and is covered; a tab the OS kills between the
+//    `pagehide` flush and the SDK persisting the mutation is not, and nothing
+//    in-memory can cover it.
+//  - A dropped connection loses nothing extra: the flush still calls `setDoc`,
+//    and Firestore's `persistentLocalCache` queues it like any other write.
+//  - Two devices editing the SAME document inside the same window still resolve
+//    by document-level LWW — whichever flush reaches the server last replaces
+//    the whole document, including fields the other device changed. That is the
+//    pre-existing contract (see docs/data-model.md), but coalescing WIDENS the
+//    window in which it can bite, from "the round trip" to "the round trip plus
+//    up to WRITE_DEBOUNCE_MS".
+const WRITE_DEBOUNCE_MS = 400;
+
+type WriteResult = ReadResult<void, DomainError>;
+
+interface PendingWrite<T> {
+  // The newest whole document to write. REPLACED on each edit, never merged:
+  // the write shape stays a full-document LWW `setDoc`, only its timing moves.
+  //
+  // Held here rather than re-read from the store at flush time, because the
+  // store is not the whole story — `addRecipeToDay` persists a week it read
+  // one-shot and deliberately did NOT put in `_weeks` (see `weekIsKnown`), so a
+  // store-reading flush would have nothing to write for it.
+  doc: T;
+  timer: ReturnType<typeof setTimeout>;
+  promise: Promise<WriteResult>;
+  settle: (result: WriteResult) => void;
+}
+
+/**
+ * A debounced, document-keyed writer. One key, one in-flight document: every
+ * field edited inside the window coalesces into a single write, which is exactly
+ * the granularity LWW already works at.
+ *
+ * `queue` returns the promise of the write that will carry the edit, so callers
+ * keep the `ReadResult` they need for the "Failed to save the day." toast
+ * (CLAUDE.md Rule 10). Every edit that lands in one window shares one promise
+ * and therefore raises at most one toast.
+ */
+function createWriteCoalescer<T>(
+  write: (doc: T) => Promise<WriteResult>,
+  scope: 'week' | 'template',
+) {
+  const pending = new Map<string, PendingWrite<T>>();
+
+  async function flushKey(key: string): Promise<void> {
+    const entry = pending.get(key);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    // Delete BEFORE awaiting: an edit arriving while this write is in flight
+    // must open a fresh pending entry rather than join one already committed to
+    // the wire, which would drop it.
+    pending.delete(key);
+    const result = await write(entry.doc);
+    // Every week-level mutator funnels through here, so this one capture is the
+    // whole "is the planner used, and by whom" signal (issue #684). Since #940
+    // it fires once per coalesced burst rather than once per keystroke — the
+    // volume this event was always meant to have.
+    if (result.kind === 'ok') trackUsageEvent('plan.edited', { plan_scope: scope });
+    entry.settle(result);
+  }
+
+  return {
+    queue(key: string, doc: T): Promise<WriteResult> {
+      const existing = pending.get(key);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.doc = doc;
+        existing.timer = setTimeout(() => void flushKey(key), WRITE_DEBOUNCE_MS);
+        return existing.promise;
+      }
+      let settle!: (result: WriteResult) => void;
+      const promise = new Promise<WriteResult>((resolve) => {
+        settle = resolve;
+      });
+      pending.set(key, {
+        doc,
+        timer: setTimeout(() => void flushKey(key), WRITE_DEBOUNCE_MS),
+        promise,
+        settle,
+      });
+      return promise;
+    },
+    /** Write this key's pending document now. No-op when nothing is pending. */
+    flush(key: string): Promise<void> {
+      return flushKey(key);
+    },
+    flushAll(): Promise<void> {
+      return Promise.all([...pending.keys()].map(flushKey)).then(() => undefined);
+    },
+    /**
+     * Drop pending writes without issuing them — test teardown only.
+     * A discarded entry's promise never settles; nothing awaits one, and it is
+     * collected with the test that made it.
+     */
+    discardAll(): void {
+      for (const entry of pending.values()) clearTimeout(entry.timer);
+      pending.clear();
+    },
+  };
+}
+
+// The adapter functions are wrapped rather than passed by reference: reading the
+// binding here would resolve it at MODULE LOAD, and several suites mock
+// `@salt/firebase-sync` partially — a page that merely reaches this module
+// transitively would then fail to import over an export it never calls.
+const weekWrites = createWriteCoalescer((week: MealPlanWeek) => saveMealPlanWeek(week), 'week');
+// The template is a single document, so it needs a key only to reuse the same
+// machinery — there is never more than one entry.
+const TEMPLATE_KEY = 'template';
+const templateWrites = createWriteCoalescer(
+  (template: MealPlanTemplate) => saveMealPlanTemplate(template),
+  'template',
+);
+
+/**
+ * Write out every pending planner edit now.
+ *
+ * Called from the day sheet on blur and on teardown (issue #940): the debounce
+ * alone would lose the last edit when the sheet is dismissed inside its window,
+ * and blur alone would never fire for `page.fill()` in the e2e. Both, not either.
+ */
+export function flushMealPlanWrites(): Promise<void> {
+  return Promise.all([weekWrites.flushAll(), templateWrites.flushAll()]).then(() => undefined);
+}
+
+// A reload or a closed tab is ORDINARY, not a crash, and it must not cost the
+// user the sentence they just typed. `pagehide` is the event that fires for all
+// of them (reload, navigation, tab close, and iOS Safari's bfcache freeze, where
+// `beforeunload` does not); `visibilitychange` covers a backgrounded phone,
+// which on mobile is where a tab most often dies without ever firing `pagehide`.
+//
+// Registered once, at module load, and never removed: the module lives as long
+// as the document does, and a flush with nothing pending is a no-op.
+//
+// The honest limit: this hands the write to the Firestore SDK, which enqueues it
+// in `persistentLocalCache` and replays it on the next load. It does NOT wait for
+// the server, and nothing here can — an unload handler cannot hold the page open.
+// A tab killed by the OS between the enqueue and the SDK's own persistence still
+// loses the edit. That window is far smaller than the debounce it replaces, but
+// it is not zero, and no in-memory design can make it zero (Rule 3 forbids the
+// storage that could).
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => void flushMealPlanWrites());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushMealPlanWrites();
+  });
+}
+
+// Stamp updatedAt and update the store optimistically — SYNCHRONOUSLY — then
+// queue the document write. The target document is the week's own `startDate`;
+// the object carries where it belongs.
+//
+// The apply must not be deferred: every week mutator rebuilds from `_weeks` (see
+// `editWeekDay`), so deferring it would let interleaved edits build on the same
+// stale week and discard one another. See the coalescer's header.
 //
 // The optimistic cache is for weeks we already know (see `weekIsKnown`) and only
 // those. A week read one-shot purely in order to write it — `addRecipeToDay`
@@ -447,23 +637,37 @@ function editWeekDay(
 // listening to it, so nothing would ever refresh it, yet its mere presence would
 // make `weekIsKnown` answer true and let a much later full-document write be
 // built on a snapshot that has since moved on.
-async function persistWeek(week: MealPlanWeek): Promise<ReadResult<void, DomainError>> {
+function applyWeekOptimistically(week: MealPlanWeek): MealPlanWeek {
   const stamped: MealPlanWeek = { ...week, updatedAt: new Date().toISOString() };
   if (weekIsKnown(stamped.startDate)) {
     latestWeekUpdatedAt.set(stamped.startDate, stamped.updatedAt);
     _weeks.update((weeks) => ({ ...weeks, [stamped.startDate]: stamped }));
   }
-  // Every week-level mutator funnels through here, so this one capture is the
-  // whole "is the planner used, and by whom" signal (issue #684).
-  const result = await saveMealPlanWeek(stamped);
-  if (result.kind === 'ok') trackUsageEvent('plan.edited', { plan_scope: 'week' });
+  return stamped;
+}
+
+function persistWeek(week: MealPlanWeek): Promise<ReadResult<void, DomainError>> {
+  const stamped = applyWeekOptimistically(week);
+  return weekWrites.queue(stamped.startDate, stamped);
+}
+
+// Apply and write straight away, for a DISCRETE action whose caller awaits the
+// result in order to report it — attaching a recipe, loading the template over a
+// week. Debouncing those would only delay a spinner: they are one deliberate
+// tap, not a stream of keystrokes, so there is nothing to coalesce.
+function persistWeekNow(week: MealPlanWeek): Promise<ReadResult<void, DomainError>> {
+  const result = persistWeek(week);
+  void weekWrites.flush(week.startDate);
   return result;
 }
 
-async function persistTemplate(template: MealPlanTemplate): Promise<ReadResult<void, DomainError>> {
+function persistTemplate(
+  template: MealPlanTemplate,
+  coalesce = false,
+): Promise<ReadResult<void, DomainError>> {
   _template.set(template);
-  const result = await saveMealPlanTemplate(template);
-  if (result.kind === 'ok') trackUsageEvent('plan.edited', { plan_scope: 'template' });
+  const result = templateWrites.queue(TEMPLATE_KEY, template);
+  if (!coalesce) void templateWrites.flush(TEMPLATE_KEY);
   return result;
 }
 
@@ -481,7 +685,7 @@ export function loadTemplateIntoWeek(date: string): Promise<ReadResult<void, Dom
     get(_config) ?? { firstDayOfWeek: firstDay(), schemaVersion: 1 },
     currentTemplateObject(),
   );
-  return persistWeek(week);
+  return persistWeekNow(week);
 }
 
 /**
@@ -554,14 +758,14 @@ export async function addRecipeToDay(
   const attached = week.days[dateKey]!.recipeIds;
   const next = mergePlannerRecipeIds(attached, expandForPlanner(recipe));
   if (next.length === attached.length) return success('already-there');
-  const saved = await persistWeek(setDayRecipes(week, dateKey, next));
+  const saved = await persistWeekNow(setDayRecipes(week, dateKey, next));
   return saved.kind === 'ok' ? success('added') : saved;
 }
 
 // — Week day/attendee mutators —
 // Each routes to the document its `dateKey` belongs in; see `editWeekDay`.
 export function setWeekDayNote(dateKey: string, note: string) {
-  return editWeekDay(dateKey, (w) => setDayNote(w, dateKey, note));
+  return editWeekDay(dateKey, (w) => setDayNote(w, dateKey, note), true);
 }
 export function setWeekDayChefs(dateKey: string, chefs: readonly string[]) {
   return editWeekDay(dateKey, (w) => setDayChefs(w, dateKey, chefs));
@@ -586,7 +790,7 @@ export function setWeekAttendeeHomeTime(
   return editWeekDay(dateKey, (w) => setAttendeeHomeTime(w, dateKey, memberId, homeTime));
 }
 export function setWeekAttendeeNote(dateKey: string, memberId: string, note: string) {
-  return editWeekDay(dateKey, (w) => setAttendeeNote(w, dateKey, memberId, note));
+  return editWeekDay(dateKey, (w) => setAttendeeNote(w, dateKey, memberId, note), true);
 }
 
 // — Config —
@@ -596,7 +800,7 @@ export function saveFirstDayOfWeek(day: Weekday): Promise<ReadResult<void, Domai
 
 // — Template day/attendee mutators (keyed by weekday) —
 export function setTemplateDayNote(weekday: Weekday, note: string) {
-  return persistTemplate(setDayNote(currentTemplateObject(), weekday, note));
+  return persistTemplate(setDayNote(currentTemplateObject(), weekday, note), true);
 }
 export function setTemplateDayChefs(weekday: Weekday, chefs: readonly string[]) {
   return persistTemplate(setDayChefs(currentTemplateObject(), weekday, chefs));
@@ -618,7 +822,7 @@ export function setTemplateAttendeeHomeTime(
   return persistTemplate(setAttendeeHomeTime(currentTemplateObject(), weekday, memberId, homeTime));
 }
 export function setTemplateAttendeeNote(weekday: Weekday, memberId: string, note: string) {
-  return persistTemplate(setAttendeeNote(currentTemplateObject(), weekday, memberId, note));
+  return persistTemplate(setAttendeeNote(currentTemplateObject(), weekday, memberId, note), true);
 }
 
 // ─── Test / e2e helpers ───────────────────────────────────────────────────────
@@ -630,6 +834,10 @@ export function __resetMealPlanServiceForTest(): void {
   kitchenActive = false;
   for (const unsub of weekUnsubs.values()) unsub();
   weekUnsubs.clear();
+  // Cancel debounced writes rather than issuing them: a timer surviving teardown
+  // would fire a `saveMealPlanWeek` into the NEXT test's mocks (issue #940).
+  weekWrites.discardAll();
+  templateWrites.discardAll();
   latestWeekUpdatedAt.clear();
   _config.set(null);
   _template.set(null);

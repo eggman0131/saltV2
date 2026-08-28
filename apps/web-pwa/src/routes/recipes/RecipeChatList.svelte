@@ -9,6 +9,7 @@
   raises the drawer; in a column it swaps the docked pane.
 -->
 <script lang="ts">
+  import { formatChatTimestamp } from '../../lib/dateFormat.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import { Button, Card, CardContent, CardHeader, CardTitle, Icon } from '@salt/ui-components';
 
@@ -25,15 +26,6 @@
 
   function lastSaid(session: ChatSessionDoc): string {
     return session.messages.at(-1)?.text.trim() ?? 'No messages yet.';
-  }
-
-  function formatDate(iso: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(new Date(iso));
   }
 </script>
 
@@ -76,7 +68,7 @@
                 <span class="flex items-baseline justify-between gap-3">
                   <span class="min-w-0 truncate text-sm font-medium">{session.title}</span>
                   <span class="shrink-0 text-xs text-muted-foreground"
-                    >{formatDate(session.updatedAt)}</span
+                    >{formatChatTimestamp(session.updatedAt)}</span
                   >
                 </span>
                 <span class="truncate text-xs text-muted-foreground">{lastSaid(session)}</span>

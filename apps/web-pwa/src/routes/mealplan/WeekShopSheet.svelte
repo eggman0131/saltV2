@@ -10,6 +10,7 @@
     SheetTitle,
   } from '@salt/ui-components';
   import { appendCacheBuster, hasComponents, type Recipe } from '@salt/domain';
+  import { formatDayKey } from '../../lib/dateFormat.js';
   import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
 
   // ─── Shop the week: which nights? (issue #724, Phase 1) ────────────────────
@@ -150,12 +151,7 @@
   // UTC date, like the page's own labels — a `YYYY-MM-DD` key parsed as local time
   // is a day earlier west of Greenwich.
   function nightLabel(date: string): string {
-    return new Intl.DateTimeFormat('en-GB', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'UTC',
-    }).format(new Date(`${date}T00:00:00.000Z`));
+    return formatDayKey(date, { weekday: 'long', day: 'numeric', month: 'short' });
   }
 
   // Display-time cache-bust, same rule as the planner's own recipe rows (#460):

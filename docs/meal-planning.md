@@ -10,11 +10,11 @@ All data is family-shared (no per-user scoping). Member references are by
 
 ## Documents
 
-| Doc | Firestore path | Cardinality | Purpose |
-| --- | --- | --- | --- |
-| `MealPlanConfig` | `mealPlanConfig/{document}` (singleton) | 1 | `firstDayOfWeek` — the "big shop" day that starts each week |
-| `MealPlanTemplate` | `mealPlanTemplate/{document}` (singleton) | 1 | The standard week, keyed by weekday (`mon`…`sun`) |
-| `MealPlanWeek` | `mealPlans/{YYYY-MM-DD}` | many | One concrete week, keyed by the date of its start day |
+| Doc                | Firestore path                            | Cardinality | Purpose                                                     |
+| ------------------ | ----------------------------------------- | ----------- | ----------------------------------------------------------- |
+| `MealPlanConfig`   | `mealPlanConfig/{document}` (singleton)   | 1           | `firstDayOfWeek` — the "big shop" day that starts each week |
+| `MealPlanTemplate` | `mealPlanTemplate/{document}` (singleton) | 1           | The standard week, keyed by weekday (`mon`…`sun`)           |
+| `MealPlanWeek`     | `mealPlans/{YYYY-MM-DD}`                  | many        | One concrete week, keyed by the date of its start day       |
 
 Config and template are **separate singletons** so editing one never
 last-write-wins-clobbers the other.
@@ -43,7 +43,7 @@ Attendee {
 }
 ```
 
-- **Template** keys its seven `Day`s by weekday name. It carries the *usual*
+- **Template** keys its seven `Day`s by weekday name. It carries the _usual_
   attendees, chefs, home-times (which may be blank), per-person notes, and an
   optional recurring meal `note` (e.g. Friday = pizza).
 - **Week** keys its seven `Day`s by concrete `YYYY-MM-DD` date.
@@ -69,15 +69,15 @@ the shops — so it is recorded per week as its own tiny document,
 than a field on a list or on the week doc.
 
 It **does not move the week.** `firstDayOfWeek` and the layout above are
-completely untouched: the shop marker sits *inside* the week wherever it falls.
+completely untouched: the shop marker sits _inside_ the week wherever it falls.
 
 **Which day you shop is a fact about the week, so it is set at the week** (issue
 #640, Phase 4). The planner carries one control under its week nav: a button that
-says the current answer — *Shop · Sat 1 pm*, or *No shop day set* — opening a
+says the current answer — _Shop · Sat 1 pm_, or _No shop day set_ — opening a
 picker that holds the week's seven days in `firstDayOfWeek` order, each with AM
-and PM. One tap sets both halves and closes it; *No shop day* clears. When the
+and PM. One tap sets both halves and closes it; _No shop day_ clears. When the
 planner is also showing next week (#639) that week is offered too, under its own
-heading — from the last three days of the cycle the week you are provisioning *is*
+heading — from the last three days of the cycle the week you are provisioning _is_
 next week — and `setShopDay` scopes its one-shop-per-week clear by the **date's
 own** week, so marking one week's shop never disturbs the other's. Until #640 the
 AM/PM pair lived inside a single day's sheet: you opened Thursday to say "we shop
@@ -95,7 +95,7 @@ with the per-row pill, leaving the rule as the whole display. The pure predicate
 tested, but is wired to no surface today.
 
 The **default shopping list** carries the same fact as a read-only line under the
-list name — *Shopping Sat AM* — tapping through to that week in the planner via
+list name — _Shopping Sat AM_ — tapping through to that week in the planner via
 `/mealplan/:date`. It reads relative only where relative beats a weekday: "today"
 and "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
 arithmetic the reader has to undo. Those two near states are also the only ones
@@ -103,8 +103,8 @@ emphasised, because they are the only ones where the list still being wrong cost
 anything. The other lists show nothing: they are background collectors for
 specialist stores, shopped whenever, and the weekly shop says nothing about them.
 
-**An unmarked week says so.** With no shop day set the same line reads *"No shop
-day set"* and opens the planner. Without it the feature would fail silently in
+**An unmarked week says so.** With no shop day set the same line reads _"No shop
+day set"_ and opens the planner. Without it the feature would fail silently in
 exactly the situation it exists for — a week passes, nobody marks a day, and no
 reminder ever fires. (This closes the open question #629 shipped with.) The
 `upcomingShopDay` store is therefore three-state — `undefined` not loaded, `null`
@@ -112,7 +112,7 @@ loaded-and-none, a doc — so the prompt cannot flash before the subscription
 resolves.
 
 The evening before a shop, `remindShoppingDay` (a Cloud Scheduler job, 17:00
-Europe/London) pushes *"Shopping tomorrow AM/PM"* to every subscribed device.
+Europe/London) pushes _"Shopping tomorrow AM/PM"_ to every subscribed device.
 `slot` drives copy only — both slots nudge at the same hour, because mornings are
 unreliable in a working household and extra notice costs nothing.
 
@@ -128,9 +128,38 @@ ready for exception-tweaking. This is the heart of the quick-weekly-update goal.
 
 One Firestore document per week, **whole-document last-write-wins** (consistent
 with Firestore-as-master, no tombstones). The only clobber window is two people
-editing the *same* week simultaneously — acceptable for a single small
+editing the _same_ week simultaneously — acceptable for a single small
 household. Per-day documents were rejected as over-engineering for the
 concurrency profile.
+
+**Typed fields coalesce their writes; applies never defer** (issue #940). Typing
+a dinner used to issue a whole-week `setDoc` per keystroke, fanned out to every
+family device. `mealPlanService` splits the two halves of `persistWeek`: the
+optimistic store apply stays **synchronous**, and only the `setDoc` is debounced
+(400 ms, keyed by the week document), flushed on blur, on the day sheet's
+teardown, and on `pagehide`/tab-hide. The apply cannot be deferred — every
+mutator rebuilds the week from the store, so a deferred apply would let two edits
+to the same day build on the same stale document and discard one another.
+
+**Only the four note mutators coalesce.** `setWeekDayNote`,
+`setWeekAttendeeNote` and their two template twins are the fields typed a
+character at a time. Every other mutator — chef, attendee, guests, recipes,
+load-template — is one deliberate tap and writes at once. That is not a
+performance nicety: a debounced click is an edit the user has finished making,
+and a reload landing inside the window would silently discard it
+(`e2e/mealplan.spec.ts` asserts exactly that it survives a reload).
+
+What it still costs, stated plainly. Pending writes are held in memory only —
+persisting them would need browser storage, which CLAUDE.md Rule 3 forbids — so
+the flush points are what bound the loss. `pagehide` covers reload, navigation
+and tab close; it hands the write to the SDK, which queues it in
+`persistentLocalCache` and replays it next load, but it cannot wait for the
+server, so a tab killed by the OS mid-handover still loses that edit. A dropped
+connection loses nothing extra. And the clobber window at the top of this section
+**widens** by up to 400 ms for a note: two devices typing into the same week now
+have that much longer in which the later flush replaces the whole document,
+including the other's fields. Same LWW contract, longer fuse — not a new failure
+mode.
 
 ## Member references
 
@@ -207,12 +236,12 @@ refresh it, and its presence would make `weekIsKnown` lie to the next writer.
 `mealPlanService` has **three** claims on its subscription set, not two. The
 planner owns the primary week and the optional extension week; the Kitchen page
 (`/mine`) owns a third slot, `subscribeKitchenWeeks()`, holding the one or two
-weeks its *Cooking soon* list projects over.
+weeks its _Cooking soon_ list projects over.
 
 **Anchored on today, not on `_anchorDate`.** The planner's weeks follow wherever
 the user scrolled to; "which nights are mine next" is a question about now. Browse
 to October in the planner, switch to the Kitchen, and the answer must still be
-*this* week — so the kitchen slot recomputes `weekStartFor(today, firstDayOfWeek)`
+_this_ week — so the kitchen slot recomputes `weekStartFor(today, firstDayOfWeek)`
 for itself and never reads or moves the planner's anchor. It takes a second week
 on exactly the planner's own `weekExtendsIntoNext` rule, reused rather than
 re-derived: what makes the last three days of a cycle the moment next week matters
@@ -220,7 +249,7 @@ is a fact about the household's week, and two pages disagreeing about it would b
 a defect nobody could see from either one.
 
 **The keep-set is a union, and no claimant may close a week by name.** The two
-pages ask for weeks independently and routinely ask for the *same* week — today's,
+pages ask for weeks independently and routinely ask for the _same_ week — today's,
 most of the time — so `pruneWeekSubscriptions` keeps the union of primary +
 extension + kitchen starts, and each caller's teardown clears only its own claim
 before re-asserting it. Unsubscribing a kitchen week directly on unmount would
@@ -238,14 +267,14 @@ so no other page drags the weeks in.
 **Recomputed on the config snapshot.** `firstDayOfWeek` answers `'mon'` until the
 config document lands. On a cold launch — mount, subscribe under the fallback,
 config arrives saying `'fri'` — a set computed in that gap is the wrong week
-*identity*, not merely a stale one, so the kitchen slot re-asserts itself in the
+_identity_, not merely a stale one, so the kitchen slot re-asserts itself in the
 same callback that calls `syncWeekSubscription()`.
 
 **It widens `weekIsKnown`, and that is safe.** While the Kitchen is mounted,
 `addRecipeToDay` will build on a held kitchen week instead of re-reading it. The
 prohibition above is specifically about a week **nothing is listening to**; a
 kitchen week has a live listener keeping it fresh, which is the property that
-makes the optimistic path honest. `loadMealPlanWeek` is deliberately *not* used
+makes the optimistic path honest. `loadMealPlanWeek` is deliberately _not_ used
 for these weeks for the same reason.
 
 ### The note-only night attaches its own picture (#652)
@@ -309,7 +338,7 @@ Nothing about the plan document changed to allow it: `recipeIds` was already a
   the day's card takes the first attached hero. Neither was modified.
 - **`expandForPlanner` takes no recipe store and filters nothing.** A component
   deleted since it was attached leaves a dangling id, which every planner consumer
-  already skips silently. Filtering would make a planner *write* depend on store
+  already skips silently. Filtering would make a planner _write_ depend on store
   hydration, so a half-hydrated store would plan fewer dishes than the user
   picked — much the worse failure.
 - **Removal needs no new code.** Dropping one dish from one night is the existing

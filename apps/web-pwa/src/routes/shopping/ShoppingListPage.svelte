@@ -34,6 +34,7 @@
     EmptyState,
     createListSelection,
   } from '@salt/ui-components';
+  import { formatDayKey } from '../../lib/dateFormat.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { onDestroy, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
@@ -122,10 +123,7 @@
     const slot = $upcomingShopDay.slot.toUpperCase();
     if (shopDays === 0) return `Shopping today ${slot}`;
     if (shopDays === 1) return `Shopping tomorrow ${slot}`;
-    const weekday = new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      timeZone: 'UTC',
-    }).format(new Date(`${$upcomingShopDay.date}T00:00:00.000Z`));
+    const weekday = formatDayKey($upcomingShopDay.date, { weekday: 'short' });
     return `Shopping ${weekday} ${slot}`;
   });
   // The one day that actually changes what you do must not read like the five
