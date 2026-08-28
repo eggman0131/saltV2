@@ -48,6 +48,9 @@ export { iconNames } from './primitives/Icon/iconRegistry';
 export { default as ImageCropper } from './primitives/ImageCropper/ImageCropper.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
 export { default as Markdown } from './primitives/Markdown/Markdown.svelte';
+// A drawn object, named (ui-spec-v12 §8.30). NOT a `Chip`: a 40px pictogram
+// does not fit a 26px text pill in either direction, and the name says so.
+export { default as PictogramPill } from './primitives/PictogramPill/PictogramPill.svelte';
 export { default as Popover } from './primitives/Popover/Popover.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
@@ -160,6 +163,7 @@ export type {
   ImageCropperAspect,
 } from './primitives/ImageCropper/ImageCropper.types';
 export type { InlineProps } from './primitives/Inline/Inline.types';
+export type { PictogramPillProps } from './primitives/PictogramPill/PictogramPill.types';
 export type {
   PopoverProps,
   PopoverContentProps,

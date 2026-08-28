@@ -289,8 +289,31 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
-  it('renders each entry as a static chip — read, not pressed', () => {
-    // ui-spec-v09 §8.23.8: a `fact` chip is a span, so it is not reachable by Tab
+  it('draws the pictogram at 40px, the in-list size (issue #955)', () => {
+    // The defect this pins: the strip drew the tile at 18px inside a `fact` chip,
+    // and the framing normalisation (`contentMax: 108`, ~52% of the box height for
+    // a landscape tool) turned that into ~15 × 9 px of frying pan — smaller than
+    // the words beside it. 40px is ui-spec-v04 §14.6.1's size for every in-list
+    // pictogram, and ui-spec-v12 §8.30 is the container that can hold one.
+    setTools([
+      tool({
+        id: 'frying-pan',
+        label: 'large frying pan',
+        thumbnail: 'https://example.com/kit/pan.webp',
+      }),
+    ]);
+    mockRecipes._set([makeEntry({ kit: [{ label: 'large frying pan', stepIds: [] }] })]);
+    renderPage();
+
+    const strip = screen.getByTestId('recipe-kit-strip');
+    const tile = within(strip).getByTestId('canon-icon');
+    expect(tile.getAttribute('style')).toContain('width: 40px');
+    expect(tile.getAttribute('style')).toContain('height: 40px');
+  });
+
+  it('renders each entry as a static pill — read, not pressed', () => {
+    // ui-spec-v12 §8.30.6, carrying ui-spec-v09 §8.23.8's rule across from the
+    // `fact` chip this replaced: the pill is a span, so it is not reachable by Tab
     // and is not announced as a control. The strip states what the dish needs; it
     // does not offer anything to do about it.
     mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
