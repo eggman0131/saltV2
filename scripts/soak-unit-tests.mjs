@@ -9,8 +9,8 @@
 // purpose and counts, so the question has a number instead of an opinion.
 //
 // WHAT IT DOES
-// Runs `pnpm test` — the exact command `.husky/pre-push` runs, so the thing being
-// measured is the gate itself — N times back to back, with K spinner processes
+// Runs `pnpm test` — the exact command step 3 of `/run` and CI's unit job run, so
+// the thing being measured is the gate itself — N times back to back, with K spinner processes
 // saturating the CPU throughout. It reads Vitest's JSON reporter after each run
 // and aggregates every failure by test name, with the durations it failed at.
 //
@@ -35,7 +35,7 @@
 // instead. Measured on #793: this test failed at ~1095ms on a 1000ms budget and
 // ~5105ms on a 5000ms one — same bug, wearing whatever number it was given.
 //
-// THIS IS A DELIBERATE, MANUAL INSTRUMENT. It is not wired into `pre-push` or any
+// THIS IS A DELIBERATE, MANUAL INSTRUMENT. It is not wired into a git hook or any
 // CI workflow and must not be: it saturates the machine for as long as it runs.
 //
 //   pnpm soak                      # 10 runs, one spinner per core
