@@ -9,6 +9,7 @@
     rememberNote,
     forgetNote,
   } from '../../lib/kitchenMemoryService.js';
+  import { formatInstant } from '../../lib/dateFormat.js';
   import { addToast } from '../../lib/toastStore.js';
 
   // "What I remember" (issue #816, phase 1) — `/chat/remembered`.
@@ -70,9 +71,7 @@
   }
 
   function formatDate(iso: string): string {
-    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
-      new Date(iso),
-    );
+    return formatInstant(new Date(iso), { month: 'short', day: 'numeric' }, undefined);
   }
 </script>
 

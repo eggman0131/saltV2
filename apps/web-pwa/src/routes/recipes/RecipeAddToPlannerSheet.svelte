@@ -9,6 +9,7 @@
     SheetTitle,
   } from '@salt/ui-components';
   import { addCalendarDays, weekStartFor, type Recipe } from '@salt/domain';
+  import { formatDayKey } from '../../lib/dateFormat.js';
   import { addRecipeToDay, firstDayOfWeek } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -55,14 +56,6 @@
     wasOpen = open;
   });
 
-  // UTC formatting throughout: the date keys are calendar days, not instants, so
-  // rendering them in local time would shift them a day either side of midnight.
-  function fmt(date: string, opts: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(
-      new Date(`${date}T00:00:00.000Z`),
-    );
-  }
-
   function shiftMonth(anchor: string, months: number): string {
     const [y, m] = anchor.split('-').map(Number) as [number, number];
     const d = new Date(Date.UTC(y, m - 1 + months, 1));
@@ -90,10 +83,14 @@
     return out;
   });
 
-  const weekdayHeads = $derived(cells.slice(0, 7).map((d) => fmt(d, { weekday: 'narrow' })));
+  const weekdayHeads = $derived(
+    cells.slice(0, 7).map((d) => formatDayKey(d, { weekday: 'narrow' })),
+  );
 
   const today = $derived(todayIso());
-  const selectedLabel = $derived(fmt(selected, { weekday: 'long', day: 'numeric', month: 'long' }));
+  const selectedLabel = $derived(
+    formatDayKey(selected, { weekday: 'long', day: 'numeric', month: 'long' }),
+  );
 
   function inMonth(date: string): boolean {
     return date.slice(0, 7) === monthAnchor.slice(0, 7);
@@ -147,7 +144,7 @@
         <Icon name="ChevronLeft" size={18} />
       </Button>
       <span class="text-sm font-medium" data-testid="planner-add-month">
-        {fmt(monthAnchor, { month: 'long', year: 'numeric' })}
+        {formatDayKey(monthAnchor, { month: 'long', year: 'numeric' })}
       </span>
       <Button
         variant="ghost"
@@ -178,13 +175,13 @@
                 : 'text-muted-foreground/60 hover:bg-accent'}
                    {date === today && date !== selected ? 'ring-1 ring-primary' : ''}"
             aria-pressed={date === selected}
-            aria-label={fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+            aria-label={formatDayKey(date, { weekday: 'long', day: 'numeric', month: 'long' })}
             onclick={() => (selected = date)}
             disabled={busy}
             data-testid="planner-add-day"
             data-date={date}
           >
-            {fmt(date, { day: 'numeric' })}
+            {formatDayKey(date, { day: 'numeric' })}
           </button>
         {/each}
       </div>

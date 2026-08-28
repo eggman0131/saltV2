@@ -1,5 +1,6 @@
 import { currentStage } from '@salt/domain';
 import type { BatchDoc, BatchStageDoc, BatchTotalsDoc } from '@salt/domain/schemas';
+import { formatInstant } from '../../lib/dateFormat.js';
 import { formatMinutes, formatStatedDuration } from '../../lib/durationDisplay.js';
 
 // How a batch READS (issue #812, phase 1 of epic #778) — the words and formats the
@@ -51,16 +52,12 @@ function calendarDaysBetween(from: Date, to: Date): number {
 export function formatWhen(iso: string, now: Date = new Date()): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '—';
-  const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(at);
+  const time = formatInstant(at, { hour: '2-digit', minute: '2-digit' });
   const days = calendarDaysBetween(now, at);
   if (days === 0) return `today ${time}`;
   if (days === 1) return `tomorrow ${time}`;
   if (days === -1) return `yesterday ${time}`;
-  const day = new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(at);
+  const day = formatInstant(at, { weekday: 'short', day: 'numeric', month: 'short' });
   return `${day}, ${time}`;
 }
 
@@ -68,11 +65,7 @@ export function formatWhen(iso: string, now: Date = new Date()): string {
 export function formatDate(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(at);
+  return formatInstant(at, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /**
