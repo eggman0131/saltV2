@@ -235,6 +235,20 @@ jobs:
       - name: Test with coverage
         run: pnpm test:coverage
 
+      # A floor is only as trustworthy as the file set behind it, and a file the
+      # v8 remapper cannot parse is dropped from that set with nothing but a
+      # stack trace above the table — 37 of them were, on every run, for as long
+      # as the floors had existed (issue #974). This proves the report covered
+      # every file `coverage.areas.mjs` names.
+      #
+      # `always()` for the same reason as the upload below: a dropped file is one
+      # of the things that MOVES a threshold, so the run where a threshold failed
+      # is exactly the run where this answer is worth having. It stands down
+      # quietly when the suite never got far enough to write a report.
+      - name: Coverage file-set guard
+        if: always()
+        run: pnpm coverage:files:check
+
       # `always()` so a THRESHOLD failure still ships the report — the whole point
       # of the artifact is diagnosing which files lost coverage, and that is
       # needed precisely on the runs that go red.
