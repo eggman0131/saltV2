@@ -1,4 +1,4 @@
-// spec: ui-spec-v02.md §8.26 v0.2.3
+// spec: ui-spec-v13.md §8.32 v0.13
 import type { Snippet } from 'svelte';
 
 export type ErrorStateProps = {

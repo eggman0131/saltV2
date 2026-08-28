@@ -1,4 +1,4 @@
-// spec: ui-spec-v02.md §3.8 v0.2.14
+// spec: ui-spec-v02.md §3.8 v0.2.17
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { dirname, join, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +21,17 @@ import { fileURLToPath } from 'url';
 //     `ui-spec-v11.md` and §3.8 kept the old single-file name. A citation you
 //     cannot follow is decoration, so the document is now RESOLVED against
 //     `docs/design/`.
+//
+// And a third, the same defect one level down (issue #976). Resolving the
+// DOCUMENT and not the `§` after it left the checker green over eleven
+// citations naming a section that does not exist in the file they name — and
+// four of those were not stale cross-references but placeholders for a
+// specification nobody had written. `EmptyState`, `ErrorState`, `FormPage` and
+// `DetailPage` shipped, and grew ~34 consuming files, pointing at v0.2 §8.25 /
+// §8.26 / §9.2 / §9.3, where v0.2's §8 stops at 8.15 and its §9 is the
+// Changelog. The section is now resolved too, against the headings PARSED from
+// the cited document — never a list maintained beside it, which is the defect
+// #919 was about.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, '..');
 const REPO_ROOT = resolve(__dirname, '../../..');
@@ -45,6 +56,53 @@ const TS_HEADER = /^\/\/ spec: (.+)$/;
 // by `; ` — a file may implement two specs (ListPage is v0.4 plus v0.5's fill
 // mode), which two files had already been writing before §3.8 admitted it.
 const CITATION = /^([\w.-]+\.md) (§[^\s,]+(?:,\s*§[^\s,]+)*) v\d+\.\d+(?:\.\d+)?(?: \([^)]*\))?$/;
+
+/**
+ * Every section of a document that a header may cite, derived from its own
+ * `#` headings and nothing else — add a heading and the citation resolves the
+ * same day.
+ *
+ * A heading yields up to three keys, because both numbering styles are in use
+ * across `docs/`:
+ *
+ *  - its leading dotted number — `## 8.23.8 The static chips` → `8.23.8`,
+ *    `# 9. Changelog` → `9`. This is how every `ui-spec-*.md` is cited.
+ *  - its text — `## Typography` → `typography`, which is the only way to cite
+ *    `design.md` and `ai-kitchen-assistant.md`, whose headings are unnumbered.
+ *  - its text with a trailing parenthetical dropped — `## Surfaces (web-pwa)`
+ *    → `surfaces`, so a qualifier added to a heading does not silently break
+ *    the citations already pointing at it.
+ *
+ * A cited section can never contain a space (CITATION splits on it), so a
+ * multi-word heading is only citable by its number. That is a property of the
+ * header format, not a hole here.
+ */
+function sectionsOf(file: string): Set<string> {
+  const sections = new Set<string>();
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const heading = /^#{1,6}\s+(.+)$/.exec(line);
+    if (!heading) continue;
+    const text = (heading[1] as string).trim();
+    const numbered = /^(\d+(?:\.\d+)*)\.?(?:\s|$)/.exec(text);
+    if (numbered) sections.add(numbered[1] as string);
+    const named = text.replace(/`/g, '').toLowerCase().trim();
+    sections.add(named);
+    sections.add(named.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  }
+  return sections;
+}
+
+const sectionCache = new Map<string, Set<string> | null>();
+
+/** The cited document's sections, or null when no such document exists. */
+function sectionsFor(doc: string): Set<string> | null {
+  const cached = sectionCache.get(doc);
+  if (cached !== undefined) return cached;
+  const dir = SPEC_DIRS.find((d) => existsSync(join(d, doc)));
+  const sections = dir ? sectionsOf(join(dir, doc)) : null;
+  sectionCache.set(doc, sections);
+  return sections;
+}
 
 function collectFiles(dir: string): string[] {
   const results: string[] = [];
@@ -76,8 +134,15 @@ function checkFile(file: string): string | null {
     const parts = CITATION.exec(citation);
     if (!parts) return `malformed citation: \`${citation}\``;
     const doc = parts[1] as string;
-    if (!SPEC_DIRS.some((dir) => existsSync(join(dir, doc)))) {
+    const sections = sectionsFor(doc);
+    if (!sections) {
       return `cites \`${doc}\`, which is not a document in docs/design/ or docs/`;
+    }
+    for (const cited of (parts[2] as string).split(',')) {
+      const section = cited.trim().replace(/^§/, '');
+      if (!sections.has(section.toLowerCase())) {
+        return `cites \`${doc} §${section}\`, but that document has no section \`${section}\``;
+      }
     }
   }
   return null;
@@ -96,5 +161,5 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `Provenance check passed — ${collectFiles(SRC_ROOT).length} files, every header naming a real spec.`,
+  `Provenance check passed — ${collectFiles(SRC_ROOT).length} files, every header naming a real section of a real spec.`,
 );

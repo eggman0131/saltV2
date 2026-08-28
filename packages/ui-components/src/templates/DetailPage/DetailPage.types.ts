@@ -1,4 +1,4 @@
-// spec: ui-spec-v02.md §9.3 v0.2.3; ui-spec-v07.md §1 v0.7 (fill)
+// spec: ui-spec-v13.md §2 v0.13; ui-spec-v07.md §1 v0.7 (fill)
 import type { Snippet } from 'svelte';
 
 export type DetailPageProps = {
