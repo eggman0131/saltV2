@@ -10,6 +10,8 @@
 export { resolveKitchenTool } from './queries/resolveKitchenTool.js';
 export { unresolvedKitLabels } from './queries/unresolvedKitLabels.js';
 export { suggestKitchenToolParent } from './queries/suggestKitchenToolParent.js';
+export { instanceNamedKitchenTools } from './queries/instanceNamedKitchenTools.js';
+export type { InstanceNamedKitchenTool } from './queries/instanceNamedKitchenTools.js';
 export type {
   UnresolvedKitLabel,
   KitLabelSource,
