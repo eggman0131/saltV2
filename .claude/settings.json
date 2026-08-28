@@ -7,7 +7,20 @@
       "Bash(pnpm -F @salt/web-pwa test)",
       "Bash(pnpm vitest run)",
       "Bash(git status)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "Bash(git fetch origin *)",
+      "Bash(gh label list *)",
+      "Bash(pnpm check)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm depcruise)",
+      "Bash(pnpm test:coverage)",
+      "Bash(pnpm boundary:test)",
+      "Bash(pnpm docsmap:check)",
+      "Bash(pnpm theme:check)",
+      "Bash(pnpm provenance:check)",
+      "mcp__firebase-staging__firestore_query_collection",
+      "mcp__firebase-staging__firestore_list_documents",
+      "mcp__Claude_Browser__resize_window"
     ]
   },
   "hooks": {

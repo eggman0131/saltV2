@@ -280,7 +280,7 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 >
 > Severity, and be strict about the top one:
 > - **blocking** — you can state a concrete failure: this input, this state, this wrong output or crash. If you cannot name one, it is not blocking.
-> - **should-fix** — real, but ships safely and can be a follow-up.
+> - **should-fix** — real, but ships safely and can be a follow-up. Append `[trivial]` to the line when the whole fix is **≤5 lines and mechanical** in a file this diff already touches — a stale line reference, a wrong glob, a sentence this PR made false. You are the only actor holding the diff, so you are the only one who can size it; the coordinator decides what to do with the mark.
 > - **note** — style, taste, preference. Say them in one line each or not at all.
 >
 > **Write only findings.** No "what I verified and found sound" section, no summary of what the PR does, no restatement of the phases — the coordinator and the author both already know. If the honest answer is that you found nothing, the review is three lines saying so, and that is a good review rather than a failed one.
@@ -291,7 +291,7 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 
 Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose phases have all landed; pointed at a finished branch it either no-ops or restarts work. Spawn a plain `Agent(…, model: "sonnet")` instead — the findings arrive enumerated and the scope is closed, so there is no design judgement left in this step:
 
-> In worktree `<path>` on branch `<branch>`, address these blocking review findings: [list]. Do not rebase, do not merge, do not touch another branch, and do not take work beyond the findings — the issue's Out of scope list still binds. Run the safe gate set, commit, push.
+> In worktree `<path>` on branch `<branch>`, address these review findings — every blocking one, plus any marked `[trivial]`: [list]. Do not rebase, do not merge, do not touch another branch, and do not take work beyond the findings — the issue's Out of scope list still binds. Run the safe gate set, commit, push.
 >
 > Return:
 > ```
@@ -300,7 +300,20 @@ Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose
 > GATES: <green | red>
 > ```
 
-Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3. A **blocking** item still open after round 2 parks the branch (see the envelope), or — if you adjudicate it as safe to ship — gets a filed issue before the merge. Everything else joins the should-fix list, which is filed as one issue at **Finish**.
+**Trivial should-fix findings ride along.** Filing has a floor cost that a two-line edit does not clear. Send a `[trivial]`-marked **should-fix** finding to the fix agent in round 1, rather than listing it, once you have confirmed both of the things you can confirm without a diff:
+
+- **the file is already in this PR's footprint** — `gh pr view <pr> --json files`, which is yours under **Standing rules**: file names are not diffs. No new footprint means the queue's conflict model is untouched, and that is the condition making the rest of this safe — /run's scope discipline protects *footprint*, not line count, and **Dispatch** scores conflicts on deliverables;
+- **it needs no decision from Daniel** — no design fork, no rule change, no question about what the right shape would be. Judge this from the finding's one-line summary; if you cannot tell, that is a no.
+
+The third condition — ≤5 lines and mechanical — is the reviewer's `[trivial]` mark, because sizing a fix needs the diff and you do not read diffs. Unmarked should-fix findings are never sent, however small they sound.
+
+Drop whatever comes back under `FIXED` from the should-fix list: a finding cannot both ship fixed and be filed as outstanding. Anything under `REJECTED` stays on the list, and the agent's reason goes on the line.
+
+**If any of the three is in doubt, list it** — reviewer and coordinator alike. A finding that looks like one line and turns out to be a contract question is exactly what the list is for — #1051 (a chip icon clamp: one CSS selector, in fact an app-wide `Chip` contract question) is the shape to watch for. The asymmetry is deliberate: guessing wrong this way is a scope breach inside a PR that has already been reviewed, and guessing wrong the other way is a tracked issue whose body runs thirty times the length of its own diff.
+
+The cost being paid for today is on the record. #1026 exists because the round-1 fix agent drafted both of its doc corrections, **reverted them as out of its assigned scope**, and left an issue behind for someone to redo the work later — three payments for two lines. #1022 ("add a single line in two places"), #1015 ("one-line CLAUDE.md edit") and #1045's "one-token fix" are the same shape.
+
+Rounds are capped at two. Round 1 is the full review. Round 2 may only verify the blocking items from round 1 — no new findings, unless the fix introduced a new blocking regression. There is no round 3. A **blocking** item still open after round 2 parks the branch (see the envelope), or — if you adjudicate it as safe to ship — gets a filed issue before the merge. Everything else joins the should-fix list, which is filed as one issue at **Finish** — less anything the round-1 fix agent returned under `FIXED`.
 
 **You adjudicate, not the reviewer.** A rejection is a position, not a veto; you decide, record the decision in the ledger, and move on. Reviewer-wins is a deadlock and this command runs unattended.
 
@@ -310,7 +323,7 @@ Rounds are capped at two. Round 1 is the full review. Round 2 may only verify th
 gh issue create --title "campaign follow-ups: <slug> (#<ledger>)" --body-file <checklist>
 ```
 
-Body is a `- [ ]` checklist, one line per finding, PR number on each line. Notes are dropped entirely. File it even when the list is short; skip it only when the list is empty.
+Body is a `- [ ]` checklist, one line per finding, PR number on each line. Notes are dropped entirely, and so is anything already fixed in round 1 under the `[trivial]` rule above. File it even when the list is short; skip it only when the list is empty.
 
 This is a correction to a rule that lost its own output. The previous version said to put the list in the ledger's closing comment — but **Finish** closes the ledger when nothing is parked, so the list landed in a closed issue and left no trace anywhere a human looks. Campaign #1040 lost seven that way, two of them live prod risks.
 
