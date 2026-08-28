@@ -70,6 +70,22 @@ and free — every plan that already says "griddle pan" gains a picture with not
 migrated and nothing regenerated — and a name that matches nothing renders as words
 with no picture, which is the correct and complete answer to a miss.
 
+**Since #954 a kit label is asked of TWO vocabularies, equipment first.** A label
+can now name a specific appliance this household owns — the kit flow is handed the
+manifest and writes the item's own name — and those already have better pictures of
+their own in `equipmentIcons`. `resolveEquipmentItem`
+(`packages/domain/src/equipment/queries/`) is tried before `resolveKitchenTool`, and
+the ORDER is load-bearing rather than a preference: the tool resolver matches on
+token-aligned containment, so "Magimix Cocotte Slow Cook Pot" contains "pot" and
+would otherwise resolve a specific appliance to a generic saucepan drawing. The two
+resolvers also match differently, deliberately — containment is right for a closed
+list of common nouns and wrong for product names, so `resolveEquipmentItem` requires
+the item's leading (maker's) word plus a subset of its own words, and answers `null`
+rather than guess when two owned items qualify. `apps/web-pwa/src/lib/kitIcons.ts` is
+the one place the two are composed; do not write a second ordering into a page. The
+admin queue (`unresolvedKitLabels`) excludes equipment matches for the same reason,
+so nobody is invited to draw a `kitchenTools` cartoon of a Magimix.
+
 **The vocabulary is CURATED and closed**, about forty tools, seeded by
 `apps/cloud-functions/scripts/seed-kitchen-tools.mjs` (which holds the list). It is
 deliberately NOT routed through the canon matching pipeline: no `findClosestMatch`,

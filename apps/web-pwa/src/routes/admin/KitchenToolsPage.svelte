@@ -41,6 +41,7 @@
     hideKitchenToolIcon,
     unhideKitchenToolIcon,
   } from '../../lib/kitchenToolService.js';
+  import { equipment } from '../../lib/equipmentService.js';
   import { recipes } from '../../lib/recipeService.js';
   import { loadAllGuidedPlansForCuration } from '../../lib/guidedPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -83,8 +84,13 @@
   // the obvious one. The suggestion is ADVISORY — `suggestKitchenToolParent`'s
   // header says why a head noun is a good hint and a terrible rule — so it is
   // only ever a button a person presses, never a fold that happens on its own.
+  //
+  // The manifest goes in too (issue #954): a kit label may now name an appliance
+  // the household owns, and `equipmentIcons` already holds a drawing of it — so
+  // offering it here would invite a second pictogram of the same machine, and the
+  // row could never clear, because the strip resolves equipment before tools.
   const queue = $derived(
-    unresolvedKitLabels($recipes, plans, $kitchenTools).map((row) => ({
+    unresolvedKitLabels($recipes, plans, $kitchenTools, $equipment?.items ?? []).map((row) => ({
       ...row,
       suggestion: suggestKitchenToolParent(row.label, $kitchenTools),
     })),

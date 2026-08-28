@@ -76,7 +76,7 @@
   // App.svelte, so there is nothing to initialise here — and it is a store rather
   // than a plain function precisely so the strip fills in the moment the drawn
   // vocabulary lands, which on a cold load is after first paint.
-  import { toolIcons } from '../../lib/kitchenToolService.js';
+  import { kitIcons } from '../../lib/kitIcons.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     appendCacheBuster,
@@ -1257,9 +1257,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // vocabulary grow later and light up every recipe already written, and it is why
   // nothing below ever substitutes a near match or a generic glyph.
   //
-  // `stepIds` is stored and deliberately unread on this page — per-step kit rows on
-  // the method are a later phase; this strip answers the one question you ask before
-  // you have chosen a tab at all: have I got what this needs?
+  // The whole recipe's kit, in the order the flow listed it. This strip answers the
+  // question you ask before you have chosen a tab at all: have I got what this
+  // needs? `stepIds` is unread HERE and read further down the page — `kitByStep`
+  // turns it into the per-step rows on the method — so the two readings are of one
+  // stored list, not two.
   const kit = $derived(recipe?.kit ?? []);
 
   // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
@@ -2349,8 +2351,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 {#each kit as entry (entry.label)}
                   <PictogramPill
                     label={entry.label}
-                    thumbnail={$toolIcons.toolIconFor(entry.label)}
-                    version={$toolIcons.toolIconVersionFor(entry.label)}
+                    thumbnail={$kitIcons.kitIconFor(entry.label)}
+                    version={$kitIcons.kitIconVersionFor(entry.label)}
                     class="shrink-0 max-w-full"
                     data-testid="recipe-kit-chip"
                   />
@@ -2677,11 +2679,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                   title={entry.label}
                                   data-testid="recipe-view-step-kit-item"
                                 >
-                                  {#if $toolIcons.toolIconFor(entry.label)}
+                                  {#if $kitIcons.kitIconFor(entry.label)}
                                     <span class="flex" aria-hidden="true">
                                       <CanonIcon
-                                        thumbnail={$toolIcons.toolIconFor(entry.label)}
-                                        version={$toolIcons.toolIconVersionFor(entry.label)}
+                                        thumbnail={$kitIcons.kitIconFor(entry.label)}
+                                        version={$kitIcons.kitIconVersionFor(entry.label)}
                                         name={entry.label}
                                         size={26}
                                       />

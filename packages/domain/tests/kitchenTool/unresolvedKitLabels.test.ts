@@ -30,7 +30,7 @@ function plan(prep: (string | null)[], stepNotes: (string | null)[] = []) {
 
 describe('unresolvedKitLabels', () => {
   it('returns nothing for empty inputs', () => {
-    expect(unresolvedKitLabels([], [], [])).toEqual([]);
+    expect(unresolvedKitLabels([], [], [], [])).toEqual([]);
   });
 
   it('ranks by how often the miss came up', () => {
@@ -38,6 +38,7 @@ describe('unresolvedKitLabels', () => {
     // the name twelve recipes wanted, not the one that turned up once.
     const rows = unresolvedKitLabels(
       [recipe('tagine'), recipe('tagine', 'mandoline'), recipe('tagine')],
+      [],
       [],
       [],
     );
@@ -51,14 +52,14 @@ describe('unresolvedKitLabels', () => {
   it('folds case and whitespace variants into ONE row', () => {
     // "Large Bowl" and "large bowl " are one gap that one write closes, so they
     // are one row with a count of 2 — never two rows inviting two tools.
-    const rows = unresolvedKitLabels([recipe('Large Bowl', 'large  bowl ')], [], []);
+    const rows = unresolvedKitLabels([recipe('Large Bowl', 'large  bowl ')], [], [], []);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.count).toBe(2);
   });
 
   it('shows the spelling the content used most', () => {
-    const rows = unresolvedKitLabels([recipe('tagine', 'Tagine', 'tagine')], [], []);
+    const rows = unresolvedKitLabels([recipe('tagine', 'Tagine', 'tagine')], [], [], []);
 
     expect(rows).toEqual([{ label: 'tagine', count: 3 }]);
   });
@@ -68,6 +69,7 @@ describe('unresolvedKitLabels', () => {
       [recipe('Colander', 'tagine')],
       [],
       [tool({ id: 'colander', label: 'Colander' })],
+      [],
     );
 
     expect(rows.map((r) => r.label)).toEqual(['tagine']);
@@ -80,6 +82,7 @@ describe('unresolvedKitLabels', () => {
       [recipe('skillet')],
       [],
       [tool({ id: 'frying-pan', label: 'Frying pan', matchers: ['skillet'] })],
+      [],
     );
 
     expect(rows).toEqual([]);
@@ -88,7 +91,12 @@ describe('unresolvedKitLabels', () => {
   it('reads both container fields on a plan, and ignores blank and null ones', () => {
     // `null` is the schema's honest "this job puts nothing anywhere"; a blank
     // string is the same thing typed. Neither is evidence of a missing picture.
-    const rows = unresolvedKitLabels([], [plan([null, '  ', 'tagine'], [null, 'mandoline'])], []);
+    const rows = unresolvedKitLabels(
+      [],
+      [plan([null, '  ', 'tagine'], [null, 'mandoline'])],
+      [],
+      [],
+    );
 
     expect(rows).toEqual([
       { label: 'mandoline', count: 1 },
@@ -97,13 +105,13 @@ describe('unresolvedKitLabels', () => {
   });
 
   it('adds a recipe mention and a plan mention into one count', () => {
-    const rows = unresolvedKitLabels([recipe('tagine')], [plan(['Tagine'], ['tagine'])], []);
+    const rows = unresolvedKitLabels([recipe('tagine')], [plan(['Tagine'], ['tagine'])], [], []);
 
     expect(rows).toEqual([{ label: 'tagine', count: 3 }]);
   });
 
   it('breaks a tie alphabetically, so the list does not reorder under the cursor', () => {
-    const rows = unresolvedKitLabels([recipe('zester', 'apple corer', 'mandoline')], [], []);
+    const rows = unresolvedKitLabels([recipe('zester', 'apple corer', 'mandoline')], [], [], []);
 
     expect(rows.map((r) => r.label)).toEqual(['apple corer', 'mandoline', 'zester']);
   });
@@ -111,6 +119,34 @@ describe('unresolvedKitLabels', () => {
   it('ignores a quantity that wandered into a container field', () => {
     // `normaliseName` strips pure-number tokens, so "500g" normalises away
     // entirely. It names no tool and never could.
-    expect(unresolvedKitLabels([], [plan(['500g'])], [])).toEqual([]);
+    expect(unresolvedKitLabels([], [plan(['500g'])], [], [])).toEqual([]);
+  });
+});
+
+describe('unresolvedKitLabels — equipment the household owns (issue #954)', () => {
+  const magimix = {
+    id: 'eq-1',
+    schemaVersion: 1 as const,
+    name: 'Magimix Cook Expert',
+    accessories: [],
+    rules: [],
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+
+  it('leaves out a label that names an appliance the household owns', () => {
+    // `equipmentIcons` already holds a drawing of it (#877/#879). Offering it as a
+    // gap would invite a SECOND pictogram of the same machine — and adding one
+    // would not change the strip, which resolves equipment first.
+    const rows = unresolvedKitLabels([recipe('Magimix Cook Expert', 'tagine')], [], [], [magimix]);
+
+    expect(rows.map((r) => r.label)).toEqual(['tagine']);
+  });
+
+  it('still lists a generic label the manifest cannot name', () => {
+    // "mandoline" resolves to no owned item (the household owns two, and neither
+    // is called that), so it stays a real gap in the drawn vocabulary.
+    const rows = unresolvedKitLabels([recipe('mandoline')], [], [], [magimix]);
+
+    expect(rows).toEqual([{ label: 'mandoline', count: 1 }]);
   });
 });

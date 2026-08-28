@@ -493,9 +493,34 @@ a required field would empty the list of recipes written before this shipped.
   unrelated save, forever. Same shape as the hero image's control fields
   below, and the same consequence: an edit does NOT re-trigger inference —
   `redoRecipeKit` is the only way to ask again.
+- **A kit label resolves to a picture through TWO vocabularies since #954**, the
+  household's `equipmentManifest` first and `kitchenTools` second, composed once
+  in `apps/web-pwa/src/lib/kitIcons.ts` and used by every kit surface. The order
+  is load-bearing (a branded name contains generic tokens), and it also supersedes
+  #882's deferred "a manifest-item→tool-id mapping": there is nothing to map when
+  the label already names the item, and no static generic→specific link could ever
+  be right for four food processors used for four jobs. `unresolvedKitLabels`
+  applies the same exclusion so the curation queue does not offer a machine
+  `equipmentIcons` already draws. Full reasoning: `docs/canon-icons.md`
+  § "The fourth family".
 - **`isCookable(recipe.kind)` gates the call**, not `kind === 'outing'` — see
   "Schema extensions (kind discriminator)" above. An outing or a placeholder
   has nothing to get out and must never cost an AI call.
+- **The flow is handed the equipment manifest, and that is what makes a label
+  useful (issue #954).** The original prompt ended its naming rules with "no
+  brand names" and offered `"food processor"` as the desired output form, so a
+  step reading "Run the Magimix Cook Expert on slow cook" stored `slow cooker` —
+  the name was discarded, not missing. It also contradicted the librarian one
+  pass upstream, which is explicitly forbidden from generalising a named
+  appliance. Two changes fix it: the clause is gone, and the trigger now passes
+  `readEquipmentContext(...)` on the input's `equipment` field, wrapped by a
+  THIRD framing beside the chef's and the librarian's
+  (`equipmentSectionForKit`). The licence is deliberately narrow — name which
+  one, never introduce one — because the household owns four things that answer
+  to "food processor" and none of them belongs in a method that does the job by
+  hand. `equipment` is `.optional().default('')` and the reader is fail-open, so
+  a missing or corrupt manifest degrades to the pre-#954 prompt byte for byte
+  and never to a failed inference (Rule 10).
 
 ## Refresh — a chef turn, never a librarian mode (issue #890)
 
