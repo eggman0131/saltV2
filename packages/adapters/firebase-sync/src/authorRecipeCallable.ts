@@ -17,5 +17,9 @@ export async function callAuthorRecipe(
     name: 'authorRecipe',
     input,
     traceparent,
+    // The function declares 120 s (`cloud-functions/src/index.ts:300`) against
+    // the callable client's 70 s default, so a slow authoring run used to fail
+    // in the browser while the flow was still writing (#928, B2-010).
+    timeoutMs: 120_000,
   });
 }

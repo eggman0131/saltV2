@@ -28,7 +28,11 @@ export async function streamChefChat(
   onChunk: (chunk: string) => void,
 ): Promise<ReadResult<string, DomainError>> {
   try {
-    const fn = callableRef<ChefChatInput, string, string>('chefChat');
+    // `chefChat` declares 120 s (`cloud-functions/src/index.ts:559`). The
+    // callable client's default is 70, and this is a STREAM: the browser used to
+    // abandon a long reply mid-flow, so the user watched an answer stop
+    // half-written.
+    const fn = callableRef<ChefChatInput, string, string>('chefChat', 120_000);
     const { stream, data } = await fn.stream(input);
     for await (const chunk of stream) {
       onChunk(chunk);

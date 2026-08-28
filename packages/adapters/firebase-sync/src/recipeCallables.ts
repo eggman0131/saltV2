@@ -19,6 +19,9 @@ export async function callParseRecipeIngredients(
   return callFunction<{ rawText: string }, IngredientGroup[]>({
     name: 'parseRecipeIngredients',
     input: { rawText },
+    // The function declares 90 s (`cloud-functions/src/index.ts:288`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
   });
 }
 
@@ -157,6 +160,9 @@ export async function callDescribeRecipeScene(
     name: 'describeRecipeScene',
     input,
     traceparent,
+    // The function declares 90 s (`cloud-functions/src/index.ts:325`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
   });
 }
 
@@ -177,6 +183,11 @@ export async function callExtractRecipeFromUrl(
       name: 'extractRecipeFromUrl',
       input,
       traceparent,
+      // The function declares 120 s (`cloud-functions/src/index.ts:471`) against
+      // the callable client's 70 s default. Fetching and reading a page is the
+      // slowest thing this callable does and the one most likely to overrun
+      // (#928, B2-010).
+      timeoutMs: 120_000,
     });
     return success(data);
   } catch (err) {

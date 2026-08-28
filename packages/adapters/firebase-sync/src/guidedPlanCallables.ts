@@ -20,5 +20,10 @@ export async function callGenerateGuidedPlan(
   return callFunction<GenerateGuidedPlanInput, GenerateGuidedPlanOutput>({
     name: 'generateGuidedPlan',
     input,
+    // The function declares 90 s (`cloud-functions/src/index.ts:384`), sized
+    // around the flow's 55 s `withAiTimeout`, against the callable client's 70 s
+    // default — so the browser used to give up 20 s early. This is the wrapper
+    // finding B2-010 was originally filed against.
+    timeoutMs: 90_000,
   });
 }

@@ -34,8 +34,9 @@
  * `httpsCallable`'s ARGUMENT LIST is asserted as a value, not with
  * `toHaveBeenCalledWith`. That is what makes the absence of a `timeout` option
  * a real assertion: `toHaveBeenCalledWith(fns, 'name')` also passes on a call
- * that supplied a third argument. Ten of these rows gain a timeout in Phase 5
- * and the rest must not, so "two arguments, not three" has to be falsifiable.
+ * that supplied a third argument. Twelve rows declare a timeout and sixteen
+ * declare none, so "two arguments, not three" has to be falsifiable in both
+ * directions.
  *
  * ─── What this net does NOT catch, stated rather than implied ───────────────
  * A row with `traced: null` asserts the payload it sends when called the only
@@ -202,6 +203,7 @@ const rows: readonly Row[] = [
   {
     name: 'callAuthorRecipe',
     callable: 'authorRecipe',
+    timeout: 120_000,
     data: RECIPE,
     call: () => barrel.callAuthorRecipe(cast(AUTHOR_INPUT)),
     payload: AUTHOR_INPUT,
@@ -254,6 +256,7 @@ const rows: readonly Row[] = [
   {
     name: 'callCanonicaliseRecipeIngredients',
     callable: 'canonicaliseRecipeIngredients',
+    timeout: 120_000,
     data: [],
     call: () => barrel.callCanonicaliseRecipeIngredients(cast(CANONICALISE_INPUT)),
     payload: CANONICALISE_INPUT,
@@ -288,6 +291,7 @@ const rows: readonly Row[] = [
     name: 'streamChefChat',
     callable: 'chefChat',
     stream: true,
+    timeout: 120_000,
     data: 'Preheat.',
     call: () => barrel.streamChefChat(cast(CHAT_INPUT), () => {}),
     payload: CHAT_INPUT,
@@ -324,6 +328,7 @@ const rows: readonly Row[] = [
   {
     name: 'callExtractProcessStages',
     callable: 'extractProcessStages',
+    timeout: 90_000,
     data: { stages: [] },
     call: () => barrel.callExtractProcessStages(cast(STAGES_INPUT)),
     payload: STAGES_INPUT,
@@ -334,6 +339,7 @@ const rows: readonly Row[] = [
   {
     name: 'callGenerateGuidedPlan',
     callable: 'generateGuidedPlan',
+    timeout: 90_000,
     data: { preps: [], stepNotes: [] },
     call: () => barrel.callGenerateGuidedPlan(cast(PLAN_INPUT)),
     payload: PLAN_INPUT,
@@ -404,6 +410,7 @@ const rows: readonly Row[] = [
   {
     name: 'callParseRecipeIngredients',
     callable: 'parseRecipeIngredients',
+    timeout: 90_000,
     data: [],
     call: () => barrel.callParseRecipeIngredients('2 eggs'),
     payload: { rawText: '2 eggs' },
@@ -444,6 +451,7 @@ const rows: readonly Row[] = [
   {
     name: 'callDescribeRecipeScene',
     callable: 'describeRecipeScene',
+    timeout: 90_000,
     data: { brief: 'a loaf, lit softly' },
     call: () => barrel.callDescribeRecipeScene(cast(SCENE_INPUT)),
     payload: SCENE_INPUT,
@@ -457,6 +465,7 @@ const rows: readonly Row[] = [
   {
     name: 'callExtractRecipeFromUrl',
     callable: 'extractRecipeFromUrl',
+    timeout: 120_000,
     data: RECIPE,
     call: () => barrel.callExtractRecipeFromUrl(cast(URL_INPUT)),
     payload: URL_INPUT,
@@ -524,6 +533,7 @@ const rows: readonly Row[] = [
   {
     name: 'callDrawEquipmentIcon',
     callable: 'drawEquipmentIcon',
+    timeout: 300_000,
     data: { ok: true },
     call: () => barrel.callDrawEquipmentIcon(cast(DRAW_INPUT)),
     payload: DRAW_INPUT,
@@ -545,6 +555,7 @@ const rows: readonly Row[] = [
   {
     name: 'callDescribeEquipmentSubject',
     callable: 'describeEquipmentSubject',
+    timeout: 90_000,
     // Projects the BRIEF out of the wrapper object Genkit's structured output
     // requires. No caller wants the envelope, and a mechanical rewrite that
     // returned `res.data` would hand them one.
@@ -618,7 +629,7 @@ describe.each(rows)('$name', (row) => {
     expect(mockGetFunctions).toHaveBeenCalledWith(undefined, FUNCTIONS_REGION);
     // The whole argument LIST, so a third argument cannot appear unnoticed:
     // `toHaveBeenCalledWith(REGIONED, name)` passes on a call that supplied a
-    // timeout, and twenty of these rows are pinning that they supply none.
+    // timeout, and sixteen of these rows are pinning that they supply none.
     expect(callableArgs()).toEqual(
       row.timeout === undefined
         ? [REGIONED, row.callable]

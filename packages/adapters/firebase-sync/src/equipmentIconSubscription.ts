@@ -67,6 +67,13 @@ export async function callDrawEquipmentIcon(
   return callFunction<DrawEquipmentIconInput, { ok: true }, void>({
     name: 'drawEquipmentIcon',
     input,
+    // The function is allowed 300 s (`callables/drawEquipmentIcon.ts:61`) and
+    // the callable client's own default is 70, so without this the browser
+    // abandoned every draw that took longer than 70 s while the function ran on
+    // and WROTE the icon — the user saw a failure for work that succeeded, and a
+    // second press paid for a second picture. The worst of the ten (#928,
+    // B2-010): 230 s early on a callable whose whole job takes minutes.
+    timeoutMs: 300_000,
     project: () => undefined,
     // `failed-precondition` is the kill switch being off, or no description
     // written yet — both are expected states with a friendly message, not
@@ -107,6 +114,9 @@ export async function callDescribeEquipmentSubject(
   return callFunction<DescribeEquipmentSubjectInput, DescribeEquipmentSubjectOutput, string>({
     name: 'describeEquipmentSubject',
     input,
+    // The function declares 90 s (`cloud-functions/src/index.ts:357`), sized
+    // around the flow's own 55 s `withAiTimeout`. 70 would have given up first.
+    timeoutMs: 90_000,
     // The brief itself: the wrapper object exists only for Genkit's structured
     // output and no caller wants it.
     project: (out) => out.brief,

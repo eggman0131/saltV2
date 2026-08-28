@@ -20,5 +20,8 @@ export async function callExtractProcessStages(
   return callFunction<ExtractProcessStagesInput, ExtractProcessStagesOutput>({
     name: 'extractProcessStages',
     input,
+    // The function declares 90 s (`cloud-functions/src/index.ts:406`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
   });
 }

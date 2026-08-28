@@ -45,6 +45,11 @@ export async function callCanonicaliseRecipeIngredients(
     name: 'canonicaliseRecipeIngredients',
     input,
     traceparent,
+    // The function declares 120 s (`cloud-functions/src/index.ts:256`) against
+    // the client's 70 s default. A whole recipe's ingredients go through the
+    // matcher here, so the long tail is the ordinary case rather than the
+    // exception (#928, B2-010).
+    timeoutMs: 120_000,
   });
 }
 
