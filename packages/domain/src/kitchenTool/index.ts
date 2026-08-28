@@ -9,6 +9,7 @@
 // from them every time a row is drawn.
 export { resolveKitchenTool } from './queries/resolveKitchenTool.js';
 export { unresolvedKitLabels } from './queries/unresolvedKitLabels.js';
+export { suggestKitchenToolParent } from './queries/suggestKitchenToolParent.js';
 export type {
   UnresolvedKitLabel,
   KitLabelSource,

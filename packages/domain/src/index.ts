@@ -293,10 +293,13 @@ export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTim
 // pure lookup that turns a cook's own words ("Magmix bowl", "large frying pan")
 // into a tool at DISPLAY time. Nothing persists that answer, so the commands here
 // curate the VOCABULARY and never touch a recipe or a plan; `unresolvedKitLabels`
-// is the read that says which words our content already uses and nothing draws.
+// is the read that says which words our content already uses and nothing draws,
+// and `suggestKitchenToolParent` is the advisory hint that keeps curating that
+// list from minting a second drawing of an object the vocabulary already has.
 export {
   resolveKitchenTool,
   unresolvedKitLabels,
+  suggestKitchenToolParent,
   createKitchenTool,
   updateKitchenTool,
 } from './kitchenTool/index.js';
