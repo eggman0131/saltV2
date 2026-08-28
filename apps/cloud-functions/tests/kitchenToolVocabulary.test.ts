@@ -115,6 +115,45 @@ describe('the seeded kitchen-tool vocabulary', () => {
     expect(resolveKitchenTool('stand mixer', VOCABULARY)?.id).toBe('stand-mixer');
   });
 
+  it('pins the blender cluster: stick blenders draw, jug/stand/plain blenders do not', () => {
+    // Regression coverage for the PR #1052 review finding: `Stick blender` used to
+    // carry a bare "blender" matcher, so ANY phrase containing the word — a jug
+    // blender, a stand blender, a smoothie blender, even the bare noun on its own —
+    // silently resolved to a stick-blender pictogram. That is the rule-1 failure
+    // the cooker and mixer clusters above are already guarded against; this locks
+    // the same guarantee onto blenders. Production has only ever asked for a stick
+    // blender by three spellings, so a bare "blender" is deliberately left
+    // UNRESOLVED rather than folded onto that row — see the comment on the
+    // `stick-blender` entry for the reasoning.
+    expect(resolveKitchenTool('stick blender', VOCABULARY)?.id).toBe('stick-blender');
+    expect(resolveKitchenTool('immersion blender', VOCABULARY)?.id).toBe('stick-blender');
+    expect(resolveKitchenTool('hand blender', VOCABULARY)?.id).toBe('stick-blender');
+    // None of these name a stick blender, and none may resolve to one. (Some
+    // still resolve to an unrelated tool through an incidental token match — e.g.
+    // "jug blender" catches `Jug`'s bare "jug" — which is the table-wide rule-2
+    // looseness tracked separately; what THIS test guards is that none of them
+    // silently becomes a stick blender.)
+    expect(resolveKitchenTool('jug blender', VOCABULARY)?.id).not.toBe('stick-blender');
+    expect(resolveKitchenTool('stand blender', VOCABULARY)?.id).not.toBe('stick-blender');
+    expect(resolveKitchenTool('smoothie blender', VOCABULARY)?.id).not.toBe('stick-blender');
+    expect(resolveKitchenTool('blender', VOCABULARY)).toBeNull();
+  });
+
+  it('keeps two other rule-1 splits from collapsing onto a near-duplicate row', () => {
+    // `Salad spinner` and `Colander` are both round mesh-adjacent draining tools —
+    // exactly the kind of pair a careless "fold it to make the coverage test pass"
+    // edit would merge, and exactly the failure class finding 1 shipped as. Pinning
+    // both sides means that edit fails loudly instead of shipping quiet.
+    expect(resolveKitchenTool('salad spinner', VOCABULARY)?.id).toBe('salad-spinner');
+    expect(resolveKitchenTool('colander', VOCABULARY)?.id).toBe('colander');
+    expect(resolveKitchenTool('strainer', VOCABULARY)?.id).toBe('colander');
+    // `Cake tin` and `Loaf tin` are the header's own named example of a same-head-
+    // noun split ("cake tin vs loaf tin") — pin it the same way.
+    expect(resolveKitchenTool('rectangular cake tin', VOCABULARY)?.id).toBe('cake-tin');
+    expect(resolveKitchenTool('loaf tin', VOCABULARY)?.id).toBe('loaf-tin');
+    expect(resolveKitchenTool('bread tin', VOCABULARY)?.id).toBe('loaf-tin');
+  });
+
   it('gives every tool a distinct id', () => {
     const ids = SEED.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);

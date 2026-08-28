@@ -112,7 +112,16 @@ export const TOOLS = [
   // the same row either way.
   { id: 'sous-vide-circulator', label: 'Sous vide circulator', matchers: ['immersion circulator', 'precision cooker', 'sous vide'] },
   { id: 'food-processor', label: 'Food processor', matchers: [] },
-  { id: 'stick-blender', label: 'Stick blender', matchers: ['immersion blender', 'hand blender', 'blender'] },
+  // Bare "blender" is NOT a matcher here, on purpose, and for the same reason the
+  // cooker and mixer rows above carry no bare "cooker"/"mixer": a stick blender
+  // and a jug/countertop blender are different objects, and production has never
+  // asked for the second one. Folding the generic noun onto this row would draw a
+  // stick-blender pictogram for a jug blender the moment one is entered -- the
+  // exact rule-1 failure this table exists to prevent. "immersion blender" and
+  // "hand blender" stay because both name the stick blender specifically; a
+  // recipe that just says "blender" goes undrawn until a real countertop blender
+  // shows up in production and earns its own row.
+  { id: 'stick-blender', label: 'Stick blender', matchers: ['immersion blender', 'hand blender'] },
   { id: 'hand-mixer', label: 'Hand mixer', matchers: ['electric whisk'] },
   { id: 'stand-mixer', label: 'Stand mixer', matchers: ['food mixer', 'kitchenaid'] },
   { id: 'meat-grinder', label: 'Meat grinder', matchers: ['mincer', 'meat mincer'] },
