@@ -55,7 +55,7 @@ Recommending a `limit` on the other fourteen would be churn.
 | `A1-013` | **CONFIRMED as fact, REFUTED as a defect** | three `$derived` Maps over 281 items, rebuilt only when canon changes |
 | `A3-014` | **CONFIRMED as fact, REFUTED as a defect** | O(S×N) with S ≤ ~50, N = 295 |
 | `A4-012` | **CONFIRMED — the only UI finding with a real shape** | O(N²) ≈ 79k comparisons per keystroke, and it grows quadratically |
-| `C3-013` | **CONFIRMED — OUT-OF-SCOPE for this issue** | data-lifecycle, not query narrowing; and a TTL policy is blocked by the field's type |
+| `C3-013` | **CONFIRMED — OUT-OF-SCOPE for this issue** | data-lifecycle, not query narrowing; and a TTL policy is blocked by the field's type — **resolved by #1008**, see §`C3-013` |
 
 ### B2-013 — "nine collection subscriptions with no `limit`/`where`/`orderBy`"
 
@@ -119,6 +119,10 @@ before the descriptor refactor and should be corrected on the issue.
   `string` → `Timestamp` migration that would arm the sweep is deliberately its
   own issue, because it is a shape change on live per-user documents and it would
   make those 42 sweepable at once.
+
+  > **Resolved by #1008 — see [`docs/runbooks/ttl-policies.md`](runbooks/ttl-policies.md).**
+  > `chatSessions.expiresAt` is written as a `Timestamp`, and
+  > `scripts/migrate-ttl-timestamps.mjs` converts the documents already written.
 
 This is the only subscription whose document count grows without bound, whose
 documents are large, and which is attached for the whole life of the app.
@@ -279,6 +283,11 @@ Still: measure before claiming a felt improvement; 79k trivial comparisons is
 likely still ~1 ms.
 
 ### C3-013 — `timerDeliveries` has three producers, no deleter, TTL or sweep
+
+> **Resolved by #1008 — see [`docs/runbooks/ttl-policies.md`](runbooks/ttl-policies.md).**
+> `timerDeliveries` now carries an `expiresAt` `Timestamp` and a 14-day TTL; the
+> write-shape blocker described below is gone. Everything that follows is the
+> point-in-time record and is left as measured.
 
 **CONFIRMED. And it does not belong in this issue.**
 
@@ -674,6 +683,9 @@ hoist a `$derived` `Map` out of `filterFn` in `ShoppingListPage.svelte:330` and
 ship only that one, and measure it in the browser rather than asserting it.
 
 ### Stage 6 — own issue: `timerDeliveries` retention (`C3-013`)
+
+> **Done — that issue was #1008; resolved by it. See
+> [`docs/runbooks/ttl-policies.md`](runbooks/ttl-policies.md).**
 
 Data lifecycle, not query narrowing. The first design question is not "sweep or
 TTL" but "`deliveredAt` is an integer, so what field does a TTL policy hang off" —
