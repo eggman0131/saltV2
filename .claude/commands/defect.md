@@ -27,7 +27,7 @@ If the cause is obvious, the change is contained to a file or two, and there is 
 - **CLAUDE.md is binding.** Layer map, hard rules, data-model and Zod conventions. A fix that requires bending one of them is a finding for Step 3, not a detail to settle during implementation.
 - **Fix the mechanism, not the symptom.** No bodges: if the honest fix is larger than the bug looks, say so. Suppressing a symptom to close an issue is worse than leaving the issue open.
 - **Flag the simpler path.** If the defect exists because the surrounding design is wrong, and a different shape would be *simpler and more maintainable* (not merely quicker to patch), raise it with the trade-off — even when that means a second issue rather than this one.
-- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). There is no GitHub MCP server in this repo.
+- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 1 — Reproduce & triage
 
