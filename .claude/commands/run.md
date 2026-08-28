@@ -200,9 +200,9 @@ git rebase origin/main    # no-op when already current
 git push -u origin <type>/<slug>-ISSUE_NUMBER
 ```
 
-**Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main`, because the merge queue runs them against real `main` at merge time and there is no point burning them on a combination that will never merge. That trade is right for the queue and wrong for you: you need the signal *this* phase, not at merge. Rebase and you get it — push while behind and step 8 shows a green tick for suites that never ran. Add `--force-with-lease` only when the rebase actually rewrote commits.
+**Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main` — the "Main" ruleset is strict, so a behind-branch must rebase before it can merge anyway, and that rebase re-triggers CI. `auto-update-prs.yml` does that automatically, but only for PRs with auto-merge enabled, which a `/run` draft is not: yours is yours to rebase. Push while behind and you get a green tick for suites that never ran (step 8). Add `--force-with-lease` only when the rebase actually rewrote commits.
 
-**Phase 1 only — open the PR, as a draft.** CI triggers on `pull_request`, on pushes to `main`, and on merge-queue entries — nothing else: **a pushed branch with no PR runs no CI at all.** The PR exists from phase 1 so every later phase gets a real signal; it stays draft until the final phase.
+**Phase 1 only — open the PR, as a draft.** CI triggers on `pull_request` and on pushes to `main`, and on nothing else: **a pushed branch with no PR runs no CI at all.** The PR exists from phase 1 so every later phase gets a real signal; it stays draft until the final phase.
 
 ```
 gh pr create --draft --base main --head <type>/<slug>-ISSUE_NUMBER \
