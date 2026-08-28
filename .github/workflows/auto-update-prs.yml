@@ -66,6 +66,29 @@ jobs:
             exit 0
           fi
 
+          # An EXPIRED or revoked PAT is not the same as an absent one: the secret
+          # is still non-empty, so the guard above does not fire, and the first
+          # authenticated call would 401 into a red run on main — months later,
+          # with a cause nobody remembers. Probe once and treat rejected
+          # credentials exactly like a missing secret: warn loudly, exit green.
+          # `repos/{owner}/{repo}` is the cheapest authenticated call, and a bad
+          # token is rejected outright even for a public repo, so the probe is
+          # meaningful here.
+          #
+          # Anything else — a 5xx, a network fault — is deliberately NOT swallowed.
+          # That is a real fault and should stay visible; only the one failure with
+          # an obvious human fix degrades quietly.
+          if ! auth_err=$(gh api "repos/$REPO" --silent 2>&1); then
+            if grep -qiE 'HTTP 40[13]|bad credentials|requires authentication|token .*(expired|revoked)' <<< "$auth_err"; then
+              echo "$auth_err"
+              echo "::warning::PAT_AUTO_UPDATE was rejected — most likely expired or revoked. Renew it at https://github.com/settings/personal-access-tokens (Contents: read and write, Pull requests: read and write on this repo) and update the repository secret. No PR branches updated; nothing else is affected."
+              exit 0
+            fi
+            echo "$auth_err"
+            echo "::error::Could not reach the GitHub API — this is not an auth problem."
+            exit 1
+          fi
+
           # mergeStateStatus is computed asynchronously, so a PR queried straight
           # after a push to main reports UNKNOWN. Retry briefly; anything still
           # unresolved is picked up by the next push to main, so this never needs
@@ -116,4 +139,17 @@ jobs:
             fi
           done
 
-          echo "Done. $failed PR(s) could not be updated."
+          if [ "$failed" -eq 0 ]; then
+            echo "Done. Every behind PR was updated."
+          else
+            # Every single one failing is not N coincidences — it is one cause,
+            # and the likeliest is the PAT missing Contents/Pull requests write
+            # (which the auth probe above cannot catch: reading the repo needs
+            # only the metadata permission that is always granted).
+            total=$(echo "$behind" | wc -w)
+            if [ "$failed" -eq "$total" ]; then
+              echo "::warning::All $total update(s) failed — check that PAT_AUTO_UPDATE still grants Contents: read and write plus Pull requests: read and write on this repo."
+            else
+              echo "::warning::$failed of $total update(s) could not be applied; the rest succeeded."
+            fi
+          fi
