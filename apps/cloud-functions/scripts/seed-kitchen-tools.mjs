@@ -23,14 +23,12 @@
 //                                                     the small tile
 //
 // ── THE VOCABULARY ────────────────────────────────────────────────────────
-// `TOOLS` below is the Phase-1 list, and it is the deliverable as much as the
-// code is. It was grounded by reading staging's real `guidedPlans`: the container
-// words actually in use are "Magmix bowl", "meat plate" and "serving plate", with
-// step `setup` fields naming a bowl, a work surface, a wire cooling rack, a tin, a
-// pan and a hob burner. Two plans is a thin sample, so the list is that evidence
-// plus an obvious core of what a home kitchen contains. It is meant to be grown:
-// nothing stores a tool id, so adding "griddle pan" later gives every plan that
-// already says it a picture, retroactively and for free.
+// `TOOLS` lives in `kitchen-tool-vocabulary.mjs`, and it is the deliverable as
+// much as the code is. It is meant to be grown: nothing stores a tool id, so
+// adding "griddle pan" later gives every plan that already says it a picture,
+// retroactively and for free — and the matcher discipline that keeps one drawing
+// per real object, rather than one per adjective, is documented there beside the
+// table it governs. `tests/kitchenToolVocabulary.test.ts` holds it to that.
 //
 // Ids are kebab-case of the label, which is what makes `kit-icons/{id}.webp`
 // predictable and lets the weekly orphan sweep join the two.
@@ -83,56 +81,12 @@ import { normalizeIconFraming } from '../src/imaging/normalizeIconFraming.js';
 import { buildStorageDownloadUrl } from '../src/imaging/storageDownloadUrl.js';
 import { KITCHEN_TOOLS_COLLECTION } from '@salt/domain/schemas';
 
+// The vocabulary itself — a table, in its own module so a test can read it
+// without booting Genkit and firebase-admin (issue #956).
+import { TOOLS } from './kitchen-tool-vocabulary.mjs';
+
 // The canon framing value, tuned for the small row tile (onCanonItemWritten.ts).
 const CONTENT_MAX = 108;
-
-// The curated vocabulary. `matchers` are EXTRA phrasings only — the label is
-// matched on equal terms by `resolveKitchenTool`, so no tool repeats its own
-// name here. Longest normalised phrase wins, which is what lets "small bowl"
-// beat "bowl" and "frying pan" beat "pan"; keep that in mind before adding a
-// short matcher to a tool that a longer one already covers.
-const TOOLS = [
-  { id: 'mixing-bowl', label: 'Mixing bowl', matchers: ['bowl', 'large bowl', 'big bowl', 'batter bowl'] },
-  { id: 'small-bowl', label: 'Small bowl', matchers: ['ramekin', 'prep bowl', 'little bowl'] },
-  { id: 'jug', label: 'Jug', matchers: ['measuring jug', 'pouring jug', 'pitcher'] },
-  { id: 'plate', label: 'Plate', matchers: ['serving plate', 'meat plate', 'dinner plate', 'dish', 'platter'] },
-  { id: 'baking-tray', label: 'Baking tray', matchers: ['tray', 'oven tray', 'baking sheet', 'sheet pan', 'roasting tray'] },
-  { id: 'roasting-tin', label: 'Roasting tin', matchers: ['roasting dish', 'roasting pan'] },
-  { id: 'loaf-tin', label: 'Loaf tin', matchers: ['bread tin', 'loaf pan'] },
-  { id: 'cake-tin', label: 'Cake tin', matchers: ['cake pan', 'springform tin', 'sandwich tin'] },
-  { id: 'ovenproof-dish', label: 'Ovenproof dish', matchers: ['baking dish', 'casserole dish', 'gratin dish', 'oven dish'] },
-  { id: 'colander', label: 'Colander', matchers: ['strainer', 'pasta strainer'] },
-  { id: 'sieve', label: 'Sieve', matchers: ['fine sieve', 'fine mesh sieve', 'sifter', 'mesh strainer'] },
-  { id: 'frying-pan', label: 'Frying pan', matchers: ['skillet', 'large frying pan', 'small frying pan', 'non-stick pan', 'saute pan', 'sauté pan'] },
-  { id: 'saucepan', label: 'Saucepan', matchers: ['pan', 'small saucepan', 'large saucepan', 'milk pan'] },
-  { id: 'stockpot', label: 'Stockpot', matchers: ['pot', 'large pot', 'big pot', 'pasta pot'] },
-  { id: 'casserole-pot', label: 'Casserole pot', matchers: ['dutch oven', 'casserole', 'heavy-based pot', 'cast iron pot'] },
-  { id: 'griddle-pan', label: 'Griddle pan', matchers: ['grill pan'] },
-  { id: 'wok', label: 'Wok', matchers: ['stir-fry pan'] },
-  { id: 'chopping-board', label: 'Chopping board', matchers: ['cutting board', 'board'] },
-  { id: 'chefs-knife', label: "Chef's knife", matchers: ["cook's knife", 'large knife', 'sharp knife', 'knife'] },
-  { id: 'paring-knife', label: 'Paring knife', matchers: ['small knife'] },
-  { id: 'bread-knife', label: 'Bread knife', matchers: ['serrated knife'] },
-  { id: 'wooden-spoon', label: 'Wooden spoon', matchers: ['spoon'] },
-  { id: 'spatula', label: 'Spatula', matchers: ['fish slice', 'turner', 'silicone spatula'] },
-  { id: 'whisk', label: 'Whisk', matchers: ['balloon whisk', 'hand whisk'] },
-  { id: 'tongs', label: 'Tongs', matchers: [] },
-  { id: 'ladle', label: 'Ladle', matchers: [] },
-  { id: 'slotted-spoon', label: 'Slotted spoon', matchers: [] },
-  { id: 'box-grater', label: 'Box grater', matchers: ['grater', 'cheese grater'] },
-  { id: 'microplane', label: 'Microplane', matchers: ['fine grater', 'zester'] },
-  { id: 'peeler', label: 'Peeler', matchers: ['vegetable peeler', 'potato peeler', 'y peeler'] },
-  { id: 'potato-masher', label: 'Potato masher', matchers: ['masher'] },
-  { id: 'rolling-pin', label: 'Rolling pin', matchers: [] },
-  { id: 'pastry-brush', label: 'Pastry brush', matchers: ['basting brush'] },
-  { id: 'tin-opener', label: 'Tin opener', matchers: ['can opener'] },
-  { id: 'garlic-crusher', label: 'Garlic crusher', matchers: ['garlic press'] },
-  { id: 'kitchen-scales', label: 'Kitchen scales', matchers: ['scales', 'digital scales'] },
-  { id: 'wire-rack', label: 'Wire rack', matchers: ['cooling rack', 'wire cooling rack', 'rack'] },
-  { id: 'mortar-and-pestle', label: 'Mortar and pestle', matchers: ['pestle and mortar', 'mortar'] },
-  { id: 'kitchen-scissors', label: 'Kitchen scissors', matchers: ['scissors', 'kitchen shears', 'shears'] },
-  { id: 'thermometer', label: 'Thermometer', matchers: ['meat thermometer', 'probe thermometer', 'digital thermometer'] },
-];
 
 const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_DIR = resolve(pkgRoot, '.kitchen-tools.local');
