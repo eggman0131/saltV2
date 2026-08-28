@@ -186,7 +186,13 @@ test.describe('recipes — save a recipe chat as a new recipe', () => {
     await expect(page.getByRole('heading', { name: SALAD_TITLE })).toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
-    await expect(page.getByTestId('recipe-view-ingredient').nth(0)).toContainText('fennel');
+    // The count splits into the two columns (issue #951): the stub parse carries
+    // `unit: null` with `quantity: 2`, so the name cell reads the item and the
+    // amount cell reads the bare number — not the whole raw line on the left with
+    // an empty amount beside it.
+    const saladIngredient = page.getByTestId('recipe-view-ingredient').nth(0);
+    await expect(saladIngredient).toContainText('fennel');
+    await expect(saladIngredient).toContainText('2');
     await expect(page.getByTestId('recipe-view-step')).toHaveCount(1);
 
     // The create path's defaults, which is what stops it being a copy of the lamb:
