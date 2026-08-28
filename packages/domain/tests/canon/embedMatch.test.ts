@@ -136,3 +136,19 @@ describe('embedMatch — empty catalog', () => {
     expect(await embedMatch(okPort(eX), 'tomato', [])).toHaveLength(0);
   });
 });
+
+// Additive (issue #937, Phase 2). Embedding candidates are valid targets for the
+// degraded AI-failure fallback, which now decides that by reading
+// `supportedStages`. An embedding candidate that failed to record stage 5 would
+// read as "supported by nothing" and be skipped.
+describe('embedMatch — candidate provenance', () => {
+  it('records stage 5 as the supporting signal on every passing candidate', async () => {
+    const items = [item({ id: '1', name: 'Tomato', embedding: [...eX] })];
+    const candidates = await embedMatch(okPort(eX), 'tomahto', items);
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const c of candidates) {
+      expect(c.stage).toBe(5);
+      expect(c.supportedStages).toEqual([5]);
+    }
+  });
+});
