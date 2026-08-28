@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { findClosestMatch } from '../../src/canon/queries/findClosestMatch.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
+import type { StageLog } from '../../src/canon/entities/MatchLogEntry.js';
+import { MatchLogBuilder } from '../../src/canon/commands/buildMatchLog.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
@@ -231,6 +233,81 @@ describe('findClosestMatch — candidate provenance', () => {
     expect(result.kind).toBe('ambiguous');
     if (result.kind === 'ambiguous') {
       for (const c of result.candidates) expect(c.supportedStages).toEqual([1]);
+    }
+  });
+});
+
+// Additive (issue #937, Phase 3). Stages 2 and 4 are now one helper run with a
+// different scorer, threshold, ordinal and name. That removes the divergence risk
+// the duplication carried — but only for as long as they stay merged, and nothing
+// stops a later edit inlining one of them again. These assertions are what make
+// the property survive that: they compare the two stages' emitted StageLogs
+// directly, so a threshold or gap change landing in one half and not the other
+// fails here rather than in production telemetry months later.
+//
+// Deliberately NOT asserted against stages 1 and 3: those are set-membership
+// shaped and use a different gap convention (1.0 single / 0.0 tie / null miss),
+// which is why they were left out of the extraction.
+describe('findClosestMatch — stages 2 and 4 stay structurally identical', () => {
+  function stagesFor(items: readonly CanonItem[], query: string): Map<number, StageLog> {
+    const log = new MatchLogBuilder();
+    log.start(query, query);
+    findClosestMatch(items, query, log);
+    const entry = log.complete('run', 'created', null);
+    return new Map(entry.stages.map((s) => [s.stage, s]));
+  }
+
+  it('emits the same StageLog keys for both scored stages', () => {
+    // "tomato paste" clears neither stage 2's 0.80 nor stage 4's 0.85 against this
+    // catalog (both best out at 0.5), so both stages run to completion and log.
+    const stages = stagesFor(catalog, 'tomato paste');
+    const s2 = stages.get(2);
+    const s4 = stages.get(4);
+    expect(s2).toBeDefined();
+    expect(s4).toBeDefined();
+    expect(Object.keys(s2!).sort()).toEqual(Object.keys(s4!).sort());
+  });
+
+  it('uses the same gap convention on a miss: bestScore − threshold, never null', () => {
+    const stages = stagesFor(catalog, 'tomato paste');
+    for (const stage of [2, 4] as const) {
+      const s = stages.get(stage)!;
+      expect(s.passed, `stage ${stage}`).toBe(false);
+      expect(s.bestScore, `stage ${stage}`).not.toBeNull();
+      expect(s.gap, `stage ${stage}`).toBeCloseTo(s.bestScore! - s.threshold, 10);
+    }
+  });
+
+  it('uses the same gap convention on a pass: bestScore − secondScore', () => {
+    // One run per stage, because a passing stage 2 returns before stage 4 runs.
+    const cases = [
+      {
+        stage: 2 as const,
+        items: [item({ id: 'x', name: 'Extra Virgin Olive Oil Sauce' })],
+        query: 'extra virgin olive oil',
+      },
+      { stage: 4 as const, items: [item({ id: 'y', name: 'Butter' })], query: 'buttter' },
+    ];
+
+    for (const { stage, items, query } of cases) {
+      const s = stagesFor(items, query).get(stage);
+      expect(s, `stage ${stage}`).toBeDefined();
+      expect(s!.passed, `stage ${stage}`).toBe(true);
+      // Single candidate → second score is 0, so gap === bestScore. Asserted via
+      // the top-candidate list rather than restating the arithmetic, so the two
+      // stages are compared on the same derivation.
+      const second = s!.topCandidates[1]?.score ?? 0;
+      expect(s!.gap, `stage ${stage}`).toBeCloseTo(s!.bestScore! - second, 10);
+    }
+  });
+
+  it('records consideredCount and skipReason identically — both stages score the whole catalog', () => {
+    const stages = stagesFor(catalog, 'tomato paste');
+    for (const stage of [2, 4] as const) {
+      const s = stages.get(stage)!;
+      expect(s.consideredCount, `stage ${stage}`).toBe(catalog.length);
+      expect(s.skipReason, `stage ${stage}`).toBeNull();
+      expect(s.topCandidates.length, `stage ${stage}`).toBeLessThanOrEqual(5);
     }
   });
 });
