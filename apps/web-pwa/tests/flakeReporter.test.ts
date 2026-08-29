@@ -65,7 +65,7 @@ const CONTEXT = readRunContext({
   GITHUB_SHA: 'abc123',
   GITHUB_RUN_ID: '42',
   GITHUB_RUN_ATTEMPT: '2',
-  GITHUB_REPOSITORY: 'eggman0131/saltV2',
+  GITHUB_REPOSITORY: 'eggmanorg/salt',
   GITHUB_WORKFLOW: 'CI',
 } as NodeJS.ProcessEnv);
 
@@ -111,7 +111,7 @@ describe('flake reporter — event mapping (#669)', () => {
     expect(event.properties.commit_sha).toBe('abc123');
     expect(event.properties.run_id).toBe('42');
     expect(event.properties.run_attempt).toBe(2);
-    expect(event.properties.repository).toBe('eggman0131/saltV2');
+    expect(event.properties.repository).toBe('eggmanorg/salt');
   });
 
   it('stamps the Firestore transport arm so the #734 A/B is a breakdown (#734)', () => {

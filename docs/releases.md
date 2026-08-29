@@ -90,17 +90,40 @@ only via the optional `POSTHOG_HOST`).
 ### 3. CI / GitHub Environments
 
 CI authenticates to Firebase via **Workload Identity Federation** (no long-lived
-key in the repo — see #118 Phase 2). Two GitHub Environments scope what each
+key in the repo — see #118 Phase 2). Three GitHub Environments scope what each
 deploy job can see:
 
 | Environment  | Protection           | Holds                                                        |
 | ------------ | -------------------- | ----------------------------------------------------------- |
+| `dev`        | none (manual dispatch only) | dev WIF provider + service-account refs               |
 | `staging`    | none (auto-deploy)   | staging WIF provider + service-account refs                 |
 | `production` | required reviewer (maintainer) = the approval gate | production WIF provider + service-account refs |
 
 No PR-triggered jobs run against either Environment (per-PR Hosting previews were
 dropped — see Setup status); production secrets are scoped to release-triggered
 deploys only.
+
+#### CodeQL is required, and is configured OUTSIDE this repo
+
+There is no CodeQL workflow in `.github/workflows/`. Code scanning runs through
+GitHub's **default setup**, which lives in repository settings, and its checks
+are **required** by the `Main` ruleset. Nothing in the tree says either of those
+things, which is what makes the failure mode worth writing down:
+
+- Default setup analyses on `push` to `main` and on `pull_request` targeting
+  `main`. A PR head with no CodeQL result cannot satisfy the required check, and
+  **re-running CI does not help** — a re-run is not a new `pull_request` event,
+  so no analysis is produced. The only way to get a result for a head is a new
+  commit on the branch.
+- So anything that disturbs default setup blocks every open PR, indefinitely,
+  with no cause visible anywhere in the repo. Moving the repo to the eggmanorg
+  organisation (2026-08-29) did exactly that: setup was re-provisioned about
+  45 minutes after the transfer, and every PR head pushed in between was left
+  permanently unmergeable until it was pushed to again.
+
+If a PR is `blocked` with every visible check green, look for a missing CodeQL
+check before looking anywhere else, and check
+**Settings → Code security → Code scanning** rather than the workflow files.
 
 #### WIF identifiers (provisioned — Phase 2)
 
@@ -110,11 +133,31 @@ them to `google-github-actions/auth` as `workload_identity_provider` +
 
 | Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
 | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
-| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggman0131/saltV2` |
+| `dev`        | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `firebase-adminsdk-fbsvc@s2-dev-eggman.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
+| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
 | `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
 
-The OIDC provider on both projects is restricted to
-`assertion.repository == 'eggman0131/saltV2'`; no long-lived key exists anywhere.
+**There are two pools, not three.** `dev` and `staging` share one — the pool in
+`s2-stage-ccb22` (`946977631175`). A pool can mint tokens that impersonate a service
+account in any project, so `dev` borrows staging's provider and impersonates an SA in
+`s2-dev-eggman`. `s2-dev-eggman` has no pool of its own; a `gcloud
+workload-identity-pools` command aimed at it returns `NOT_FOUND`, which looks like a
+broken setup and is not one. Two consequences worth holding on to:
+
+- In a `principalSet://` member for the dev SA, the project number is **staging's**
+  (`946977631175`), not dev's. `--project` names the project the *service account* lives
+  in; the path names the project the *pool* lives in, and for `dev` those differ.
+- Changing staging's provider changes dev's too. There is no way to re-scope one without
+  the other.
+
+Both providers are restricted to `assertion.repository == 'eggmanorg/salt'`; no
+long-lived key exists anywhere.
+
+`dev` is also the odd one out on identity: it impersonates the **default Firebase Admin
+SDK** service account, which Firebase provisions with broad project rights and which
+doubles as the app's own admin identity, where `staging` and `production` each use a
+purpose-made `gha-deployer`. It works and it is only the dev project, but a CI job
+against dev holds a much wider identity than the same job against the other two.
 
 ## Deploying
 

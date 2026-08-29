@@ -5,18 +5,27 @@ name: Auto-update PR branches
 # WHY THIS EXISTS RATHER THAN A MERGE QUEUE. GitHub's merge queue is the real
 # answer to this problem — it tests each PR restacked on current main and merges
 # only if that combination is green, so a semantic collision (two PRs each green
-# apart, broken together) never reaches main. It is unavailable here: merge queue
-# requires an ORGANISATION-owned repository, and saltV2 is owned by a personal
-# account. Public vs private is not the constraint; the account type is. So the
-# "Main branch" ruleset keeps strict_required_status_checks_policy and this
-# workflow automates the update the policy demands.
+# apart, broken together) never reaches main. This workflow was written when the
+# queue was unavailable: it requires an ORGANISATION-owned repository, and the
+# repo was owned by a personal account. Public vs private was never the
+# constraint; the account type was. So the "Main branch" ruleset keeps
+# strict_required_status_checks_policy and this workflow automates the update
+# that policy demands.
 #
-# What that buys and what it does not: the manual click goes away, and a
-# collision still lands on a PR branch rather than on main (strict is still on,
-# so a behind-branch cannot merge). What is NOT bought is the queue's
+# THAT CONSTRAINT HAS LIFTED. The repo moved to the eggmanorg organisation
+# (2026-08-29), so merge queue is now available and this workflow is no longer
+# the only option — it is the incumbent, kept because it works, not because it
+# is the best available. Adopting the queue means retiring this file and the
+# PAT_AUTO_UPDATE secret it needs, and revisiting the up-to-date gate in
+# ci.yml that assumes it; that is a deliberate change with its own testing,
+# not migration cleanup, so it has not been made here.
+#
+# What this buys meanwhile and what it does not: the manual click goes away, and
+# a collision still lands on a PR branch rather than on main (strict is still
+# on, so a behind-branch cannot merge). What is NOT bought is the queue's
 # speculation — updates here are serial, so N queued PRs cost N sequential
-# update-and-re-run cycles rather than one batched run. That is the price of the
-# account type, not a design choice.
+# update-and-re-run cycles rather than one batched run. Until the queue is
+# adopted, that remains the cost.
 #
 # SCOPE: only PRs with auto-merge ENABLED. That flag is the opt-in — its author
 # has already said "land this when it goes green", so dragging it forward is

@@ -1,8 +1,8 @@
 # Canon item icons (Tier-1 pictograms)
 
-Status: **implemented** ([#148](https://github.com/eggman0131/saltV2/issues/148)) · Owner decisions baked in below.
+Status: **implemented** ([#148](https://github.com/eggmanorg/salt/issues/148)) · Owner decisions baked in below.
 
-**Two collections, one pipeline** ([#871](https://github.com/eggman0131/saltV2/issues/871)).
+**Two collections, one pipeline** ([#871](https://github.com/eggmanorg/salt/issues/871)).
 Everything below describes canon items, and every word of it applies unchanged to
 **product forms** — the same seed image, the same verbatim prompt, the same
 background removal and framing, the same tri-state `thumbnail`, the same

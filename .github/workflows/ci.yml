@@ -107,9 +107,10 @@ jobs:
           # auto-merge enabled — so it is usually automatic rather than a
           # hand-driven click. A PR without auto-merge (a /run draft, say) is
           # still its author's to rebase. GitHub's merge queue would subsume
-          # this gate entirely, but it requires an organisation-owned
-          # repository and so is unavailable here; auto-update-prs.yml carries
-          # the full reasoning.
+          # this gate entirely; it needs an organisation-owned repository, which
+          # the repo now is (moved to eggmanorg, 2026-08-29), so the queue is
+          # available and simply not yet adopted. auto-update-prs.yml carries the
+          # full reasoning and what adopting it would cost.
           uptodate=true
           if [ "$code" = "true" ]; then
             git fetch --no-tags origin main
