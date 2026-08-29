@@ -2,3 +2,26 @@ packages:
   - 'packages/*'
   - 'packages/adapters/*'
   - 'apps/*'
+
+# Dependabot applies a default 3-day cooldown that cannot be disabled, and its npm
+# updater passes it straight through to pnpm as `--config.minimumReleaseAge=4320`
+# when it regenerates the lockfile. pnpm 10 verifies that gate AFTER resolving and
+# never falls back to an older mature version, so a single freshly-published
+# package anywhere in the graph — invariably a transitive nobody asked to bump —
+# aborts the entire update job: 35 dependencies failed on terser 5.51.2
+# (2026-08-29), 33 on picomatch 4.0.7 (2026-08-24). No npm dependency PR has
+# landed since 2026-08-17.
+#
+# Excluding every package is inert for our own installs — this repo sets no
+# `minimumReleaseAge` and `.npmrc` is empty, so there is no gate here to weaken.
+# It cancels only the constraint Dependabot imposes on itself. The protection that
+# actually matters is untouched: Dependabot still refuses to *propose* a version
+# younger than its cooldown, decided in its own resolver before pnpm is invoked.
+#
+# The precise fix is `minimumReleaseAgeStrict: false` (fall back to a mature
+# version rather than erroring), which does not exist below pnpm 11 — verified
+# absent from both 10.33.0 and 10.34.5. Delete this list and adopt that setting
+# when the pnpm major lands; it is blocked on Dependabot supporting pnpm 11+
+# (dependabot-core#14794), tracked in #1089.
+minimumReleaseAgeExclude:
+  - '*'
