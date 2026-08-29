@@ -55,7 +55,8 @@ Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `refactor: <concise target>` (imperative, no trailing period)
-- Labels: `refactor`, plus the area labels that fit (`gh label list` — e.g. `domain`, `area: web-pwa`, `tech-debt`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake)
+- Labels: the area and topical labels that fit (`gh label list` — e.g. `domain`, `area: web-pwa`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `refactor` or `tech-debt`, and **not** a `priority:` label — those facts live on the board as `Class` and `Queue`, and the labels that carried them are gone.
+- Board: `node scripts/board.mjs add <issue> --class Refactor --queue <band> --size <S|M|L>`. A refactor reaches `Recommended` only when the drift it describes is **proven** to be costing something now; the shape being wrong is not by itself proof. See [docs/issue-board.md](../../docs/issue-board.md).
 
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 

@@ -69,7 +69,8 @@ Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `fix: <concise defect description>` (imperative, no trailing period)
-- Labels: `bug`, plus the area and priority labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `priority: critical` when it is breaking production, `flaky-test`, `breaking-change` when the fix changes a behavior contract)
+- Labels: the area and topical labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `flaky-test`, `breaking-change` when the fix changes a behavior contract). **Not** `bug`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone.
+- Board: `node scripts/board.mjs add <issue> --class Defect --queue <band> --size <S|M|L>`. `Recommended` means actionable **and proven** — regular user impact, a security risk, or dev friction actually being felt. A defect that is real but has never been triggered is `Low`, however alarming it reads. See [docs/issue-board.md](../../docs/issue-board.md).
 
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 
