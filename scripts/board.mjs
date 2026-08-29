@@ -234,6 +234,16 @@ function cmdRelease(project, rest) {
   const flags = parseFlags(rest);
   if (!flags.sha) die('usage: board.mjs release --sha <deployed sha>');
 
+  // A missing sha would make every ancestry test answer false, and this would
+  // report "0 moved" — a silent no-op that looks exactly like a correct run on
+  // a release that shipped nothing. Fail loudly instead: the usual cause is a
+  // shallow checkout, and the fix is `fetch-depth: 0`.
+  try {
+    execFileSync('git', ['cat-file', '-e', `${flags.sha}^{commit}`], { stdio: 'ignore' });
+  } catch {
+    die(`${flags.sha} is not in this checkout — the ancestry test needs full history (fetch-depth: 0)`);
+  }
+
   const statuses = gql(`{ node(id:"${project.id}"){ ... on ProjectV2 {
     items(first:100){ nodes{ id
       content{ ... on Issue { number
