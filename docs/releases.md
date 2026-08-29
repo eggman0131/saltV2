@@ -90,11 +90,12 @@ only via the optional `POSTHOG_HOST`).
 ### 3. CI / GitHub Environments
 
 CI authenticates to Firebase via **Workload Identity Federation** (no long-lived
-key in the repo — see #118 Phase 2). Two GitHub Environments scope what each
+key in the repo — see #118 Phase 2). Three GitHub Environments scope what each
 deploy job can see:
 
 | Environment  | Protection           | Holds                                                        |
 | ------------ | -------------------- | ----------------------------------------------------------- |
+| `dev`        | none (manual dispatch only) | dev WIF provider + service-account refs               |
 | `staging`    | none (auto-deploy)   | staging WIF provider + service-account refs                 |
 | `production` | required reviewer (maintainer) = the approval gate | production WIF provider + service-account refs |
 
@@ -110,11 +111,31 @@ them to `google-github-actions/auth` as `workload_identity_provider` +
 
 | Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
 | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
+| `dev`        | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `firebase-adminsdk-fbsvc@s2-dev-eggman.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
 | `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
 | `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
 
-The OIDC provider on both projects is restricted to
-`assertion.repository == 'eggmanorg/salt'`; no long-lived key exists anywhere.
+**There are two pools, not three.** `dev` and `staging` share one — the pool in
+`s2-stage-ccb22` (`946977631175`). A pool can mint tokens that impersonate a service
+account in any project, so `dev` borrows staging's provider and impersonates an SA in
+`s2-dev-eggman`. `s2-dev-eggman` has no pool of its own; a `gcloud
+workload-identity-pools` command aimed at it returns `NOT_FOUND`, which looks like a
+broken setup and is not one. Two consequences worth holding on to:
+
+- In a `principalSet://` member for the dev SA, the project number is **staging's**
+  (`946977631175`), not dev's. `--project` names the project the *service account* lives
+  in; the path names the project the *pool* lives in, and for `dev` those differ.
+- Changing staging's provider changes dev's too. There is no way to re-scope one without
+  the other.
+
+Both providers are restricted to `assertion.repository == 'eggmanorg/salt'`; no
+long-lived key exists anywhere.
+
+`dev` is also the odd one out on identity: it impersonates the **default Firebase Admin
+SDK** service account, which Firebase provisions with broad project rights and which
+doubles as the app's own admin identity, where `staging` and `production` each use a
+purpose-made `gha-deployer`. It works and it is only the dev project, but a CI job
+against dev holds a much wider identity than the same job against the other two.
 
 ## Deploying
 
