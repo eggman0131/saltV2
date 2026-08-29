@@ -47,6 +47,27 @@ Two properties are deliberate and easy to misread:
 
 ## The merge queue
 
+### How a PR enters it
+
+**Nothing self-queues.** A green PR sits open until someone puts it in — being
+green is not the trigger, and there is no state in which GitHub decides on its
+own that a PR is ready to land.
+
+Two ways in, and they are the same mechanism:
+
+- **Press the green button**, which reads **"Merge when ready"** once a queue is
+  required on the branch. That is the whole action; the queue does the rest.
+- **Enable auto-merge**, which enqueues the PR the moment its required checks go
+  green rather than making you wait for them. This is how
+  `dependabot-auto-merge.yml`'s `gh pr merge --auto --squash` lands patch and
+  minor bumps with nobody watching.
+
+Once in, entries are **batched for testing, not combined into one commit**: up to
+`max_entries_to_build` are stacked on `main` and tested as one group, then land as
+**separate squash commits in queue order** — one `(#PR)` subject each, exactly as
+before. If an entry fails, it is ejected and the rest re-form and carry on, so a
+bad neighbour does not hold up a good PR.
+
 GitHub builds each queued PR onto **current `main`** on a
 `gh-readonly-queue/main/pr-N-<sha>` ref and runs `ci.yml` there; the PR merges
 only if that combination is green. This is where the semantic collision that
@@ -59,7 +80,7 @@ round-trip, and never on `main` itself.
 | Merge method | Squash | `required_linear_history` is on and `main` is squash-linear (`(#PR)` subjects). A merge commit would violate the rule. |
 | Maximum PRs to build | 5 | Speculation depth — the thing the serial predecessor could never do. |
 | Maximum PRs to merge | 5 | Matches build depth. |
-| Minimum PRs to merge | 1 | Merge as soon as green. Most merges here are a single PR; batching engages only when PRs actually stack. |
+| Minimum PRs to merge | 1 | The queue never holds a green group back waiting for company. Batching engages only when PRs happen to stack up; a lone PR is not delayed by it. |
 | Wait time to meet minimum group size | 5 min | Moot at a minimum of 1. |
 | Only merge non-failing PRs (`ALLGREEN`) | On | Merge the batch only if every entry is green. |
 | Status check timeout | 60 min | CI's worst case is ~25 min (cold-cache e2e runs of 18 min are on record). |
