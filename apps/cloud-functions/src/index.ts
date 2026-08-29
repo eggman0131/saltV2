@@ -345,10 +345,15 @@ export const describeRecipeScene = makeTracedCallable({
 // populateEquipmentEntry, so there is no browser trace to unify and the traced
 // factory would buy only a wire envelope to maintain. Signed-in, no admin gate —
 // equipment is member-editable and the gate here is on AI cost, not authority.
-// 90s so the flow's 55s withAiTimeout has headroom, inside the callable client's
-// 70s default. Memory comes from the global 512MiB floor: this callable is
-// defined inline, below setGlobalOptions, so unlike a top-imported module it
-// genuinely inherits it (issue #883).
+// 90s so the flow's 55s withAiTimeout has headroom. That is ABOVE the callable
+// client's 70s default, not inside it — this comment claimed the opposite until
+// #928, and the arithmetic was the whole of finding B2-010: the browser gave up
+// at 70s while the function ran on to 90. `callDescribeEquipmentSubject`
+// (`firebase-sync/src/equipmentIconSubscription.ts`) now declares a matching
+// 90s client timeout, so raising this number means raising that one too.
+// Memory comes from the global 512MiB floor: this callable is defined inline,
+// below setGlobalOptions, so unlike a top-imported module it genuinely inherits
+// it (issue #883).
 export const describeEquipmentSubject = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
@@ -369,8 +374,14 @@ export const describeEquipmentSubject = onCallGenkit(
 // Plain onCallGenkit rather than makeTracedCallable: there is no browser trace id
 // to unify here (one call, one click, no cross-invocation pair like the equipment
 // callables), so the traced factory would buy only a wire envelope to maintain.
-// 90s so the flow's 55s withAiTimeout has headroom, and comfortably inside the
-// callable client's 70s default so no shared timeout constant is needed.
+// 90s so the flow's 55s withAiTimeout has headroom. NOT "inside the callable
+// client's 70s default" — this comment said that, and 90 > 70, which is finding
+// B2-010 in one line: the browser abandoned the call at 70s while the function
+// ran on to 90 and went on writing. `callGenerateGuidedPlan`
+// (`firebase-sync/src/guidedPlanCallables.ts`) now declares a matching 90s
+// client timeout, so raising this number means raising that one too. The issue
+// named two comments making this claim; this was a third, found by reading the
+// neighbours of the two.
 //
 // `pro` (see the flow): cue quality IS the feature, and the volume is a handful of
 // recipes ever. posthogApiKey is the bearer token for the AI-OTLP span exporter as
@@ -394,8 +405,11 @@ export const generateGuidedPlan = onCallGenkit(
 //
 // Plain onCallGenkit, same call as generateGuidedPlan and for the same reason: one
 // call from one tap, no cross-invocation pair to unify, so the traced factory would
-// buy only a wire envelope to maintain. 90s for the flow's 55s withAiTimeout,
-// inside the callable client's 70s default.
+// buy only a wire envelope to maintain. 90s for the flow's 55s withAiTimeout —
+// ABOVE the callable client's 70s default, not inside it, which is what this
+// comment used to claim and what #928 finding B2-010 was. `callExtractProcessStages`
+// (`firebase-sync/src/formulaCallables.ts`) now declares a matching 90s client
+// timeout, so raising this number means raising that one too.
 //
 // `lite` (see the flow): mechanical extraction, not judgement.
 export const extractProcessStages = onCallGenkit(

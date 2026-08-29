@@ -24,16 +24,23 @@ import { subscribeDocument } from './subscribeDocument.js';
 // chatSessions: firestore.rules gate every read/write on `ownerUid`. Whole-document
 // last-write-wins on `updatedAt`.
 //
-// Read contract: an invalid single doc is treated as "no session" (log + null),
-// NOT a Failure — a corrupt cook session is disposable transient state, and the
-// page will simply bootstrap a fresh one. Writes never throw for operational
-// errors: they cross the boundary as Failure<DomainError> (Rule 10). This adapter
-// must not import @salt/observability (Rule 4).
+// Read contract: a document the schema refuses is logged and crosses as
+// `StorageError`/`corruption` on `onError`, like every other single-document
+// read (#928 Phase 2). It used to be delivered as `null` on the grounds that a
+// cook session is disposable — but `null` is what an ABSENT document delivers,
+// and `cookSessionService.applySnapshot` reads that as the session having ended
+// on another device: a false "this cook was finished elsewhere" toast and an
+// eviction from cook mode, or a fresh session written over the corrupt one.
+// Writes never throw for operational errors: they cross the boundary as
+// Failure<DomainError> (Rule 10). This adapter must not import
+// @salt/observability (Rule 4) — the raw error is forwarded to the caller, which
+// reports it.
 
 const COLLECTION = 'cookSessions';
 
 // Subscribe to ONE cook session doc by its deterministic id. Emits the parsed
-// session, or null when the doc is absent or fails validation (disposable state).
+// session, or null when the doc does not exist; a document that fails its schema
+// is a Failure on onError, never a null. See the header.
 export function subscribeCookSession(
   sessionId: string,
   onSession: (session: CookSessionDoc | null) => void,
@@ -46,11 +53,6 @@ export function subscribeCookSession(
       path: [COLLECTION, sessionId],
       schema: CookSessionSchema,
       label: 'CookSessionSchema',
-      // Disposable transient state: a corrupt session is "no session", and the
-      // page bootstraps a fresh one over it. See the header.
-      onCorrupt: 'null',
-      logsRejection: true,
-      forwardsRawError: true,
     },
     onSession,
     onError,
@@ -93,7 +95,6 @@ export function subscribeMyCookSessions(
       schema: CookSessionSchema,
       label: 'CookSessionSchema',
       project: (session) => session,
-      forwardsRawError: true,
     },
     onSessions,
     onError,

@@ -24,10 +24,10 @@
  * one of them is invisible to a row that compares ids. They are a table here
  * rather than seven copied bodies (UT-D1).
  *
- * Plus the STREAM path and its arity (`forwardsRawError: true`, against `false`
- * on `subscribeMembers` — #928 finding B2-009), and `listShoppingListItems`, the
- * one-shot `getDocs` that `writerContract.test.ts` classifies as a `'read'` and
- * neither net covers.
+ * Plus the STREAM path and its arity — two arguments, the second the raw
+ * Firestore error — which no emulator row drives, and `listShoppingListItems`,
+ * the one-shot `getDocs` that `writerContract.test.ts` classifies as a `'read'`
+ * and neither net covers.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 

@@ -1,12 +1,10 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import {
   PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS,
   type ProposeScheduleInput,
   type ProposeScheduleOutput,
 } from '@salt/domain/schemas';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction } from './callFunction.js';
 
 // proposeSchedule (issue #812, phase 2 of epic #778). Sends the recipe id, the time
 // the bake must be finished by, and the household's quiet hours — the flow reads
@@ -36,21 +34,15 @@ import { FUNCTIONS_REGION } from './functionsRegion.js';
 export async function callProposeSchedule(
   input: ProposeScheduleInput,
 ): Promise<ReadResult<ProposeScheduleOutput, DomainError>> {
-  try {
-    const fn = httpsCallable<ProposeScheduleInput, ProposeScheduleOutput>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'proposeSchedule',
-      { timeout: PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS },
-    );
-    const res = await fn(input);
-    return success(res.data);
-  } catch (err) {
-    // Everything else — a formula that will not read, a model that would not
-    // answer, a dropped connection — offers the sheet the same thing: "try again".
-    // The CATEGORY still has to tell them apart, though (issue #916): a dropped
-    // connection is expected and suppressed, a model that would not answer is a
-    // server fault and must be reported. `classifyCallableError` is what draws
-    // that line.
-    return failure(classifyCallableError(err));
-  }
+  // Every failure — a formula that will not read, a model that would not answer,
+  // a dropped connection — offers the sheet the same thing: "try again". The
+  // CATEGORY still has to tell them apart (issue #916): a dropped connection is
+  // expected and suppressed, a model that would not answer is a server fault and
+  // must be reported. `callFunction` draws that line through
+  // `classifyCallableError`.
+  return callFunction<ProposeScheduleInput, ProposeScheduleOutput>({
+    name: 'proposeSchedule',
+    input,
+    timeoutMs: PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS,
+  });
 }

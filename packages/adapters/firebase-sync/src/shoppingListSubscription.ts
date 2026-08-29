@@ -30,7 +30,6 @@ export function subscribeShoppingLists(
       schema: ShoppingListSchema,
       label: 'ShoppingListSchema',
       project: (list) => list,
-      forwardsRawError: true,
     },
     onLists,
     onError,

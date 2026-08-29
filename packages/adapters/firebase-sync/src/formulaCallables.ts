@@ -1,8 +1,6 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { ExtractProcessStagesInput, ExtractProcessStagesOutput } from '@salt/domain/schemas';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction } from './callFunction.js';
 
 // extractProcessStages (issue #806, phase 2 of epic #778). Sends only the recipe
 // id — the flow reads the recipe server-side via the Admin SDK — and receives the
@@ -19,14 +17,11 @@ import { FUNCTIONS_REGION } from './functionsRegion.js';
 export async function callExtractProcessStages(
   input: ExtractProcessStagesInput,
 ): Promise<ReadResult<ExtractProcessStagesOutput, DomainError>> {
-  try {
-    const fn = httpsCallable<ExtractProcessStagesInput, ExtractProcessStagesOutput>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'extractProcessStages',
-    );
-    const res = await fn(input);
-    return success(res.data);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<ExtractProcessStagesInput, ExtractProcessStagesOutput>({
+    name: 'extractProcessStages',
+    input,
+    // The function declares 90 s (`cloud-functions/src/index.ts:406`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
+  });
 }

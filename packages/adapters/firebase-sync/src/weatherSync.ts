@@ -16,16 +16,13 @@ const SINGLETON_DOC_ID = 'singleton';
 
 export function subscribeWeatherForecast(
   onForecast: (forecast: WeatherForecast | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
       path: [COLLECTION, SINGLETON_DOC_ID],
       schema: WeatherForecastSchema,
       label: 'WeatherForecastSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     onForecast,
     onError,

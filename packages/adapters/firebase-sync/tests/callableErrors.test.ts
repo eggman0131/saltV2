@@ -156,8 +156,25 @@ function sourceFiles(): { name: string; text: string }[] {
     .map((name) => ({ name, text: readFileSync(join(SRC_DIR, name), 'utf8') }));
 }
 
-const callableSources = sourceFiles().filter(({ text }) =>
-  text.includes("from 'firebase/functions'"),
+// Every module that can reach a Cloud Function. Until #928 Phase 4 that meant
+// importing `firebase/functions` directly, which twenty-odd modules did; now the
+// SDK is imported in exactly two places (`callFunction.ts` and `init.ts`'s
+// emulator wiring) and a wrapper reaches it through the helper instead. Both
+// spellings are matched, so this guard survived that refactor by being widened
+// rather than by being weakened — and it FAILED first, loudly, rather than going
+// quietly green over an empty set, which is the failure mode #941 Finding 3 files
+// as drift.
+const callableSources = sourceFiles().filter(
+  ({ text }) =>
+    text.includes("from 'firebase/functions'") || text.includes("from './callFunction.js'"),
+);
+
+// The subset that can see a RAW callable rejection at all: `callFunction` never
+// throws, so only a module reaching for `invokeCallable` or `callableRef` has one
+// to catch. That is the set the second guard belongs to — a Firestore writer's
+// `catch` in the same file is not a callable failure and must not be dragged in.
+const rawRejectionSources = callableSources.filter(
+  ({ text }) => text.includes('invokeCallable') || text.includes('callableRef'),
 );
 
 describe('structural — the mapping is written once', () => {
@@ -165,6 +182,10 @@ describe('structural — the mapping is written once', () => {
     // A rename or a moved directory must fail loudly rather than quietly guard
     // nothing at all.
     expect(callableSources.length).toBeGreaterThanOrEqual(15);
+    // …and the narrower set is not empty either, which is the way THIS guard
+    // would go vacuous: rename the helper's exports and every row below stops
+    // being generated.
+    expect(rawRejectionSources.length).toBeGreaterThanOrEqual(4);
   });
 
   // Comments talk ABOUT the old catch-all all over this package; only code counts.
@@ -198,11 +219,10 @@ describe('structural — the mapping is written once', () => {
     },
   );
 
-  it.each(callableSources.filter(({ text }) => text.includes('catch (')).map(({ name }) => name))(
-    '%s maps its callable failures through the shared classifyCallableError',
-    (name) => {
-      const { text } = callableSources.find((f) => f.name === name)!;
-      expect(text).toContain('classifyCallableError');
-    },
-  );
+  it.each(
+    rawRejectionSources.filter(({ text }) => text.includes('catch (')).map(({ name }) => name),
+  )('%s maps its callable failures through the shared classifyCallableError', (name) => {
+    const { text } = rawRejectionSources.find((f) => f.name === name)!;
+    expect(text).toContain('classifyCallableError');
+  });
 });

@@ -23,16 +23,13 @@ const SINGLETON_DOC_ID = 'singleton';
 
 export function subscribeMealPlanConfig(
   onConfig: (config: MealPlanConfig | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
       path: [CONFIG_COLLECTION, SINGLETON_DOC_ID],
       schema: MealPlanConfigSchema,
       label: 'MealPlanConfigSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     (config) => onConfig(config as MealPlanConfig | null),
     onError,
@@ -41,16 +38,13 @@ export function subscribeMealPlanConfig(
 
 export function subscribeMealPlanTemplate(
   onTemplate: (template: MealPlanTemplate | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
       path: [TEMPLATE_COLLECTION, SINGLETON_DOC_ID],
       schema: MealPlanTemplateSchema,
       label: 'MealPlanTemplateSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     (template) => onTemplate(template as MealPlanTemplate | null),
     onError,
@@ -60,7 +54,7 @@ export function subscribeMealPlanTemplate(
 export function subscribeMealPlanWeek(
   startDate: string,
   onWeek: (week: MealPlanWeek | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
@@ -68,9 +62,6 @@ export function subscribeMealPlanWeek(
       path: [WEEKS_COLLECTION, startDate],
       schema: MealPlanWeekSchema,
       label: 'MealPlanWeekSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     (week) => onWeek(week as MealPlanWeek | null),
     onError,

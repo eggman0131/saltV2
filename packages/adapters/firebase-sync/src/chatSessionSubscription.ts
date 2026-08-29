@@ -103,7 +103,6 @@ export function subscribeChatSessions(
       schema: chatSessionWireSchema,
       label: 'ChatSessionSchema',
       project: (session) => session,
-      forwardsRawError: true,
     },
     onSessions,
     onError,

@@ -1,9 +1,8 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { MatchOrCreateInput, MatchOrCreateResult } from '@salt/domain';
 import type { CanonicaliseRecipeIngredientsInput } from '@salt/domain/schemas';
-import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction, invokeCallable } from './callFunction.js';
 
 // The CF returns the Result envelope from matchOrCreate verbatim; the client
 // just forwards it. Transport-level failures (auth, network) become a fresh
@@ -12,24 +11,25 @@ type WireResult =
   | { readonly kind: 'ok'; readonly value: MatchOrCreateResult }
   | { readonly kind: 'err'; readonly error: DomainError };
 
-// The wire input is the domain input plus an OPTIONAL, named `traceparent`
-// transport field (issue #362). The Firebase callable SDK cannot carry a custom
-// `traceparent` HTTP header, so a browser-supplied W3C trace id rides as this
-// named field on the payload; the CF entrypoint strips it before running the
-// flow. firebase-sync only FORWARDS the string it was handed — it never imports
-// observability and never mints a trace id (CLAUDE.md Rule 4). The arg is
-// optional, so existing callers stay backward-compatible.
+// `invokeCallable` rather than `callFunction`, and that is the exception Rule 10
+// names rather than an oversight: the CF already answers with a `Result`, and
+// this returns it VERBATIM. `callFunction` would wrap it, so an `err` from the
+// matcher would arrive as `{kind:'ok', value:{kind:'err', …}}` — a failure the
+// caller reads as a success. Only the TRANSPORT failure is classified here.
+//
+// `traceparent` (issue #362) rides on the payload; the how and why are written
+// once, at `withTraceparent` in callFunction.ts. The arg is optional, so
+// existing callers stay backward-compatible.
 export async function callMatchOrCreate(
   input: MatchOrCreateInput,
   traceparent?: string,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   try {
-    const fn = httpsCallable<MatchOrCreateInput & { traceparent?: string }, WireResult>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'matchOrCreateCanon',
-    );
-    const res = await fn(traceparent ? { ...input, traceparent } : input);
-    return res.data;
+    return await invokeCallable<MatchOrCreateInput, WireResult>({
+      name: 'matchOrCreateCanon',
+      input,
+      traceparent,
+    });
   } catch (err) {
     return failure(classifyCallableError(err));
   }
@@ -41,16 +41,16 @@ export async function callCanonicaliseRecipeIngredients(
   input: CanonicaliseRecipeIngredientsInput,
   traceparent?: string,
 ): Promise<ReadResult<WireBatchResult, DomainError>> {
-  try {
-    const fn = httpsCallable<
-      CanonicaliseRecipeIngredientsInput & { traceparent?: string },
-      WireBatchResult
-    >(getFunctions(undefined, FUNCTIONS_REGION), 'canonicaliseRecipeIngredients');
-    const res = await fn(traceparent ? { ...input, traceparent } : input);
-    return success(res.data);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<CanonicaliseRecipeIngredientsInput, WireBatchResult>({
+    name: 'canonicaliseRecipeIngredients',
+    input,
+    traceparent,
+    // The function declares 120 s (`cloud-functions/src/index.ts:256`) against
+    // the client's 70 s default. A whole recipe's ingredients go through the
+    // matcher here, so the long tail is the ordinary case rather than the
+    // exception (#928, B2-010).
+    timeoutMs: 120_000,
+  });
 }
 
 // Clears a canon item's icon server-side (issue #148), re-firing the
@@ -61,14 +61,11 @@ export async function callRegenerateCanonIcon(
   canonId: string,
   hint?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<{ canonId: string; hint?: string }, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'regenerateCanonIcon',
-    );
-    await fn(hint && hint.trim() ? { canonId, hint: hint.trim() } : { canonId });
-    return success(undefined);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ canonId: string; hint?: string }, { ok: true }, void>({
+    name: 'regenerateCanonIcon',
+    // Trimmed BEFORE the emptiness test: a hint of whitespace is no hint, and
+    // must leave the field off the payload rather than send a blank steer.
+    input: hint && hint.trim() ? { canonId, hint: hint.trim() } : { canonId },
+    project: () => undefined,
+  });
 }

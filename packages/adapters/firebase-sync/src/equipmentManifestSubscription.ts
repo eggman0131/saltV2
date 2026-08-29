@@ -13,16 +13,13 @@ import { subscribeDocument } from './subscribeDocument.js';
 
 export function subscribeEquipmentManifest(
   onManifest: (manifest: EquipmentManifest | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
       path: [EQUIPMENT_MANIFEST_COLLECTION, EQUIPMENT_MANIFEST_DOC_ID],
       schema: EquipmentManifestSchema,
       label: 'EquipmentManifestSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     onManifest,
     onError,

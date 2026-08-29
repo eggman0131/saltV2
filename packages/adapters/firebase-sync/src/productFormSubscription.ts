@@ -1,14 +1,12 @@
 import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
 import type { ProductForm } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ProductFormSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
-import { classifyCallableError } from './callableErrors.js';
+import { callFunction } from './callFunction.js';
 import { subscribeCollection } from './subscribeCollection.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 const COLLECTION = 'productForms';
 
@@ -24,7 +22,6 @@ export function subscribeProductForms(
       schema: ProductFormSchema,
       label: 'ProductFormSchema',
       project: (form) => form as ProductForm,
-      forwardsRawError: true,
     },
     onItems,
     onError,
@@ -60,14 +57,10 @@ export async function callRegenerateProductFormIcon(
   formId: string,
   hint?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<{ formId: string; hint?: string }, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'regenerateProductFormIcon',
-    );
-    await fn(hint && hint.trim() ? { formId, hint: hint.trim() } : { formId });
-    return success(undefined);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ formId: string; hint?: string }, { ok: true }, void>({
+    name: 'regenerateProductFormIcon',
+    // Trimmed before the emptiness test: a hint of whitespace is no hint.
+    input: hint && hint.trim() ? { formId, hint: hint.trim() } : { formId },
+    project: () => undefined,
+  });
 }

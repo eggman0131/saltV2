@@ -14,7 +14,7 @@ const COLLECTION = 'members';
 // Stream-level errors still surface via onError.
 export function subscribeMembers(
   onMembers: (members: Member[]) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeCollection(
     {
@@ -22,9 +22,6 @@ export function subscribeMembers(
       schema: MemberSchema,
       label: 'MemberSchema',
       project: (member) => member as Member,
-      // The one collection subscription whose `onError` takes a single argument
-      // (#928 finding B2-009). Widening it is an API change, not a consolidation.
-      forwardsRawError: false,
     },
     onMembers,
     onError,

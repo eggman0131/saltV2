@@ -29,7 +29,6 @@ export function subscribeCanonItems(
       // and the reason `project` exists on the descriptor at all: a shared parse
       // loop without one would have dropped it silently.
       project: (item) => ({ ...item, embedding: null }) as CanonItem,
-      forwardsRawError: true,
     },
     onItems,
     onError,

@@ -1,7 +1,5 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { callFunction } from './callFunction.js';
 
 export interface IdentifyEquipmentCandidate {
   readonly name: string;
@@ -22,45 +20,31 @@ export interface PopulateEquipmentEntryResult {
   readonly accessories: readonly PopulateAccessory[];
 }
 
-// `traceparent` (issue #361) is an OPTIONAL, named transport field forwarded on
-// the payload — the Firebase callable SDK cannot carry a custom `traceparent`
-// HTTP header, so the browser-supplied W3C trace id rides here and the CF
-// entrypoint strips it before running the flow. The add-equipment action mints
-// ONE trace id and supplies the SAME `traceparent` to both this call and
-// callPopulateEquipmentEntry, so the two flows share one trace. firebase-sync
-// only forwards the string (Rule 4: no observability import). Optional →
-// back-compat with old clients that omit it.
+// The add-equipment action mints ONE trace id and supplies the SAME
+// `traceparent` to both this call and callPopulateEquipmentEntry, so the two
+// flows share one trace. How a trace id rides the wire is written once, at
+// `withTraceparent` in callFunction.ts.
 export async function callIdentifyEquipment(
   rawName: string,
   traceparent?: string,
 ): Promise<ReadResult<IdentifyEquipmentResult, DomainError>> {
-  try {
-    const fn = httpsCallable<{ rawName: string; traceparent?: string }, IdentifyEquipmentResult>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'identifyEquipment',
-    );
-    const res = await fn(traceparent ? { rawName, traceparent } : { rawName });
-    return { kind: 'ok', value: res.data };
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ rawName: string }, IdentifyEquipmentResult>({
+    name: 'identifyEquipment',
+    input: { rawName },
+    traceparent,
+  });
 }
 
 // Second leg of the add-equipment action (issue #361) — receives the SAME
 // browser-minted `traceparent` as callIdentifyEquipment so both flows nest under
-// one trace. Same transport contract as above (forward-only, optional).
+// one trace.
 export async function callPopulateEquipmentEntry(
   confirmedName: string,
   traceparent?: string,
 ): Promise<ReadResult<PopulateEquipmentEntryResult, DomainError>> {
-  try {
-    const fn = httpsCallable<
-      { confirmedName: string; traceparent?: string },
-      PopulateEquipmentEntryResult
-    >(getFunctions(undefined, FUNCTIONS_REGION), 'populateEquipmentEntry');
-    const res = await fn(traceparent ? { confirmedName, traceparent } : { confirmedName });
-    return { kind: 'ok', value: res.data };
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ confirmedName: string }, PopulateEquipmentEntryResult>({
+    name: 'populateEquipmentEntry',
+    input: { confirmedName },
+    traceparent,
+  });
 }

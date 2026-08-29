@@ -1,4 +1,3 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { IngredientGroup } from '@salt/domain';
 import { PHOTO_IMPORT_TIMEOUT_SECONDS } from '@salt/domain/schemas';
@@ -12,21 +11,18 @@ import type {
   UrlImportFailure,
 } from '@salt/domain/schemas';
 import { classifyCallableError, isBrowserOffline } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { callFunction, invokeCallable } from './callFunction.js';
 
 export async function callParseRecipeIngredients(
   rawText: string,
 ): Promise<ReadResult<IngredientGroup[], DomainError>> {
-  try {
-    const fn = httpsCallable<{ rawText: string }, IngredientGroup[]>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'parseRecipeIngredients',
-    );
-    const res = await fn({ rawText });
-    return success(res.data);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ rawText: string }, IngredientGroup[]>({
+    name: 'parseRecipeIngredients',
+    input: { rawText },
+    // The function declares 90 s (`cloud-functions/src/index.ts:288`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
+  });
 }
 
 // Map the callable's HttpsError code → the URL-import failure channel. The CF
@@ -94,16 +90,14 @@ export async function callRegenerateRecipeImage(
   recipeId: string,
   brief?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<{ recipeId: string; brief?: string }, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'regenerateRecipeImage',
-    );
-    await fn(brief && brief.trim() ? { recipeId, brief: brief.trim() } : { recipeId });
-    return success(undefined);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ recipeId: string; brief?: string }, { ok: true }, void>({
+    name: 'regenerateRecipeImage',
+    // Trimmed before the emptiness test: a brief of whitespace is no brief, and
+    // must leave the field off the payload — the trigger reads an absent
+    // `imageBrief` as "author one".
+    input: brief && brief.trim() ? { recipeId, brief: brief.trim() } : { recipeId },
+    project: () => undefined,
+  });
 }
 
 // Re-asks what kit a recipe needs (issue #882). The callable clears the
@@ -117,16 +111,11 @@ export async function callRegenerateRecipeImage(
 // NEVER throws (Rule 10): every failure crosses the boundary as
 // `Failure<DomainError>`, mapped exactly as its neighbours map it.
 export async function callRedoRecipeKit(recipeId: string): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<{ recipeId: string }, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'redoRecipeKit',
-    );
-    await fn({ recipeId });
-    return success(undefined);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<{ recipeId: string }, { ok: true }, void>({
+    name: 'redoRecipeKit',
+    input: { recipeId },
+    project: () => undefined,
+  });
 }
 
 // Uploads a user-supplied hero photo for a recipe (issue #455, Phase 2). The
@@ -141,16 +130,15 @@ export async function callSetRecipeImageUpload(
   imageBase64: string,
   contentType?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<
-      { recipeId: string; imageBase64: string; contentType?: string },
-      { ok: true }
-    >(getFunctions(undefined, FUNCTIONS_REGION), 'setRecipeImageUpload');
-    await fn(contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 });
-    return success(undefined);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<
+    { recipeId: string; imageBase64: string; contentType?: string },
+    { ok: true },
+    void
+  >({
+    name: 'setRecipeImageUpload',
+    input: contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 },
+    project: () => undefined,
+  });
 }
 
 // Scene brief on demand (issue #522, Phase 3). Sends the recipe — plus, on a
@@ -159,11 +147,8 @@ export async function callSetRecipeImageUpload(
 // for the user to read and edit, and only reaches Firestore if they then press
 // Regenerate (callRegenerateRecipeImage stamps it onto `imageBrief`).
 //
-// `traceparent` (issue #362) rides on the payload exactly as in
-// callExtractRecipeFromUrl — the Firebase callable SDK cannot carry a custom
-// `traceparent` HTTP header, so the browser-supplied W3C trace id goes as a named
-// field the CF entrypoint strips before the flow runs. firebase-sync only forwards
-// the string (Rule 4: no observability import). Optional → back-compat.
+// `traceparent` (issue #362) rides on the payload; how and why are written once,
+// at `withTraceparent` in callFunction.ts.
 //
 // NEVER throws (Rule 10): a failure crosses as a Failure so the caller can leave
 // the user's existing brief untouched and say so.
@@ -171,37 +156,40 @@ export async function callDescribeRecipeScene(
   input: DescribeRecipeSceneInput,
   traceparent?: string,
 ): Promise<ReadResult<DescribeRecipeSceneOutput, DomainError>> {
-  try {
-    const fn = httpsCallable<
-      DescribeRecipeSceneInput & { traceparent?: string },
-      DescribeRecipeSceneOutput
-    >(getFunctions(undefined, FUNCTIONS_REGION), 'describeRecipeScene');
-    const res = await fn(traceparent ? { ...input, traceparent } : input);
-    return success(res.data);
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<DescribeRecipeSceneInput, DescribeRecipeSceneOutput>({
+    name: 'describeRecipeScene',
+    input,
+    traceparent,
+    // The function declares 90 s (`cloud-functions/src/index.ts:325`) against
+    // the callable client's 70 s default (#928, B2-010).
+    timeoutMs: 90_000,
+  });
 }
 
 // SSRF-hardened URL import. Sends a URL, receives a fully-assembled, metric +
 // British recipe draft (source.type='url'). On failure returns the specific
 // UrlImportFailureCode so the caller can show the right copy.
-// `traceparent` (issue #362) is an OPTIONAL, named transport field forwarded on
-// the payload — the Firebase callable SDK cannot carry a custom `traceparent`
-// HTTP header, so the browser-supplied W3C trace id rides here and the CF
-// entrypoint strips it before running the flow. firebase-sync only forwards the
-// string (Rule 4: no observability import). Optional → back-compat.
+// `traceparent` (issue #362) rides on the payload; see `withTraceparent`.
 export async function callExtractRecipeFromUrl(
   input: ExtractRecipeFromUrlInput,
   traceparent?: string,
 ): Promise<ReadResult<RecipeDoc, UrlImportFailure>> {
+  // `invokeCallable` rather than `callFunction`: this answers with its OWN
+  // failure vocabulary, which the web copy map keys off, so the catch cannot be
+  // the shared one. Region, payload and the absent timeout still come from the
+  // one place.
   try {
-    const fn = httpsCallable<ExtractRecipeFromUrlInput & { traceparent?: string }, RecipeDoc>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'extractRecipeFromUrl',
-    );
-    const res = await fn(traceparent ? { ...input, traceparent } : input);
-    return success(res.data);
+    const data = await invokeCallable<ExtractRecipeFromUrlInput, RecipeDoc>({
+      name: 'extractRecipeFromUrl',
+      input,
+      traceparent,
+      // The function declares 120 s (`cloud-functions/src/index.ts:471`) against
+      // the callable client's 70 s default. Fetching and reading a page is the
+      // slowest thing this callable does and the one most likely to overrun
+      // (#928, B2-010).
+      timeoutMs: 120_000,
+    });
+    return success(data);
   } catch (err) {
     return failure(classifyUrlImportError(err));
   }
@@ -259,29 +247,27 @@ function classifyPhotoImportError(err: unknown): PhotoImportFailure {
 // when the photographs are genuinely the story, an ordinary DomainError when they
 // are not — so the caller can show the right copy. NEVER throws (Rule 10).
 //
-// The explicit `timeout` is load-bearing, not decoration: the Firebase callable
+// The explicit `timeoutMs` is load-bearing, not decoration: the Firebase callable
 // client defaults to 70s, so without it a slow multi-page extraction would fail
 // on the client while the function was still working. PHOTO_IMPORT_TIMEOUT_SECONDS
 // is the SAME constant the CF passes as its `timeoutSeconds`, so the two cannot
 // drift apart.
 //
-// `traceparent` (issue #362) is an OPTIONAL, named transport field forwarded on
-// the payload — the callable SDK cannot carry a custom `traceparent` HTTP header,
-// so the browser-supplied W3C trace id rides here and the CF entrypoint strips it
-// before running the flow. firebase-sync only forwards the string (Rule 4: no
-// observability import).
+// `traceparent` (issue #362) rides on the payload; see `withTraceparent`.
 export async function callExtractRecipeFromPhoto(
   input: ExtractRecipeFromPhotoInput,
   traceparent?: string,
 ): Promise<ReadResult<RecipeDoc, PhotoImportFailure>> {
+  // `invokeCallable` for the same reason as the URL import: its own closed
+  // failure vocabulary, so its own catch.
   try {
-    const fn = httpsCallable<ExtractRecipeFromPhotoInput & { traceparent?: string }, RecipeDoc>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'extractRecipeFromPhoto',
-      { timeout: PHOTO_IMPORT_TIMEOUT_SECONDS * 1000 },
-    );
-    const res = await fn(traceparent ? { ...input, traceparent } : input);
-    return success(res.data);
+    const data = await invokeCallable<ExtractRecipeFromPhotoInput, RecipeDoc>({
+      name: 'extractRecipeFromPhoto',
+      input,
+      traceparent,
+      timeoutMs: PHOTO_IMPORT_TIMEOUT_SECONDS * 1000,
+    });
+    return success(data);
   } catch (err) {
     return failure(classifyPhotoImportError(err));
   }

@@ -16,16 +16,13 @@ const SINGLETON_DOC_ID = 'singleton';
 
 export function subscribeAppSettings(
   onSettings: (settings: AppSettings | null) => void,
-  onError: (err: DomainError) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   return subscribeDocument(
     {
       path: [COLLECTION, SINGLETON_DOC_ID],
       schema: AppSettingsSchema,
       label: 'AppSettingsSchema',
-      onCorrupt: 'error',
-      logsRejection: false,
-      forwardsRawError: false,
     },
     onSettings,
     onError,

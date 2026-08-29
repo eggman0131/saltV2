@@ -33,7 +33,6 @@ export function subscribeShoppingListItems(
       schema: ShoppingListItemSchema,
       label: 'ShoppingListItemSchema',
       project: (item) => item as ShoppingListItem,
-      forwardsRawError: true,
     },
     onItems,
     onError,

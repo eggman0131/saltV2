@@ -1,6 +1,5 @@
-import { httpsCallable, getFunctions } from 'firebase/functions';
 import type { DomainError, ReadResult } from '@salt/shared-types';
-import { success, failure, ErrorCode } from '@salt/shared-types';
+import { ErrorCode } from '@salt/shared-types';
 import {
   EquipmentIconSchema,
   EQUIPMENT_ICONS_COLLECTION,
@@ -9,9 +8,8 @@ import {
   type DescribeEquipmentSubjectInput,
   type DescribeEquipmentSubjectOutput,
 } from '@salt/domain/schemas';
-import { classifyCallableError } from './callableErrors.js';
+import { callFunction } from './callFunction.js';
 import { subscribeCollection } from './subscribeCollection.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Equipment pictograms (issue #877) — the read side of the server-owned
 // `equipmentIcons` collection, plus the one callable that writes it.
@@ -46,7 +44,6 @@ export function subscribeEquipmentIcons(
       // Keyed by the DOCUMENT id — the equipment item it belongs to, which the
       // icon document itself does not carry as a field.
       project: (icon, id): [string, EquipmentIconDoc] => [id, icon],
-      forwardsRawError: true,
     },
     (entries) => onIcons(new Map(entries)),
     onError,
@@ -67,26 +64,29 @@ export function subscribeEquipmentIcons(
 export async function callDrawEquipmentIcon(
   input: DrawEquipmentIconInput,
 ): Promise<ReadResult<void, DomainError>> {
-  try {
-    const fn = httpsCallable<DrawEquipmentIconInput, { ok: true }>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'drawEquipmentIcon',
-    );
-    await fn(input);
-    return success(undefined);
-  } catch (err) {
+  return callFunction<DrawEquipmentIconInput, { ok: true }, void>({
+    name: 'drawEquipmentIcon',
+    input,
+    // The function is allowed 300 s (`callables/drawEquipmentIcon.ts:61`) and
+    // the callable client's own default is 70, so without this the browser
+    // abandoned every draw that took longer than 70 s while the function ran on
+    // and WROTE the icon — the user saw a failure for work that succeeded, and a
+    // second press paid for a second picture. The worst of the ten (#928,
+    // B2-010): 230 s early on a callable whose whole job takes minutes.
+    timeoutMs: 300_000,
+    project: () => undefined,
     // `failed-precondition` is the kill switch being off, or no description
     // written yet — both are expected states with a friendly message, not
     // defects, so they must not be reported (see the error-reporting policy).
-    return failure(
-      classifyCallableError(err, {
-        'failed-precondition': {
-          kind: 'ValidationError',
-          code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
-        },
-      }),
-    );
-  }
+    // An override rather than a private mapper: everything else, the
+    // offline-first ordering included, stays the shared contract.
+    overrides: {
+      'failed-precondition': {
+        kind: 'ValidationError',
+        code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
+      },
+    },
+  });
 }
 
 /**
@@ -111,21 +111,20 @@ export async function callDrawEquipmentIcon(
 export async function callDescribeEquipmentSubject(
   input: DescribeEquipmentSubjectInput,
 ): Promise<ReadResult<string, DomainError>> {
-  try {
-    const fn = httpsCallable<DescribeEquipmentSubjectInput, DescribeEquipmentSubjectOutput>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'describeEquipmentSubject',
-    );
-    const res = await fn(input);
-    return success(res.data.brief);
-  } catch (err) {
-    return failure(
-      classifyCallableError(err, {
-        'invalid-argument': {
-          kind: 'ValidationError',
-          code: ErrorCode.EQUIPMENT_BRIEF_NOT_WRITABLE,
-        },
-      }),
-    );
-  }
+  return callFunction<DescribeEquipmentSubjectInput, DescribeEquipmentSubjectOutput, string>({
+    name: 'describeEquipmentSubject',
+    input,
+    // The function declares 90 s (`cloud-functions/src/index.ts:357`), sized
+    // around the flow's own 55 s `withAiTimeout`. 70 would have given up first.
+    timeoutMs: 90_000,
+    // The brief itself: the wrapper object exists only for Genkit's structured
+    // output and no caller wants it.
+    project: (out) => out.brief,
+    overrides: {
+      'invalid-argument': {
+        kind: 'ValidationError',
+        code: ErrorCode.EQUIPMENT_BRIEF_NOT_WRITABLE,
+      },
+    },
+  });
 }

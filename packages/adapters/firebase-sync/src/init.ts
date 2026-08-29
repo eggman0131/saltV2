@@ -8,6 +8,13 @@ import {
   disableNetwork,
   enableNetwork,
 } from 'firebase/firestore';
+// The one sanctioned `getFunctions` outside callFunction.ts (#928 Phase 6), and
+// a genuinely different call: it takes an EXPLICIT app rather than the default
+// one, and its only purpose is to hand `connectFunctionsEmulator` an instance to
+// rewire. No callable is created here and no wrapper is being copied, which is
+// what the rule exists to stop. Disabled at the line so a fourth exemption has
+// to be argued in a diff rather than added to a config array.
+// eslint-disable-next-line no-restricted-imports -- emulator wiring, not a callable
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';

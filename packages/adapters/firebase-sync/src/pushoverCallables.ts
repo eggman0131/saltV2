@@ -1,7 +1,5 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
-import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { callFunction } from './callFunction.js';
 
 // Browser → the Pushover device readout (issue #680). CLAUDE.md rule #2: the
 // Firebase SDK is only touched here. Error mapping goes through the shared
@@ -10,7 +8,8 @@ import { FUNCTIONS_REGION } from './functionsRegion.js';
 // This file's private copy of the mapper was the one that had drifted (issue
 // #916): it handled `functions/unauthenticated` but never `permission-denied`, so
 // a rules refusal here came back as "check your connection". Sharing the mapper
-// is what makes that class of drift impossible rather than merely fixed.
+// is what makes that class of drift impossible rather than merely fixed — and
+// #928 finished the job: there is no per-file copy of the CALL either now.
 
 export interface PushoverDevices {
   // 'ok' with an EMPTY list is meaningful: the account answered and no device
@@ -23,14 +22,9 @@ export interface PushoverDevices {
 
 /** Lists the Pushover devices that resolve for the signed-in member. */
 export async function callListPushoverDevices(): Promise<ReadResult<PushoverDevices, DomainError>> {
-  try {
-    const fn = httpsCallable<Record<string, never>, PushoverDevices>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'listPushoverDevices',
-    );
-    const res = await fn({});
-    return { kind: 'ok', value: res.data };
-  } catch (err) {
-    return failure(classifyCallableError(err));
-  }
+  return callFunction<Record<string, never>, PushoverDevices>({
+    name: 'listPushoverDevices',
+    // An EMPTY object, not no argument: the callable protocol sends a body.
+    input: {},
+  });
 }

@@ -26,7 +26,6 @@ export function subscribeRecipes(
       schema: RecipeSchema,
       label: 'RecipeSchema',
       project: (recipe) => recipe,
-      forwardsRawError: true,
     },
     onRecipes,
     onError,

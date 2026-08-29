@@ -38,7 +38,6 @@ export function subscribeShoppingDaysInRange(
       schema: ShoppingDaySchema,
       label: 'ShoppingDaySchema',
       project: (day) => day,
-      forwardsRawError: true,
     },
     onDays,
     onError,

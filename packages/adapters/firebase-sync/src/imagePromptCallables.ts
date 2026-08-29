@@ -1,5 +1,4 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
+import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import {
   GetImagePromptResultSchema,
   type GetImagePromptInput,
@@ -7,7 +6,7 @@ import {
   type ImagePromptFamily,
 } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
-import { FUNCTIONS_REGION } from './functionsRegion.js';
+import { invokeCallable } from './callFunction.js';
 
 // Browser → the getImagePrompt callable (issue #892). CLAUDE.md rule #2: the
 // Firebase SDK is touched only here; the web services consume this wrapper, never
@@ -43,17 +42,20 @@ export async function callGetImagePrompt(
   family: ImagePromptFamily,
   id: string,
 ): Promise<ReadResult<GetImagePromptResult, DomainError>> {
+  // `invokeCallable` rather than `callFunction`, for two reasons that both need
+  // the raw material: the wire result is `.safeParse`d before it is trusted (see
+  // the header), and the `not-found` arm below reads the rejection's code ahead
+  // of the shared mapper.
   try {
-    const fn = httpsCallable<GetImagePromptInput, unknown>(
-      getFunctions(undefined, FUNCTIONS_REGION),
-      'getImagePrompt',
-    );
-    const res = await fn({ family, id });
-    const parsed = GetImagePromptResultSchema.safeParse(res.data);
+    const data = await invokeCallable<GetImagePromptInput, unknown>({
+      name: 'getImagePrompt',
+      input: { family, id },
+    });
+    const parsed = GetImagePromptResultSchema.safeParse(data);
     if (!parsed.success) {
       return failure({ kind: 'StorageError', reason: 'corruption' });
     }
-    return { kind: 'ok', value: parsed.data };
+    return success(parsed.data);
   } catch (err) {
     // A missing document is an expected race — the item was deleted under a page
     // that was already open — so it comes back as NotFound and is suppressed by

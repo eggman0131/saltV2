@@ -19,14 +19,19 @@
  * place.
  *
  * What survives both nets is the STREAM path, and specifically its ARITY.
- * `subscribeMembers` is the one collection subscription whose `onError` takes a
- * single argument — `forwardsRawError: false` in `membersSubscription.ts`, which
- * is #928's finding B2-009 recorded as data rather than unified away. The
- * contract net asserts `rawError` only on the single-document rows' PARSE path;
- * no row there drives a collection subscription's stream callback, and provoking
- * a real one would mean revoking a security rule mid-listen. A mocked
- * `onSnapshot` hands the error callback whatever it likes, which is why this one
- * assertion is still a unit test.
+ * `subscribeMembers` used to be the one collection subscription whose `onError`
+ * took a single argument; #928 Phase 1 deleted the `forwardsRawError` field that
+ * held that divergence open, so it now forwards the raw Firestore error like the
+ * other thirteen — finding B2-009, unified rather than recorded. This file pins
+ * the unified arity from the outside: two arguments, the second the error the
+ * SDK actually raised, so a reporting call site gets the real stack.
+ *
+ * It stays a unit test because the contract net cannot reach here. That net
+ * asserts `rawError` only on the single-document rows' PARSE path; no row there
+ * drives a collection subscription's stream callback, and provoking a real one
+ * would mean revoking a security rule mid-listen. A mocked `onSnapshot` hands
+ * the error callback whatever it likes, which is why this one assertion is
+ * still a unit test.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -73,21 +78,25 @@ afterEach(() => {
 });
 
 describe('subscribeMembers — the stream-error path', () => {
-  it('classifies a stream error and calls onError with ONE argument, never the raw error', () => {
+  it('classifies a stream error and forwards the RAW error alongside it', () => {
     // Captured as an argument LIST rather than matched with
-    // `toHaveBeenCalledWith`, so the arity is asserted as a value: a second
-    // argument appearing here is a visible API change for every call site that
-    // declares a one-parameter handler, and it must not arrive as a side effect
-    // of a consolidation (#928 finding B2-009).
+    // `toHaveBeenCalledWith`, so the arity is asserted as a value and not merely
+    // satisfied by it: `toHaveBeenCalledWith(domainError, raw)` would also pass
+    // on a handler that dropped the second argument on some other code path,
+    // and a bare `toHaveBeenCalled` would pass on anything at all (UT-A1).
     const calls: unknown[][] = [];
     subscribeMembers(
       () => {},
       (...args) => calls.push(args),
     );
 
+    const raw = Object.assign(new Error('denied'), { code: 'permission-denied' });
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+    errCb(raw);
 
-    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }]]);
+    // Exactly two arguments, and the second is the error the SDK raised — the
+    // stack PostHog needs. One argument here is the divergence #928 Phase 1
+    // closed, so this row goes red if it reopens.
+    expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
   });
 });

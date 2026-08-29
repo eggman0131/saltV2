@@ -42,7 +42,12 @@ describe('callExtractProcessStages', () => {
     const result = await callExtractProcessStages({ recipeId: 'recipe-1' });
 
     expect(getFunctions).toHaveBeenCalledWith(undefined, 'europe-west2');
-    expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'extractProcessStages');
+    // Three arguments now, not two: the function declares 90 s and the callable
+    // client's default is 70, so #928 Phase 5 gave this wrapper a matching
+    // client timeout. Raising the CF's `timeoutSeconds` means raising this.
+    expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'extractProcessStages', {
+      timeout: 90_000,
+    });
     expect(callableMock).toHaveBeenCalledWith({ recipeId: 'recipe-1' });
     expect(result).toEqual({ kind: 'ok', value: { stages: [STAGE] } });
   });

@@ -19,10 +19,11 @@
  *      off a real recipe. The fixture below is a populated one and the assertion
  *      is whole-object equality.
  *   2. THE STREAM PATH, and that it forwards the RAW error alongside the
- *      classified one. `forwardsRawError: true` here, against `false` on
- *      `subscribeMembers` (#928 finding B2-009) — an asymmetry no emulator row
- *      exercises, because provoking a stream error would mean revoking a rule
- *      mid-listen.
+ *      classified one — the one arity every subscription now declares, since
+ *      #928 Phase 1 deleted the `forwardsRawError` field that held the
+ *      asymmetry with `subscribeMembers` open (finding B2-009). No emulator row
+ *      exercises it, because provoking a stream error would mean revoking a
+ *      rule mid-listen.
  *   3. `loadRecipe`, a one-shot `getDoc`. `writerContract.test.ts` classifies it
  *      as a `'read'` and covers no reads; the subscription net covers no
  *      one-shots. The single-document read contract — `null` for absent,
