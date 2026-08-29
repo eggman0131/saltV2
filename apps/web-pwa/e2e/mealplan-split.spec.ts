@@ -115,6 +115,27 @@ async function readDayNote(page: Page, dayKey: string): Promise<string | undefin
   return page.evaluate((key) => window.__e2e!.getMealPlanSnapshot().days[key]?.note, dayKey);
 }
 
+/**
+ * Write out the planner's debounced edits and wait for Firestore to ack them.
+ *
+ * A settling step through the `window.__e2e` bridge, which is the sanctioned shape
+ * (`docs/e2e-test-spec.md` NF-A1/NF-C4) — and emphatically not a sleep in disguise.
+ * A typed note coalesces its `setDoc` behind a 400 ms debounce (issue #940), and
+ * `page.fill()` never blurs the field, so the component's own blur flush never runs.
+ * Under emulators the client runs WITHOUT `persistentLocalCache` (`src/lib/firebase.ts`),
+ * so a write that has not been issued is not queued anywhere a reload could replay
+ * it — it is simply lost, which is what made the assertion below flake (issue #1085).
+ *
+ * What this does NOT cover: if the 400 ms window elapses before this runs, the write
+ * has already left the coalescer and is in flight, and the flush finds nothing to do.
+ * That needs two CDP round trips to overtake a 400 ms timer, so it is far narrower
+ * than the window it closes — but it is not zero, and this comment is here so a
+ * recurrence is recognised rather than re-investigated.
+ */
+async function settlePlannerWrites(page: Page): Promise<void> {
+  await page.evaluate(() => window.__e2e!.flushMealPlanWrites());
+}
+
 /** A day row's top edge in page coordinates — how "the week did not move" is read. */
 async function rowTop(page: Page, date: string): Promise<number> {
   const box = await page.getByTestId(`day-${date}-row`).boundingBox();
@@ -216,6 +237,9 @@ test.describe('meal planner — the week and the day, side by side', () => {
     expect(await readDayNote(page, today)).toBe('Dinner 1');
 
     // ── …and it round-trips through Firestore ────────────────────────────────
+    // The poll above proves the OPTIMISTIC APPLY and nothing more, so settle the
+    // coalesced write before reloading or the reload races it (issue #1085).
+    await settlePlannerWrites(page);
     // Reload rather than re-navigating: `/#/mealplan` is the URL we are already on,
     // so `goto` would be a same-document hash navigation and remount nothing.
     await page.reload();
