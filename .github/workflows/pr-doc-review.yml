@@ -854,6 +854,7 @@ jobs:
         if: ${{ steps.scope.outputs.review == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           STATE: ${{ steps.degrade.outputs.state }}
         run: |
@@ -878,8 +879,21 @@ jobs:
           } > .doc-review/issue-body.md
           # Labels are best-effort: `gh issue create` hard-fails on a label that
           # does not exist, and losing the issue entirely over a renamed label
-          # would be the worst possible trade. (The nightly asked for a bare
-          # "needs-review"; the label is actually "status: needs-review", so its
-          # Verdict B path would have failed outright had it ever fired.)
-          gh issue create --title "$title" --label "documentation" --label "status: needs-review" --body-file .doc-review/issue-body.md \
-            || gh issue create --title "$title" --body-file .doc-review/issue-body.md
+          # would be the worst possible trade.
+          #
+          # There is deliberately no status label. "status: needs-review" was
+          # retired with the rest of the `status:` and `priority:` set when the
+          # board landed — where an issue sits is a project field now, and the
+          # board is what the next line puts it on. See docs/issue-board.md.
+          url=$(gh issue create --title "$title" --label "documentation" --body-file .doc-review/issue-body.md \
+            || gh issue create --title "$title" --body-file .doc-review/issue-body.md)
+          echo "filed $url"
+
+          # Land it on the board with no Queue or Class, so it appears under
+          # Triage awaiting a ruling rather than carrying one this job invented.
+          # Best-effort in the same spirit as the labels: an issue that misses
+          # the board is a nuisance, an issue never filed is a lost finding.
+          number="${url##*/}"
+          if [ -n "${PROJECT_TOKEN:-}" ] && [ -n "$number" ]; then
+            GH_TOKEN="$PROJECT_TOKEN" node scripts/board.mjs add "$number" || echo "board add failed — triage $number by hand"
+          fi

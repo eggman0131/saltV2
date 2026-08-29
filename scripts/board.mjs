@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+// Read and write the issue board — "Salt — The Pass", org project #1.
+//
+// WHY THIS EXISTS — three things, and only the third needs a script at all.
+//
+// 1. IDS ARE NOT NAMES. Every project mutation takes opaque node ids
+//    (`PVTSSF_…` for a field, another for each of its options), and there is no
+//    id-free form. Pasting those into `.claude/commands/*.md` would put six
+//    unreadable identifiers in four files, all of which rot silently the first
+//    time a field is renamed or re-optioned — the failure being a mutation that
+//    errors, or worse, one that writes to the wrong field. Everything here is
+//    resolved BY NAME at call time, so the commands say `--queue Recommended`
+//    and nothing anywhere stores an id.
+//
+// 2. LABELS NO LONGER CARRY PRIORITY OR CLASS. The `priority: *` and
+//    `status: *` labels were retired when this board landed; `Queue`, `Class`,
+//    `Size` and `Status` are the only home for those facts now. `/defect`,
+//    `/spec` and `/refactor-spec` call `add` here instead of applying them, so
+//    a new issue arrives on the board already triaged rather than needing a
+//    second pass. See docs/issue-board.md.
+//
+// 3. THE PROMOTION RULE NEEDS A CHECK, NOT A PROMISE. `Recommended` means
+//    actionable AND proven, and an issue is not actionable if something in this
+//    repo blocks it — so a Recommended item's in-repo blocker is itself
+//    Recommended, sitting above it. That is an invariant (CLAUDE.md rule 12),
+//    and an invariant nothing can falsify is decoration. `check` is what makes
+//    it real: it parses the leading `#N` out of `Blocked by` and goes red when
+//    the blocker is absent from Recommended or ordered below what it blocks.
+//
+// SEQUENCE IS POSITION, NOT A FIELD. There is deliberately no rank number:
+//   triage is placement, and `updateProjectV2ItemPosition(…, afterId)` places an
+//   item directly after a named one. That is the same order a drag produces, so
+//   a human and an agent triage through one mechanism. The cost is that no view
+//   may carry a sort — a sorted view disables dragging and hides the order this
+//   writes. See docs/issue-board.md.
+//
+// Needs a token with the `project` scope: the gh CLI's own login locally, or
+// PROJECT_TOKEN in Actions (the Actions GITHUB_TOKEN cannot write projects).
+//
+// Usage:
+//   node scripts/board.mjs add 1234 --queue Medium --class Defect --size S
+//   node scripts/board.mjs set 1234 --status "In progress"
+//   node scripts/board.mjs pr 5678 --status "In review"     # via the PR's Closes #N
+//   node scripts/board.mjs release --sha <deployed sha>
+//   node scripts/board.mjs check
+
+import { execFileSync } from 'node:child_process';
+
+const OWNER = 'eggmanorg';
+const REPO = 'salt';
+const PROJECT_NUMBER = 1;
+
+const die = (msg) => {
+  console.error(`board: ${msg}`);
+  process.exit(1);
+};
+
+function gql(query) {
+  let out;
+  try {
+    out = execFileSync('gh', ['api', 'graphql', '-f', `query=${query}`], {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch (err) {
+    die(`gh failed — ${String(err.stderr || err.message).trim().slice(0, 400)}`);
+  }
+  const body = JSON.parse(out);
+  if (body.errors) die(`GraphQL — ${JSON.stringify(body.errors).slice(0, 400)}`);
+  return body.data;
+}
+
+/** The project, its fields and their options — resolved by name, never stored. */
+function loadProject() {
+  const p = gql(`{ organization(login:"${OWNER}"){ projectV2(number:${PROJECT_NUMBER}){
+    id title
+    fields(first:50){ nodes{
+      ... on ProjectV2FieldCommon { id name dataType }
+      ... on ProjectV2SingleSelectField { id name dataType options{ id name } } } } } } }`)
+    .organization?.projectV2;
+  if (!p) die(`project #${PROJECT_NUMBER} not found under ${OWNER} — is the token missing the project scope?`);
+
+  const fields = new Map(p.fields.nodes.filter((f) => f?.name).map((f) => [f.name, f]));
+  return {
+    id: p.id,
+    title: p.title,
+    field(name) {
+      const f = fields.get(name);
+      if (!f) die(`no field named "${name}" — have: ${[...fields.keys()].join(', ')}`);
+      return f;
+    },
+    option(fieldName, value) {
+      const f = this.field(fieldName);
+      const o = f.options?.find((x) => x.name.toLowerCase() === String(value).toLowerCase());
+      if (!o) die(`"${value}" is not an option of ${fieldName} — have: ${(f.options ?? []).map((x) => x.name).join(', ')}`);
+      return o.id;
+    },
+  };
+}
+
+/** Every item, in board order, with the fields the checks and writes need. */
+function loadItems(project) {
+  const items = [];
+  let after = 'null';
+  for (;;) {
+    const page = gql(`{ node(id:"${project.id}"){ ... on ProjectV2 {
+      items(first:100, after:${after}){
+        pageInfo{ hasNextPage endCursor }
+        nodes{ id
+          content{ ... on Issue { number title state } }
+          queue:fieldValueByName(name:"Queue"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          blockedBy:fieldValueByName(name:"Blocked by"){ ... on ProjectV2ItemFieldTextValue { text } } } } } } }`)
+      .node.items;
+    for (const n of page.nodes) {
+      if (!n.content?.number) continue; // draft item — not an issue
+      items.push({
+        id: n.id,
+        number: n.content.number,
+        title: n.content.title,
+        state: n.content.state,
+        queue: n.queue?.name ?? null,
+        blockedBy: n.blockedBy?.text ?? '',
+      });
+    }
+    if (!page.pageInfo.hasNextPage) break;
+    after = `"${page.pageInfo.endCursor}"`;
+  }
+  return items;
+}
+
+function setSelect(project, itemId, fieldName, value) {
+  const optionId = project.option(fieldName, value);
+  gql(`mutation{ updateProjectV2ItemFieldValue(input:{
+    projectId:"${project.id}", itemId:"${itemId}", fieldId:"${project.field(fieldName).id}",
+    value:{singleSelectOptionId:"${optionId}"}}){ projectV2Item{ id } } }`);
+}
+
+function parseFlags(argv) {
+  const flags = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (!argv[i].startsWith('--')) continue;
+    const key = argv[i].slice(2);
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith('--')) die(`--${key} needs a value`);
+    flags[key] = value;
+    i += 1;
+  }
+  return flags;
+}
+
+// Flag name → project field name. `class` is a reserved word in the shell sense
+// only; as a flag it reads correctly, so the mapping stays 1:1 and obvious.
+const FLAG_FIELD = { queue: 'Queue', class: 'Class', size: 'Size', status: 'Status' };
+
+function cmdAdd(project, [num, ...rest]) {
+  const number = Number(num);
+  if (!Number.isInteger(number)) die('usage: board.mjs add <issue> [--queue X --class Y --size Z --status W]');
+  const flags = parseFlags(rest);
+
+  const issue = gql(`{ repository(owner:"${OWNER}",name:"${REPO}"){ issue(number:${number}){ id title } } }`)
+    .repository?.issue;
+  if (!issue) die(`issue #${number} not found in ${OWNER}/${REPO}`);
+
+  const existing = loadItems(project).find((i) => i.number === number);
+  const itemId = existing
+    ? existing.id
+    : gql(`mutation{ addProjectV2ItemById(input:{projectId:"${project.id}", contentId:"${issue.id}"}){ item{ id } } }`)
+        .addProjectV2ItemById.item.id;
+
+  for (const [flag, field] of Object.entries(FLAG_FIELD)) {
+    if (flags[flag]) setSelect(project, itemId, field, flags[flag]);
+  }
+  const set = Object.entries(FLAG_FIELD)
+    .filter(([flag]) => flags[flag])
+    .map(([flag, field]) => `${field}=${flags[flag]}`)
+    .join(' ');
+  console.log(`${existing ? 'updated' : 'added'} #${number} — ${set || 'no fields set'}  ${issue.title}`);
+}
+
+function cmdSet(project, [num, ...rest]) {
+  const number = Number(num);
+  if (!Number.isInteger(number)) die('usage: board.mjs set <issue> [--queue X --class Y --size Z --status W]');
+  const flags = parseFlags(rest);
+  const item = loadItems(project).find((i) => i.number === number);
+  if (!item) die(`#${number} is not on the board — use \`add\` first`);
+  for (const [flag, field] of Object.entries(FLAG_FIELD)) {
+    if (flags[flag]) setSelect(project, item.id, field, flags[flag]);
+  }
+  console.log(`set #${number} — ${Object.entries(flags).map(([k, v]) => `${FLAG_FIELD[k] ?? k}=${v}`).join(' ')}`);
+}
+
+/**
+ * Move whatever a pull request closes. `/run` writes `Closes #N` into every PR
+ * body, which is the only machine-readable link between a PR and its issue —
+ * GitHub's own "linked issue" is derived from exactly this text.
+ */
+function cmdPr(project, [num, ...rest]) {
+  const number = Number(num);
+  if (!Number.isInteger(number)) die('usage: board.mjs pr <pr> --status "In review"');
+  const flags = parseFlags(rest);
+  if (!flags.status) die('board.mjs pr needs --status');
+
+  const pr = gql(`{ repository(owner:"${OWNER}",name:"${REPO}"){ pullRequest(number:${number}){ body } } }`)
+    .repository?.pullRequest;
+  if (!pr) die(`PR #${number} not found`);
+
+  const closes = [...pr.body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)]
+    .map((m) => Number(m[1]));
+  const targets = [...new Set(closes)];
+  if (targets.length === 0) {
+    console.log(`PR #${number} closes no issue — nothing to move`);
+    return;
+  }
+
+  const items = loadItems(project);
+  for (const issue of targets) {
+    const item = items.find((i) => i.number === issue);
+    if (!item) {
+      console.log(`#${issue} is not on the board — skipped`);
+      continue;
+    }
+    setSelect(project, item.id, 'Status', flags.status);
+    console.log(`#${issue} → Status=${flags.status}  (PR #${number})`);
+  }
+}
+
+/**
+ * Production deploys a tagged commit, and `Merged` only means "on main" — so an
+ * issue merged AFTER the tag was cut is on main but not live. The ancestry test
+ * is what keeps `Released` honest: only a merge commit reachable from the
+ * deployed sha actually shipped. Needs a checkout with full history.
+ */
+function cmdRelease(project, rest) {
+  const flags = parseFlags(rest);
+  if (!flags.sha) die('usage: board.mjs release --sha <deployed sha>');
+
+  const statuses = gql(`{ node(id:"${project.id}"){ ... on ProjectV2 {
+    items(first:100){ nodes{ id
+      content{ ... on Issue { number
+        closedByPullRequestsReferences(first:10, includeClosedPrs:true){ nodes{ merged mergeCommit{ oid } } } } }
+      status:fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }`)
+    .node.items.nodes;
+
+  let moved = 0;
+  for (const n of statuses) {
+    if (n.status?.name !== 'Merged' || !n.content?.number) continue;
+    const commits = (n.content.closedByPullRequestsReferences?.nodes ?? [])
+      .filter((p) => p.merged && p.mergeCommit?.oid)
+      .map((p) => p.mergeCommit.oid);
+    const shipped = commits.some((oid) => {
+      try {
+        execFileSync('git', ['merge-base', '--is-ancestor', oid, flags.sha], { stdio: 'ignore' });
+        return true;
+      } catch {
+        return false; // not reachable from the deployed tag, or the object is absent
+      }
+    });
+    if (!shipped) continue;
+    setSelect(project, n.id, 'Status', 'Released');
+    console.log(`#${n.content.number} → Released`);
+    moved += 1;
+  }
+  console.log(`release: ${moved} issue(s) moved to Released from ${flags.sha.slice(0, 8)}`);
+}
+
+/**
+ * The promotion rule, made mechanical: a Recommended issue blocked by another
+ * issue in this repo is only actionable if that blocker is also Recommended and
+ * ordered above it. `Blocked by` leads with the reference precisely so this can
+ * read it — `#952 — reason` for in-repo, `upstream: reason` for anything else.
+ */
+function cmdCheck(project) {
+  const items = loadItems(project);
+  const order = new Map(items.map((it, i) => [it.number, i]));
+  const recommended = new Set(items.filter((i) => i.queue === 'Recommended').map((i) => i.number));
+
+  const failures = [];
+  for (const item of items) {
+    if (item.queue !== 'Recommended') continue;
+    const ref = item.blockedBy.trim().match(/^#(\d+)/);
+    if (!ref) continue; // no blocker, or an `upstream:` one — out of our hands
+    const blocker = Number(ref[1]);
+    if (!order.has(blocker)) {
+      failures.push(`#${item.number} is blocked by #${blocker}, which is not on the board`);
+    } else if (!recommended.has(blocker)) {
+      failures.push(`#${item.number} is blocked by #${blocker}, which is not Recommended — promote it`);
+    } else if (order.get(blocker) > order.get(item.number)) {
+      failures.push(`#${item.number} is blocked by #${blocker}, which is sequenced below it`);
+    }
+  }
+
+  const stale = items.filter((i) => i.state === 'CLOSED');
+  for (const item of stale) failures.push(`#${item.number} is closed but still on the board`);
+
+  console.log(`${project.title}: ${items.length} items, ${recommended.size} Recommended`);
+  if (failures.length === 0) {
+    console.log('check: ok');
+    return;
+  }
+  for (const f of failures) console.error(`check: ${f}`);
+  process.exit(1);
+}
+
+const [command, ...args] = process.argv.slice(2);
+if (!command || command === '--help' || command === '-h') {
+  console.log(`usage:
+  board.mjs add <issue> [--queue X --class Y --size Z --status W]
+  board.mjs set <issue> [--queue X --class Y --size Z --status W]
+  board.mjs pr <pr> --status "In review"
+  board.mjs release --sha <deployed sha>
+  board.mjs check`);
+  process.exit(command ? 0 : 1);
+}
+
+const project = loadProject();
+if (command === 'add') cmdAdd(project, args);
+else if (command === 'set') cmdSet(project, args);
+else if (command === 'pr') cmdPr(project, args);
+else if (command === 'release') cmdRelease(project, args);
+else if (command === 'check') cmdCheck(project);
+else die(`unknown command "${command}" — expected add, set, pr, release or check`);

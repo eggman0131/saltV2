@@ -1,0 +1,94 @@
+name: Board status
+
+# Move an issue along the pipeline on the board ("Salt — The Pass", org project #1)
+# whenever an EVENT already proves the move. Three of the six transitions are
+# observable; the other three are not, and are set by the agent commands instead:
+#
+#   Triage      — GitHub's own "item added to project" project workflow.
+#   Todo        — a decision. /triage or Daniel. No event exists for "I have decided".
+#   In progress — /run and /campaign, when the worktree is cut. A branch push is
+#                 far too noisy to key on, and a draft PR is raised much later.
+#   In review   — HERE. A pull request opened, or taken out of draft.
+#   Merged      — HERE. That pull request merged. Staging follows on its own
+#                 (deploy-staging.yml runs on CI-green main), so there is no
+#                 separate staging state to track.
+#   Released    — HERE. A production deploy succeeded AND the issue's merge
+#                 commit is an ancestor of the deployed sha. See below.
+#
+# The issue→PR link is the `Closes #N` that /run writes into every PR body. That
+# is not a convention this workflow invented: GitHub's own "linked issue" is
+# derived from the same text, so anything that closes an issue on merge is
+# already saying it here.
+#
+# WHY `Released` IS NOT SIMPLY "everything Merged": production deploys a TAG, and
+# `Merged` only means "on main". Between a release tag being cut and its
+# approval-gated deploy finishing, more can land on main — marking those live
+# would be a lie the board tells about production. `board.mjs release` therefore
+# tests `git merge-base --is-ancestor <merge commit> <deployed sha>` per issue,
+# which is why that job needs `fetch-depth: 0`.
+#
+# TOKEN: the Actions GITHUB_TOKEN cannot write Projects v2 at any permission
+# level — org projects are outside the repo-scoped token entirely. PROJECT_TOKEN
+# is a fine-grained PAT with read/write on the org's projects and read on issues.
+# Without it these jobs fail loudly rather than silently skipping, because a
+# board that is quietly out of date is worse than one that is visibly broken.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, closed]
+  workflow_run:
+    workflows: ['Deploy Production']
+    types: [completed]
+
+# Never let two board writers race on the same issue.
+concurrency:
+  group: board-status-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  in-review:
+    name: PR raised → In review
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/board.mjs pr ${{ github.event.pull_request.number }} --status "In review"
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+
+  merged:
+    name: PR merged → Merged
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/board.mjs pr ${{ github.event.pull_request.number }} --status "Merged"
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+
+  released:
+    name: Deployed to production → Released
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the ancestry test needs both the deployed sha and every
+      # merge commit that might be reachable from it.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/board.mjs release --sha "${{ github.event.workflow_run.head_sha }}"
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}

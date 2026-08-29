@@ -80,6 +80,14 @@ If the current branch is already dedicated to this issue (it ends in `-ISSUE_NUM
 
 All phase commits land on this branch; hold its name for the PR.
 
+**Mark it started on the board**, once, when the branch is first cut:
+
+```
+node scripts/board.mjs set ISSUE_NUMBER --status "In progress"
+```
+
+Nothing downstream needs a second call — the `Closes #ISSUE_NUMBER` you write into the PR body at step 6 is what `board-status.yml` reads to move the issue to `In review`, then `Merged`, then `Released` after a production deploy. This one line exists only because no event can observe the moment work starts. Skip it on a resumed run where the status is already `In progress` or later; setting it backwards is worse than leaving it.
+
 **A merged PR leaves no ancestry — ask content, not lineage.** `main` is squash-merged, so the commit carrying your work is a *new* commit with no parent link to the branch it came from. That branch is never an ancestor of `main` and never becomes one: `git branch --merged main` will not list it, `git log origin/main..HEAD` will keep showing every phase commit as unique, and `git merge-base --is-ancestor` will keep answering false — after the merge exactly as before it. Resume on a stale local branch, ask lineage whether the work landed, and you get a confident wrong *no*, then either re-implement landed phases or stack the next one on history that is already in `main`.
 
 Ask the PR, and confirm against content — every squash subject ends in `(#PR)`:
