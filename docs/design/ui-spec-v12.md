@@ -59,9 +59,10 @@ why:
   re-legitimise exactly that drift.
 - **Widening `.salt-chip--fact svg` to catch an `<img>`** — that clamps the
   picture to 12px, i.e. it makes a text pill able to hold a picture badly. (The
-  `svg`-only selector is nevertheless a real hole: it is why a caller could size
-  its own glyph at all. Closing it is a `Chip` change with app-wide reach and is
-  not in this spec.)
+  `svg`-only selector was nevertheless a real hole: it is why a caller could
+  size its own glyph at all. **Closed in v0.9.4**, and not by widening it —
+  `Chip`'s `icon` is now an `IconName` the chip draws itself, so a raster glyph
+  in that slot is a type error rather than a smudge.)
 - **A fifth chip variant** — a `Chip` is a small text pill; `text-base`, a 40px
   tile and an asymmetric padding switch are not a variant of that, they are a
   different object. `PictogramPill` is deliberately **not** named `*Chip` so it

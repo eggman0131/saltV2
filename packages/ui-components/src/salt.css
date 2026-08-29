@@ -739,12 +739,6 @@
   .salt-chip--fact {
     @apply inline-flex items-center gap-1 border-transparent bg-muted text-muted-foreground;
   }
-  /* 12px, decided here rather than at the call site. §8.23.4 exists because two
-   * chip sizes shipped from two pages guessing; an icon size left to the caller
-   * would drift the same way. */
-  .salt-chip--fact svg {
-    @apply size-3 shrink-0;
-  }
   /* `tone` — a `fact`-only second axis (§8.23.9). Palette roles, not meanings:
    * the chip does not know what a recipe is, so the page decides which class of
    * fact each hue names and says so where it builds the row. `neutral` is the

@@ -8,14 +8,6 @@ import { Chip } from '@salt/ui-components';
 // createRawSnippet (Svelte 5) so a plain .ts story can supply it.
 const label = (text: string) => createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 
-// A leading glyph for the `fact` chip. Raw markup rather than the `Icon`
-// primitive because a plain .ts story cannot instantiate a component into a
-// snippet; the chip sizes whatever svg it is handed (ui-spec-v09 §8.23.8).
-const clockIcon = createRawSnippet(() => ({
-  render: () =>
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
-}));
-
 const meta = {
   title: 'Primitives/Chip',
   component: Chip,
@@ -61,14 +53,14 @@ export const Fact: Story = {
 };
 
 export const FactWithIcon: Story = {
-  args: { variant: 'fact', icon: clockIcon, children: label('Prep 40 min') },
+  args: { variant: 'fact', icon: 'Clock', children: label('Prep 40 min') },
 };
 
 // The `fact`-only tint axis (ui-spec-v09 §8.23.9). The names are palette roles,
 // never meanings: what a hue is being used to say belongs to the page, which is
 // why these stories are "Serves / Prep / Cook" and not "the yield tone".
 export const FactTonePrimary: Story = {
-  args: { variant: 'fact', tone: 'primary', icon: clockIcon, children: label('Prep 40 min') },
+  args: { variant: 'fact', tone: 'primary', icon: 'Clock', children: label('Prep 40 min') },
 };
 
 export const FactToneSecondary: Story = {

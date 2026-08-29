@@ -1,7 +1,6 @@
 <script lang="ts">
   import Chip from '../../src/primitives/Chip/Chip.svelte';
   import ChipGroup from '../../src/primitives/Chip/ChipGroup.svelte';
-  import Icon from '../../src/primitives/Icon/Icon.svelte';
   import type { ChipTone } from '../../src/primitives/Chip/Chip.types';
 
   let {
@@ -17,13 +16,10 @@
   } = $props();
 </script>
 
-{#snippet users()}
-  <Icon name="Users" />
-{/snippet}
-
 <ChipGroup ariaLabel="Facts" data-testid="group">
   {#if variant === 'fact'}
-    <Chip variant="fact" {tone} icon={withIcon ? users : undefined} data-testid="chip">{label}</Chip
+    <Chip variant="fact" {tone} icon={withIcon ? 'Users' : undefined} data-testid="chip"
+      >{label}</Chip
     >
   {:else}
     <Chip variant="tag" data-testid="chip">{label}</Chip>

@@ -2087,10 +2087,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
               {#if facts.length > 0}
                 <div class="flex flex-wrap items-center gap-2">
                   {#each facts as fact (fact.key)}
-                    <Chip variant="fact" tone={fact.tone ?? 'neutral'} data-testid={fact.testId}>
-                      {#snippet icon()}
-                        {#if fact.icon}<Icon name={fact.icon} />{/if}
-                      {/snippet}
+                    <Chip
+                      variant="fact"
+                      tone={fact.tone ?? 'neutral'}
+                      icon={fact.icon}
+                      data-testid={fact.testId}
+                    >
                       {fact.label}
                     </Chip>
                   {/each}
