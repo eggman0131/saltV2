@@ -1,0 +1,106 @@
+name: Spec shape
+
+# Keep the `specced` label tracking the issue BODY, not the fact that a command
+# once ran.
+#
+# `/spec`, `/defect` and `/refactor-spec` all end by posting an issue in a fixed
+# shape that `/run` then consumes by exact heading. "This issue is runnable" was
+# until now an unwritten property of the body — you found out by handing it to
+# `/run` and watching it not find `## Phases`. The label makes it filterable, and
+# this workflow makes it TRUE rather than merely applied (CLAUDE.md rule 12):
+# every open, edit and reopen re-checks the body and adds or REMOVES the label on
+# the result. A command applying it on create could not do that — an issue edited
+# afterwards would keep a label describing a body it no longer has.
+#
+# What is checked, and the limit that shape-checking cannot close, is in the
+# header of scripts/lib/specIssueShape.mjs. Read that before widening this.
+#
+# TOKEN: the Actions GITHUB_TOKEN is enough here — labels are repo-scoped, unlike
+# the org project board-status.yml writes, which is why that one needs a PAT and
+# this one does not.
+#
+# The body is always fetched with `gh issue view`, never read from the webhook
+# payload, for two reasons: it is the same code path for a single issue and for
+# the `workflow_dispatch` backfill sweep, and an issue body is attacker-supplied
+# text that must never be interpolated into a `run:` block.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  # Dispatch = the backfill sweep over every open issue. Nothing carried this
+  # label before it existed, so the filter is empty until one runs.
+  workflow_dispatch:
+
+# Never let an edit and the edit after it race to the same label.
+concurrency:
+  group: spec-shape-${{ github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    name: Check issue shape → specced
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Apply the label to every issue that earns it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          # Idempotent: exists after the first run, and `create` on an existing
+          # label is an error we do not care about.
+          gh label create specced \
+            --description 'Body is in a /spec, /defect or /refactor-spec shape that /run can execute' \
+            --color 0E8A16 2>/dev/null || true
+
+          if [ -n "${ISSUE:-}" ]; then
+            numbers="$ISSUE"
+          else
+            # The backfill. Nothing carried this label before it existed, so
+            # without a sweep the filter stays empty until every old issue
+            # happens to be edited.
+            numbers=$(gh issue list --state open --limit 500 --json number --jq '.[].number')
+          fi
+
+          for n in $numbers; do
+            gh issue view "$n" --json body,labels > issue.json
+            jq -r '.body // ""' issue.json > body.md
+            has_label=$(jq -r '[.labels[].name] | index("specced") != null' issue.json)
+
+            rc=0
+            report=$(node scripts/check-spec-shape.mjs body.md) || rc=$?
+
+            # 0 runnable, 1 a spec with problems, 2 not a spec at all. Only 0
+            # earns the label; 1 and 2 both lose it, for different reasons.
+            if [ "$rc" -eq 0 ] && [ "$has_label" != "true" ]; then
+              gh issue edit "$n" --add-label specced
+            elif [ "$rc" -ne 0 ] && [ "$has_label" = "true" ]; then
+              gh issue edit "$n" --remove-label specced
+            fi
+
+            # Only say something when the verdict is interesting: a spec that
+            # /run would trip over. "Not a spec" is the ordinary case for a
+            # hand-written issue and is not a finding.
+            if [ "$rc" -eq 1 ]; then
+              {
+                echo "### #$n — not runnable"
+                echo ''
+                echo '```'
+                echo "$report"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            echo "#$n: $report"
+          done
