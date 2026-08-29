@@ -229,6 +229,52 @@ describe('mealPlanService — write coalescing', () => {
     expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
   });
 
+  // The two teardown listeners below are the whole durability story for an edit
+  // still inside the debounce window: a reload, a closed tab or a backgrounded
+  // phone is ORDINARY, and the write has to reach the SDK before the page dies.
+  // Every other test in this file calls `flushMealPlanWrites()` directly, so all
+  // of them would keep passing if the listeners were deleted — which is exactly
+  // how `mealplan-split.spec.ts` came to depend on a guarantee nothing pinned
+  // (issue #1085).
+  it('issues a pending write SYNCHRONOUSLY on pagehide, so a reload cannot outrun it', () => {
+    loadWeek();
+    void setWeekDayNote(DAY, 'Pasta');
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    // Deliberately NOT awaited, and that is the point: an unload handler cannot
+    // hold the page open, so the property under test is that `saveMealPlanWeek` is
+    // reached before the handler yields. Awaiting here would let a flush that had
+    // been made async pass unnoticed — the one regression this test exists to catch.
+    expect(fs.saveMealPlanWeek).toHaveBeenCalledTimes(1);
+    expect(fs.saveMealPlanWeek.mock.calls[0]![0]!.days[DAY]!.note).toBe('Pasta');
+  });
+
+  it('issues a pending write when the tab is hidden, which is how a phone tab dies', () => {
+    loadWeek();
+    void setWeekDayNote(DAY, 'Pasta');
+
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(fs.saveMealPlanWeek).toHaveBeenCalledTimes(1);
+      expect(fs.saveMealPlanWeek.mock.calls[0]![0]!.days[DAY]!.note).toBe('Pasta');
+    } finally {
+      hidden.mockRestore();
+    }
+  });
+
+  it('leaves the tab alone when it merely becomes visible again', () => {
+    loadWeek();
+    void setWeekDayNote(DAY, 'Pasta');
+
+    // `visibilitychange` fires in both directions; only `hidden` is a teardown.
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
   it('writes out a pending edit when the week is dropped rather than discarding it', async () => {
     loadWeek();
 
