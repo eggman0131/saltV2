@@ -150,8 +150,8 @@ describe('CanonIcon', () => {
     });
 
     it('applies the size to the tile', () => {
-      const { getByTestId } = render(CanonIcon, { props: { thumbnail: null, size: 48 } });
-      expect(getByTestId('canon-icon').getAttribute('style')).toContain('width: 48px');
+      const { getByTestId } = render(CanonIcon, { props: { thumbnail: null, size: 64 } });
+      expect(getByTestId('canon-icon').getAttribute('style')).toContain('width: 64px');
     });
 
     it('merges the class prop', () => {

@@ -3,12 +3,12 @@
      `showSizes=true` renders the same thumbnail across the app's tile sizes.
      Rule 7: only @salt/ui-components. -->
 <script lang="ts">
-  import { CanonIcon } from '@salt/ui-components';
+  import { CanonIcon, type CanonIconSize } from '@salt/ui-components';
 
   let {
     thumbnail = null,
     name = 'Tinned tomatoes',
-    size = 48,
+    size = 40,
     dimmed = false,
     matched = false,
     shimmer = false,
@@ -16,16 +16,17 @@
   }: {
     thumbnail?: string | null;
     name?: string;
-    size?: number;
+    size?: CanonIconSize;
     dimmed?: boolean;
     matched?: boolean;
     shimmer?: boolean;
     showSizes?: boolean;
   } = $props();
 
-  // The sizes the app actually renders (ui-spec-v04 §14.6.1): 40 everywhere a
-  // tile sits in a row or a chip, then the two single-icon display spots.
-  const sizes = [40, 64, 96];
+  // The four rungs, and there is no fifth (ui-spec-v04 §14.6.1): a nested row,
+  // a primary row, a sheet or edit-page header, a detail page. `CanonIconSize`
+  // is what makes that true — this array only has to stay in step with it.
+  const sizes: CanonIconSize[] = [32, 40, 64, 96];
 </script>
 
 {#if showSizes}

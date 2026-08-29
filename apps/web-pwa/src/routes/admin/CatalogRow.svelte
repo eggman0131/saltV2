@@ -332,7 +332,9 @@
               <!-- The form's OWN pictogram (issue #871), not its parent's: a form
                    exists precisely when the thing you buy looks different from the
                    parent. Sized 32 against the parent row's 40 so the nesting reads
-                   as nesting; same `version` cache-bust as the canon row above. -->
+                   as nesting — the nested-row rung (ui-spec-v04 §14.6.1), which
+                   generalises this line; same `version` cache-bust as the canon
+                   row above. -->
               <CanonIcon
                 thumbnail={form.thumbnail}
                 name={form.label}

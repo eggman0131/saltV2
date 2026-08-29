@@ -113,7 +113,7 @@ export * as tokens from './tokens';
 
 // Types
 export type { ButtonProps } from './primitives/Button/Button.types';
-export type { CanonIconProps } from './primitives/CanonIcon/CanonIcon.types';
+export type { CanonIconProps, CanonIconSize } from './primitives/CanonIcon/CanonIcon.types';
 export type {
   ComboboxItem as ComboboxItemType,
   ComboboxProps,

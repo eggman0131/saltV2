@@ -127,7 +127,7 @@
           <CanonIcon
             thumbnail={canon.thumbnail}
             name={canon.name}
-            size={44}
+            size={40}
             version={canon.iconRequestedAt ?? canon.updatedAt}
           />
           <div class="min-w-0 flex-1">

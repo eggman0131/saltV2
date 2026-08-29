@@ -214,7 +214,9 @@ Icon branch steps:
    `contentMax: 108` (84% of the frame) is tuned for the ~40px row tile and is
    deliberately larger than the weather set's 92px default; it is not pushed higher
    because the match-reveal sage lift reads through the margin that remains
-   (ui-spec-v04 §14.5.3). Shared, single implementation:
+   (ui-spec-v04 §14.5.3). The 32px rung (§14.6.1) is this same framing drawn
+   smaller — a rung is a display size, never a second framing, so no asset is
+   reframed or regenerated when a call site moves between them. Shared, single implementation:
    `src/imaging/normalizeIconFraming.ts`, also used by the weather-icon tooling.
 4. Upload to Storage `canon-icons/{canonId}.webp`; make public; write the public
    https URL to `thumbnail`.
@@ -225,8 +227,8 @@ them up to date without regenerating via
 `scripts/reframe-canon-icons.ts` (dry-run by default; bumps `iconRequestedAt` so
 `CanonIcon`'s `version` cache-bust defeats the browser cache on the reused URL).
 
-**Output format:** WebP with alpha, ~128px square (covers a 30px tile up to ~4× DPR;
-tiny file). **Seed + prompt:** committed in the `cloud-functions` package (versioned;
+**Output format:** WebP with alpha, ~128px square (covers the 32px rung up to ~4×
+DPR, and the 96px detail tile at ~1.3×; tiny file). **Seed + prompt:** committed in the `cloud-functions` package (versioned;
 a style change is a code change + PR).
 
 Runtime: region `europe-west2`; raise the function timeout/memory for the icon path

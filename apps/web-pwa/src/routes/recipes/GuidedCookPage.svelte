@@ -1032,7 +1032,7 @@
                               thumbnail={$kitIcons.kitIconFor(note.container)}
                               version={$kitIcons.kitIconVersionFor(note.container)}
                               name={note.container}
-                              size={28}
+                              size={32}
                             />
                             <span class="whitespace-pre-wrap text-base text-muted-foreground"
                               >{note.container}</span

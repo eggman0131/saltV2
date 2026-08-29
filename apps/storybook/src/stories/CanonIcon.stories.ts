@@ -18,7 +18,7 @@ const meta = {
   args: {
     thumbnail: TOMATO,
     name: 'Tinned tomatoes',
-    size: 48,
+    size: 40,
     dimmed: false,
     matched: false,
     shimmer: false,
@@ -27,7 +27,7 @@ const meta = {
   argTypes: {
     thumbnail: { control: 'text' },
     name: { control: 'text' },
-    size: { control: { type: 'number', min: 16, max: 96, step: 2 } },
+    size: { control: 'select', options: [32, 40, 64, 96] },
     dimmed: { control: 'boolean' },
     matched: { control: 'boolean' },
     shimmer: { control: 'boolean' },
