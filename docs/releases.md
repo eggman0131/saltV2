@@ -110,11 +110,11 @@ them to `google-github-actions/auth` as `workload_identity_provider` +
 
 | Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
 | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
-| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggman0131/saltV2` |
+| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
 | `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
 
 The OIDC provider on both projects is restricted to
-`assertion.repository == 'eggman0131/saltV2'`; no long-lived key exists anywhere.
+`assertion.repository == 'eggmanorg/salt'`; no long-lived key exists anywhere.
 
 ## Deploying
 
