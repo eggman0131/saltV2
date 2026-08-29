@@ -103,27 +103,14 @@ No PR-triggered jobs run against either Environment (per-PR Hosting previews wer
 dropped — see Setup status); production secrets are scoped to release-triggered
 deploys only.
 
-#### CodeQL is required, and is configured OUTSIDE this repo
+#### CodeQL, and what gates a merge
 
-There is no CodeQL workflow in `.github/workflows/`. Code scanning runs through
-GitHub's **default setup**, which lives in repository settings, and its checks
-are **required** by the `Main` ruleset. Nothing in the tree says either of those
-things, which is what makes the failure mode worth writing down:
-
-- Default setup analyses on `push` to `main` and on `pull_request` targeting
-  `main`. A PR head with no CodeQL result cannot satisfy the required check, and
-  **re-running CI does not help** — a re-run is not a new `pull_request` event,
-  so no analysis is produced. The only way to get a result for a head is a new
-  commit on the branch.
-- So anything that disturbs default setup blocks every open PR, indefinitely,
-  with no cause visible anywhere in the repo. Moving the repo to the eggmanorg
-  organisation (2026-08-29) did exactly that: setup was re-provisioned about
-  45 minutes after the transfer, and every PR head pushed in between was left
-  permanently unmergeable until it was pushed to again.
-
-If a PR is `blocked` with every visible check green, look for a missing CodeQL
-check before looking anywhere else, and check
-**Settings → Code security → Code scanning** rather than the workflow files.
+Code scanning runs through GitHub's **default setup**, configured in repository
+settings with no workflow in `.github/workflows/`, and it gates merges via the
+`Main` ruleset's `code_scanning` rule. That, the three required status checks and
+the merge queue are all merge gates rather than deploy concerns, so they live in
+[ci.md](ci.md) — including the failure mode where a PR is `blocked` with every
+visible check green.
 
 #### WIF identifiers (provisioned — Phase 2)
 
