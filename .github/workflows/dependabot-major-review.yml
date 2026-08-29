@@ -64,8 +64,24 @@ jobs:
           # must survive a settled-but-FAILED run — `gh pr checks` exits 1 on
           # failure / 8 on pending, so the old `$(...) || summary=""` blanked the
           # JSON on exactly the red runs we care about. Capture with `|| true`.
-          deadline=$(( $(date +%s) + 900 )) # 15-minute cap (typecheck finishes in ~3m)
-          want='typecheck|E2E|integration' # the assessment-relevant check names
+          #
+          # `want` holds JOB NAMES COPIED FROM ci.yml. Spell them out in full:
+          # `test()` matches a SUBSTRING, so the previous `typecheck` alternative
+          # resolved — silently, and correctly — to the aggregator
+          # `Lint, typecheck, test, boundary`, which is the only job whose name
+          # has ever contained that word. It reads like it names the typecheck
+          # job; there is no job by that name, and after the cheap checks were
+          # split into `Static checks` / `Types` / `Unit tests + coverage` it
+          # reads like a dead pattern. Same three checks either way.
+          #
+          # The AGGREGATOR is deliberately the one polled, not `Types`: it is the
+          # required status check, it is the name the prompt below attributes
+          # failures to, and it settles only once all four cheap jobs have — so
+          # waiting on it subsumes waiting on `Types`.
+          # scripts/tests/dependabotReviewChecks.test.mjs keeps these copies in
+          # step with ci.yml (CLAUDE.md rule 12).
+          deadline=$(( $(date +%s) + 900 )) # 15-minute cap (the cheap gate finishes in ~3m)
+          want='Lint, typecheck, test, boundary|E2E|integration' # the assessment-relevant check names
           while [ "$(date +%s)" -lt "$deadline" ]; do
             summary=$(gh pr checks "$PR" --json name,bucket 2>/dev/null) || true
             if [ -z "$summary" ] || [ "$summary" = "[]" ]; then
