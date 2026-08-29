@@ -316,6 +316,12 @@ Final phase done, CI green and the heavy suites confirmed run:
 2. `gh pr ready` — take it out of draft. Do **not** merge it.
 3. One comment on the issue: the PR URL and a line per phase. The per-phase handoff comments already hold the detail — restating it just makes the thread longer to read.
 4. Report done with the PR URL. Leave the PR open for me to review and merge — never merge it yourself.
+5. **The run ends here — stop timing.** Stay subscribed to the PR so a review
+   comment or a late CI failure still wakes you, but schedule no further
+   check-in: on a green, mergeable, out-of-draft PR the only thing left to
+   observe is me clicking merge, and nothing you would do depends on it.
+   [`.claude/skills/steward/SKILL.md`](../skills/steward/SKILL.md) holds the
+   full cadence rule, including when the timer earns its place back.
 
 ---
 
