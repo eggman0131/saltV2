@@ -43,6 +43,18 @@ const appCheck: AppCheckConfig | undefined = appCheckSiteKey
     }
   : undefined;
 
+// The third argument is `usePersistentCache`, and it is `!useEmulators` so the
+// emulator suites do not read a stale cache between runs (docs/salt-architecture.md
+// § "Initialises Firestore with persistentLocalCache()").
+//
+// What that COSTS, which nothing else said until issue #1085: under emulators there
+// is no local mutation queue. A write handed to the SDK but not yet acked by the
+// server lives in page memory alone, so a reload loses it outright instead of
+// replaying it on the next load the way production does. Any e2e spec that reloads
+// to prove a write round-tripped must therefore settle that write first, rather
+// than assuming production's durability — `window.__e2e.flushMealPlanWrites()` is
+// that seam for the planner. Assuming it is what made `mealplan-split.spec.ts` fail
+// on roughly half of every CI run.
 initFirebase(options, useEmulators, !useEmulators, appCheck);
 
 export const authProvider = createFirebaseAuth(createObservabilityErrorReportingAdapter());

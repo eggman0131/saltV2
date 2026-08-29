@@ -54,6 +54,19 @@ export interface E2EBridge {
   // planner spec assert per-day config (note, attendees, chefs, guests) and
   // prove the Firestore round-trip across reload.
   getMealPlanSnapshot(): MealPlanWeek;
+  // Writes out the planner's debounced edits now, resolving once Firestore has
+  // acked them. `getMealPlanSnapshot` above reads the STORE, which the optimistic
+  // apply updates synchronously, so it cannot tell a spec whether the write behind
+  // it has been issued — and under emulators the client runs without
+  // `persistentLocalCache` (`src/lib/firebase.ts`), so an unissued write is not
+  // queued anywhere a reload can replay it. A spec that reloads to prove a typed
+  // field round-tripped must await this first (issue #1085).
+  //
+  // Settles writes still inside the debounce window. A write whose window has
+  // ALREADY elapsed has left the coalescer and is in flight to the server, and
+  // this does not wait for that one — see the caller's note in
+  // `e2e/mealplan-split.spec.ts`.
+  flushMealPlanWrites(): Promise<void>;
   // Seeds a whole week document through the real `saveMealPlanWeek` adapter path
   // (NF-C4). The planner's layout tests need a week that is already full when the
   // page first mounts — seven days, each with a recipe attached so every row

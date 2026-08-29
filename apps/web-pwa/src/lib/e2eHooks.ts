@@ -12,7 +12,7 @@ import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
 import { getRecipesSnapshot, persistRecipe } from './recipeService.js';
-import { getMealPlanWeekSnapshot } from './mealPlanService.js';
+import { flushMealPlanWrites, getMealPlanWeekSnapshot } from './mealPlanService.js';
 import { getChatSessionsSnapshot } from './chatService.js';
 import {
   getShoppingListsSnapshot,
@@ -134,6 +134,13 @@ export function installE2EHooks(): void {
 
     getMealPlanSnapshot() {
       return getMealPlanWeekSnapshot();
+    },
+
+    flushMealPlanWrites() {
+      // The planner's own flush (issue #940), not a reimplementation of it — the
+      // promise returned here is the one the `setDoc` settles, so awaiting it
+      // waits for the emulator's ack rather than for a timer.
+      return flushMealPlanWrites();
     },
 
     async seedMealPlanWeek(week: MealPlanWeek) {
