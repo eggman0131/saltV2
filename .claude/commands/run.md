@@ -285,7 +285,7 @@ gh run view <run-id> --json jobs \
 ```
 
 - `success` → verified.
-- `skipped` → **not verified.** Either the branch was behind `origin/main` (rebase, push, re-read) or the phase touched only `docs/`, `*.md`, `.github/`, `.claude/`, `.vscode/` and the meta dotfiles — in which case the skip is correct and the phase simply has no e2e signal. Say which in the handoff comment. Never report it as green.
+- `skipped` → **not verified.** Either the branch is behind `origin/main`, or the phase touched only `docs/`, `*.md`, `.github/`, `.claude/`, `.vscode/` and the meta dotfiles — in which case the skip is correct and the phase simply has no e2e signal. Say which in the handoff comment. Never report it as green. A behind-branch is no longer yours to fix: the merge queue rebuilds the PR on current `main` and runs these suites there before it can land ([docs/ci.md](../../docs/ci.md)). Rebase only if you need the signal on this phase.
 - `cancelled` → a later push superseded that run (PR runs cancel in progress). Not a defect — read the newer run.
 - `failure` → `gh run view <run-id> --log-failed` gives you the failing steps alone; the full log runs to tens of thousands of lines you have no use for. Diagnose and fix on the issue branch (delegate the triage if even that is large), commit, push. Can't resolve it → stop and tell me.
 
@@ -313,7 +313,7 @@ Final phase done, CI green and the heavy suites confirmed run:
    ## For reviewers
    [key decisions and anything intentionally out of scope]
    ```
-2. `gh pr ready` — take it out of draft. Do **not** merge it.
+2. `gh pr ready` — take it out of draft. Do **not** merge it, and do not enable auto-merge: that enqueues it.
 3. One comment on the issue: the PR URL and a line per phase. The per-phase handoff comments already hold the detail — restating it just makes the thread longer to read.
 4. Report done with the PR URL. Leave the PR open for me to review and merge — never merge it yourself.
 5. **The run ends here — stop timing.** Stay subscribed to the PR so a review

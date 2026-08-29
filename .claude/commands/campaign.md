@@ -1,5 +1,5 @@
 ---
-description: Coordinate several issues end to end — run /run per issue in its own worktree from a rolling pool, adversarially review each PR, then land them through a serial merge queue. Owns branch topology and merging; writes no code.
+description: Coordinate several issues end to end — run /run per issue in its own worktree from a rolling pool, adversarially review each PR, then land them through GitHub's merge queue. Owns branch topology and merging; writes no code.
 argument-hint: <issue numbers>
 disable-model-invocation: true
 model: opus
@@ -21,7 +21,7 @@ No issue numbers given? Ask which issues and stop. This is the only pre-flight s
 
 You are a coordinator. You own three things and nothing else: the **schedule** (which issues run when, and why), the **merge queue** (what lands, in what order, against what base), and the **ledger** (the tracking issue that lets a fresh session resume this campaign). Implementation belongs to /run. Review belongs to a reviewer agent. Diff-reading, conflict resolution, log-triage and codebase sweeps belong to subagents.
 
-The success condition is a clean tree when Daniel comes back: every issue merged to main, or parked with a named reason and a discoverable branch. Never five branches needing a rebase. That is the failure this command exists to prevent, and the serial merge queue is how it is prevented.
+The success condition is a clean tree when Daniel comes back: every issue merged to main, or parked with a named reason and a discoverable branch. Never five branches needing a rebase. That is the failure this command exists to prevent, and the merge queue is how it is prevented.
 
 ## Standing rules
 
@@ -33,7 +33,7 @@ The success condition is a clean tree when Daniel comes back: every issue merged
 - **Settle how you reach GitHub before you write a single brief.** `command -v gh` decides it, and the answer is a property of where this session runs, not of the repo. Every `gh` recipe in this file is written in the first form below; under the second, every brief you write carries the substitution in place of them.
   - **`gh` present (the Mac).** Use it throughout, with two harness traps that every brief must also carry: plain `gh issue view` / `gh pr view` exit 0 with **empty stdout** in a non-TTY session, so use the `--json` forms or `gh api` and treat empty comment output as a failed fetch rather than "no comments"; and every `gh` call needs the sandbox disabled.
   - **`gh` absent (a cloud session), and it cannot be made present.** `api.github.com` is refused by the session proxy and `gh` itself by the permission classifier. GitHub is reachable only through the GitHub MCP server. `git push` is unaffected — only the API layer is substituted. What changes: CI is waited on by polling `pull_request_read` on a backgrounded timer rather than `gh pr checks --watch`, which makes it the one blocking wait this command has that no longer blocks inside a single call; heavy-suite conclusions come from the workflow-jobs listing rather than `gh run view --json jobs`, with **empty output → park** unchanged; and `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back. Record the deviation once in the ledger's **Plan** block and never again. Campaign #1064 established all of this the hard way; do not rediscover it.
-- **Waiting is ending your turn, not running a command.** After you dispatch a worker, a reviewer, a fix agent or a conflict resolver there is nothing for you to do until it returns, so stop — a final line and **no tool call**. A tool call is what keeps a turn open, so a no-op "yield" (`echo hold`, `true`, a bare `sleep`) is not waiting; it is polling at API speed, re-sending the whole campaign context every few seconds. You do not need to poll, because you already armed the wake signals: a background `Agent` re-invokes you when it returns, and the watchdog's `sleep` re-invokes you when it exits. Campaign #1046 had this backwards and ran `echo hold` 1,304 times across eight hours — roughly $600 of cache reads to learn nothing, while its own transcript said "polling just burns turns". The only legitimate blocking wait is one that blocks *inside* a single call, like `gh pr checks <pr> --watch` in the merge queue.
+- **Waiting is ending your turn, not running a command.** After you dispatch a worker, a reviewer, a fix agent or a conflict resolver there is nothing for you to do until it returns, so stop — a final line and **no tool call**. A tool call is what keeps a turn open, so a no-op "yield" (`echo hold`, `true`, a bare `sleep`) is not waiting; it is polling at API speed, re-sending the whole campaign context every few seconds. You do not need to poll, because you already armed the wake signals: a background `Agent` re-invokes you when it returns, and the watchdog's `sleep` re-invokes you when it exits. Campaign #1046 had this backwards and ran `echo hold` 1,304 times across eight hours — roughly $600 of cache reads to learn nothing, while its own transcript said "polling just burns turns". The only legitimate blocking wait is one that blocks *inside* a single call, like `gh pr checks <pr> --watch` while a PR's CI runs.
 - **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; for a non-git command that needs a directory, `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would have let each part through unprompted — a compound command led by `cd` is the single largest source of permission stops in this command, and every one of them blocks the fleet on a human. This applies to every brief you write, not just your own calls.
 
 ## Reporting — five moments, and silence in between
@@ -240,7 +240,7 @@ Brief each worker with:
 2. Confirm it actually stopped: the harness reports the task killed. An unconfirmed kill is a live worker.
 3. Only now: park the branch as it stands (`BLOCKED: timeout`), and free the slot.
 
-The slot is the smaller half of this. A worker you left running still holds a worktree, still runs `pnpm test` against the resources the next worker needs, and — the one that actually costs you — can still commit and push to a branch you have parked, or push under the merge queue mid-rebase. That produces a `--force-with-lease` failure or a merged branch containing work nobody reviewed. Never start a replacement worker into a slot whose previous occupant you have not confirmed dead. If the kill cannot be confirmed, do not recycle the slot at all: run the pool one narrower for the rest of the campaign and log it.
+The slot is the smaller half of this. A worker you left running still holds a worktree, still runs `pnpm test` against the resources the next worker needs, and — the one that actually costs you — can still commit and push to a branch you have parked, or push to one sitting in the merge queue. That produces a `--force-with-lease` failure or a merged branch containing work nobody reviewed. Never start a replacement worker into a slot whose previous occupant you have not confirmed dead. If the kill cannot be confirmed, do not recycle the slot at all: run the pool one narrower for the rest of the campaign and log it.
 
 **BLOCKED non-empty** → park the issue, log it, start the next startable issue. Do not diagnose it yourself; that is diff-reading.
 
@@ -252,7 +252,7 @@ The slot is the smaller half of this. A worker you left running still holds a wo
 
 ## Review
 
-A PR is review-eligible only after you have verified what the review prompt asserts. The worker's `CI` field says green — check it agrees with reality now: `gh pr checks <pr>` (the heavy suites may show as passed-because-skipped if a sibling merged since the worker finished; that is the merge queue's problem, re-run after its rebase — what must be genuinely green here is everything else). A red check means the worker's return was wrong, and a worker that misreported CI may have misreported anything: park, don't review.
+A PR is review-eligible only after you have verified what the review prompt asserts. The worker's `CI` field says green — check it agrees with reality now: `gh pr checks <pr>` (the heavy suites may show as passed-because-skipped if a sibling merged since the worker finished; that is the queue's problem — it rebuilds on current `main` and runs them there — so what must be genuinely green here is everything else). A red check means the worker's return was wrong, and a worker that misreported CI may have misreported anything: park, don't review.
 
 One reviewer agent per PR, `Agent(…, model: "opus")`, spawned fresh, **read-only** — it must not have the branch checked out and must not fix anything. A reviewer that can fix things will, and you lose the signal.
 
@@ -346,40 +346,72 @@ Do not let the reviewer's taste hold the queue.
 
 ## Merge queue
 
-**Strictly serial.** One branch at a time, start to finish. This is the part that makes the end state clean, and the ordering is the mechanism — parallelising it recreates exactly the pile of stale branches this command exists to avoid.
+**GitHub's merge queue does the landing.** Enqueue every eligible branch; the
+queue serialises them, rebuilds each on current `main`, runs `ci.yml` against
+that combination, and merges only what is green. Do not rebase, re-run gates, or
+merge by hand — that recipe is gone, and reintroducing it fights the queue rather
+than helping it. Full contract: [docs/ci.md](../../docs/ci.md).
 
-The queue being serial does not idle the pool: while a branch is in the queue, workers on other issues keep running and the pool keeps refilling. What is serialised is landing, not working.
+What this buys over the old serial loop is **speculation**: N queued branches are
+built as one batch rather than N sequential update-and-re-run cycles. Enqueueing
+does not idle the pool either — workers on other issues keep running. What is
+serialised is landing, not working.
 
-`--stop-at-green` skips this section entirely. Reviewed, green, unmerged PRs are the deliverable; go straight to **Finish** and report them. Leave the worktrees in place — Daniel will want them if he's landing these by hand.
+`--stop-at-green` skips this section entirely. Reviewed, green, unmerged PRs are
+the deliverable; go straight to **Finish** and report them. Leave the worktrees
+in place — Daniel will want them if he's landing these by hand.
 
-A branch is queue-eligible when: PR out of draft, review closed with no blocking findings outstanding, and its should-fix findings recorded in the ledger.
+A branch is queue-eligible when: PR out of draft, review closed with no blocking
+findings outstanding, and its should-fix findings recorded in the ledger.
 
-For each eligible branch, in list order:
+For each eligible branch:
 
-1. `git fetch --no-tags origin main`
-2. **Rebase in its worktree — yourself, inline.** Do not spawn an agent for this. `git -C <worktree> rebase origin/main`, and on conflict `git -C <worktree> diff --name-only --diff-filter=U` for the conflicted paths. That is file names, not diffs, so it is squarely inside your standing rule — and an agent costs a whole fresh context plus a round trip to run two git commands you can run in one message.
+1. **Remove the worktree and delete the local branch — before enqueueing.** Git
+   refuses to delete a branch that is checked out in a worktree, so
+   `--delete-branch` fails its local half if the worktree still exists. Cleanup
+   first; the branch is pushed, so nothing is lost, and it can be re-added from
+   the remote if the merge fails.
+2. `gh pr merge <pr> --squash --auto --delete-branch`
+   Squash, because `main` is linear and squash-merged — subjects end `(#PR)`. The
+   per-phase history lives in the issue's handoff comments, which is where run.md
+   put it; git does not need a second copy.
 
-   Classify from the paths alone, against **what this campaign's merged PRs actually changed** — `gh pr view <pr> --json files` per merged sibling, which is names and not diffs, so it is yours to run. Never classify against a footprint here. A footprint is a prediction made before the work, and its `MUST_NOT_TOUCH` half is by definition a set of files the sibling did *not* change — scoring a conflict against it is how someone else's concurrent change gets handed to a resolver that has been told this campaign wins. By merge time the prediction has been replaced by a fact; use the fact.
-   - conflicted paths all inside a merged sibling's changed files, or `pnpm-lock.yaml`, or the Docs map → this campaign's own work. **Now** delegate: spawn an `Agent(…, model: "sonnet")` with the classification and the resolution rule (`pnpm install --lockfile-only` for the lockfile, re-apply both rows for the Docs map, and for a sibling's changed file the rule that this campaign's own merged change wins), and have it resolve, run the safe gate set, and continue the rebase. Resolving is the part that reads code; classifying was not.
-   - any conflicted path outside → **park**. Someone else's concurrent change is not yours to resolve. `git -C <worktree> rebase --abort` so the worktree is left clean for a human.
-3. **Re-run the safe gate set.** This is the semantic-conflict catch, and the single highest-value step in the queue: two branches can each be green alone and red together, with no textual conflict between them. Red → park, log, next.
-4. `git push --force-with-lease`
-5. Wait for CI: `sleep 20 && gh pr checks <pr> --watch --fail-fast`. Blocking is fine here — the pool is what keeps working.
-6. **Confirm the heavy suites actually ran.** A skipped required check reports as passing, and `ci.yml` skips both heavy suites when a branch is behind `origin/main` — which every unrebased sibling is. Read the job conclusions, never the check summary. (This recipe is run.md step 8's, held in lockstep deliberately — if the job names in `ci.yml` move, both files change together.)
-   ```
-   gh run list --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId'
-   gh run view <id> --json jobs --jq '.jobs[] | select(.name | test("E2E|integration")) | "\(.name): \(.conclusion)"'
-   ```
-   - `success` → land it.
-   - `skipped`, and the PR's changed files are only docs/CI/meta paths → legitimate skip: say so in the ledger and land it.
-   - `skipped` otherwise → the rebase did not take; go back to step 1.
-   - **empty output → park.** No matching jobs means the job names in `ci.yml` have moved and this check is now blind. Cannot-confirm is never green, and a silently-passing regex is exactly how a broken heavy suite lands.
-7. **Remove the worktree and delete the local branch — before the merge.** Git refuses to delete a branch that is checked out in a worktree, so `--delete-branch` fails its local half if the worktree still exists. Cleanup first; the branch is pushed, so nothing is lost, and if the merge somehow fails the worktree can be re-added from the remote.
-8. `gh pr merge <pr> --squash --delete-branch`
-   Squash, because main is linear and squash-merged — subjects end `(#PR)`. The per-phase history lives in the issue's handoff comments, which is where run.md put it; git does not need a second copy.
-9. Update the ledger row. Next branch.
+Then watch the queue rather than each PR: `gh pr view <pr> --json state,mergedAt`
+per enqueued PR, or the queue itself at
+<https://github.com/eggmanorg/salt/queue/main>. Two outcomes matter.
 
-Each merge to main triggers `deploy-staging.yml` off CI completion. That is expected and it is what staging is for — but it means a campaign lands N staging deploys, so do not queue a merge you would not want deployed.
+**Merged.** Confirm the heavy suites actually ran before you record it green. A
+skipped required check reports as passing, so read the job conclusions of the
+merge-group run, never the check summary. (This recipe is run.md step 8's, held
+in lockstep deliberately — if the job names in `ci.yml` move, both files change
+together, and `pnpm mergequeue:check` fails if the ruleset's contexts stop
+reporting at all.)
+
+```
+gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run view <id> --json jobs --jq '.jobs[] | select(.name | test("E2E|integration")) | "\(.name): \(.conclusion)"'
+```
+
+- `success` → land it in the ledger.
+- `skipped`, and the batch's changed files are only docs/CI/meta paths →
+  legitimate skip: say so in the ledger. Under the queue this is the *only*
+  reason a heavy suite skips; "the branch was behind" no longer exists.
+- **empty output → park.** No matching jobs means the job names have moved and
+  this check is now blind. Cannot-confirm is never green.
+
+**Ejected.** The queue removed the entry because the branch rebuilt on current
+`main` went red, or could not be rebuilt at all. This is the semantic-collision
+catch firing — two branches green apart, red together — and it is exactly what
+the queue is for, so treat it as signal, not noise. Read the merge-group run's
+failure, then apply the same classification the old rebase step used: a failure
+in files a merged sibling of this campaign changed, or in `pnpm-lock.yaml` or the
+Docs map, is this campaign's own work — fix it on the branch, push, re-enqueue.
+Anything else is someone's concurrent change and is **not yours to resolve**:
+park it, log it, next.
+
+Each merge to `main` triggers `deploy-staging.yml` off CI completion. That is
+expected and it is what staging is for — but it means a campaign lands N staging
+deploys, so do not queue a merge you would not want deployed.
 
 ---
 
@@ -388,7 +420,7 @@ Each merge to main triggers `deploy-staging.yml` off CI completion. That is expe
 Running unattended means most of run.md's pause conditions become deadlocks. Resolve these yourself, record them, continue:
 
 - a review finding's severity, and whether a rejection is reasonable;
-- a rebase conflict classified as this campaign's own work;
+- a queue ejection classified as this campaign's own work;
 - a flaky CI job — re-run once, then treat a second failure as real;
 - ordering among issues that don't conflict;
 - whether a FLAG changes the conflict graph.
@@ -399,8 +431,8 @@ Running unattended means most of run.md's pause conditions become deadlocks. Res
 - a PR over the `--max-diff` ceiling, whether the worker caught it or you did;
 - a UX deviation (run.md step 4) — always a human call, never yours;
 - a CLAUDE.md rule collision, or a phase that can only be built as a bodge;
-- a rebase conflict touching a path outside this campaign's merged footprints;
-- gates red after a rebase (the semantic conflict);
+- a queue ejection whose failure lies outside this campaign's merged footprints;
+- gates red on the queue's rebuild (the semantic conflict);
 - blocking findings still outstanding after round 2;
 - heavy suites that will not run green, or cannot be confirmed to have run.
 
