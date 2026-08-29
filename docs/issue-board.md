@@ -60,7 +60,16 @@ Otherwise the top of the queue contains something that cannot be started, which
 is the one thing the band is for. This is an invariant, so per CLAUDE.md rule 12
 it is mechanical rather than remembered — `node scripts/board.mjs check` goes red
 when a Recommended item's blocker is absent from Recommended or ordered below it.
-It also fails on any closed issue still sitting on the board.
+
+`check` covers two more things:
+
+- **No view carries a sort** — the other half of having no rank field.
+- **A closed issue is at a shipping status.** Closed is not by itself stale: an
+  issue closes the moment its PR merges and must *stay* on the board at `Merged`,
+  because that is the set `board.mjs release` walks. What is wrong is a closed
+  issue that never reached `Merged` — either it was closed without shipping and
+  belongs off the board, or a PR closed it without the `Closes #N` that moves it,
+  and the automation is silently missing work.
 
 ---
 
@@ -154,10 +163,17 @@ hence `fetch-depth: 0` on that job.
 | Product | table | `is:open class:"New feature","Feature update"` | Class |
 | Workflow | board | `is:open` | Status |
 
-**Group by cannot be set through the API.** `ProjectV2ViewConfigurationInput`
-exposes only `visibleFieldIds`; the group and sort keys are not in the public
-schema, so a rebuilt view needs those two dropdowns setting by hand. Name,
-layout, filter and columns are all scriptable.
+**Grouping cannot be _set_ through the API, but it can be _read_.**
+`ProjectV2ViewConfigurationInput` exposes only `visibleFieldIds`, so a rebuilt
+view needs its grouping setting by hand; name, layout, filter and columns are all
+scriptable. `ProjectV2View` does expose `groupByFields`, `verticalGroupByFields`
+and `sortByFields` for reading, which is why `board.mjs check` can enforce the
+no-sort rule rather than only asserting it.
+
+Two names for one idea, which is genuinely confusing in the UI: a **table** view
+has **Group by**; a **board** view has no such menu, because its columns *are*
+the grouping — that setting is called **Column field**. A new board view defaults
+its column field to `Status`, so the Workflow view needed nothing.
 
 ---
 
