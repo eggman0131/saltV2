@@ -9,6 +9,6 @@
 //
 // DELETE THIS FILE once the token push is observed.
 export const AUTOFIX_CANARY = {
-    installedApp: "salt-autofix",
-    checks: ["mints an installation token", "pushes to the PR head"]
-}
+  installedApp: 'salt-autofix',
+  checks: ['mints an installation token', 'pushes to the PR head'],
+};
