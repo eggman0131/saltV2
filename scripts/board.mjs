@@ -109,6 +109,7 @@ function loadItems(project) {
         nodes{ id
           content{ ... on Issue { number title state } }
           queue:fieldValueByName(name:"Queue"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          status:fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           blockedBy:fieldValueByName(name:"Blocked by"){ ... on ProjectV2ItemFieldTextValue { text } } } } } } }`)
       .node.items;
     for (const n of page.nodes) {
@@ -119,6 +120,7 @@ function loadItems(project) {
         title: n.content.title,
         state: n.content.state,
         queue: n.queue?.name ?? null,
+        status: n.status?.name ?? null,
         blockedBy: n.blockedBy?.text ?? '',
       });
     }
@@ -299,8 +301,50 @@ function cmdCheck(project) {
     }
   }
 
-  const stale = items.filter((i) => i.state === 'CLOSED');
-  for (const item of stale) failures.push(`#${item.number} is closed but still on the board`);
+  // A closed issue is NOT by itself stale. An issue closes the moment its PR
+  // merges, and it then has to STAY on the board at `Merged` — that is exactly
+  // the set `board.mjs release` walks to find what a production deploy made
+  // live. What is wrong is a closed issue that never reached the merge states:
+  // either it was closed without shipping (won't-fix, duplicate) and belongs
+  // off the board, or a PR closed it without the `Closes #N` that moves it, and
+  // the automation is quietly missing work.
+  const SHIPPING = new Set(['Merged', 'Released']);
+  for (const item of items) {
+    if (item.state !== 'CLOSED') continue;
+    if (item.status === 'Released') {
+      console.log(`  note: #${item.number} is Released — safe to remove from the board`);
+    } else if (!SHIPPING.has(item.status)) {
+      failures.push(
+        `#${item.number} is closed at Status="${item.status ?? 'unset'}" — it never reached Merged, so either it was closed without shipping (remove it) or its PR had no "Closes #${item.number}"`,
+      );
+    }
+  }
+
+  // "No view may carry a sort" is the other half of having no rank field: a
+  // sorted view disables dragging in it and renders a different order from the
+  // one triage wrote. Group-by and sort-by cannot be SET through the API, but
+  // they can be READ — so this is enforceable, and left as prose it would be
+  // exactly the unguarded invariant CLAUDE.md rule 12 is about.
+  const views = gql(`{ node(id:"${project.id}"){ ... on ProjectV2 {
+    views(first:20){ nodes{ number name layout
+      groupByFields(first:5){ nodes{ ... on ProjectV2FieldCommon { name } } }
+      verticalGroupByFields(first:5){ nodes{ ... on ProjectV2FieldCommon { name } } }
+      sortByFields(first:5){ nodes{ direction field{ ... on ProjectV2FieldCommon { name } } } } } } } } }`)
+    .node.views.nodes;
+
+  for (const v of views) {
+    const sorts = v.sortByFields.nodes.map((s) => `${s.field.name} ${s.direction}`);
+    if (sorts.length) {
+      failures.push(`view ${v.number} "${v.name}" is sorted by ${sorts.join(', ')} — that hides the triage order and disables dragging`);
+    }
+    // A board's columns ARE its grouping, which GitHub calls the column field.
+    const group = v.layout === 'BOARD_LAYOUT'
+      ? v.verticalGroupByFields.nodes.map((f) => f.name)
+      : v.groupByFields.nodes.map((f) => f.name);
+    if (group.length === 0) {
+      console.log(`  note: view ${v.number} "${v.name}" has no grouping set — set it in the UI, the API cannot`);
+    }
+  }
 
   console.log(`${project.title}: ${items.length} items, ${recommended.size} Recommended`);
   if (failures.length === 0) {
