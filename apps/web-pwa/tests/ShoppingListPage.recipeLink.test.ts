@@ -250,8 +250,13 @@ describe("ShoppingListPage — the edit sheet's Sources block", () => {
 // this test's "no sub-line" half should be the one that changes, not the
 // sheet's. The other two shapes (`manual` WITH `addedBy`, and a `recipe`
 // source) already agree and must stay that way.
-describe('ShoppingListPage — the source sub-line disagrees with itself (#933 Behaviour Exception 3)', () => {
-  it('Behaviour Exception 3 of #933: the ROW shows no sub-line for a manual source with no addedBy', async () => {
+describe('ShoppingListPage — the row and the sheet describe a source the same way (#933)', () => {
+  it('EXCEPTION 3: the ROW now says "Added manually" for a manual source with no addedBy', async () => {
+    // The flip. This row rendered NOTHING before Phase 7 — `sourceLabel`
+    // returned `''` and the template's `{#if showSource && sourceLabel(item)}`
+    // guard swallowed it — so an item added by hand by someone signed out was
+    // indistinguishable in the list from an item with no source at all, while
+    // the edit sheet said exactly what it was.
     mockItems._set([
       item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
     ]);
@@ -259,10 +264,10 @@ describe('ShoppingListPage — the source sub-line disagrees with itself (#933 B
     const { findByTestId } = render(ShoppingListPage, props);
 
     const row = await findByTestId('shopping-item-row');
-    expect(row.textContent).not.toContain('Added');
+    expect(row.textContent).toContain('Added manually');
   });
 
-  it('Behaviour Exception 3 of #933: the EDIT SHEET says "Added manually" for the same source', async () => {
+  it('EXCEPTION 3: the EDIT SHEET says the same thing it always did', async () => {
     mockItems._set([
       item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
     ]);
@@ -271,6 +276,24 @@ describe('ShoppingListPage — the source sub-line disagrees with itself (#933 B
     await openEditSheet(findByTestId);
 
     const sources = await findByTestId('shopping-edit-sources');
+    expect(sources.textContent).toContain('Added manually');
+  });
+
+  it('EXCEPTION 3: and the two now agree, which is the whole point of the phase', async () => {
+    // The convergence stated as one assertion rather than inferred from the two
+    // above passing separately.
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    const rowSaid = row.textContent ?? '';
+
+    await openEditSheet(findByTestId);
+    const sources = await findByTestId('shopping-edit-sources');
+
+    expect(rowSaid).toContain('Added manually');
     expect(sources.textContent).toContain('Added manually');
   });
 

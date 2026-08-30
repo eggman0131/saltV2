@@ -21,7 +21,6 @@ import * as firebaseSync from '@salt/firebase-sync';
 import {
   members,
   currentMember,
-  firstName,
   kitchenLabel,
   isLoadingMembers,
   initMembersSync,
@@ -144,20 +143,44 @@ describe('membersService — currentMember', () => {
   });
 });
 
-// The one rendering rule this service owns, and the reason it is a function
-// rather than an inline `split(' ')[0]`: the kitchen label and recipe
-// attribution (issue #845) both shorten a display name, and two copies drift.
-describe('membersService — firstName', () => {
-  it('takes the first word, and leaves a name that has only one alone', () => {
-    expect(firstName('Kate Pendery')).toBe('Kate');
-    expect(firstName('Daniel')).toBe('Daniel');
-    expect(firstName('Mary Jane Pendery')).toBe('Mary');
-  });
-
-  it('passes an empty name straight through', () => {
+// How a member is NAMED on screen, anywhere a full name would be noise — the
+// kitchen label here, and recipe attribution (issue #845).
+//
+// This service used to own its own `firstName` (`name.split(' ')[0]`) beside
+// `@salt/domain`'s `memberFirstName`, and the two DISAGREED. Issue #933 Phase 7
+// deleted the local copy; the domain's answer is what these screens render now.
+// The rows marked EXCEPTION 2 are the ones that changed, and they carry the old
+// answer so the delta stays on the record rather than only in a commit message.
+//
+// `memberFirstName` is also what Pushover device-prefix matching depends on
+// (`apps/cloud-functions/src/adapters/pushoverRecipient.ts`), so this converged
+// display onto the delivery-load-bearing definition rather than the other way
+// round.
+describe('membersService — how a member is named on screen', () => {
+  const cases = [
+    { name: 'a plain two-word name', input: 'Kate Pendery', rendered: 'Kate' },
+    { name: 'a single word', input: 'Daniel', rendered: 'Daniel' },
+    { name: 'three words', input: 'Mary Jane Pendery', rendered: 'Mary' },
+    { name: 'a doubled separator', input: 'Mary  Jane', rendered: 'Mary' },
+    { name: 'a trailing space', input: 'Kate ', rendered: 'Kate' },
     // `''` is a real state, not a bug: an unattributed recipe has no name to
     // shorten, and the caller decides what to render instead.
-    expect(firstName('')).toBe('');
+    { name: 'the empty name', input: '', rendered: '' },
+    { name: 'whitespace only', input: '   ', rendered: '' },
+    // EXCEPTION 2 — the two rows that flipped in Phase 7. The retired copy
+    // rendered `''` for the first (a BLANK chef label) and the whole undivided
+    // string for the second, because `split(' ')` takes the empty leading field
+    // and never sees a tab or a newline as a separator.
+    { name: 'a LEADING space (EXCEPTION 2, was "")', input: '  Kate Pendery', rendered: 'Kate' },
+    {
+      name: 'tab and newline separators (EXCEPTION 2, was the whole string)',
+      input: '\tDaniel\nPendery',
+      rendered: 'Daniel',
+    },
+  ];
+
+  it.each(cases)('$name → $rendered', ({ input, rendered }) => {
+    expect(memberFirstName(input)).toBe(rendered);
   });
 
   it('is what kitchenLabel shortens with', () => {
@@ -166,61 +189,19 @@ describe('membersService — firstName', () => {
     expect(get(kitchenLabel)).toBe("Kate's Kitchen");
   });
 
-  // ── Characterisation net, issue #933 Phase 1 ────────────────────────────────
-  //
-  // `@salt/domain` owns the SAME rule as `memberFirstName`, and the two disagree.
-  // Both answers are pinned here, side by side, because Phase 7 deletes this copy
-  // and the domain's answer becomes what these screens render — the recipe-view
-  // attribution chips and the recipe-edit attribution rows.
-  //
-  // BEHAVIOUR EXCEPTION 2 of issue #933 is exactly the `diverges: true` rows: only
-  // those two are permitted to flip, and only in Phase 7. Every `diverges: false`
-  // row is a well-formed name the two copies already agree on, and any of those
-  // moving means the phase went further than it was asked to.
-  describe('against @salt/domain’s memberFirstName', () => {
-    const cases = [
-      { name: 'a plain two-word name', input: 'Kate Pendery', local: 'Kate', diverges: false },
-      { name: 'a single word', input: 'Daniel', local: 'Daniel', diverges: false },
-      { name: 'three words', input: 'Mary Jane Pendery', local: 'Mary', diverges: false },
-      { name: 'a doubled separator', input: 'Mary  Jane', local: 'Mary', diverges: false },
-      { name: 'a trailing space', input: 'Kate ', local: 'Kate', diverges: false },
-      { name: 'the empty name', input: '', local: '', diverges: false },
-      { name: 'whitespace only', input: '   ', local: '', diverges: false },
-      // The two live forks. A member whose name was typed with a leading space
-      // renders a BLANK chef label today; one separated by a tab or a newline
-      // renders their whole undivided name.
-      { name: 'a LEADING space', input: '  Kate Pendery', local: '', diverges: true },
-      { name: 'a tab and a newline as separators', input: '\tDaniel\nPendery', local: '\tDaniel\nPendery', diverges: true }, // prettier-ignore
-    ];
+  it('shortens a leading-whitespace name in the kitchen label too', () => {
+    // The user-visible half of Exception 2: this rendered "'s Kitchen" before.
+    seedMembers([member({ id: 'kate@e.org', name: '  Kate Pendery' })]);
+    mockAuth.user = { email: 'kate@e.org' };
+    expect(get(kitchenLabel)).toBe("Kate's Kitchen");
+  });
 
-    it.each(cases)('$name — firstName renders $local', ({ input, local }) => {
-      expect(firstName(input)).toBe(local);
-    });
-
-    it.each(cases.filter((c) => !c.diverges))(
-      '$name — memberFirstName agrees, so Phase 7 cannot move it',
-      ({ input, local }) => {
-        expect(memberFirstName(input)).toBe(local);
-      },
-    );
-
-    it.each(cases.filter((c) => c.diverges))(
-      '$name — memberFirstName DISAGREES (Exception 2, flips in Phase 7)',
-      ({ input, local }) => {
-        const domainAnswer = memberFirstName(input);
-        expect(domainAnswer).not.toBe(local);
-        // The domain finds the actual first word where the local copy cannot.
-        expect(domainAnswer).toMatch(/^(Kate|Daniel)$/);
-      },
-    );
-
-    it('has a table that still covers both sides of the fork', () => {
-      // UT-E2 in spirit: if a future edit makes the two implementations agree on
-      // everything, this net has stopped pinning a fork and must be revisited
-      // rather than quietly greening.
-      expect(cases.filter((c) => c.diverges)).toHaveLength(2);
-      expect(cases.some((c) => !c.diverges)).toBe(true);
-    });
+  it('leaves the service with no second implementation to drift from', async () => {
+    // UT-E2 in spirit: the point of Phase 7 was ONE importable name. A
+    // re-exported alias would satisfy every assertion above while restoring the
+    // fork, so the absence is asserted rather than assumed.
+    const service = await import('../src/lib/membersService.js');
+    expect(Object.keys(service)).not.toContain('firstName');
   });
 });
 

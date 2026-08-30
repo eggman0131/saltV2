@@ -97,6 +97,7 @@
     takesIngredients,
     type CookShapeSegment,
     type IngredientGroup,
+    memberFirstName,
     type Ingredient,
     type Recipe,
     type Step,
@@ -108,7 +109,7 @@
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { formula, initFormulaSync } from '../../lib/formulaService.js';
-  import { currentMember, firstName } from '../../lib/membersService.js';
+  import { currentMember } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -223,7 +224,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // nothing to read, so only a DIFFERENT last editor earns the second half.
   //
   // First names on screen, full names in the comparison. The stored value is the
-  // verbatim `Member.name`, and `firstName` shortens it only for reading — a
+  // verbatim `Member.name`, and `memberFirstName` shortens it only for reading — a
   // household shares a surname, so the rest is noise. The "is this the same
   // person" test deliberately stays on the FULL values: comparing first names
   // would silently merge two genuinely different people who share one.
@@ -231,8 +232,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
     !recipe?.createdBy
       ? null
       : recipe.lastEditedBy && recipe.lastEditedBy !== recipe.createdBy
-        ? `Added by ${firstName(recipe.createdBy)} · edited by ${firstName(recipe.lastEditedBy)}`
-        : `Added by ${firstName(recipe.createdBy)}`,
+        ? `Added by ${memberFirstName(recipe.createdBy)} · edited by ${memberFirstName(recipe.lastEditedBy)}`
+        : `Added by ${memberFirstName(recipe.createdBy)}`,
   );
 
   // What this entry can do (issue #637). Everything that gates a section or an
