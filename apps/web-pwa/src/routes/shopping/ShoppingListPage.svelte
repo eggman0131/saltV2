@@ -35,6 +35,7 @@
     createListSelection,
   } from '@salt/ui-components';
   import { formatDayKey } from '../../lib/dateFormat.js';
+  import { todayIso } from '../../lib/today.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { onDestroy, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
@@ -107,8 +108,6 @@
   // It reads relative only where relative beats a weekday: "today" and
   // "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
   // arithmetic the reader has to undo to know whether to plan around it.
-  // en-CA renders a local-timezone YYYY-MM-DD, the same trick the planner uses.
-  const todayIso = () => new Date().toLocaleDateString('en-CA');
   const shopDays = $derived(
     $upcomingShopDay ? daysBetween(todayIso(), $upcomingShopDay.date) : null,
   );

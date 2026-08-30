@@ -32,6 +32,7 @@
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { kindOf } from '../recipes/recipeKind.js';
   import { formatDayKey } from '../../lib/dateFormat.js';
+  import { todayIso } from '../../lib/today.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
@@ -98,11 +99,11 @@
 
   const dates = $derived(weekDates($selectedStartDate));
 
-  // Today, as the same local `YYYY-MM-DD` the week is keyed by (en-CA renders
-  // local-tz ISO order — the trick mealPlanService already uses). Read once per
-  // mount: the planner is remounted on every visit, and a week view that ticks
-  // over at midnight while open is not worth a timer.
-  const todayDate = new Date().toLocaleDateString('en-CA');
+  // Today, as the same local `YYYY-MM-DD` the week is keyed by. Read once per
+  // mount, and deliberately a plain `const` rather than a `$derived`: the planner
+  // is remounted on every visit, and a week view that ticks over at midnight
+  // while open is not worth a timer.
+  const todayDate = todayIso();
 
   // ─── Land on today (#639, Phase 2) ────────────────────────────────────────
   // The week OPENS ON TODAY: today's row is put directly under the sticky app
