@@ -32,7 +32,7 @@ export function subscribeShoppingListItems(
       path: [LISTS_COLLECTION, listId, ITEMS_SUB],
       schema: ShoppingListItemSchema,
       label: 'ShoppingListItemSchema',
-      project: (item) => item as ShoppingListItem,
+      project: (item) => item,
     },
     onItems,
     onError,
@@ -47,12 +47,7 @@ export async function listShoppingListItems(
     const snap = await getDocs(collection(db, LISTS_COLLECTION, listId, ITEMS_SUB));
     // Same parse loop as the subscription above (#928, B2-006).
     return success(
-      parseDocuments(
-        snap.docs,
-        ShoppingListItemSchema,
-        'ShoppingListItemSchema',
-        (item) => item as ShoppingListItem,
-      ),
+      parseDocuments(snap.docs, ShoppingListItemSchema, 'ShoppingListItemSchema', (item) => item),
     );
   } catch (err) {
     return failure(classifyFirestoreError(err));

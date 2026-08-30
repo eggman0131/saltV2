@@ -23,10 +23,13 @@ export const SourceRefSchema = z.discriminatedUnion('kind', [
 // `parentCount` is the UNROUNDED parent-count this form's raw amount converts to,
 // so demands can be summed raw and rounded once at display time. Storing the
 // fractional parent-count (not raw amount + yield) keeps the yield out of the doc.
-const FormDemandSchema = z.object({
+export const FormDemandSchema = z.object({
   formId: z.string(),
   parentCount: z.number(),
 });
+
+export type SourceRefDoc = z.infer<typeof SourceRefSchema>;
+export type FormDemandDoc = z.infer<typeof FormDemandSchema>;
 
 export const ShoppingListItemSchema = z.object({
   id: z.string().default(''),
@@ -88,3 +91,5 @@ export const ShoppingListItemSchema = z.object({
   // read (back-compat; no migration).
   measureNote: z.string().optional(),
 });
+
+export type ShoppingListItemDoc = z.infer<typeof ShoppingListItemSchema>;

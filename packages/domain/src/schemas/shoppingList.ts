@@ -7,3 +7,5 @@ export const ShoppingListSchema = z.object({
   createdAt: z.string().default(''),
   updatedAt: z.string().default(''),
 });
+
+export type ShoppingListDoc = z.infer<typeof ShoppingListSchema>;

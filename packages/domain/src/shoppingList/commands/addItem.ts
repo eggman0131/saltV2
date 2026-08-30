@@ -64,8 +64,8 @@ export function addItem(
     ...base,
     ...(input.amount !== undefined ? { amount: input.amount } : {}),
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
-    ...(input.formDemand !== undefined ? { formDemand: input.formDemand } : {}),
-    ...(input.originalText !== undefined ? { originalText: input.originalText } : {}),
+    ...(input.formDemand !== undefined ? { formDemand: [...input.formDemand] } : {}),
+    ...(input.originalText !== undefined ? { originalText: [...input.originalText] } : {}),
     ...(input.measureNote !== undefined ? { measureNote: input.measureNote } : {}),
   };
   return success([...items, newItem]);

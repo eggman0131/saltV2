@@ -109,8 +109,11 @@ export {
 export type { EquipmentIconDoc, DrawEquipmentIconInput } from './equipmentIcon.js';
 
 export { ShoppingListSchema } from './shoppingList.js';
-export { ShoppingListItemSchema } from './shoppingListItem.js';
+export type { ShoppingListDoc } from './shoppingList.js';
+export { ShoppingListItemSchema, SourceRefSchema, FormDemandSchema } from './shoppingListItem.js';
+export type { ShoppingListItemDoc, SourceRefDoc, FormDemandDoc } from './shoppingListItem.js';
 export { ShoppingListsConfigSchema } from './shoppingListsConfig.js';
+export type { ShoppingListsConfigDoc } from './shoppingListsConfig.js';
 export { ShoppingDaySchema } from './shoppingDay.js';
 export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
 

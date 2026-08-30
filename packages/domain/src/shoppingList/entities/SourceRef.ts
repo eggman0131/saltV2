@@ -1,12 +1,7 @@
-export type SourceRef =
-  | {
-      readonly kind: 'manual';
-      /** First name of the member who added the item, when known. */
-      readonly addedBy?: string;
-    }
-  | {
-      readonly kind: 'recipe';
-      readonly recipeId: string;
-      readonly servings: number;
-      readonly label?: string;
-    };
+import type { SourceRefDoc } from '../../schemas/shoppingListItem.js';
+
+// Where a shopping-list item came from — a manual add or a recipe. Schema-first
+// (issue #417, carried here by issue #932): an alias of the inferred
+// `SourceRefSchema` discriminated union, which lives beside the item schema
+// that embeds it.
+export type SourceRef = SourceRefDoc;

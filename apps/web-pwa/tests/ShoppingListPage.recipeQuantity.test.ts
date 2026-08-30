@@ -100,8 +100,9 @@ function item(overrides: Partial<ShoppingListItem> & { id: string }): ShoppingLi
   };
 }
 
-const fromRecipe = (label: string, recipeId = 'r1') =>
-  [{ kind: 'recipe' as const, recipeId, servings: 2, label }] as const;
+const fromRecipe = (label: string, recipeId = 'r1') => [
+  { kind: 'recipe' as const, recipeId, servings: 2, label },
+];
 
 const props = { props: { params: { listId: 'list-1' } } };
 
