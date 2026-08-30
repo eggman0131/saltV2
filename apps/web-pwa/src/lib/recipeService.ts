@@ -457,6 +457,71 @@ function hostForSpan(url: string): string {
   }
 }
 
+/**
+ * One traced user action: a root browser span, a named child span around the
+ * callable, an outcome attribute, and an `end()` that survives a rejection.
+ *
+ * Distributed tracing (issue #362, Phase 4): the trace ORIGINATES here in the
+ * browser so it starts at the click rather than at the server, and the W3C
+ * traceparent is handed to the callable (2nd arg) so the CF + canon + AI sub-tree
+ * nests under it instead of re-rooting. `web-pwa` owns the observability
+ * dependency and bridges the traceparent into `firebase-sync`, which never
+ * imports observability itself (Rule 4).
+ *
+ * Best-effort, always (Rule 10): `startUserActionSpan` is synchronous, returns an
+ * inert handle when tracing is not ready, and never throws — so an untraced run
+ * behaves exactly as a bare callable call, traceparent and all (`'' || undefined`
+ * omits the header).
+ *
+ * ── Two parameters that exist for a reason ──────────────────────────────────
+ *
+ * `outcomeKey` because the import paths report `import.outcome` and authoring
+ * reports `author.outcome`. Hard-coding one would silently relabel the other's
+ * spans, and a dashboard cannot tell a renamed attribute from a missing one.
+ *
+ * `onFailure` because `reportImportFailure` runs INSIDE the span's lifetime
+ * today. Hoisting it to the caller would end the span before reporting and
+ * quietly shorten every failed import's recorded duration — a change to the
+ * numbers, dressed as a refactor. Passing it in keeps the ordering bit-for-bit.
+ *
+ * Module-local on purpose: all three call sites are in this file. There are four
+ * more `startUserActionSpan` callers elsewhere in `lib/` and `routes/`; sweeping
+ * them is a different change with a different blast radius, and this promotes to
+ * `lib/` on the day a caller in another file wants it.
+ */
+// `E` is unconstrained deliberately: the helper never inspects the error, it
+// hands it to `outcomeLabel` and `onFailure`. Constraining it to `DomainError`
+// would exclude the import unions, which carry an `ImportError` variant of their
+// own — and widening those to their union is exactly what must not happen.
+async function tracedUserAction<T, E>(
+  spanName: string,
+  childName: string,
+  attributes: Readonly<Record<string, string | number | boolean>>,
+  outcomeKey: string,
+  outcomeLabel: (error: E) => string,
+  call: (traceparent: string | undefined) => Promise<ReadResult<T, E>>,
+  onFailure?: (error: E) => void,
+): Promise<ReadResult<T, E>> {
+  const span = startUserActionSpan(spanName);
+  // Set before the child opens, as all three call sites did by hand.
+  for (const [key, value] of Object.entries(attributes)) span.setAttribute(key, value);
+  const child = span.child(childName);
+  try {
+    const result = await call(span.traceparent || undefined);
+    child.end();
+    if (result.kind !== 'ok') {
+      span.setAttribute(outcomeKey, outcomeLabel(result.error));
+      span.setError();
+      onFailure?.(result.error);
+      return result;
+    }
+    span.setAttribute(outcomeKey, 'ok');
+    return result;
+  } finally {
+    span.end();
+  }
+}
+
 // Import a recipe from a URL. Returns the assembled draft as a Recipe entity
 // (RecipeDoc is structurally identical), with source.type='url' already set.
 // `updatedAt` is left as the server stamp; the editor re-stamps on save.
@@ -479,25 +544,17 @@ export async function importRecipeFromUrl(
   source: 'button' | 'share' = 'button',
 ): Promise<ReadResult<Recipe, UrlImportFailure>> {
   const trimmed = url.trim();
-  const span = startUserActionSpan(`Import recipe from ${hostForSpan(trimmed)}`);
-  span.setAttribute('import.source', source);
-  const child = span.child('callExtractRecipeFromUrl');
-  try {
-    const result = await callExtractRecipeFromUrl({ url: trimmed }, span.traceparent || undefined);
-    child.end();
-    if (result.kind !== 'ok') {
-      span.setAttribute('import.outcome', importOutcomeLabel(result.error));
-      span.setError();
-      reportImportFailure(result.error);
-      return failure(result.error);
-    }
-    span.setAttribute('import.outcome', 'ok');
-    // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft is already a
-    // Recipe — no cast needed.
-    return success(result.value);
-  } finally {
-    span.end();
-  }
+  // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft that comes
+  // back is already a Recipe — no cast needed.
+  return tracedUserAction<Recipe, UrlImportFailure>(
+    `Import recipe from ${hostForSpan(trimmed)}`,
+    'callExtractRecipeFromUrl',
+    { 'import.source': source },
+    'import.outcome',
+    importOutcomeLabel,
+    (traceparent) => callExtractRecipeFromUrl({ url: trimmed }, traceparent),
+    reportImportFailure,
+  );
 }
 
 // ─── Photo import (issue #649, Phase 3) ────────────────────────────────────────
@@ -561,29 +618,17 @@ export function photoImportMessage(outcome: PhotoImportFailure): string {
 export async function importRecipeFromPhoto(
   images: readonly RecipePagePhoto[],
 ): Promise<ReadResult<Recipe, PhotoImportFailure>> {
-  const span = startUserActionSpan('Import recipe from photo');
-  span.setAttribute('import.source', 'photo');
-  span.setAttribute('import.pageCount', images.length);
-  const child = span.child('callExtractRecipeFromPhoto');
-  try {
-    const result = await callExtractRecipeFromPhoto(
-      { images: [...images] },
-      span.traceparent || undefined,
-    );
-    child.end();
-    if (result.kind !== 'ok') {
-      span.setAttribute('import.outcome', importOutcomeLabel(result.error));
-      span.setError();
-      reportImportFailure(result.error);
-      return failure(result.error);
-    }
-    span.setAttribute('import.outcome', 'ok');
-    // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft is already a
-    // Recipe — no cast needed.
-    return success(result.value);
-  } finally {
-    span.end();
-  }
+  // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft that comes
+  // back is already a Recipe — no cast needed.
+  return tracedUserAction<Recipe, PhotoImportFailure>(
+    'Import recipe from photo',
+    'callExtractRecipeFromPhoto',
+    { 'import.source': 'photo', 'import.pageCount': images.length },
+    'import.outcome',
+    importOutcomeLabel,
+    (traceparent) => callExtractRecipeFromPhoto({ images: [...images] }, traceparent),
+    reportImportFailure,
+  );
 }
 
 // Author/apply a recipe via the librarian flow, wrapped in a browser-ROOT span
@@ -601,21 +646,18 @@ export async function authorRecipeTraced(
 ): Promise<ReadResult<RecipeDoc, DomainError>> {
   const name =
     titleHint && titleHint.trim() ? `Author recipe: ${titleHint.trim()}` : 'Author recipe';
-  const span = startUserActionSpan(name);
-  const child = span.child('callAuthorRecipe');
-  try {
-    const result = await callAuthorRecipe(input, span.traceparent || undefined);
-    child.end();
-    if (result.kind !== 'ok') {
-      span.setAttribute('author.outcome', result.error.kind);
-      span.setError();
-    } else {
-      span.setAttribute('author.outcome', 'ok');
-    }
-    return result;
-  } finally {
-    span.end();
-  }
+  // No `onFailure`: authoring has no import copy to choose and no second surface
+  // to keep in agreement, so nothing is reported from here. The outcome label is
+  // the error's own `kind` rather than `importOutcomeLabel` — there are no import
+  // codes to prefer.
+  return tracedUserAction<RecipeDoc, DomainError>(
+    name,
+    'callAuthorRecipe',
+    {},
+    'author.outcome',
+    (error) => error.kind,
+    (traceparent) => callAuthorRecipe(input, traceparent),
+  );
 }
 
 // Hand-off slot for the imported draft. The list page imports, stashes the
