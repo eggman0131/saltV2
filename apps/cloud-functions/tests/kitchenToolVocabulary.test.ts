@@ -64,6 +64,20 @@ describe('the seeded kitchen-tool vocabulary', () => {
     // curation decision, and the person making it needs to see whether the gap is
     // one mention or eleven.
     expect(unresolved.map(([label, n]) => `${label} (x${n})`)).toEqual([]);
+
+    // And the allow-list back the other way. An exemption whose label now
+    // resolves — or that production stopped asking for — exempts nothing, and
+    // says so nowhere: it just sits in the array reading like a live decision.
+    // Nothing above can fail on it, because a dead entry only ever removes work
+    // from the filter. This is the assertion that makes the list self-reporting,
+    // and it is why the list can stay empty honestly rather than by nobody
+    // looking.
+    const stale = DELIBERATELY_UNRESOLVED.filter(
+      (label) =>
+        !PRODUCTION_KIT_LABELS.some(([l]) => l === label) ||
+        resolveKitchenTool(label, VOCABULARY) !== null,
+    );
+    expect(stale).toEqual([]);
   });
 
   it('draws one object per real tool, not one per adjective', () => {
@@ -250,16 +264,24 @@ describe('the seeded kitchen-tool vocabulary', () => {
     const DELIBERATELY_REDUNDANT: readonly string[] = [];
 
     const covers = (phrase: string, by: string) => ` ${phrase} `.includes(` ${by} `);
+    // Every violation found, exempt or not. Filtering the allow-list out inside
+    // the loop is what made a dead exemption invisible: it can only ever remove
+    // a row from `redundant`, so no assertion could ever notice it.
+    const violations = new Set<string>();
     const redundant: string[] = [];
     for (const tool of SEED) {
       const label = normaliseName(tool.label);
       const matchers = tool.matchers.map((raw) => ({ raw, phrase: normaliseName(raw) }));
       for (const { raw, phrase } of matchers) {
-        if (DELIBERATELY_REDUNDANT.includes(`${tool.id}: ${raw}`)) continue;
+        const key = `${tool.id}: ${raw}`;
+        const exempt = DELIBERATELY_REDUNDANT.includes(key);
         if (covers(phrase, label)) {
-          redundant.push(
-            `${tool.id}: "${raw}" — its own label "${tool.label}" is already inside it`,
-          );
+          violations.add(key);
+          if (!exempt) {
+            redundant.push(
+              `${tool.id}: "${raw}" — its own label "${tool.label}" is already inside it`,
+            );
+          }
           continue;
         }
         // A shorter matcher on the same row already answers everything this one
@@ -269,10 +291,18 @@ describe('the seeded kitchen-tool vocabulary', () => {
           (other) => other.phrase.length < phrase.length && covers(phrase, other.phrase),
         );
         if (sibling) {
-          redundant.push(`${tool.id}: "${raw}" — the shorter "${sibling.raw}" already covers it`);
+          violations.add(key);
+          if (!exempt) {
+            redundant.push(`${tool.id}: "${raw}" — the shorter "${sibling.raw}" already covers it`);
+          }
         }
       }
     }
     expect(redundant).toEqual([]);
+
+    // The allow-list read back the other way, as above: an entry that no longer
+    // names a live violation — its matcher edited, its row deleted, the rule
+    // since satisfied — is dead weight that reads like a standing decision.
+    expect(DELIBERATELY_REDUNDANT.filter((key) => !violations.has(key))).toEqual([]);
   });
 });

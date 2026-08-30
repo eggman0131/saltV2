@@ -51,11 +51,27 @@ vi.mock('../../src/flows/identifyRecipeKit.js', () => ({
 }));
 
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
+// Routed BY COLLECTION, not undifferentiated. The recipe document and the
+// `devSettings/singleton` kill-switch are read through the same
+// `getFirestore()`, so a mock that answers every `doc()` identically cannot
+// express "the switch is off" — which is why that early return went untested.
+// `null` means the doc is absent, and the switch fails open (see
+// `isRecipeImageGenerationEnabled`): that is the state every other test here
+// runs in.
+let mockDevSettings: Record<string, unknown> | null = null;
 vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { delete: () => 'DELETE' },
   getFirestore: () => ({
-    collection: () => ({
-      doc: () => ({ update: mockUpdate, get: () => Promise.resolve({ exists: false }) }),
+    collection: (name: string) => ({
+      doc: () => ({
+        update: mockUpdate,
+        get: () =>
+          Promise.resolve(
+            name === 'devSettings' && mockDevSettings !== null
+              ? { exists: true, data: () => mockDevSettings }
+              : { exists: false, data: () => undefined },
+          ),
+      }),
     }),
   }),
 }));
@@ -120,6 +136,8 @@ function makeEvent(after: RecipeDoc, before: RecipeDoc | Record<string, unknown>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDevSettings = null;
+  delete process.env['FUNCTIONS_AI_FAKE'];
 });
 
 describe('onRecipeWritten — time branch floors the total at a recorded wait (B1)', () => {
@@ -136,15 +154,22 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
     const after = focaccia({ timesRequestedAt: 1_700_000_000_000 });
     await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
 
-    expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        'metadata.prepTimeMinutes': 30,
-        'metadata.cookTimeMinutes': 12,
-        // 762 must survive — the excess over stored prep+cook (30+12=42) is a
-        // real unattended wait, and the model's 45 has no way to know about it.
-        'metadata.totalTimeMinutes': 762,
-      }),
-    );
+    // EXACT, not `objectContaining`. The safety property this branch rests on is
+    // that the write is three `metadata.*` LEAF paths plus the stamp — never a
+    // document `set`, and never a whole `metadata` map, because recipes are
+    // last-write-wins per WHOLE document and this branch is driven by a sweep of
+    // the entire library. `objectContaining` passes a payload that keeps the
+    // three leaves and adds a fourth key beside them, which is most of the way
+    // back to the clobber the shape was chosen to avoid. Only the clock is
+    // loosened.
+    expect(mockUpdate).toHaveBeenCalledWith({
+      'metadata.prepTimeMinutes': 30,
+      'metadata.cookTimeMinutes': 12,
+      // 762 must survive — the excess over stored prep+cook (30+12=42) is a
+      // real unattended wait, and the model's 45 has no way to know about it.
+      'metadata.totalTimeMinutes': 762,
+      timesEstimatedAt: expect.any(Number),
+    });
   });
 
   it('does not let a returned totalTimeMinutes: null erase a stored total that recorded a wait', async () => {
@@ -158,9 +183,12 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
     const after = focaccia({ timesRequestedAt: 1_700_000_000_000 });
     await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
 
-    expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ 'metadata.totalTimeMinutes': 762 }),
-    );
+    expect(mockUpdate).toHaveBeenCalledWith({
+      'metadata.prepTimeMinutes': 30,
+      'metadata.cookTimeMinutes': 12,
+      'metadata.totalTimeMinutes': 762,
+      timesEstimatedAt: expect.any(Number),
+    });
   });
 
   it('still writes the model total as-is when the stored total never recorded a wait', async () => {
@@ -187,8 +215,71 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
     });
     await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
 
-    expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ 'metadata.totalTimeMinutes': 45 }),
+    expect(mockUpdate).toHaveBeenCalledWith({
+      'metadata.prepTimeMinutes': 10,
+      'metadata.cookTimeMinutes': 35,
+      'metadata.totalTimeMinutes': 45,
+      timesEstimatedAt: expect.any(Number),
+    });
+  });
+});
+
+// The four conditions on which `maybeEstimateTimes` returns having done nothing
+// and said nothing. Each is deliberate and each is silent, so nothing but a test
+// distinguishes "this guard held" from "this branch quietly stopped working" —
+// and the branch is only ever exercised by a library-wide sweep, where a guard
+// that stopped holding costs one AI call per recipe before anyone notices.
+//
+// The assertion is on the FLOW, not on the write: not calling the model is the
+// property, and the sibling image/kit branches share `mockUpdate`.
+describe('onRecipeWritten — time branch early returns are silent, so they are pinned here', () => {
+  const requested = { timesRequestedAt: 1_700_000_000_000 };
+
+  it('does not estimate for an entry that is not cookable', async () => {
+    // Asked through the pure capability predicate, exactly as the branch does —
+    // an outing is a restaurant, and a restaurant has no prep time.
+    const after = focaccia({ ...requested, kind: 'outing' } as Partial<RecipeDoc>);
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(
+      makeEvent(after, { timesRequestedAt: undefined }),
     );
+
+    expect(mockEstimateTimes).not.toHaveBeenCalled();
+  });
+
+  it('does not estimate a recipe with no steps', async () => {
+    // No method is no evidence: a number invented from a title alone is worse
+    // than the optimistic one it would replace.
+    const after = focaccia({ ...requested, steps: [] });
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(
+      makeEvent(after, { timesRequestedAt: undefined }),
+    );
+
+    expect(mockEstimateTimes).not.toHaveBeenCalled();
+  });
+
+  it('does not estimate under the e2e AI fake flag', async () => {
+    process.env['FUNCTIONS_AI_FAKE'] = '1';
+
+    const after = focaccia(requested);
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(
+      makeEvent(after, { timesRequestedAt: undefined }),
+    );
+
+    expect(mockEstimateTimes).not.toHaveBeenCalled();
+  });
+
+  it('does not estimate when the recipe-content kill-switch is off', async () => {
+    // The last of the four, and the only one that costs a Firestore read — so a
+    // fixture that trips an earlier guard would pass this test for the wrong
+    // reason. `focaccia(requested)` is the same fixture the writing tests above
+    // use, which is what makes the switch the only thing that changed.
+    mockDevSettings = { recipeImageGenerationEnabled: false };
+
+    const after = focaccia(requested);
+    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(
+      makeEvent(after, { timesRequestedAt: undefined }),
+    );
+
+    expect(mockEstimateTimes).not.toHaveBeenCalled();
   });
 });
