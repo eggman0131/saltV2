@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
+import { normaliseMemberEmail } from '@salt/domain';
 import type { Member } from '@salt/domain';
 
 // `AdminGuard` had no test of its own: every suite that reached it did so through
@@ -24,9 +25,23 @@ const { mockMembers, mockIsLoading, mockAuth } = await vi.hoisted(async () => {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
+// `currentMember` is the real derivation's shape, built here from the same
+// roster and auth stubs the guard used to read directly. Deriving it rather than
+// stubbing an answer keeps these tests pointed at the guard's own behaviour
+// while pinning the contract it now depends on (issue #1055 Phase 5).
 vi.mock('../src/lib/membersService.js', () => ({
   members: mockMembers,
   isLoadingMembers: mockIsLoading,
+  currentMember: {
+    subscribe(fn: (v: Member | null) => void) {
+      return mockMembers.subscribe((roster) => {
+        const email = mockAuth.user?.email ?? '';
+        if (!email) return fn(null);
+        const normalised = normaliseMemberEmail(email);
+        fn(roster.find((m) => m.email === normalised) ?? null);
+      });
+    },
+  },
 }));
 
 import AdminGuard from '../src/routes/admin/AdminGuard.svelte';
@@ -117,31 +132,32 @@ describe('AdminGuard — how it resolves the signed-in member', () => {
     expect(screen.queryByTestId('guarded-content') !== null).toBe(admits);
   });
 
-  // ── Exception 1 (issue #1055) ────────────────────────────────────────────────
-  // THIS ROW IS EXPECTED TO FLIP. The guard re-derives the signed-in member
-  // itself instead of reading `membersService`'s exported `currentMember`, and
-  // the two answers differ on exactly one input: a signed-out session.
+  // ── Exception 1 (issue #1055) — FLIPPED IN PHASE 5 ───────────────────────────
+  // The guard used to re-derive the signed-in member itself rather than read
+  // `membersService`'s exported `currentMember`, and the two answers differed on
+  // exactly one input: a signed-out session.
   //
   //   `currentMember`  returns null when the email is falsy, before it looks.
-  //   `AdminGuard`     normalises '' to '' and then matches any roster member
-  //                    whose own `email` field is ''.
+  //   the old copy     normalised '' to '' and then matched any roster member
+  //                    whose own `email` field was ''.
   //
   // So with a rogue `{ email: '', admin: true }` document on the roster, a
-  // SIGNED-OUT session is currently admitted. No such document exists or can be
-  // created through the app — `createMember` normalises before writing and
-  // Firestore rejects an empty doc id — but nothing in the schema or the rules
-  // forbids one, so this is the guard's behaviour as written today.
+  // SIGNED-OUT session used to be ADMITTED. It is now denied — the safer of the
+  // two answers, and the only observable behaviour change in this whole issue.
   //
-  // Issue #1055 Phase 5 deletes the guard's copy in favour of `currentMember`,
-  // at which point the answer below becomes `false` — the safer one. This test
-  // is the record of what changed, and its expectation is updated in that commit.
-  it('Exception 1: admits a signed-out session against an empty-email admin row', () => {
+  // No such document exists or can be created through the app: `createMember`
+  // normalises before writing and Firestore rejects an empty doc id. But nothing
+  // in `MemberSchema` (`email` is a bare `z.string()`) or in `firestore.rules`
+  // pins the field to the doc key, so the input is representable — which is why
+  // this is asserted rather than argued away. The guard is cosmetic regardless;
+  // `firestore.rules` is the real gate (issue #155).
+  it('Exception 1: DENIES a signed-out session against an empty-email admin row', () => {
     mockAuth.user = null;
     mockMembers._set([member({ id: 'ghost', email: '', name: 'Ghost', admin: true }), KID]);
     renderGuard();
 
-    expect(screen.getByTestId('guarded-content')).toBeInTheDocument();
-    expect(screen.queryByTestId('admin-guard-denied')).not.toBeInTheDocument();
+    expect(screen.getByTestId('admin-guard-denied')).toBeInTheDocument();
+    expect(screen.queryByTestId('guarded-content')).not.toBeInTheDocument();
   });
 
   it('denies a signed-out session when no such row exists', () => {

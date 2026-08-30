@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {
   ARBITRATION_FAILED_REASONING,
   ARBITRATION_NO_MATCH_REASONING,
+  normaliseMemberEmail,
   type CanonItem,
   type ProductForm,
 } from '@salt/domain';
@@ -44,6 +45,19 @@ vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
   members: mockMembers,
   isLoadingMembers: mockIsLoading,
+  // AdminGuard reads this since #1055 (Phase 5) instead of re-deriving admin
+  // itself; derived here from the same members/auth stubs as the real
+  // `currentMember` in membersService.ts.
+  currentMember: {
+    subscribe(fn: (v: { email: string; admin: boolean } | null) => void) {
+      return mockMembers.subscribe((roster) => {
+        const email = mockAuth.user?.email ?? '';
+        if (!email) return fn(null);
+        const normalised = normaliseMemberEmail(email);
+        fn(roster.find((m) => m.email === normalised) ?? null);
+      });
+    },
+  },
 }));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
