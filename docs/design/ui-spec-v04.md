@@ -877,7 +877,7 @@ This section records deliberate interaction decisions for existing primitives th
 **Contract:**
 - `AppShell` root class must include `h-dvh` **and** `flex flex-col`. `min-h-screen`, `h-screen`, and `min-h-dvh` are forbidden here.
 - The `SideNav` + `<main>` row keeps `flex flex-1 overflow-hidden`; `<main>` keeps `flex-1 overflow-y-auto`. Scrolling lives in `<main>`, not the root.
-- `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2).
+- `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(var(--salt-layout-bottom-nav-height)_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2). The height is a token as of #930 — the same one `BottomNav` reads, so the reservation cannot drift from what it reserves; it was the literal `3.5rem` in four places before that.
 
 ## 13.4 Shopping row swipe — touch-only, page-local (no `SwipeableRow` primitive)
 

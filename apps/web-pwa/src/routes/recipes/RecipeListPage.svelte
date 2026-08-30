@@ -661,7 +661,7 @@
                 -->
                 {#if recipe.needs_approval}
                   <span
-                    class="absolute left-2 top-2 z-10 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                    class="absolute left-2 top-2 z-10 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800"
                     data-testid="recipe-unreviewed-badge"
                   >
                     Unreviewed
@@ -675,7 +675,7 @@
                 -->
                 {#if issues > 0}
                   <span
-                    class="absolute right-2 top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white shadow"
+                    class="absolute right-2 top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white shadow"
                     title={`${issues} ${issues === 1 ? 'ingredient is' : 'ingredients are'} matched to the wrong thing`}
                     data-testid="recipe-match-issue-pip"
                   >
@@ -734,14 +734,12 @@
                 {#if tags.length > 0}
                   <div class="mt-0.5 flex flex-wrap items-center gap-1">
                     {#each tags.slice(0, 3) as tag (tag)}
-                      <span
-                        class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                      >
+                      <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                         #{tag}
                       </span>
                     {/each}
                     {#if tags.length > 3}
-                      <span class="text-[10px] text-muted-foreground/70">+{tags.length - 3}</span>
+                      <span class="text-xs text-muted-foreground/70">+{tags.length - 3}</span>
                     {/if}
                   </div>
                 {/if}

@@ -42,7 +42,7 @@ div.flex.h-dvh.flex-col
   TopBar
   div.flex.flex-1.overflow-hidden
     SideNav
-    main.flex-1.overflow-y-auto.pb-[calc(3.5rem+env(safe-area-inset-bottom))].lg:pb-0
+    main.flex-1.overflow-y-auto.pb-[calc(var(--salt-layout-bottom-nav-height)+env(safe-area-inset-bottom))].lg:pb-0
 ```
 
 `<main>` therefore already has a **definite, bounded height** — it is a `flex-1` child of a fixed-height column. What was missing is that `ListPage` passed no height down to its children.

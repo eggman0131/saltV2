@@ -2423,7 +2423,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                               {#if marker === 'unmatched'}
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[11px] leading-none text-destructive-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs leading-none text-destructive-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                   title="Not matched — tap to match"
                                   aria-label="Not matched — tap to match"
                                   onclick={() => handleRematch(group, ingredient)}
@@ -2440,7 +2440,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                  #949). Nothing to explain first, so nothing opens. -->
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-xs leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                   title="No amount — tap to read the line again"
                                   aria-label="No amount — tap to read the line again"
                                   onclick={() => handleRematch(group, ingredient)}
@@ -2456,7 +2456,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                  causes and offers the re-match — no new copy. -->
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-xs leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   title="Matched, but buys the wrong thing — tap to see why"
                                   aria-label="Matched, but buys the wrong thing — tap to see why"
                                   onclick={() => inspectMatch(ingredient)}

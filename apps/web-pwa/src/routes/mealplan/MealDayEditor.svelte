@@ -329,7 +329,7 @@
          bare weekday word — "Wednesday" wraps at w-14, hence the wider track. -->
     <div class="flex {sublabel ? 'w-14' : 'w-20'} shrink-0 flex-col items-center gap-1">
       <span
-        class="text-center text-[11px] font-semibold uppercase leading-tight tracking-wider text-muted-foreground"
+        class="text-center text-xs font-semibold uppercase leading-tight tracking-wider text-muted-foreground"
       >
         {label}
       </span>
@@ -349,7 +349,7 @@
             <WeatherIcon {icon} class="h-8 w-8" />
           {/if}
           <span
-            class="text-[10px] leading-none tabular-nums {band ? BAND_CLASS[band] : ''}"
+            class="text-xs leading-none tabular-nums {band ? BAND_CLASS[band] : ''}"
             data-testid={`${testid}-header-temp`}
           >
             <span class="font-semibold">{weather.tempHigh}°</span><span

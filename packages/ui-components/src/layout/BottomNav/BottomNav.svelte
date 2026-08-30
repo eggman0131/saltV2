@@ -69,15 +69,26 @@
         the page content behind it.
       -->
       <span
-        class="absolute -right-1 top-0 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground"
+        class="absolute -right-1 top-0 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs text-primary-foreground"
       >
         {item.badge}
       </span>
     {/if}
   </span>
+  <!-- 12px (`text-xs`), rounded up from a hand-written 10px by #930 Phase 6.
+       This row was the one flagged as likely to need a rung of its own: five
+       equal columns of a phone-width bar, longest caption "PLANNER"/"RECIPES",
+       and no truncation (ui-spec-v04 §17.2) — a caption too wide to fit wraps,
+       and a second line overflows the 3.5rem row. At 12px uppercase with
+       `tracking-wider` those are ~60px against a 72px column on a 360px-wide
+       phone, the narrowest any device in use here is, so it fits with room. It
+       also lifts the caption off the 10px the comment above calls out as under
+       the WCAG text minimum. Worth an eye on a real handset all the same — this
+       is the one site in the phase whose slack was reasoned rather than
+       measured. -->
   <span
     class={cn(
-      'text-[10px] uppercase leading-none tracking-wider',
+      'text-xs uppercase leading-none tracking-wider',
       active ? 'font-semibold text-foreground' : 'text-muted-foreground',
     )}
   >
