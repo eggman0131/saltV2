@@ -94,32 +94,6 @@ export type ShoppingBehavior = 'stocked' | 'check' | 'needed';
 
 export type CanonItemUnit = 'g' | 'ml' | 'count';
 
-export interface CanonItemDTO {
-  readonly id: string;
-  readonly name: string;
-  readonly synonyms: readonly string[];
-  readonly aisleId: string | null;
-  readonly thumbnail: string | null;
-  readonly embedding: readonly number[] | null;
-  readonly needs_approval: boolean;
-  readonly shoppingBehavior: ShoppingBehavior;
-  readonly largeQuantityThreshold?: number;
-  readonly unit?: CanonItemUnit;
-  readonly reasoning?: string;
-  readonly schemaVersion: 3;
-}
-
-export interface AisleDTO {
-  readonly id: string;
-  readonly name: string;
-  readonly order: number;
-}
-
-export interface AisleListDTO {
-  readonly aisles: readonly AisleDTO[];
-  readonly schemaVersion: 1;
-}
-
 export const ErrorCode = {
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',
   INVALID_PRODUCT_FORM: 'INVALID_PRODUCT_FORM',

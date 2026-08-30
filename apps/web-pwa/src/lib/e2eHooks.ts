@@ -46,7 +46,7 @@ export function installE2EHooks(): void {
         id: input.id ?? crypto.randomUUID(),
         schemaVersion: 5,
         name: input.name,
-        synonyms: input.synonyms ?? [],
+        synonyms: [...(input.synonyms ?? [])],
         aisleId: input.aisleId ?? null,
         thumbnail: input.thumbnail ?? null,
         embedding: input.embedding ?? null,

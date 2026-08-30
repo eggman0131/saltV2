@@ -88,6 +88,7 @@ export type { ProductFormDoc } from './productForm.js';
 
 export { CanonEmbeddingSchema } from './canonEmbedding.js';
 export { AislesDocumentSchema } from './aislesDocument.js';
+export type { AisleDoc } from './aislesDocument.js';
 export { CanonPurchaseCountsSchema } from './canonPurchaseCounts.js';
 export type { CanonPurchaseCountsDoc } from './canonPurchaseCounts.js';
 

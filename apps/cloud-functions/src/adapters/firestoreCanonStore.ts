@@ -31,9 +31,9 @@ function mergeEmbedding(
   embeddings: ReadonlyMap<string, readonly number[]>,
 ): CanonItem {
   const embedding = embeddings.get(parsed.id) ?? parsed.embedding ?? null;
-  // exactOptionalPropertyTypes: zod's optional fields emit T | undefined while
-  // CanonItem uses bare optional properties; cast is load-bearing (as elsewhere).
-  return { ...parsed, embedding } as CanonItem;
+  // No cast (issue #932): CanonItem now derives from CanonItemSchema, so the
+  // parsed doc IS the entity once `embedding` is resolved to present-or-null.
+  return { ...parsed, embedding };
 }
 
 export function createFirestoreCanonStore(
