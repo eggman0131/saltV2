@@ -3,8 +3,9 @@
     Button,
     Chip,
     ChipGroup,
-    ListPage,
+    EmptyState,
     Icon,
+    ListPage,
     Popover,
     PopoverContent,
     PopoverMenuItem,
@@ -414,33 +415,37 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="flex flex-col items-center gap-3 py-12 text-center">
-      <p class="text-sm text-muted-foreground">No recipes yet.</p>
-      <div class="flex flex-wrap justify-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (showImport = true)}
-          data-testid="recipe-import-url-toggle-empty"
-        >
-          {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
-          Import from URL
-        </Button>
-        <!-- A peer of the URL button, deliberately: an empty library is exactly
+    <EmptyState title="No recipes yet.">
+      {#snippet actions()}
+        <!-- The inner wrapper stays: EmptyState's own actions row is
+             `flex items-center gap-2` and does not wrap, and three buttons do
+             not fit a phone on one line. -->
+        <div class="flex flex-wrap justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (showImport = true)}
+            data-testid="recipe-import-url-toggle-empty"
+          >
+            {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
+            Import from URL
+          </Button>
+          <!-- A peer of the URL button, deliberately: an empty library is exactly
              where someone stands holding a cookbook, and offering only a URL box
              there says photo import does not exist. -->
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (showPhotoImport = true)}
-          data-testid="recipe-import-photo-toggle-empty"
-        >
-          {#snippet leading()}<Icon name="Camera" size={16} />{/snippet}
-          Import from photo
-        </Button>
-        <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
-      </div>
-    </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (showPhotoImport = true)}
+            data-testid="recipe-import-photo-toggle-empty"
+          >
+            {#snippet leading()}<Icon name="Camera" size={16} />{/snippet}
+            Import from photo
+          </Button>
+          <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
+        </div>
+      {/snippet}
+    </EmptyState>
   {/snippet}
 
   {#snippet children()}
@@ -621,24 +626,18 @@
     </div>
 
     {#if visible.length === 0 && hasFilters}
-      <div
-        class="flex flex-col items-center gap-2 py-12 text-center"
-        data-testid="recipe-no-matches"
-      >
-        <Icon name="Search" size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{sectionCopy.noMatchText}</p>
-        <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
-      </div>
+      <EmptyState title={sectionCopy.noMatchText} data-testid="recipe-no-matches">
+        {#snippet icon()}<Icon name="Search" size={24} />{/snippet}
+        {#snippet actions()}
+          <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
+        {/snippet}
+      </EmptyState>
     {:else if visible.length === 0}
       <!-- An empty SECTION, not a failed filter — there is nothing to clear, so
            offering a "Clear filters" button here would be a dead end. -->
-      <div
-        class="flex flex-col items-center gap-2 py-12 text-center"
-        data-testid="recipe-kind-empty"
-      >
-        <Icon name={sectionCopy.thumbIcon} size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{sectionCopy.emptyText}</p>
-      </div>
+      <EmptyState title={sectionCopy.emptyText} data-testid="recipe-kind-empty">
+        {#snippet icon()}<Icon name={sectionCopy.thumbIcon} size={24} />{/snippet}
+      </EmptyState>
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
         {#each visible as recipe (recipe.id)}

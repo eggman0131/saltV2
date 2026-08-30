@@ -299,6 +299,19 @@ actions — is optional, and the common call (`ListPage`'s) passes only the titl
 | `actions` | `Snippet` | `undefined` | A centred row below. |
 | `class` | `string` | — | Merged onto the panel via `cn`. |
 
+Everything else — `data-testid`, `data-*`, `id`, `aria-*` — rides `...rest` onto
+the panel element, as it does on `Chip` (v0.9 §8.23.3). Added in v0.13.1 by
+issue #930 Phase 9: four hand-rolled empty states being migrated onto this
+component were selected by `data-testid` in their pages' tests, and without a
+passthrough the migration would have meant either deleting the attribute or
+leaving the site hand-rolled.
+
+**`role` is the one attribute that is not passable.** §8.31.2 makes the
+`status` / `alert` split the whole reason `EmptyState` and `ErrorState` are two
+components rather than one with a `tone`, so a caller able to override it could
+collapse that distinction from the outside. `role` is `Omit`ted from the
+passthrough type and applied after the spread.
+
 The heading level is `<h3>`, fixed. The panel sits inside a page that already
 owns `<h1>` (and often an `<h2>` section), and a state panel is never the
 document's own heading. It is not a prop: a level that varies per call is a
@@ -311,6 +324,8 @@ level nobody checks.
 - Omitted `description`, `icon`, `actions` render nothing at all — no empty
   wrapper elements.
 - `icon` and `actions` snippets render where §8.31.1's anatomy says.
+- A passed `data-*` attribute reaches the panel, and a passed `role` does not
+  displace `status`.
 - No axe violations, with and without each optional part.
 
 ## 8.31.6 Forbidden
@@ -320,6 +335,7 @@ level nobody checks.
 - **Do not make the heading level a prop.** §8.31.4.
 - **Do not default an icon.** The primitive has no vocabulary for what the empty
   thing is.
+- **Do not make `role` passable.** §8.31.2, and see the props note above.
 
 ---
 

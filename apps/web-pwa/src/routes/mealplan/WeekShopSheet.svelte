@@ -173,6 +173,12 @@
         <!-- A week with nothing left is not a failure and not an error: it is
              Sunday night, or a week you have scrolled back to. Say so plainly
              rather than showing an empty list under a dead confirm button. -->
+        <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
+           dashed-border PANEL with an `<h3>` title — a page saying "this place
+           holds nothing". This is one sentence inside a bottom sheet, with no
+           title to head it, nothing to explain and nothing to do next; a
+           bordered box around it would read as a second surface inside the
+           sheet's own. -->
         <p
           class="px-1 py-6 text-center text-sm text-muted-foreground"
           data-testid="shop-week-empty"

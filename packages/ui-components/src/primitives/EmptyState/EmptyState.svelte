@@ -1,9 +1,9 @@
-<!-- spec: ui-spec-v13.md §8.31 v0.13 -->
+<!-- spec: ui-spec-v13.md §8.31 v0.13.1 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { EmptyStateProps } from './EmptyState.types';
 
-  let { title, description, icon, actions, class: className }: EmptyStateProps = $props();
+  let { title, description, icon, actions, class: className, ...rest }: EmptyStateProps = $props();
 </script>
 
 <div
@@ -11,6 +11,7 @@
     'flex flex-col items-center justify-center text-center gap-3 py-12 px-6 rounded border border-dashed border-border',
     className,
   )}
+  {...rest}
   role="status"
 >
   {#if icon}

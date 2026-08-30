@@ -241,6 +241,12 @@
         <span class="w-12 text-center">Check</span>
       </div>
       {#if rows.length === 0}
+        <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
+           dashed-border PANEL with an `<h3>` title — a page saying "this place
+           holds nothing". This is one sentence inside a bottom sheet, with no
+           title to head it, nothing to explain and nothing to do next; a
+           bordered box around it would read as a second surface inside the
+           sheet's own. -->
         <p
           class="px-1 py-6 text-center text-sm text-muted-foreground"
           data-testid="recipe-add-review-empty"
