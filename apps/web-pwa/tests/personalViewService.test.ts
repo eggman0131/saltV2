@@ -22,10 +22,22 @@ const {
   mockToday,
   mockMember,
   mockKitchenTimers,
+  mockRecipesById,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
+  const recipes = makeStore<unknown[]>([]);
   return {
-    mockRecipes: makeStore<unknown[]>([]),
+    mockRecipes: recipes,
+    // The id index the service resolves attached recipes through (#940). Derived
+    // from the SAME store, so it stays in step with every `mockRecipes._set`
+    // rather than being a second thing each test has to remember to seed.
+    mockRecipesById: {
+      subscribe(fn: (v: ReadonlyMap<string, unknown>) => void) {
+        return recipes.subscribe((list) =>
+          fn(new Map((list as { id: string }[]).map((r) => [r.id, r]))),
+        );
+      },
+    },
     mockSessions: makeStore<unknown[]>([]),
     mockChats: makeStore<unknown[]>([]),
     mockKitchenWeeks: makeStore<unknown[]>([]),
@@ -35,7 +47,14 @@ const {
   };
 });
 
-vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
+// `recipesById` is derived from the same store the mock already serves, so the
+// index the service now resolves through stays in step with `mockRecipes._set`
+// (issue #1055 Phase 4). Both are exported because the service still wants the
+// ARRAY for its single-session lookups and the INDEX for list resolution.
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  recipesById: mockRecipesById,
+}));
 vi.mock('../src/lib/kitchenTimerService.js', () => ({ kitchenTimers: mockKitchenTimers }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
 vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));

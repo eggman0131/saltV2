@@ -70,6 +70,7 @@
     setShopDay,
     clearShopDay,
   } from '../../lib/shoppingDayService.js';
+  import { resolveRecipeIds } from '../../lib/attachedRecipes.js';
 
   // Optional `/mealplan/:date` — the week containing this date is opened instead
   // of the current one (issue #629): the shopping list's shop-day chip deep-links
@@ -349,8 +350,10 @@
 
   // What the sheet offers: every recipe planned for that week from today onward.
   //
-  // Days hold ids only, so the full recipe is resolved against the store exactly
-  // as MealDayDetail does, silently skipping an id with no matching document.
+  // Days hold ids only, so the full recipe is resolved through the one shared
+  // helper (`lib/attachedRecipes.ts`), which silently skips an id with no
+  // matching document. The eligibility predicate is a SEPARATE step below rather
+  // than fused into that filter, so each reads as the one question it answers.
   // Eligibility is the capability predicate, never a `kind ===` comparison — so a
   // takeaway and a note-only placeholder are absent and a cocktail is present,
   // and a fifth kind decides for itself in the domain table.
@@ -368,9 +371,8 @@
     return dateList
       .filter((date) => date >= todayDate)
       .flatMap((date) =>
-        (days[date]?.recipeIds ?? [])
-          .map((id) => $recipesById.get(id))
-          .filter((r): r is Recipe => r !== undefined && takesIngredients(kindOf(r)))
+        resolveRecipeIds(days[date]?.recipeIds ?? [], $recipesById)
+          .filter((r) => takesIngredients(kindOf(r)))
           .map((recipe) => ({ date, recipe })),
       );
   });

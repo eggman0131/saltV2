@@ -35,6 +35,8 @@
   import { flushMealPlanWrites } from '../../lib/mealPlanService.js';
   import WeatherSummary from './WeatherSummary.svelte';
   import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
+  import { recipeIndex, resolveRecipeIds } from '../../lib/attachedRecipes.js';
+  import { quarterHourOptions } from '../../lib/timeOptions.js';
 
   // The DETAIL of a single Day — everything you can edit about an evening, with
   // no opinion about where it is rendered. Three stacked blocks, top→bottom:
@@ -122,19 +124,16 @@
   }: Props = $props();
 
   // ─── Attached recipes (issue #17) ──────────────────────────────────────────
-  // The day stores recipe IDS only; titles resolve live from the `recipes` prop
-  // at render time (no denormalisation). Ids with no matching recipe — deleted
-  // since they were attached — are skipped so a broken row is never rendered.
+  // One resolution, shared by five consumers — `lib/attachedRecipes.ts` carries
+  // the reasoning, including the fallback index and why an id with no matching
+  // recipe is skipped rather than rendered as a broken row.
   //
-  // Resolved through the id index (#940) rather than by scanning `recipes` per
-  // id. `lookup` falls back to a map built from the `recipes` prop when the page
-  // did not supply one — correct, but built per component instance, so the two
-  // planner pages pass the shared index and only a caller that supplies
-  // `recipes` alone (the component tests) takes the fallback.
-  const lookup = $derived(recipesById ?? new Map(recipes.map((r) => [r.id, r])));
-  const attachedRecipes = $derived(
-    day.recipeIds.map((id) => lookup.get(id)).filter((r): r is Recipe => r !== undefined),
-  );
+  // NOTE the `{#each}` below is KEYED on `r.id`, so this list must not be handed
+  // a day whose `recipeIds` contain a duplicate. Nothing in the app can produce
+  // one — the picker excludes what is already attached — and the resolution
+  // deliberately preserves duplicates rather than hiding that.
+  const lookup = $derived(recipeIndex(recipesById, recipes));
+  const attachedRecipes = $derived(resolveRecipeIds(day.recipeIds, lookup));
   // Picker options exclude already-attached recipes so the same dish can't be
   // added twice, and anything that cannot occupy a dinner slot — a cocktail is
   // not dinner (issue #637). The gate is `isPlannable`, never a comparison
@@ -255,10 +254,7 @@
   // trigger (never silently reset); it simply isn't in the list, so re-picking
   // means moving into the window.
   const DINNER_TIME = '18:30';
-  const TIME_OPTIONS = Array.from(
-    { length: 24 },
-    (_, i) => `${17 + Math.floor(i / 4)}:${String((i % 4) * 15).padStart(2, '0')}`,
-  );
+  const TIME_OPTIONS = quarterHourOptions(17, 24);
 
   // Picking "No time" (value '') clears to null; every other option is already a
   // whole "HH:MM" and stores verbatim.

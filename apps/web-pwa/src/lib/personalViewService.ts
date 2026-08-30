@@ -18,7 +18,8 @@ import type {
 } from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { recipes } from './recipeService.js';
+import { recipes, recipesById } from './recipeService.js';
+import { resolveRecipeIds } from './attachedRecipes.js';
 import { myCookSessions } from './cookSessionService.js';
 import { kitchenTimers } from './kitchenTimerService.js';
 import { sessions } from './chatService.js';
@@ -317,15 +318,13 @@ export interface UpcomingChefNight {
  * you are"; a list of everybody's nights would be worse.
  */
 export const upcomingChefNights: Readable<readonly UpcomingChefNight[]> = derived(
-  [kitchenWeeks, kitchenAnchorDate, currentMember, recipes],
-  ([$weeks, $today, $member, $recipes]) =>
+  [kitchenWeeks, kitchenAnchorDate, currentMember, recipesById],
+  ([$weeks, $today, $member, $recipesById]) =>
     upcomingChefDays($weeks, $member?.id ?? '', $today).map((night) => ({
       date: night.date,
       day: night.day,
       daysAway: daysBetween($today, night.date),
-      recipes: night.day.recipeIds
-        .map((id) => $recipes.find((r) => r.id === id))
-        .filter((r): r is Recipe => r !== undefined),
+      recipes: resolveRecipeIds(night.day.recipeIds, $recipesById),
     })),
 );
 
@@ -369,13 +368,11 @@ export interface TonightPlan {
  * true by construction.
  */
 export const tonight: Readable<TonightPlan | null> = derived(
-  [kitchenWeeks, kitchenAnchorDate, currentMember, recipes],
-  ([$weeks, $today, $member, $recipes]) => {
+  [kitchenWeeks, kitchenAnchorDate, currentMember, recipesById],
+  ([$weeks, $today, $member, $recipesById]) => {
     const day = dayForDate($weeks, $today);
     if (!day) return null;
-    const attached = day.recipeIds
-      .map((id) => $recipes.find((r) => r.id === id))
-      .filter((r): r is Recipe => r !== undefined);
+    const attached = resolveRecipeIds(day.recipeIds, $recipesById);
     const note = day.note.trim();
     // An empty night is not a headline. Nothing attached and nothing written down
     // means the plan says nothing about tonight, which the all-caught-up card
