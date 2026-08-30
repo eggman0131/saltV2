@@ -19,6 +19,11 @@ vi.mock('@salt/observability', () => ({
   isObservabilityFeatureEnabled: isEnabled,
   areObservabilityFeatureFlagsSettled: settled,
   onObservabilityFeatureFlags: onFlags,
+  // The flag key itself now comes from the adapter too (issue #1054), so the
+  // whole-module mock has to carry it. Its REAL value, because the assertions
+  // below check which key the adapter was asked about — a stub value here would
+  // make them agree with themselves and prove nothing.
+  BREAD_FLAG_KEY: 'bread',
 }));
 
 // Module state (the memoised store map, the shared revision store) is per-import,

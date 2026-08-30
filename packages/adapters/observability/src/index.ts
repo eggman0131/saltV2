@@ -58,3 +58,6 @@ export type { CanonMatchEventProps, CanonMatchPath } from './shared/matchOutcome
 // Category-gated error reporting predicate — single source of truth, shared with
 // the /server subpath (Phase 3) so the report/suppress gate cannot drift.
 export { isReportableCategory } from './shared/reportableCategory.js';
+// PostHog feature-flag keys — shared with the /server subpath so both halves of
+// a gate cannot spell the same flag differently (issue #1054).
+export { BREAD_FLAG_KEY } from './shared/featureFlagKeys.js';

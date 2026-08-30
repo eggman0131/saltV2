@@ -3,6 +3,7 @@ import {
   areObservabilityFeatureFlagsSettled,
   isObservabilityFeatureEnabled,
   onObservabilityFeatureFlags,
+  BREAD_FLAG_KEY,
 } from '@salt/observability';
 
 // The one place in the app that knows how to ask "is this feature on for me?"
@@ -36,7 +37,11 @@ export type FeatureKey = 'bread';
 // Feature key → PostHog flag key. Separate from the union so the flag can be
 // renamed in PostHog without touching every call site, and so the app's word for
 // a feature never has to match an analytics naming convention.
-const FLAG_KEY: Record<FeatureKey, string> = { bread: 'bread' };
+//
+// The KEYS are this app's words. The VALUES are PostHog's, and come from
+// `@salt/observability` (issue #1054) because the server half of the same gate
+// asks about the same flag from an app this one cannot import.
+const FLAG_KEY: Record<FeatureKey, string> = { bread: BREAD_FLAG_KEY };
 
 export interface FeatureGate {
   /** Whether the feature is on for THIS person right now. */
