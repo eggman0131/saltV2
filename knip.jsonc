@@ -1,5 +1,13 @@
 // Dead-code layer of the weekly duplication sweep (issue #912). Run: `pnpm dead`.
 //
+// That script passes `--no-exit-code`, and it is not cosmetic. knip exits 1 when
+// it FINDS something, which is indistinguishable from knip failing to run — so
+// the sweep would have reported "knip failed, this layer is unknown" on exactly
+// the successful runs that had findings, and handed that sentence to the triage
+// agent as fact. With the flag, findings exit 0 and a genuine fault still exits
+// non-zero (a malformed config exits 2), so the workflow's failure guard means
+// what it says.
+//
 // Tuned so the output is quiet enough to put in front of a human. Bare, knip
 // reports 56 unused files / 129 exports / 165 types here — that is a wall, not a
 // finding list, and a wall gets filtered out mentally, which is the same failure

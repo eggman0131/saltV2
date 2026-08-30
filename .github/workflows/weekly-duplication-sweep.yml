@@ -109,6 +109,11 @@ jobs:
 
           echo "" >> .dupe-sweep/report.txt
           echo "== knip: code nothing calls (pnpm dead) ==" >> .dupe-sweep/report.txt
+          # `pnpm dead` carries --no-exit-code, so a non-zero exit here means knip
+          # BROKE rather than that it found something. Without that flag knip
+          # exits 1 on findings and this guard would fire on every run that had
+          # any — telling the agent a layer was unknown while its findings sat
+          # in the report directly above. See knip.jsonc's header.
           pnpm dead >> .dupe-sweep/report.txt 2>&1 \
             || echo "(knip failed — this layer is UNKNOWN this week, not clean)" >> .dupe-sweep/report.txt
 

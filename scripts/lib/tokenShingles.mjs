@@ -22,10 +22,16 @@
 
 // Keywords are kept verbatim — they carry the shape. Anything not in this set
 // that lexes as a word is a name, and names are what we are deliberately blind
-// to. TS/JS reserved words plus the contextual ones that change what a
-// construct MEANS (`async`, `await`, `type`, `interface`, ...); a contextual
-// word used as a plain variable name is rare and only ever makes two files look
-// slightly more alike, never less.
+// to. TS/JS reserved words plus the contextual ones that change what a construct
+// MEANS (`async`, `await`, `type`, `interface`, ...).
+//
+// The contextual ones cost something, in the direction of MISSING a clone rather
+// than inventing one. A variable actually named `type` lexes as a keyword while
+// its twin's `kind` lexes as a name, so that pair scores lower than it should
+// and a rename touching such a word can drop below threshold. That is the
+// accepted trade: a false negative in a rare case, against losing the ability to
+// tell `type X = ...` from an assignment in every file. Widening this set makes
+// the layer blinder; narrowing it makes it noisier.
 const KEYWORDS = new Set(
   `await break case catch class const continue debugger default delete do else enum export
    extends false finally for function if implements import in instanceof interface let new
