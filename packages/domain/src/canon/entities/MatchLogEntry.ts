@@ -1,3 +1,8 @@
+// HAND-WRITTEN ON PURPOSE (issue #932). These six types are the PostHog match
+// -log wire shape documented in docs/matching-pipeline.md — an analytics event,
+// not a stored document. Nothing parses them back, so there is no schema to
+// derive from and none should be added.
+
 export interface CandidateLog {
   readonly itemId: string;
   readonly itemName?: string;
