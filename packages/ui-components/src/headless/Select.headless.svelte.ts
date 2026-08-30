@@ -1,5 +1,6 @@
 // spec: ui-spec-v03.md §3 v0.3
 import { createContext } from '../lib/context';
+import { nextActiveIndex } from '../lib/nextActiveIndex';
 
 export type SelectRegisteredItem = {
   value: string;
@@ -74,24 +75,19 @@ export function createSelectState(opts: {
   }
 
   function moveActive(direction: 1 | -1 | 'first' | 'last'): void {
+    // Select navigates a registry of values and skips disabled items, so the
+    // index it moves is an index into `enabled`, not into all items. Only the
+    // arithmetic is shared with Combobox (see nextActiveIndex).
     const enabled = getEnabledItems();
     if (!enabled.length) return;
 
     const currentIdx = enabled.findIndex((i) => i.value === opts.getActiveOption());
-    let nextIdx: number;
-
-    if (direction === 'first') {
-      nextIdx = 0;
-    } else if (direction === 'last') {
-      nextIdx = enabled.length - 1;
-    } else {
-      nextIdx =
-        currentIdx === -1
-          ? direction === 1
-            ? 0
-            : enabled.length - 1
-          : Math.max(0, Math.min(enabled.length - 1, currentIdx + direction));
-    }
+    const nextIdx = nextActiveIndex(
+      currentIdx === -1 ? null : currentIdx,
+      enabled.length,
+      direction,
+    );
+    if (nextIdx === null) return;
 
     const next = enabled[nextIdx];
     if (next) {

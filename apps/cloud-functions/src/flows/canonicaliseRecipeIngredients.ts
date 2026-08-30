@@ -20,6 +20,7 @@ import { activeTraceparent, startSpan } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { buildMatchOrCreatePorts } from './matchOrCreateCanon.js';
 import { createFirestoreProductFormStore } from '../adapters/firestoreProductFormStore.js';
+import { reportServerError } from '../observability/reportServerError.js';
 import { arbitrateProductFormFlow } from './arbitrateProductForm.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
@@ -53,6 +54,25 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // failure degrades to plain matching (Rule 10) — forms stays [].
       const productFormStore = createFirestoreProductFormStore(getFirestore());
       const formsResult = await productFormStore.list();
+      // A failed read is ANNOUNCED, an empty table is not (issue #1117). The two
+      // states are indistinguishable downstream — both leave `forms` empty — but
+      // only one is a fault, and this batch loses more to it than the callable
+      // does: with no forms, form binding is off for every ingredient AND the
+      // synonym guard below has nothing to consult, so a derivation can be written
+      // into its parent's synonym list for the whole recipe. The degrade itself is
+      // unchanged (Rule 10): `forms` stays `[]` and the batch proceeds.
+      if (formsResult.kind !== 'ok') {
+        logger.warn(
+          'canonicaliseRecipeIngredients: productForms read failed — form binding and derived-name synonym guard disabled for this batch',
+          { error: formsResult.error },
+        );
+        reportServerError(
+          new Error(
+            'productForms read failed — recipe-batch form binding and synonym guard disabled',
+          ),
+          'StorageError',
+        );
+      }
       // Mutable: AI-seeded proposals written mid-batch (below) are pushed here so a
       // second occurrence of the same derivative in the SAME recipe resolves via
       // the just-written form (and its idempotency check) without a second AI call.

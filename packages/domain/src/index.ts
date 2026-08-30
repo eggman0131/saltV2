@@ -199,6 +199,7 @@ export type {
   Recipe,
   RecipeKind,
   RecipeMetadata,
+  RecipeTimes,
 } from './recipe/index.js';
 export {
   emptyRecipe,
@@ -210,6 +211,9 @@ export {
   // The one tag normalisation (issue #1054) — the recipe editor and the
   // authoring flows are different apps and cannot import each other.
   normaliseTags,
+  // The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
+  // flows and the re-estimate trigger had a copy each, and they disagreed.
+  reconcileRecipeTimes,
   flattenIngredients,
   quantityToNumber,
   ingredientMatchIssue,

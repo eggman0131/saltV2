@@ -2,7 +2,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
-  import { createTextFieldState } from '../../headless/TextField.headless.svelte';
+  import { createFieldState } from '../../headless/Field.headless.svelte';
   import { textFieldFrameVariants } from './TextField.variants';
   import type { TextFieldProps } from './TextField.types';
 
@@ -33,7 +33,8 @@
 
   if (value === undefined) value = untrack(() => defaultValue);
 
-  const state = createTextFieldState({
+  const state = createFieldState({
+    prefix: 'textfield',
     id: () => idProp,
     error: () => error,
     description: () => description,

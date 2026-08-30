@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.17)
+# Salt 2.0 — UI Primitives Specification (v0.2.19)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -138,7 +138,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.17).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.19).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -193,7 +193,16 @@ All interactive primitives must:
 
 ## 2.3 Styling Rules
 
-- Tailwind utilities only — no raw CSS files except the preset.
+- **Tailwind utilities by default; a `.salt-*` component class in `salt.css` when the styling is shared or multi-state.** A primitive earns a component class in [`salt.css`](../../packages/ui-components/src/salt.css) on one of two grounds, and otherwise styles itself with utilities inline:
+  - **A visual identity shared across primitives.** `.salt-control` serves Checkbox, Switch and RadioGroup; `.salt-input` serves TextField, Textarea and Combobox; `.salt-trigger` serves Select. One class, one place a fix lands.
+  - **Multi-state styling that utilities express badly.** `.salt-button`, `.salt-chip`, `.salt-dial`, `.salt-tabs` and `.salt-collapsible` each carry hover / active / pressed / disabled / loading combinations whose utility form would be an unreadable string.
+
+  Surfaces and layout that share their styling with **nothing** — Card, Dialog, Sheet, Popover, Tooltip, Text, Stack, Inline, Grid — stay utility-only. That is the rule, not an oversight, and no conversion is owed: giving each of them a single-use CSS class would deduplicate nothing and risk a pixel change for it.
+
+  **A single element may use both.** `DialogClose.svelte` composes the shared `salt-focus-ring` class with inline utilities; that is the intended shape, not a lapse.
+
+  _(This replaces the pre-v4 line "Tailwind utilities only — no raw CSS files except the preset", false since the Tailwind v4 migration made `salt.css` the design-system entry — see §3.3. It retires finding `B5-016` of the #894 review: what that finding read as an inconsistency is this rule, so writing the rule down is the whole of the fix and **no primitive is converted**.)_
+
 - CVA for multi-axis variants.
 - Dark mode via `.dark` class on `<html>` (see §4.5).
 - `class` prop merged last via `cn()`.
@@ -232,6 +241,7 @@ All interactive primitives must:
 - `portal: HTMLElement | string | false`. String values are treated as CSS selectors.
   - Dialog, Popover, Tooltip and Sheet default to `"body"`.
   - **Select and Combobox default to _unset_, which means "the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise".** A dropdown opened inside a modal must not portal to `<body>`: the modal puts `pointer-events: none` there, so the listbox renders and is inert (#674, #640). The enclosing element is published on the `PortalContainer` context key by `DialogContent`/`SheetContent` and read optionally by the two listboxes — not found by walking the DOM. Passing an explicit target still wins, for a host that knows better.
+  - **The two anchored listboxes share one portal-mount helper and one floating-ui positioning helper**, both in `src/headless/` and both called rather than copied, so the #674/#640 fix and the anchored-position middleware each have exactly one implementation and a correction to either cannot reach one listbox and miss the other. What stays per-primitive is everything the two do differently: outside-click, focus, blur, and the two keyboard handlers (ui-spec-v03 §3.6, ui-spec-v04 §4.2).
 - Controlled/uncontrolled pattern (canonical wiring in §3.6):
   - `value` — bindable, always reflects the current state.
   - `defaultValue` — initial uncontrolled value; read once, never again.
@@ -264,6 +274,7 @@ src/
     useId.ts                     ← see §3.5
     context.ts                   ← see §3.5
     variants.ts                  ← CVA helpers, VariantProps
+    layoutVariants.ts            ← the gap/align/justify maps Stack, Inline and Grid share (§8.13)
   tokens/
     colors.ts
     radius.ts
@@ -272,23 +283,43 @@ src/
     z-index.ts
   headless/
     Button.headless.svelte.ts
-    TextField.headless.svelte.ts
-    Checkbox.headless.svelte.ts
-    Switch.headless.svelte.ts
+    Field.headless.svelte.ts        ← TextField, Textarea, Checkbox, Switch
     Dialog.headless.svelte.ts
     Popover.headless.svelte.ts
     Tooltip.headless.svelte.ts
     Progress.headless.svelte.ts
-    (Textarea reuses TextField.headless)
   primitives/
     <Primitive>/
       <Primitive>.svelte
-      <Primitive><Part>.svelte        ← one per compound part
+      <Primitive><Part>.svelte        ← one per compound part, unless shared (below)
       <Primitive>.variants.ts         ← CVA definitions
       <Primitive>.types.ts            ← exported prop types
 tests/
   <Primitive>.test.ts
 ```
+
+**A headless module may serve several primitives.** The field-state module is one
+file — id generation, `hasError`/`hasDescription` and the `aria-describedby`
+composition are identical for TextField, Textarea, Checkbox and Switch, so they are
+written once and the `useId` prefix is a parameter. (This generalises the older
+"Textarea reuses TextField.headless" note, which recorded the same practice for one
+pair.) A primitive keeps its **own** headless module the moment its state is its own
+— Select, Combobox, Dialog, Popover and the rest.
+
+**A compound part shared by two primitives lives once.** Where two primitives'
+parts are the same component under two names, the file lives in the primitive that
+owns the base behaviour and reaches the second name through `src/index.ts`:
+
+```ts
+export { default as SheetTitle } from './primitives/Dialog/DialogTitle.svelte';
+```
+
+No wrapper component, no neutral third directory, and the second name stays a
+first-class export with its own prop type. The file cites both specs in its
+provenance header (§3.8). Sheet's Close, Title, Description and Header are the
+worked case — a Sheet *is* a bits-ui Dialog with a side, and those four parts never
+differed (ui-spec-v03 §5.2). A part that differs at all, however slightly, stays two
+files: `SheetFooter` and `SheetTrigger` do, and must.
 
 ---
 
@@ -1759,6 +1790,16 @@ Same props as Stack. Renders `<div class="flex flex-row ...">`.
 
 Renders `<div class="grid grid-cols-{cols} gap-{gap}">`.
 
+### One source for the shared maps
+
+`gap` is the same seven-entry map in all three, and `align`/`justify` are the same
+four-entry maps in Stack and Inline. They are declared **once**, in a module the
+three variant files import; each primitive keeps its own `cva` call, its own base
+class (`flex flex-col` / `flex flex-row` / `grid`), its own `defaultVariants`, its
+own exported name and its own exported `VariantProps` type. Only the maps are
+shared — the thing that was three copies of the same table. `Grid`'s `cols` map and
+`Divider` are unaffected.
+
 ### Divider
 
 | Prop          | Type                         | Default        |
@@ -1843,6 +1884,8 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-30 | v0.2.19 | §3.1 Folder Structure: named `lib/layoutVariants.ts` in the tree — the module v0.2.18's §8.13 amendment called for without siting, now that it exists. It holds the gap, align and justify maps `stackVariants`, `inlineVariants` and `gridVariants` read; each primitive keeps its own `cva` call, base class, `defaultVariants` and exported type. Recorded rather than left implicit because §3.1's `lib/` block enumerates the real files, and a tree that omits one is the drift #978 is open against. No primitive contract changed; no provenance header re-stamped. Issue #929 Phase 4. |
+| 2026-08-30 | v0.2.18 | §2.3 Styling Rules, §2.5 Composition Rules, §3.1 Folder Structure, §8.13 Layout Primitives: the spec catches up with four things the package already does or is about to. **§2.3** replaces the pre-v4 line "Tailwind utilities only — no raw CSS files except the preset" with the rule actually followed — a `.salt-*` class when a visual identity is shared across primitives (`.salt-control`, `.salt-input`, `.salt-trigger`) or is multi-state enough that utilities express it badly (`.salt-button`, `.salt-chip`, `.salt-dial`, `.salt-tabs`, `.salt-collapsible`); utilities inline for surfaces and layout that share styling with nothing (Card, Dialog, Sheet, Popover, Tooltip, Text, Stack, Inline, Grid); both on one element is allowed (`salt-focus-ring` + utilities). This **retires finding `B5-016`** of the #894 review as REFUTED — the reported inconsistency is the rule, and **no primitive is converted**. **§3.1** sanctions two things the tree needs: a headless module serving several primitives (one field-state module for TextField, Textarea, Checkbox and Switch, generalising the old "Textarea reuses TextField.headless" note, with the `useId` prefix as a parameter), and a compound part shared by two primitives living once, in the primitive owning the base behaviour, published under both names from `src/index.ts` — no wrapper and no neutral third directory. **§2.5** records that Select and Combobox share one portal-mount helper and one floating-ui positioning helper, so the #674/#640 fix has one implementation; their keyboard handlers stay two. **§8.13** records one source for Stack/Inline/Grid's gap, align and justify maps, base classes and `cva` calls staying per-primitive. No primitive contract changed, so no provenance header is re-stamped by this amendment. Issue #929 Phase 1. |
 | 2026-08-28 | v0.2.17 | §3.8 Provenance Header Convention: the cited **`§` is resolved**, not just the document. Resolving the filename and stopping there left eleven citations naming a section that does not exist in the file they name, all reported green — and four of them (`EmptyState` §8.25, `ErrorState` §8.26, `FormPage` §9.2, `DetailPage` §9.3, none of which exist in this document) were placeholders for a specification nobody had written, under ~34 consuming files. The valid sections are parsed from the cited document's own headings — never a hand-maintained list, which is the v0.2.14 defect — and both numbering styles resolve, the dotted number and, for the unnumbered docs, the heading text. The four missing specs are written as **v0.13** rather than repointed, and those files are re-stamped; `src/index.ts`'s `ui-spec-v03.md §1.3` is corrected to this document's §1.3 Package Surface. Issue #976. |
 | 2026-08-24 | v0.2.16 | §3.3 Tailwind + Token Ownership, plus §1.1 Animations, §1.3 Package Surface, §3.1 Folder Structure, §3.2 Export Rules and §3.4: the spec stops describing a **Tailwind v3 preset that has not existed since #323**. §3.3 named `src/tailwind-preset.ts` as the single source of truth for tokens, printed its shape, and told apps to register it as a `presets: [salt]` entry — but the CSS-first `src/salt.css` replaced all of it, `@salt/ui-components/tailwind-preset` is not in `package.json`'s `exports` map, and the animation utilities come from `tw-animate-css` imported by the stylesheet rather than `tailwindcss-animate` registered by a preset. §3.3 now points at `salt.css` for the parse contract (its header comment carries it, so this file does not repeat it) and at `design.md`'s frontmatter as the palette of record that `check-theme.ts` diffs against. The **#491 dead names go with it, everywhere they are named**: `headless.ts` and `test.ts` were removed as dead surface in #491 and §1.3 already said so in prose, yet the same section still printed a `src/headless.ts` barrel and a `src/test.ts` barrel below the note, §3.1's tree still listed both files and §3.2's side-effect bullet still cited `src/headless.ts` as an example barrel. All four are struck, and §1.3 states outright that neither file exists. §1.3's tokens-barrel line is corrected in the same pass: `src/tokens.ts` has **no default export** and never carried a preset object — it is six `export * as` lines generated from `salt.css`. Documentation only — no primitive contract changed, so nothing to re-stamp. Issue #921. |
 | 2026-08-24 | v0.2.15 | §3.1 Folder Structure, §3.2 Export Rules, §3.6 Canonical Patterns: the **per-component `index.ts` local barrel is struck**. §3.1 put one in every `primitives/<Primitive>/` directory and §3.6 made Button's the last step of the worked example — but the same document ends §1.3 with **"No deep imports."**, and `package.json`'s `exports` map publishes only `.`, `./tokens` and `./styles.css`, so nothing outside the package could reach a local barrel even if it wanted to. The spec was prescribing a surface its own rules made unreachable. Re-measured on this branch over all 1,565 first-party `.ts` / `.js` / `.svelte` files: **0 import sites anywhere resolve to one**, and all **155** `from` specifiers on `src/index.ts` name a leaf file directly — not one of the 209 public names routed through a barrel. So the 40 files re-exported 223 names by a path no code took. 31 of those names (30 `*Variants` CVA factories, plus `Textarea`, which the package barrel republishes as `TextArea`) are not on the public surface at all; each is still exported by its own `.variants.ts` / `.svelte` file, which is where its siblings already import it from. **#491 is the precedent, and §1.3 records it**: the aggregating `headless` barrel and the `test` placeholder were removed as dead surface because nothing consumed either subpath. §3.2's local-barrel bullet is replaced by the positive rule it leaves behind — a component becomes public by being named on `src/index.ts`, leaf file by leaf file, so the package surface is exactly what that one file says it is — and §3.6's `src/primitives/Button/index.ts` block becomes the two lines Button actually occupies there. The public surface does not move by a single name: `src/index.ts` is byte-identical and all 209 exports remain. No primitive contract changed; nothing is re-stamped. Issue #923. |
