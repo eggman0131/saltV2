@@ -163,7 +163,7 @@ can be in progress *and* blocked, and the old board could not say so.
 | --- | --- | --- |
 | Triage | GitHub's built-in "item added to project" project workflow | |
 | Todo | a person, or `/triage` | the one real decision; no event can observe it |
-| In progress | `/run`, when the branch is cut | a branch push is too noisy to key on |
+| In progress | `/run`, when the branch is cut — `board.mjs` directly where `gh` is, or a `board-dispatch.yml` dispatch from a cloud session | a branch push is too noisy to key on |
 | In review | `board-status.yml` | `pull_request` opened / ready_for_review |
 | Merged | `board-status.yml` | `pull_request` closed && merged |
 | Released | `board-status.yml` | production deploy succeeded **and** the merge commit is an ancestor of the deployed sha |
