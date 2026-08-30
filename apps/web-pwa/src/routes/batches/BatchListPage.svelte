@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon, ListPage } from '@salt/ui-components';
+  import { EmptyState, Icon, ListPage } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import FeatureGuard from '../../components/FeatureGuard.svelte';
   import { batches, initBatchesSync } from '../../lib/batchService.js';
@@ -54,16 +54,11 @@
     data-testid="batch-list-page"
   >
     {#snippet empty()}
-      <div
-        class="flex flex-col items-center gap-2 py-12 text-center"
+      <EmptyState
+        title="Nothing on the go."
+        description={'Open a recipe you\'ve written a formula for and tap "Bake a batch" — the run turns up here with its next step and the time it lands.'}
         data-testid="batch-list-empty"
-      >
-        <p class="text-sm text-muted-foreground">Nothing on the go.</p>
-        <p class="max-w-sm text-sm text-muted-foreground">
-          Open a recipe you've written a formula for and tap "Bake a batch" — the run turns up here
-          with its next step and the time it lands.
-        </p>
-      </div>
+      />
     {/snippet}
 
     {#snippet children()}

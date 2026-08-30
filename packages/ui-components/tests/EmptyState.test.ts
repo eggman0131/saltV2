@@ -64,6 +64,33 @@ describe('EmptyState (ui-spec-v13 §8.31)', () => {
     });
   });
 
+  // §8.31.4, added in v0.13.1 by #930 Phase 9. Four hand-rolled empty states
+  // being migrated onto this component were selected by `data-testid` in their
+  // pages' tests; without a passthrough the migration meant deleting the
+  // attribute or leaving the site hand-rolled.
+  describe('attribute passthrough', () => {
+    it('passes data-* through to the panel', () => {
+      const { container } = render(EmptyState, {
+        props: { title: 'Nothing here yet', 'data-testid': 'batch-list-empty' },
+      });
+      const panel = container.querySelector('[role="status"]')!;
+      expect(panel.getAttribute('data-testid')).toBe('batch-list-empty');
+    });
+
+    it('keeps role="status" even when a caller passes one', () => {
+      // §8.31.2 — the status/alert split is the whole reason EmptyState and
+      // ErrorState are two components. `role` is Omit'ted from the passthrough
+      // type AND applied after the spread, so this cannot happen by accident
+      // through an `as` cast either.
+      const { container } = render(EmptyState, {
+        props: { title: 'Nothing here yet', role: 'alert' } as never,
+      });
+      const panel = container.querySelector('[role]')!;
+      expect(panel.getAttribute('role')).toBe('status');
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+    });
+  });
+
   describe('accessibility', () => {
     it('has no axe violations with only a title', async () => {
       const { container } = render(EmptyState, { props: { title: 'Nothing here yet' } });

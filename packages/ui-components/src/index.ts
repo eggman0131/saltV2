@@ -54,6 +54,9 @@ export { default as PictogramPill } from './primitives/PictogramPill/PictogramPi
 export { default as Popover } from './primitives/Popover/Popover.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
+// One row of the menu a PopoverContent holds (ui-spec-v14 §8.33). The string it
+// replaces was hand-written 28 times across four pages and still growing (#930).
+export { default as PopoverMenuItem } from './primitives/Popover/PopoverMenuItem.svelte';
 export { default as Progress } from './primitives/Progress/Progress.svelte';
 export { default as RadioGroup } from './primitives/RadioGroup/RadioGroup.svelte';
 export { default as RadioGroupItem } from './primitives/RadioGroup/RadioGroupItem.svelte';
@@ -103,6 +106,7 @@ export { default as TooltipTrigger } from './primitives/Tooltip/TooltipTrigger.s
 // a component: it is worn BY a SelectTrigger / ComboboxInput / TextField frame,
 // each of which already owns the interaction it needs.
 export { valueChipVariants } from './primitives/Chip/Chip.variants';
+export { popoverMenuItemVariants } from './primitives/Popover/PopoverMenuItem.variants';
 
 // Helpers (re-exported from ./lib)
 export { cn } from './lib/cn';
@@ -169,6 +173,7 @@ export type {
   PopoverContentProps,
   PopoverPartProps,
 } from './primitives/Popover/Popover.types';
+export type { PopoverMenuItemProps } from './primitives/Popover/PopoverMenuItem.types';
 export type { ProgressProps } from './primitives/Progress/Progress.types';
 export type {
   RadioGroupProps,

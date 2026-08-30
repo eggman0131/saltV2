@@ -1,14 +1,15 @@
 <script lang="ts">
   import {
     Button,
-    Icon,
-    ListPage,
     Dialog,
     DialogContent,
-    DialogHeader,
-    DialogTitle,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    EmptyState,
+    Icon,
+    ListPage,
   } from '@salt/ui-components';
   import { push, router } from 'svelte-spa-router';
   import { formatChatTimestamp } from '../../lib/dateFormat.js';
@@ -94,12 +95,13 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="flex flex-col items-center gap-3 py-12 text-center">
-      <p class="text-sm text-muted-foreground">No chats yet.</p>
-      <Button size="sm" onclick={handleNew} loading={creating} disabled={creating}>
-        Start your first chat
-      </Button>
-    </div>
+    <EmptyState title="No chats yet.">
+      {#snippet actions()}
+        <Button size="sm" onclick={handleNew} loading={creating} disabled={creating}>
+          Start your first chat
+        </Button>
+      {/snippet}
+    </EmptyState>
   {/snippet}
 
   {#snippet children()}

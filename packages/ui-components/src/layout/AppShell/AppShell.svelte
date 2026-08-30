@@ -40,15 +40,18 @@
     {/if}
 
     <!--
-      On mobile, reserve the BottomNav height (h-14 = 3.5rem) plus the device
-      safe-area inset so content is never hidden under the fixed BottomNav.
+      On mobile, reserve the BottomNav height plus the device safe-area inset so
+      content is never hidden under the fixed BottomNav. The height is
+      `--salt-layout-bottom-nav-height` (design.md `layout`) — the same token the
+      nav itself reads, so the reservation cannot drift from what it reserves.
       lg:pb-0: removed on desktop where BottomNav is not rendered — as is the
       reservation itself when there is no chrome to clear.
     -->
     <main
       class={cn(
         'flex-1 overflow-y-auto',
-        chrome && 'pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0',
+        chrome &&
+          'pb-[calc(var(--salt-layout-bottom-nav-height)_+_env(safe-area-inset-bottom))] lg:pb-0',
       )}
     >
       {@render children?.()}

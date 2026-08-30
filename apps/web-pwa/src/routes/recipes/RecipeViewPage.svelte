@@ -22,6 +22,7 @@
     PictogramPill,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
     Spinner,
     Tabs,
@@ -1649,9 +1650,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
         </PopoverTrigger>
         <PopoverContent align="end" class="min-w-44 p-1">
           {#if showCooking}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            <PopoverMenuItem
+              icon="ChefHat"
               onclick={() => {
                 overflowMenuOpen = false;
                 void handleAskAmend();
@@ -1659,14 +1659,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
               disabled={amendBusy}
               data-testid="recipe-ask-amend-menu-item"
             >
-              <Icon name="ChefHat" size={14} />
               Chat
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showCooking && hasEquipment}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            <PopoverMenuItem
+              icon="Blender"
               onclick={() => {
                 overflowMenuOpen = false;
                 void handleOptimiseForKitchen();
@@ -1674,9 +1672,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
               disabled={optimiseBusy || chat.isSending}
               data-testid="recipe-optimise-kitchen-menu-item"
             >
-              <Icon name="Blender" size={14} />
               Optimise
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if canAuthor}
             <!-- Refresh (issue #890). Beside Optimise because both put a canned
@@ -1687,9 +1684,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  whether the librarian can write this kind, which is why an outing
                  and a placeholder never offer it. No equipment gate, unlike
                  Optimise: the repairs this makes do not depend on owning any. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            <PopoverMenuItem
+              icon="RefreshCw"
               onclick={() => {
                 overflowMenuOpen = false;
                 void handleRefresh();
@@ -1697,9 +1693,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
               disabled={refreshBusy || chat.isSending}
               data-testid="recipe-refresh-menu-item"
             >
-              <Icon name="RefreshCw" size={14} />
               Refresh
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showCooking}
             <!-- "Redo kit" (issue #882). In group one with Optimise and Refresh
@@ -1713,9 +1708,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  controls on it at all: the chips are read, and a recipe whose kit
                  came back empty shows no card, so an action attached to the card
                  would be unreachable in exactly the case you most want it. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            <PopoverMenuItem
+              icon="CookingPot"
               onclick={() => {
                 overflowMenuOpen = false;
                 void handleRedoKit();
@@ -1723,9 +1717,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
               disabled={kitBusy}
               data-testid="recipe-redo-kit-menu-item"
             >
-              <Icon name="CookingPot" size={14} />
               Redo kit
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showCooking}
             <!-- The plan EDITOR (issue #751). In the overflow, not inline: writing
@@ -1736,18 +1729,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  plan, so it cannot depend on one existing. Gated on the same
                  predicate as Cook: a plan explains a method, so an entry with no
                  method has nothing to explain. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="ListChecks"
               onclick={() => {
                 overflowMenuOpen = false;
                 push(`/recipes/${recipe.id}/guided`);
               }}
               data-testid="recipe-guided-plan-menu-item"
             >
-              <Icon name="ListChecks" size={14} />
               Guided plan
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showComponents}
             <!-- The cook plan (issue #752, phase 4). Beside "Guided plan" and for
@@ -1756,18 +1747,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  verbs. Gated on the DOCUMENT having components, like the "Made
                  from" card below: a dish with nothing hanging off it has no
                  running order to schedule, and there is no meal `kind` to ask. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="Clock"
               onclick={() => {
                 overflowMenuOpen = false;
                 push(`/recipes/${recipe.id}/cook-plan`);
               }}
               data-testid="recipe-cook-plan-menu-item"
             >
-              <Icon name="Clock" size={14} />
               Cook plan
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if hasFormula}
             <!-- Bread scaling (issue #812, phase 1 of epic #778). BOTH entries sit
@@ -1800,30 +1789,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  unconditionally. The typed URL stays as the escape hatch for a loaf
                  the guess misses — it stopped being the ONLY way in, not a way
                  in. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="Hourglass"
               onclick={() => {
                 overflowMenuOpen = false;
                 bakeBatchOpen = true;
               }}
               data-testid="recipe-bake-batch-menu-item"
             >
-              <Icon name="Hourglass" size={14} />
               Bake a batch
-            </button>
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            </PopoverMenuItem>
+            <PopoverMenuItem
+              icon="Percent"
               onclick={() => {
                 overflowMenuOpen = false;
                 push(`/recipes/${recipe.id}/formula`);
               }}
               data-testid="recipe-formula-menu-item"
             >
-              <Icon name="Percent" size={14} />
               Formula
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showMakeScalable}
             <!-- The FIRST formula (issue #823). The mutually-exclusive twin of the
@@ -1840,18 +1825,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  than one of the hands-full verbs the inline row is for. "Guided
                  plan" is again the precedent, and this is the once-in-a-recipe's-
                  life version of it. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="Percent"
               onclick={() => {
                 overflowMenuOpen = false;
                 push(`/recipes/${recipe.id}/formula`);
               }}
               data-testid="recipe-make-scalable-menu-item"
             >
-              <Icon name="Percent" size={14} />
               Make it scalable
-            </button>
+            </PopoverMenuItem>
           {/if}
           {#if showCooking || canAuthor || hasFormula || showMakeScalable || showComponents}
             <Divider class="my-1" />
@@ -1862,9 +1845,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  copy you hand-edit, or a conversation that works the changes out with
                  you. Above it, because talking it through is the one you reach for
                  more often now it exists. -->
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            <PopoverMenuItem
+              icon="Sparkles"
               onclick={() => {
                 overflowMenuOpen = false;
                 void handleMakeVariation();
@@ -1872,47 +1854,41 @@ Finish with a short note on what you changed and why, so I can read the gist her
               disabled={variationBusy}
               data-testid="recipe-make-variation-menu-item"
             >
-              <Icon name="Sparkles" size={14} />
               Make a variation
-            </button>
+            </PopoverMenuItem>
           {/if}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="Copy"
             onclick={() => {
               overflowMenuOpen = false;
               handleDuplicate();
             }}
             data-testid="recipe-duplicate-menu-item"
           >
-            <Icon name="Copy" size={14} />
             Duplicate
-          </button>
+          </PopoverMenuItem>
           <Divider class="my-1" />
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="Pencil"
             onclick={() => {
               overflowMenuOpen = false;
               push(`/recipes/${recipe.id}/edit`);
             }}
             data-testid="recipe-edit-menu-item"
           >
-            <Icon name="Pencil" size={14} />
             Edit
-          </button>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+          </PopoverMenuItem>
+          <PopoverMenuItem
+            variant="destructive"
+            icon="Trash2"
             onclick={() => {
               overflowMenuOpen = false;
               deleteOpen = true;
             }}
             data-testid="recipe-delete-menu-item"
           >
-            <Icon name="Trash2" size={14} />
             Delete
-          </button>
+          </PopoverMenuItem>
         </PopoverContent>
       </Popover>
     {/snippet}
@@ -2182,48 +2158,40 @@ Finish with a short note on what you changed and why, so I can read the gist her
                     {/snippet}
                   </PopoverTrigger>
                   <PopoverContent align="end" class="min-w-48 p-1">
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    <PopoverMenuItem
+                      icon="Link"
                       onclick={() => {
                         componentMenuOpen = false;
                         showComponentUrlImport = true;
                       }}
                       data-testid="meal-component-new-import"
                     >
-                      <Icon name="Link" size={14} />
                       Import URL
-                    </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    </PopoverMenuItem>
+                    <PopoverMenuItem
+                      icon="Camera"
                       onclick={() => {
                         componentMenuOpen = false;
                         showComponentPhotoImport = true;
                       }}
                       data-testid="meal-component-new-import-photo"
                     >
-                      <Icon name="Camera" size={14} />
                       Import from photo
-                    </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    </PopoverMenuItem>
+                    <PopoverMenuItem
+                      icon="Sparkles"
                       onclick={() => startComponent('/chat')}
                       data-testid="meal-component-new-chat"
                     >
-                      <Icon name="Sparkles" size={14} />
                       Chat with AI
-                    </button>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                    </PopoverMenuItem>
+                    <PopoverMenuItem
+                      icon="Pencil"
                       onclick={() => startComponent('/recipes/new')}
                       data-testid="meal-component-new-manual"
                     >
-                      <Icon name="Pencil" size={14} />
                       Manual
-                    </button>
+                    </PopoverMenuItem>
                   </PopoverContent>
                 </Popover>
               </div>
@@ -2455,7 +2423,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                               {#if marker === 'unmatched'}
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[11px] leading-none text-destructive-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs leading-none text-destructive-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                   title="Not matched — tap to match"
                                   aria-label="Not matched — tap to match"
                                   onclick={() => handleRematch(group, ingredient)}
@@ -2472,7 +2440,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                  #949). Nothing to explain first, so nothing opens. -->
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-xs leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                                   title="No amount — tap to read the line again"
                                   aria-label="No amount — tap to read the line again"
                                   onclick={() => handleRematch(group, ingredient)}
@@ -2488,7 +2456,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                  causes and offers the re-match — no new copy. -->
                                 <button
                                   type="button"
-                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-xs leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   title="Matched, but buys the wrong thing — tap to see why"
                                   aria-label="Matched, but buys the wrong thing — tap to see why"
                                   onclick={() => inspectMatch(ingredient)}

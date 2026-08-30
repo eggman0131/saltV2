@@ -156,13 +156,14 @@
 </script>
 
 <!-- `side="bottom"` explicitly: the primitive defaults to 'right', and this is a
-     phone-first sheet. The height cap and the internal scroll are this component's
-     own job — `SheetContent` carries no max-height or overflow of its own, so
-     without them a fortnight of dinners would run off the bottom of the screen
-     taking the confirm button with it. Same shape as RecipeAddToListSheet, which
-     is the sheet this one hands over to. -->
+     phone-first sheet. The height cap that stops a fortnight of dinners running
+     off the bottom of the screen, taking the confirm button with it, now comes
+     from that variant (#930) — but the internal scroll is still this component's
+     own job, on the list below, because `SheetContent` carries no overflow.
+     Same shape as RecipeAddToListSheet, which is the sheet this one hands over
+     to. -->
 <Sheet bind:open side="bottom">
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <SheetTitle>Shop the week</SheetTitle>
     </SheetHeader>
@@ -172,6 +173,12 @@
         <!-- A week with nothing left is not a failure and not an error: it is
              Sunday night, or a week you have scrolled back to. Say so plainly
              rather than showing an empty list under a dead confirm button. -->
+        <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
+           dashed-border PANEL with an `<h3>` title — a page saying "this place
+           holds nothing". This is one sentence inside a bottom sheet, with no
+           title to head it, nothing to explain and nothing to do next; a
+           bordered box around it would read as a second surface inside the
+           sheet's own. -->
         <p
           class="px-1 py-6 text-center text-sm text-muted-foreground"
           data-testid="shop-week-empty"

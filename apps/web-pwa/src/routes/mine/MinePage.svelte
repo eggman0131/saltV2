@@ -421,7 +421,7 @@
   </p>
   <p class="mt-0.5 truncate text-xs text-muted-foreground">
     <span
-      class="font-mono text-[10px] font-semibold uppercase tracking-wider {HEAT_TEXT[heat]}"
+      class="font-mono text-xs font-semibold uppercase tracking-wider {HEAT_TEXT[heat]}"
       data-testid="mine-timer-state"
     >
       {HEAT_WORD[heat]}
@@ -747,7 +747,7 @@
           data-testid="mine-tonight"
         >
           <p
-            class="text-[11px] font-semibold uppercase tracking-widest {tonightHero
+            class="text-xs font-semibold uppercase tracking-widest {tonightHero
               ? 'text-white/85'
               : 'text-primary'}"
             data-testid="mine-tonight-kicker"
@@ -859,7 +859,7 @@
 />
 
 <Sheet bind:open={customizeOpen} side="bottom">
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4 overflow-y-auto">
     <SheetHeader>
       <SheetTitle>Customize your kitchen</SheetTitle>
     </SheetHeader>

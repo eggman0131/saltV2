@@ -363,7 +363,7 @@
 {/snippet}
 
 <Sheet bind:open side="bottom">
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <SheetTitle>Review changes</SheetTitle>
       <SheetDescription>
@@ -377,6 +377,12 @@
 
     <div class="flex flex-col gap-4 overflow-y-auto text-sm" data-testid="recipe-change-summary">
       {#if !diff || !diff.hasChanges}
+        <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
+           dashed-border PANEL with an `<h3>` title — a page saying "this place
+           holds nothing". This is one sentence inside a bottom sheet, with no
+           title to head it, nothing to explain and nothing to do next; a
+           bordered box around it would read as a second surface inside the
+           sheet's own. -->
         <p class="py-6 text-center text-muted-foreground" data-testid="recipe-change-summary-none">
           No changes.
         </p>

@@ -436,7 +436,7 @@
     if (!v) busy = false;
   }}
 >
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <SheetTitle>Bake a batch</SheetTitle>
     </SheetHeader>

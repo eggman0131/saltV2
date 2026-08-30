@@ -329,7 +329,7 @@
          bare weekday word — "Wednesday" wraps at w-14, hence the wider track. -->
     <div class="flex {sublabel ? 'w-14' : 'w-20'} shrink-0 flex-col items-center gap-1">
       <span
-        class="text-center text-[11px] font-semibold uppercase leading-tight tracking-wider text-muted-foreground"
+        class="text-center text-xs font-semibold uppercase leading-tight tracking-wider text-muted-foreground"
       >
         {label}
       </span>
@@ -349,7 +349,7 @@
             <WeatherIcon {icon} class="h-8 w-8" />
           {/if}
           <span
-            class="text-[10px] leading-none tabular-nums {band ? BAND_CLASS[band] : ''}"
+            class="text-xs leading-none tabular-nums {band ? BAND_CLASS[band] : ''}"
             data-testid={`${testid}-header-temp`}
           >
             <span class="font-semibold">{weather.tempHigh}°</span><span
@@ -429,7 +429,11 @@
        scroll lock, Escape and outside-click dismissal all come from the Dialog
        underneath; there is no drag-to-dismiss. -->
   <Sheet bind:open side="bottom">
-    <SheetContent class="max-h-[85dvh] gap-3 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <!-- Two documented overrides of the bottom variant (#930): `dvh` rather than
+         the primitive's `vh`, because this sheet is tall enough for a mobile URL
+         bar to matter; and a tighter `gap-3`. The home-bar padding this file
+         used to write by hand is now the variant's, and is gone from here. -->
+    <SheetContent class="max-h-[85dvh] gap-3">
       <SheetHeader>
         <SheetTitle>{heading}</SheetTitle>
       </SheetHeader>

@@ -114,7 +114,7 @@
 </script>
 
 <Sheet bind:open side="bottom">
-  <SheetContent class="max-h-[85vh] overflow-y-auto p-4 pb-8">
+  <SheetContent class="overflow-y-auto">
     <SheetHeader>
       <SheetTitle>Ingredient match</SheetTitle>
       <SheetDescription>{ingredient?.rawText ?? ''}</SheetDescription>

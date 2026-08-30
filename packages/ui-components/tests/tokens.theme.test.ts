@@ -202,6 +202,22 @@ describe('salt.css design-system entry', () => {
       // Guard the collision that Phase 3 fixed: no @theme --spacing-* key may exist.
       expect(css).not.toMatch(/^\s*--spacing-(?:xs|sm|md|lg|xl):/m);
     });
+
+    it('pins the bottom-nav height at 3.5rem, in rem', () => {
+      // Issue #930. Unlike the spacing scale above, this one is READ — by the
+      // nav's own row and by the three things that reserve space for it.
+      expect(css).toMatch(/--salt-layout-bottom-nav-height:\s*3\.5rem/);
+    });
+
+    it('states the nav height in rem, so it still tracks the browser font size', () => {
+      // The nav was `h-14` — 3.5rem — before it was a token, so it has always
+      // grown with the reader's browser font setting. `56px` would be the same
+      // number and a different behaviour, which is a sizing change wearing a
+      // naming change's clothes. This is the assertion that says so.
+      const declared = css.match(/--salt-layout-bottom-nav-height:\s*([^;]+);/)?.[1]?.trim();
+      expect(declared).toMatch(/rem$/);
+      expect(declared).not.toMatch(/px$/);
+    });
   });
 
   describe('component classes & custom utilities', () => {

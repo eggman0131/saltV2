@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Icon, ListPage, TextField } from '@salt/ui-components';
+  import { Button, EmptyState, Icon, ListPage, TextField } from '@salt/ui-components';
   import type { KitchenMemoryDoc } from '@salt/domain/schemas';
 
   import {
@@ -111,13 +111,16 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="flex flex-col items-center gap-2 py-12 text-center" data-testid="memory-empty">
-      <p class="text-sm text-muted-foreground">Nothing remembered yet.</p>
-      <p class="max-w-sm text-sm text-muted-foreground">
-        Add one above, or type <span class="font-mono">/remember something</span> in any chat with the
-        chef.
-      </p>
-    </div>
+    <EmptyState title="Nothing remembered yet." data-testid="memory-empty">
+      {#snippet actions()}
+        <!-- The second line carries inline markup (`/remember something` is set
+             in mono), so it cannot be the plain-string `description` prop. -->
+        <p class="max-w-sm text-sm text-muted-foreground">
+          Add one above, or type <span class="font-mono">/remember something</span> in any chat with the
+          chef.
+        </p>
+      {/snippet}
+    </EmptyState>
   {/snippet}
 
   {#snippet children()}

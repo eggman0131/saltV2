@@ -17,6 +17,7 @@
     SelectAllCheckbox,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
     Select,
     SelectContent,
@@ -76,6 +77,11 @@
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
+  import {
+    shoppingRowClass,
+    shoppingRowCollapseClass,
+    SHOPPING_ROW_INNER_CLASS,
+  } from './shoppingRowShell.js';
   import { createMatchReveal } from '../../lib/matchReveal.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
   import ShoppingItemRow from './ShoppingItemRow.svelte';
@@ -870,37 +876,33 @@
           <p class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Sort by
           </p>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="Check"
+            iconVisible={sortMode === 'aisle'}
             onclick={() => selectSortMode('aisle')}
             data-testid="shopping-sort-aisle"
           >
-            <Icon name="Check" size={14} class={sortMode === 'aisle' ? '' : 'invisible'} />
             Aisle
-          </button>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          </PopoverMenuItem>
+          <PopoverMenuItem
+            icon="Check"
+            iconVisible={sortMode === 'recipe'}
             onclick={() => selectSortMode('recipe')}
             data-testid="shopping-sort-recipe"
           >
-            <Icon name="Check" size={14} class={sortMode === 'recipe' ? '' : 'invisible'} />
             Recipe
-          </button>
+          </PopoverMenuItem>
           <div class="my-1 h-px bg-border"></div>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="LayoutList"
             onclick={() => {
               overflowMenuOpen = false;
               push('/shopping/lists');
             }}
             data-testid="shopping-lists-btn"
           >
-            <Icon name="LayoutList" size={14} />
             Manage lists
-          </button>
+          </PopoverMenuItem>
         </PopoverContent>
       </Popover>
     {/snippet}
@@ -923,12 +925,8 @@
           </PopoverTrigger>
           <PopoverContent align="start" class="p-1 min-w-40">
             {#each $lists as list (list.id)}
-              <button
-                type="button"
-                class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent {list.id ===
-                params.listId
-                  ? 'font-medium'
-                  : ''}"
+              <PopoverMenuItem
+                selected={list.id === params.listId}
                 onclick={() => {
                   listSwitcherOpen = false;
                   push(`/shopping/${list.id}`);
@@ -936,7 +934,7 @@
                 data-testid="shopping-list-picker-option"
               >
                 {list.name}
-              </button>
+              </PopoverMenuItem>
             {/each}
           </PopoverContent>
         </Popover>
@@ -1050,18 +1048,18 @@
                          any contributor is held. Same shell and same button as
                          ShoppingItemRow; only the row's own content differs. -->
                   {@const rowExiting = row.contributors.some((c) => checkOffHold.isExiting(c.id))}
-                  <div
-                    class="salt-row-collapse motion-reduce:transition-none {rowExiting
-                      ? 'salt-row-collapse-out'
-                      : ''}"
-                  >
-                    <div class="min-h-0 overflow-hidden">
+                  <!-- No `out:collapseOut` / `in:riseIn` here, unlike
+                       ShoppingItemRow's own root: the combined row collapses by
+                       CSS class alone. #930 rules that asymmetry deliberate and
+                       out of its scope; it is why the shell is shared as class
+                       strings and not as a component (see shoppingRowShell.ts). -->
+                  <div class={shoppingRowCollapseClass(rowExiting)}>
+                    <div class={SHOPPING_ROW_INNER_CLASS}>
                       <div
-                        class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {rowExiting
-                          ? 'border-secondary/40 bg-secondary-container/50'
-                          : row.needsCheck
-                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                            : 'border-border bg-card'}"
+                        class={shoppingRowClass({
+                          exiting: rowExiting,
+                          needsVerify: row.needsCheck,
+                        })}
                         data-testid="shopping-item-row"
                         data-combined="true"
                         data-canon-id={row.canonId}
@@ -1254,7 +1252,18 @@
     }
   }}
 >
-  <SheetContent class="flex flex-col gap-4 p-4 pb-8">
+  <!-- Opts OUT of the bottom variant's 85vh ceiling, deliberately: this sheet
+       has never had one, and the combobox listbox that portals into it (below)
+       needs the room. Explicit rather than silent — #930 moved the ceiling into
+       the primitive, and this is the one site it must not reach.
+
+       `max-h-[none]`, not `max-h-none`: tailwind-merge v3 does not list `none`
+       in the max-height group (it does for max-width), so the plain utility
+       arrives ALONGSIDE the variant's `max-h-[85vh]` rather than replacing it,
+       and which one wins is then down to stylesheet order. The arbitrary form
+       merges correctly. Pinned by `Sheet.test.ts` → "a caller can still opt out
+       of the ceiling". -->
+  <SheetContent class="flex max-h-[none] flex-col gap-4">
     <SheetHeader>
       <div class="flex items-center gap-3">
         {#if editingItem}

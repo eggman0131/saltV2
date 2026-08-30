@@ -132,7 +132,7 @@
                   <span class="truncate text-sm font-medium">{member.name}</span>
                   {#if member.admin}
                     <span
-                      class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+                      class="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-primary"
                       data-testid="member-admin-badge"
                     >
                       Admin

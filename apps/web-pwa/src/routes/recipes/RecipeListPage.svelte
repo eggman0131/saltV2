@@ -3,10 +3,12 @@
     Button,
     Chip,
     ChipGroup,
-    ListPage,
+    EmptyState,
     Icon,
+    ListPage,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -349,54 +351,46 @@
         {/snippet}
       </PopoverTrigger>
       <PopoverContent align="end" class="min-w-48 p-1">
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        <PopoverMenuItem
+          icon="Link"
           onclick={() => {
             newMenuOpen = false;
             showImport = true;
           }}
           data-testid="recipe-new-import"
         >
-          <Icon name="Link" size={14} />
           Import URL
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Camera"
           onclick={() => {
             newMenuOpen = false;
             showPhotoImport = true;
           }}
           data-testid="recipe-new-import-photo"
         >
-          <Icon name="Camera" size={14} />
           Import from photo
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Sparkles"
           onclick={() => {
             newMenuOpen = false;
             push('/chat');
           }}
           data-testid="recipe-new-chat"
         >
-          <Icon name="Sparkles" size={14} />
           Chat with AI
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Pencil"
           onclick={() => {
             newMenuOpen = false;
             push('/recipes/new');
           }}
           data-testid="recipe-new-manual"
         >
-          <Icon name="Pencil" size={14} />
           Manual
-        </button>
+        </PopoverMenuItem>
         <!-- One entry per non-recipe section (issue #637) — "When you CBA", then
              Cocktails. Derived from KIND_SECTIONS rather than written out per kind
              so a section and its way in can never disagree about which kinds
@@ -405,51 +399,53 @@
              The kind is set by the route and never again — there is no selector in
              the editor, because an outing does not become a recipe. -->
         {#each KIND_SECTIONS.slice(1) as kind (kind)}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon={KIND_COPY[kind].menuIcon}
             onclick={() => {
               newMenuOpen = false;
               push(`/recipes/new/${kind}`);
             }}
             data-testid="recipe-new-{kind}"
           >
-            <Icon name={KIND_COPY[kind].menuIcon} size={14} />
             {KIND_COPY[kind].label}
-          </button>
+          </PopoverMenuItem>
         {/each}
       </PopoverContent>
     </Popover>
   {/snippet}
 
   {#snippet empty()}
-    <div class="flex flex-col items-center gap-3 py-12 text-center">
-      <p class="text-sm text-muted-foreground">No recipes yet.</p>
-      <div class="flex flex-wrap justify-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (showImport = true)}
-          data-testid="recipe-import-url-toggle-empty"
-        >
-          {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
-          Import from URL
-        </Button>
-        <!-- A peer of the URL button, deliberately: an empty library is exactly
+    <EmptyState title="No recipes yet.">
+      {#snippet actions()}
+        <!-- The inner wrapper stays: EmptyState's own actions row is
+             `flex items-center gap-2` and does not wrap, and three buttons do
+             not fit a phone on one line. -->
+        <div class="flex flex-wrap justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (showImport = true)}
+            data-testid="recipe-import-url-toggle-empty"
+          >
+            {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
+            Import from URL
+          </Button>
+          <!-- A peer of the URL button, deliberately: an empty library is exactly
              where someone stands holding a cookbook, and offering only a URL box
              there says photo import does not exist. -->
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (showPhotoImport = true)}
-          data-testid="recipe-import-photo-toggle-empty"
-        >
-          {#snippet leading()}<Icon name="Camera" size={16} />{/snippet}
-          Import from photo
-        </Button>
-        <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
-      </div>
-    </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (showPhotoImport = true)}
+            data-testid="recipe-import-photo-toggle-empty"
+          >
+            {#snippet leading()}<Icon name="Camera" size={16} />{/snippet}
+            Import from photo
+          </Button>
+          <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
+        </div>
+      {/snippet}
+    </EmptyState>
   {/snippet}
 
   {#snippet children()}
@@ -528,9 +524,9 @@
             Sort by
           </p>
           {#each Object.entries(SORT_LABELS) as [value, label] (value)}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="Check"
+              iconVisible={sortBy === value}
               onclick={() => {
                 sortBy = value as SortBy;
                 sortMenuOpen = false;
@@ -538,9 +534,8 @@
               data-testid="recipe-sort-option"
               data-sort={value}
             >
-              <Icon name="Check" size={14} class={sortBy === value ? '' : 'invisible'} />
               {label}
-            </button>
+            </PopoverMenuItem>
           {/each}
         </PopoverContent>
       </Popover>
@@ -631,24 +626,18 @@
     </div>
 
     {#if visible.length === 0 && hasFilters}
-      <div
-        class="flex flex-col items-center gap-2 py-12 text-center"
-        data-testid="recipe-no-matches"
-      >
-        <Icon name="Search" size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{sectionCopy.noMatchText}</p>
-        <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
-      </div>
+      <EmptyState title={sectionCopy.noMatchText} data-testid="recipe-no-matches">
+        {#snippet icon()}<Icon name="Search" size={24} />{/snippet}
+        {#snippet actions()}
+          <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
+        {/snippet}
+      </EmptyState>
     {:else if visible.length === 0}
       <!-- An empty SECTION, not a failed filter — there is nothing to clear, so
            offering a "Clear filters" button here would be a dead end. -->
-      <div
-        class="flex flex-col items-center gap-2 py-12 text-center"
-        data-testid="recipe-kind-empty"
-      >
-        <Icon name={sectionCopy.thumbIcon} size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{sectionCopy.emptyText}</p>
-      </div>
+      <EmptyState title={sectionCopy.emptyText} data-testid="recipe-kind-empty">
+        {#snippet icon()}<Icon name={sectionCopy.thumbIcon} size={24} />{/snippet}
+      </EmptyState>
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
         {#each visible as recipe (recipe.id)}
@@ -671,7 +660,7 @@
                 -->
                 {#if recipe.needs_approval}
                   <span
-                    class="absolute left-2 top-2 z-10 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                    class="absolute left-2 top-2 z-10 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800"
                     data-testid="recipe-unreviewed-badge"
                   >
                     Unreviewed
@@ -685,7 +674,7 @@
                 -->
                 {#if issues > 0}
                   <span
-                    class="absolute right-2 top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white shadow"
+                    class="absolute right-2 top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white shadow"
                     title={`${issues} ${issues === 1 ? 'ingredient is' : 'ingredients are'} matched to the wrong thing`}
                     data-testid="recipe-match-issue-pip"
                   >
@@ -744,14 +733,12 @@
                 {#if tags.length > 0}
                   <div class="mt-0.5 flex flex-wrap items-center gap-1">
                     {#each tags.slice(0, 3) as tag (tag)}
-                      <span
-                        class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                      >
+                      <span class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                         #{tag}
                       </span>
                     {/each}
                     {#if tags.length > 3}
-                      <span class="text-[10px] text-muted-foreground/70">+{tags.length - 3}</span>
+                      <span class="text-xs text-muted-foreground/70">+{tags.length - 3}</span>
                     {/if}
                   </div>
                 {/if}

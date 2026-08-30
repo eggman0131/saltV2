@@ -214,6 +214,14 @@ jobs:
       - name: Docs map check
         run: pnpm docsmap:check
 
+      # Type scale. The scale bottoms out at 12px, and nothing enforced it: the
+      # #894 review counted 14 hand-written smaller sizes, and a week later 17 —
+      # two of them inside the design system itself. A sweep buys one clean
+      # reading; this is what holds it. Same reasoning as the two above:
+      # deterministic, free, and a whole-repo fact per-PR review cannot see.
+      - name: Type scale check
+        run: pnpm typescale:check
+
       # Context budget. CLAUDE.md is auto-loaded into every session and every
       # subagent, so its size is a tax on all of them — and it grew 2.3 KB →
       # 43.6 KB over four months with nothing ever pushing content back out.

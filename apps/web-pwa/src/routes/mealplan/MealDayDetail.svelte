@@ -470,7 +470,7 @@
                       <span class="min-w-0 flex-1 truncate">{item.label}</span>
                       {#if kind !== 'recipe'}
                         <span
-                          class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                          class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
                         >
                           {KIND_COPY[kind].label}
                         </span>
@@ -662,7 +662,7 @@
       </Button>
     </div>
 
-    <p class="text-[11px] text-muted-foreground">
+    <p class="text-xs text-muted-foreground">
       {attendingCount}
       {attendingCount === 1 ? 'person' : 'people'} eating
     </p>

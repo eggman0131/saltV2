@@ -30,6 +30,11 @@
   import { productForms } from '../../lib/productFormService.js';
   import { swipe } from '../../lib/swipe.svelte.js';
   import { revealProgress } from '../../lib/swipe.js';
+  import {
+    shoppingRowClass,
+    shoppingRowCollapseClass,
+    SHOPPING_ROW_INNER_CLASS,
+  } from './shoppingRowShell.js';
   import { describeSource } from '../../lib/shoppingSource.js';
   import CheckOffButton from './CheckOffButton.svelte';
 
@@ -205,18 +210,12 @@
   // branches below share exactly one source of truth. A swipeable row always
   // lands on the opaque `bg-card` arm (selection / verify / exiting are excluded),
   // which is what hides the reveal layer beneath it at rest.
+  //
+  // The words themselves live in `shoppingRowShell.ts` since #930, because the
+  // combined aisle row in `ShoppingListPage` renders the same shell and had
+  // written its own copy of it.
   const rowClass = $derived(
-    `flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none ${
-      subordinate ? 'ml-[46px]' : ''
-    } ${
-      exiting
-        ? 'border-secondary/40 bg-secondary-container/50'
-        : isSelected
-          ? 'border-ring ring-2 ring-ring bg-card'
-          : needsVerify(item)
-            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-            : 'border-border bg-card'
-    }`,
+    shoppingRowClass({ exiting, isSelected, needsVerify: needsVerify(item), subordinate }),
   );
 
   function toSentenceCase(text: string): string {
@@ -391,12 +390,8 @@
   {/if}
 {/snippet}
 
-<div
-  class="salt-row-collapse motion-reduce:transition-none {exiting ? 'salt-row-collapse-out' : ''}"
-  out:collapseOut|global
-  in:riseIn|global
->
-  <div class="min-h-0 overflow-hidden">
+<div class={shoppingRowCollapseClass(exiting)} out:collapseOut|global in:riseIn|global>
+  <div class={SHOPPING_ROW_INNER_CLASS}>
     {#if swipeEnabled}
       <!-- Swipe surface (lively list, Phase 4). The reveal-behind layers and the
            `translateX` drag live HERE, on an inner wrapper — NEVER on the

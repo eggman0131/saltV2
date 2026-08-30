@@ -16,6 +16,7 @@
     Icon,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
     Spinner,
   } from '@salt/ui-components';
@@ -298,18 +299,17 @@
               {/snippet}
             </PopoverTrigger>
             <PopoverContent align="end" class="min-w-44 p-1">
-              <button
-                type="button"
-                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+              <PopoverMenuItem
+                variant="destructive"
+                icon="CircleSlash"
                 onclick={() => {
                   overflowOpen = false;
                   abandonOpen = true;
                 }}
                 data-testid="batch-abandon-menu-item"
               >
-                <Icon name="CircleSlash" size={14} />
                 Abandon
-              </button>
+              </PopoverMenuItem>
             </PopoverContent>
           </Popover>
         {/if}

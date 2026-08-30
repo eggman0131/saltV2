@@ -102,7 +102,7 @@
 </script>
 
 <div
-  class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground"
+  class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
   data-testid={testid}
 >
   {#each metrics as m (m.key)}

@@ -66,7 +66,7 @@
 </script>
 
 <Sheet bind:open side="bottom">
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <!-- Always present: `aria-labelledby` on the dialog points at it (ui-spec-v03
            §5.5), so a sheet without one announces as an unnamed modal. -->
