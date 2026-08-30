@@ -34,7 +34,6 @@
     EmptyState,
     createListSelection,
   } from '@salt/ui-components';
-  import { formatDayKey } from '../../lib/dateFormat.js';
   import { todayIso } from '../../lib/today.js';
   import { describeSource } from '../../lib/shoppingSource.js';
   import { titleCase } from '../../lib/titleCase.js';
@@ -42,6 +41,7 @@
   import { push } from 'svelte-spa-router';
   import {
     daysBetween,
+    shopDayHeadline,
     groupItemsByAisle,
     groupItemsByRecipe,
     resolveItemDisplayName,
@@ -106,9 +106,10 @@
   // stores, shopped whenever, and the weekly shop says nothing about them (the
   // same reason the reminder only ever opens the default list).
   //
-  // It reads relative only where relative beats a weekday: "today" and
-  // "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
-  // arithmetic the reader has to undo to know whether to plan around it.
+  // The sentence itself is `shopDayHeadline` in `@salt/domain` — the same rule
+  // the daily push reminder renders, which is a different app and cannot import
+  // this one. What stays here is only THIS SCREEN'S policy about when to say
+  // nothing at all, which the reminder has no equivalent of.
   const shopDays = $derived(
     $upcomingShopDay ? daysBetween(todayIso(), $upcomingShopDay.date) : null,
   );
@@ -120,11 +121,11 @@
     // A window left open across midnight for days can surface a shop that has
     // already happened. Say nothing rather than something wrong.
     if (shopDays === null || shopDays < 0) return null;
-    const slot = $upcomingShopDay.slot.toUpperCase();
-    if (shopDays === 0) return `Shopping today ${slot}`;
-    if (shopDays === 1) return `Shopping tomorrow ${slot}`;
-    const weekday = formatDayKey($upcomingShopDay.date, { weekday: 'short' });
-    return `Shopping ${weekday} ${slot}`;
+    return shopDayHeadline({
+      days: shopDays,
+      date: $upcomingShopDay.date,
+      slot: $upcomingShopDay.slot,
+    });
   });
   // The one day that actually changes what you do must not read like the five
   // that don't.

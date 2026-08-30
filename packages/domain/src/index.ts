@@ -50,8 +50,12 @@ export {
   setCanonItemShoppingBehavior,
   setCanonItemThreshold,
   setCanonItemThumbnail,
+  // The one description of an icon-regeneration write (issue #1054) — the admin
+  // screens and the canon/product-form callables are different apps and cannot
+  // import each other, so the field set they must agree on lives here.
+  iconRegenerationFields,
 } from './canon/index.js';
-export type { ApproveCanonItemOverrides } from './canon/index.js';
+export type { ApproveCanonItemOverrides, IconRegenerationFields } from './canon/index.js';
 
 // ProductForm module — published surface.
 export type {
@@ -203,6 +207,9 @@ export {
   newIngredient,
   newStep,
   clearIngredientMatch,
+  // The one tag normalisation (issue #1054) — the recipe editor and the
+  // authoring flows are different apps and cannot import each other.
+  normaliseTags,
   flattenIngredients,
   quantityToNumber,
   ingredientMatchIssue,
@@ -341,7 +348,12 @@ export {
   daysBetween,
   tomorrowInZone,
   shopDayForWeek,
+  // The one rendering of "Shopping today AM" (issue #1054) — the shopping list
+  // and the daily push reminder are different apps and cannot import each
+  // other, so the sentence they must agree on lives here.
+  shopDayHeadline,
 } from './shoppingDay/index.js';
+export type { ShopDayHeadlineInput } from './shoppingDay/index.js';
 
 // Personal-view module (issues #634, #682, #755) — the projections behind
 // "Kitchen": which nights from today onward are yours to cook, across however

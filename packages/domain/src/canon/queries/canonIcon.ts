@@ -11,6 +11,11 @@
 // read-boundary guard the UI uses to decide between rendering the icon and
 // showing the bare placeholder tile.
 //
+// FOUR ICON FAMILIES read the sentinel from here — canon items, product forms,
+// kitchen tools and equipment — across both apps: `web-pwa`'s services and admin
+// screens, and `cloud-functions`' `drawEquipmentIcon` callable, which writes it
+// when someone hides an equipment pictogram (issue #1054).
+//
 // `packages/ui-components`' `CanonIcon.svelte` re-implements both, because that
 // package may depend on external packages only and so cannot import this one.
 // The two are held in agreement by `apps/web-pwa/tests/canonIconParity.test.ts`

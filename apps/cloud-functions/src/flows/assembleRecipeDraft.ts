@@ -5,9 +5,9 @@ import type {
   IngredientGroupDoc,
   IngredientDoc,
 } from '@salt/domain/schemas';
+import { normaliseTags } from '@salt/domain';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
-import { normaliseTags } from './categoryTags.js';
 import { reportServerError } from '../observability/reportServerError.js';
 
 // The one place a RecipeDoc is assembled from raw AI output. Both authoring

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shopDayHeadline } from '@salt/domain';
 
 // The push service-worker overlay (public/push-sw.js) is a CLASSIC worker script
 // that never runs under the app bundle, so it has no import graph to test
@@ -184,6 +185,40 @@ describe('push-sw — push', () => {
     listeners.get('push')!(event);
     await settle();
     expect(showNotification.mock.calls[0]![0]).toBe('A batch stage is due');
+  });
+
+  it('falls back to SHOPPING copy, not cook-timer copy, for a shop push with no title', async () => {
+    // The slotless phrasing: the fallback cannot know AM from PM, so it says the
+    // one thing that is true either way. Pinned here (issue #1054, Phase 1)
+    // because this copy is a forced third copy of the shop-day headline —
+    // `push-sw.js` is a classic worker script with no way to import the rule —
+    // and Phase 2 closes it with a parity assertion against the shared rule.
+    const { listeners, showNotification } = loadSw([]);
+    const { event, settle } = pushEvent({ type: 'shopping-reminder', url: '/#/shopping/list-1' });
+    listeners.get('push')!(event);
+    await settle();
+    const [title, opts] = showNotification.mock.calls[0]! as [string, ShownOptions];
+    expect(title).toBe('Shopping tomorrow');
+    expect(opts.body).toBe('Add anything missing to the list.');
+    expect(opts.tag).toBe('shopping-reminder');
+  });
+
+  it('keeps its forced copy of the shop-day headline in step with the shared rule', async () => {
+    // `push-sw.js` is a CLASSIC worker script `importScripts`'d into the
+    // Workbox-generated worker: no module system, no bundler, no import path to
+    // `@salt/domain`. Its copy of the phrase cannot be removed (issue #1054), so
+    // what changes is who checks it — this assertion goes red whichever side
+    // moves, where the comment it replaces could only ask.
+    //
+    // Slotless because the fallback never read the payload, and so cannot know
+    // AM from PM. The date is unread by the "tomorrow" branch; any valid one does.
+    const { listeners, showNotification } = loadSw([]);
+    const { event, settle } = pushEvent({ type: 'shopping-reminder' });
+    listeners.get('push')!(event);
+    await settle();
+    expect(showNotification.mock.calls[0]![0]).toBe(
+      shopDayHeadline({ days: 1, date: '2026-08-16' }),
+    );
   });
 
   it('falls back to the cook-timer copy on an unparseable payload', async () => {

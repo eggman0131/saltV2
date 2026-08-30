@@ -7,7 +7,7 @@ import {
   ShoppingListsConfigSchema,
   PushSubscriptionSchema,
 } from '@salt/domain/schemas';
-import { tomorrowInZone } from '@salt/domain';
+import { shopDayHeadline, tomorrowInZone } from '@salt/domain';
 import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush } from '../adapters/sendWebPush.js';
 import { reportServerError } from '../observability/reportServerError.js';
@@ -101,7 +101,10 @@ export const remindShoppingDay = onSchedule(
         type: 'shopping-reminder' as const,
         tag: `shopping::${date}`,
         url: defaultListId ? `/#/shopping/${defaultListId}` : '/#/shopping',
-        title: `Shopping tomorrow ${slot.toUpperCase()}`,
+        // The headline is `@salt/domain`'s, not this file's: the shopping list
+        // renders the same sentence and is a different app that cannot import
+        // this one. The reminder only ever fires for tomorrow (see `date` above).
+        title: shopDayHeadline({ days: 1, date, slot }),
         body: 'Add anything missing to the list.',
         renotify: false,
       };

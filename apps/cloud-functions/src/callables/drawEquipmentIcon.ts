@@ -2,6 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { DrawEquipmentIconInputSchema, EQUIPMENT_ICONS_COLLECTION } from '@salt/domain/schemas';
+import { CANON_ICON_HIDDEN } from '@salt/domain';
 import { makeCallable } from '../tracedCallable.js';
 import { generateEquipmentIconFlow } from '../flows/generateEquipmentIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
@@ -35,15 +36,6 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 const ICON_STORAGE_PREFIX = 'equipment-icons';
 
-/**
- * The user's sentinel for "I do not want a picture here". This is canon's
- * `CANON_ICON_HIDDEN` value, and the two families must agree on it because
- * `CanonIcon` is what reads it — it is the string the component treats as "render
- * the bare tile". Spelled here rather than imported so cloud-functions does not
- * pull the canon module in for one literal.
- */
-const ICON_HIDDEN = 'hidden';
-
 // region/memory are pinned inline (not via setGlobalOptions) because this module
 // is imported at the top of index.ts and its onCall is built before
 // setGlobalOptions runs — the same reason the triggers pin theirs.
@@ -73,7 +65,10 @@ export const drawEquipmentIcon = makeCallable({
     if (input.action === 'hide') {
       // Partial update: the sentinel and nothing else. The brief survives, so
       // un-hiding is just pressing Draw again — there is nothing to restore.
-      await ref.update({ thumbnail: ICON_HIDDEN });
+      // `CANON_ICON_HIDDEN` is the user's sentinel for "I do not want a picture
+      // here", shared with canon because `CanonIcon` is what reads it — it is the
+      // string the component treats as "render the bare tile" (issue #1054).
+      await ref.update({ thumbnail: CANON_ICON_HIDDEN });
       return { ok: true } as const;
     }
 

@@ -86,6 +86,9 @@ vi.mock('@salt/observability', () => ({
   isObservabilityFeatureEnabled: () => true,
   areObservabilityFeatureFlagsSettled: () => true,
   onObservabilityFeatureFlags: () => () => {},
+  // `featureGate.ts` reads the PostHog flag key from the adapter (issue #1054);
+  // nothing here asserts on it, but the whole-module mock must supply it.
+  BREAD_FLAG_KEY: 'bread',
 }));
 vi.mock('../src/lib/chatService.js', () => ({
   sessions: mockSessions,

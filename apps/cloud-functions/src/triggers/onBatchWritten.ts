@@ -6,7 +6,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
 import { BatchSchema, PushSubscriptionSchema, type BatchStageDoc } from '@salt/domain/schemas';
 import { remindableStages } from '@salt/domain';
-import { isServerFeatureEnabled } from '@salt/observability/server';
+import { BREAD_FLAG_KEY, isServerFeatureEnabled } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
 import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntrypoint.js';
 import {
@@ -45,11 +45,6 @@ export type { BatchStageTaskPayload } from './batchStageTypes.js';
 // memory/region pinned INLINE because this module is evaluated before index.ts's
 // setGlobalOptions runs (same reason the other triggers pin them inline).
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
-
-// The PostHog flag gating everything epic #778 is still building. The browser's
-// half of the gate (web-pwa's featureGate.ts) reads the SAME key — a rename in
-// PostHog has to move both.
-const BREAD_FLAG = 'bread';
 
 // firebase-admin's getUsers caps at 100 identifiers per call. The household is five
 // people, so this will not chunk in practice; it is here so a future that reaches
@@ -114,7 +109,7 @@ async function resolveNotifyUids(batchId: string): Promise<readonly string[]> {
     // Once per distinct PERSON, never once per device.
     const passing: string[] = [];
     for (const [uid, email] of emails) {
-      if (await isServerFeatureEnabled(BREAD_FLAG, uid, { email })) passing.push(uid);
+      if (await isServerFeatureEnabled(BREAD_FLAG_KEY, uid, { email })) passing.push(uid);
     }
     return passing;
   } catch (err) {

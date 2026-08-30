@@ -4,3 +4,5 @@
 // Rule 1); the doc shape itself lives in `@salt/domain/schemas`.
 export { dateInZone, addCalendarDays, daysBetween, tomorrowInZone } from './calendarDates.js';
 export { shopDayForWeek } from './shopDayForWeek.js';
+export { shopDayHeadline } from './shopDayHeadline.js';
+export type { ShopDayHeadlineInput } from './shopDayHeadline.js';

@@ -59,3 +59,6 @@ export type { CanonMatchEventProps, CanonMatchPath } from '../shared/matchOutcom
 // Same category-gated reporting predicate the browser barrel exports — shared so
 // the server adapter (Phase 3) reuses the single source of truth, not a copy.
 export { isReportableCategory } from '../shared/reportableCategory.js';
+// Same PostHog feature-flag keys the browser barrel exports (issue #1054) — the
+// browser half of a gate and the server half must ask about the same flag.
+export { BREAD_FLAG_KEY } from '../shared/featureFlagKeys.js';
