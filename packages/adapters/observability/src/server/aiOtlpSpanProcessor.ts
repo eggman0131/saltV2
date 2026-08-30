@@ -334,6 +334,9 @@ export function remapGenkitSpan(span: ReadableSpanLike): OtlpSpan | null {
     traceId: ctx.traceId,
     spanId: ctx.spanId,
     name,
+    // @authors-its-span — the structural marker tests/spanKindGuard.test.ts
+    // requires wherever a bare SPAN_KIND_INTERNAL is written, so the condition
+    // below is checked and not merely stated (#1102).
     // ASSERTED, never mapped (#1029). The distributed leg forwards a span
     // verbatim, so it must remap what it was handed; this leg SYNTHESISES one —
     // the name and every attribute above are rewritten into `gen_ai.*` so PostHog

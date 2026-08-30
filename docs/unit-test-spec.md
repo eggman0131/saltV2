@@ -1,7 +1,7 @@
 # Vitest Unit Suite — Non-Functional Specification
 
 This is the **quality contract** for the Vitest suite: every `*.test.ts` under `packages/**/tests/`
-and `apps/**/tests/`, plus every `*.test.mjs` under `scripts/tests/` — the untyped-ESM eighth
+and `apps/**/tests/`, plus every `*.test.mjs` under `scripts/tests/` — the untyped-ESM `scripts`
 project (#1021). UT-G1 and UT-G2 are the only two rules that do not reach those `.mjs` files, and
 each states that limit where it is written. Like [docs/e2e-test-spec.md](e2e-test-spec.md) it is a
 _non-functional_ spec — it does not say what a test should assert (that is the test's job), it says

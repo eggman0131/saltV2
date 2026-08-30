@@ -163,7 +163,7 @@ can be in progress *and* blocked, and the old board could not say so.
 | --- | --- | --- |
 | Triage | GitHub's built-in "item added to project" project workflow | |
 | Todo | a person, or `/triage` | the one real decision; no event can observe it |
-| In progress | `/run`, when the branch is cut | a branch push is too noisy to key on |
+| In progress | `/run`, when the branch is cut — `board.mjs` directly where `gh` is, or a `board-dispatch.yml` dispatch from a cloud session | a branch push is too noisy to key on |
 | In review | `board-status.yml` | `pull_request` opened / ready_for_review |
 | Merged | `board-status.yml` | `pull_request` closed && merged |
 | Released | `board-status.yml` | production deploy succeeded **and** the merge commit is an ancestor of the deployed sha |
@@ -176,6 +176,48 @@ the same text GitHub derives its own linked-issue relation from.
 approval-gated deploy finishing, more can land on main; marking those live would
 be a lie the board tells about production. Hence the per-issue ancestry test, and
 hence `fetch-depth: 0` on that job.
+
+---
+
+## Writing the board from somewhere without `gh`
+
+`scripts/board.mjs` is the only thing that writes the board, and it needs two
+things a **cloud session has neither of**: the `gh` CLI, and a route to GitHub's
+GraphQL API. `gh` is absent there and cannot be installed, and GraphQL is refused
+wholesale by the session proxy — even `{viewer{login}}` comes back 403. Projects
+v2 exists *only* in GraphQL, so there is no REST fallback and **no token fixes
+it**: the query is refused before any credential is evaluated. Copying
+`PROJECT_TOKEN` into the cloud environment would not have worked either, and
+would have put a PAT into variables that are plaintext to anyone using that
+environment.
+
+[`board-dispatch.yml`](../.github/workflows/board-dispatch.yml) is the way round
+it. It exposes `add`, `set`, `pr` and `release` behind `workflow_dispatch` with
+typed inputs, and runs the unmodified script on a runner under `PROJECT_TOKEN`.
+A session can therefore *ask* for a board write; it never gains the credential
+that performs one.
+
+Two things follow, both easy to get wrong:
+
+- **A dispatch is a request, not a result.** It is fire-and-forget — the caller
+  does not wait for the run. For the four writes that is the right trade: a lost
+  one is a nuisance, and the board itself shows whether it landed. But a dispatch
+  is never *evidence* that a write happened.
+- **`check` is not relayed, and must not be.** It is a read whose *exit code* is
+  the whole point — the promotion rule above is an invariant only because `check`
+  can go red. Dispatched and unwatched it would be invisible, and an agent could
+  report the invariant verified having observed nothing. Run it where `gh` is. If
+  a cloud session ever genuinely needs it, the answer is a caller that waits on
+  the run and reads its conclusion, not an extra entry in the dropdown.
+
+It doubles as a **manual lever**: Actions → Board dispatch → Run workflow moves
+an issue from a phone, from a machine with no checkout, or when `gh auth` has
+expired.
+
+It is not a second *automated* writer. Every run is a human or an agent asking;
+`board-status.yml` remains the only thing that writes the board **from an event**,
+and the two sit in separate concurrency groups so they can never race on the same
+item.
 
 ---
 

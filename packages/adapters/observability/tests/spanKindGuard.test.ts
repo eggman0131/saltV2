@@ -37,16 +37,49 @@
  * The matcher is a pure function over a string, which is what lets every case
  * below run against inline source instead of a bad file written to disk.
  *
- * A guard is only worth its weight if its blind spots fail RED. Two ways it
- * previously failed GREEN, both fixed here and both pinned by fixtures below:
- * a lexer that could not tell a comment from a string (`blankNonCode`), and an
- * anchor that recognised two of the eight ways an `OtlpSpan` gets built
- * (`findOtlpSpanKinds`).
+ * A guard is only worth its weight if its blind spots fail RED. Four ways it
+ * previously failed GREEN, all fixed here and all pinned by fixtures below: a
+ * lexer that could not tell a comment from a string (`blankNonCode`), an anchor
+ * that recognised two of the eight ways an `OtlpSpan` gets built
+ * (`findOtlpSpanKinds`), a bare `SPAN_KIND_INTERNAL` on a FORWARDING leg, and a
+ * kind written by ASSIGNMENT after the literal had closed (both #1102).
  *
  * Only two right-hand sides are permitted: `toWireSpanKind(...)` for a kind
  * derived from a span, and the `SPAN_KIND_INTERNAL` constant for a leg whose kind
- * is known statically (`aiOtlpSpanProcessor` is one). Permitting any identifier
- * is what lets `span.kind` back in, which is the whole defect.
+ * is known statically. Permitting any identifier is what lets `span.kind` back
+ * in, which is the whole defect.
+ *
+ * ── The marker: #1029's condition, made mechanical (#1102) ───────────────────
+ *
+ * `SPAN_KIND_INTERNAL` is legitimate only where the leg AUTHORS its span. A leg
+ * that FORWARDS one must map, and hardcoding the constant there ships every span
+ * as INTERNAL — the #1011 symptom exactly, and green under the old allowlist,
+ * which permitted the bare constant anywhere. That condition existed only in
+ * prose, so the constant is now gated on the structural token `@authors-its-span`
+ * (`MARKER`) at the site — on the `kind` line, or in the comment lines directly
+ * above it. A token and never a sentence (UT-E3); the justification stays where
+ * the decision is made, which is CLAUDE.md rule 3's idiom and leaves no central
+ * list to keep (UT-E1). A forwarding leg must now COPY the marker, which is a
+ * deliberate lie rather than an oversight.
+ *
+ * `blankNonCode` is length-preserving, so the marker is read from the RAW source
+ * at the same offsets. Matching it against the blanked code would only ever find
+ * spaces.
+ *
+ * ── Scope: assignments, not only literals (#1102) ────────────────────────────
+ *
+ * `out.kind = span.kind;` sits OUTSIDE the literal block, so a matcher that only
+ * reads `kind:` properties never sees it — and post-literal mutation of `out` is
+ * the established idiom two lines below BOTH guarded sites (`if (parent)
+ * out.parentSpanId = parent;`), which is what the next emitter copies. So every
+ * identifier BOUND as an `OtlpSpan` — the `out` of `const out: OtlpSpan`, or a
+ * parameter annotated with the type — also has its `<name>.kind =` assignments
+ * checked, anywhere in the file.
+ *
+ * Limit, stated rather than overclaimed: that reach runs through the binding's
+ * TYPE ANNOTATION. A span mutated through a binding carrying none (`let out;`
+ * then `out = { … } as OtlpSpan`) is outside it. `src/` holds no such shape, and
+ * no `.kind =` assignment at all.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -231,14 +264,38 @@ const CASTS_TO_THE_TYPE = /\b(?:as|satisfies)\s+$/;
 const TYPE_TAIL = /^(?:\[\]|[^{}[\];])*/;
 const KIND_PROPERTY = /\bkind\s*:\s*([^,\n}]*)/g;
 
-/** The two legitimate right-hand sides. Anything else is the #1011 defect. */
-const ALLOWED = [/^toWireSpanKind\s*\(/, /^SPAN_KIND_INTERNAL$/];
+/**
+ * An identifier BOUND as an `OtlpSpan`: the `out` of `const out: OtlpSpan`, or a
+ * parameter annotated with the type. Its `.kind =` assignments are in scope.
+ * A declaration (`interface OtlpSpan`) and a specifier list (`type OtlpSpan }`)
+ * carry no `:` immediately before the mention, so neither ever reaches this.
+ */
+const BINDS_THE_TYPE = /\b([A-Za-z_$][\w$]*)\s*:\s*$/;
+
+/** `out.kind = …` — an assignment, and never a comparison (`==`, `===`). */
+const kindAssignment = (name: string): RegExp =>
+  new RegExp(`\\b${name}\\.kind\\s*=(?!=)\\s*([^;\\n]*)`, 'g');
+
+/** A kind DERIVED from a span. Legitimate wherever it appears. */
+const MAPPED = /^toWireSpanKind\s*\(/;
+/** A kind ASSERTED outright. Legitimate only at a site carrying `MARKER`. */
+const ASSERTED = /^SPAN_KIND_INTERNAL$/;
+/** The structural token licensing `ASSERTED` — a token, not prose (UT-E3). */
+const MARKER = /@authors-its-span\b/;
+
+/** Whether a finding's right-hand side is legitimate WHERE IT IS WRITTEN. */
+function isAllowed(finding: { readonly value: string; readonly justified: boolean }): boolean {
+  if (MAPPED.test(finding.value)) return true;
+  return ASSERTED.test(finding.value) && finding.justified;
+}
 
 interface KindAssignment {
   /** Character offset of the `kind` token, used to de-duplicate nested blocks. */
   readonly offset: number;
   /** The right-hand side, trimmed — e.g. `toWireSpanKind(span.kind)`. */
   readonly value: string;
+  /** Whether `MARKER` sits at this site in the RAW source (see `isJustified`). */
+  readonly justified: boolean;
 }
 
 const CLOSER: Record<string, string> = { '{': '}', '[': ']' };
@@ -295,25 +352,55 @@ function blocksForMention(code: string, start: number, end: number): number[] {
 }
 
 /**
- * Every `kind:` property written inside an `OtlpSpan` construction, as a pure
+ * Whether the kind at `offset` carries `MARKER` in the RAW source — on its own
+ * line, or in the contiguous comment lines directly above it. The walk upward
+ * stops at the first line that is not a comment, so a marker on an unrelated
+ * construction elsewhere in the file licenses nothing here.
+ */
+function isJustified(raw: string, offset: number): boolean {
+  const before = raw.slice(0, offset).split('\n');
+  const restOfLine = raw.slice(offset).split('\n', 1)[0]!;
+  if (MARKER.test((before[before.length - 1] ?? '') + restOfLine)) return true;
+  for (let i = before.length - 2; i >= 0; i -= 1) {
+    const line = before[i]!.trim();
+    if (!line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*')) return false;
+    if (MARKER.test(line)) return true;
+  }
+  return false;
+}
+
+/**
+ * Every kind written onto an `OtlpSpan` — as a `kind:` property inside a
+ * construction, AND as a `<binding>.kind =` assignment after it — as a pure
  * function over source text. Overlapping scopes (a `const out: OtlpSpan = {`
  * inside a function already annotated `: OtlpSpan`) yield one entry, not two.
  */
 function findOtlpSpanKinds(source: string): KindAssignment[] {
   const code = blankNonCode(source);
   const byOffset = new Map<number, KindAssignment>();
+  const record = (offset: number, value: string): void => {
+    byOffset.set(offset, { offset, value: value.trim(), justified: isJustified(source, offset) });
+  };
+
+  const bindings = new Set<string>();
   for (const mention of code.matchAll(OTLP_SPAN_MENTION)) {
     const start = mention.index;
+    const bound = BINDS_THE_TYPE.exec(code.slice(0, start));
+    if (bound) bindings.add(bound[1]!);
     for (const open of blocksForMention(code, start, start + mention[0].length)) {
       const body = code.slice(open, endOfBlock(code, open));
       for (const property of body.matchAll(KIND_PROPERTY)) {
-        byOffset.set(open + property.index, {
-          offset: open + property.index,
-          value: property[1]!.trim(),
-        });
+        record(open + property.index, property[1]!);
       }
     }
   }
+
+  for (const name of bindings) {
+    for (const assignment of code.matchAll(kindAssignment(name))) {
+      record(assignment.index + assignment[0].indexOf('.kind') + 1, assignment[1]!);
+    }
+  }
+
   return [...byOffset.values()].sort((a, b) => a.offset - b.offset);
 }
 
@@ -322,30 +409,44 @@ const findings = sourceFiles.flatMap((path) =>
   findOtlpSpanKinds(readFileSync(path, 'utf8')).map((kind) => ({
     path: relative(srcDir, path).split(sep).join('/'),
     value: kind.value,
+    justified: kind.justified,
   })),
 );
 
 describe('observability: every OtlpSpan kind goes through toWireSpanKind', () => {
   // UT-E2 — a guard that greens on an empty match set has stopped guarding, and
-  // nothing else in CI would say so. Both of today's construction sites are on
-  // DIFFERENT legs, so this also fails if the walk is narrowed to one directory.
-  it('finds both of the OtlpSpan construction sites that exist today', () => {
-    expect(sourceFiles.length, 'the walk over src found nothing').toBeGreaterThan(10);
+  // nothing else in CI would say so. A FLOOR and not a census: the exact set this
+  // used to freeze made a CORRECT new emit site fail, with a message blaming a
+  // narrowed walk, which trains the next reader to edit the expectation. Both of
+  // today's sites are on DIFFERENT legs, so two distinct files is the property
+  // worth defending — a walk narrowed to one directory drops below it.
+  it('still reaches both distributed legs', () => {
     expect(
-      findings.map((f) => f.path).sort(),
-      'the scan no longer sees both legs — it has narrowed, or the matcher stopped matching',
-    ).toEqual(['server/aiOtlpSpanProcessor.ts', 'shared/otlpWire.ts']);
+      sourceFiles.length,
+      `the walk over src reached only ${sourceFiles.length} file(s) — it has been narrowed`,
+    ).toBeGreaterThan(10);
+    const legs = [...new Set(findings.map((f) => f.path))].sort();
+    expect(
+      legs.length,
+      `the scan found ${findings.length} OtlpSpan kind(s) across ${legs.length} file(s) ` +
+        `[${legs.join(', ') || 'none'}]. #1011 was written independently on TWO ` +
+        `distributed legs, so fewer than two files means the walk has been narrowed or ` +
+        `the matcher has stopped matching — NOT that a site was legitimately removed. ` +
+        `A new correct emit site raises this count and keeps this test green, so a ` +
+        `growing set is never a reason to edit it.`,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   for (const [index, finding] of findings.entries()) {
     it(`${finding.path} #${index} sets kind via the mapper`, () => {
       expect(
-        ALLOWED.some((allowed) => allowed.test(finding.value)),
-        `${finding.path} builds an OtlpSpan with \`kind: ${finding.value}\`. The OTLP ` +
+        isAllowed(finding),
+        `${finding.path} writes \`kind = ${finding.value}\` onto an OtlpSpan. The OTLP ` +
           `wire enum is offset by one from the @opentelemetry/api enum, so forwarding ` +
           `a raw API kind ships every span one kind too low (issue #1011) — a plausible ` +
-          `but wrong service graph, not visibly corrupt data. Use toWireSpanKind(...), ` +
-          `or SPAN_KIND_INTERNAL when the kind is known statically.`,
+          `but wrong service graph, not visibly corrupt data. Use toWireSpanKind(...). ` +
+          `SPAN_KIND_INTERNAL is for a leg that AUTHORS its span rather than forwarding ` +
+          `one, and needs the @authors-its-span marker at the site to say so (#1102).`,
       ).toBe(true);
     });
   }
@@ -363,17 +464,18 @@ describe('observability: every OtlpSpan kind goes through toWireSpanKind', () =>
     `;
     const found = findOtlpSpanKinds(violation);
     expect(found.map((k) => k.value)).toEqual(['span.kind']);
-    expect(ALLOWED.some((allowed) => allowed.test(found[0]!.value))).toBe(false);
+    expect(isAllowed(found[0]!)).toBe(false);
   });
 
   it('accepts both permitted right-hand sides', () => {
     const ok = `
       const a: OtlpSpan = { kind: toWireSpanKind(span.kind) };
+      // @authors-its-span
       const b: OtlpSpan = { kind: SPAN_KIND_INTERNAL };
     `;
-    const found = findOtlpSpanKinds(ok).map((k) => k.value);
-    expect(found).toEqual(['toWireSpanKind(span.kind)', 'SPAN_KIND_INTERNAL']);
-    expect(found.every((value) => ALLOWED.some((allowed) => allowed.test(value)))).toBe(true);
+    const found = findOtlpSpanKinds(ok);
+    expect(found.map((k) => k.value)).toEqual(['toWireSpanKind(span.kind)', 'SPAN_KIND_INTERNAL']);
+    expect(found.every(isAllowed)).toBe(true);
   });
 
   it('ignores the three `kind:` shapes in this package that are not span kinds', () => {
@@ -394,6 +496,141 @@ describe('observability: every OtlpSpan kind goes through toWireSpanKind', () =>
       export const aiOtlpSpanProcessor = { onEnd(span) { const meta = { kind: span.kind }; } };
     `;
     expect(findOtlpSpanKinds(specifiers)).toEqual([]);
+  });
+
+  // ── The gate's blind spots, each of which used to fail GREEN (#1102) ────────
+
+  describe('a bare SPAN_KIND_INTERNAL needs the authoring marker', () => {
+    it('rejects a forwarding leg that hardcodes the constant', () => {
+      // The #1011 symptom itself: this ships every forwarded span as INTERNAL.
+      const forwarding = `
+        export function toThirdLegOtlpSpan(span: ReadableSpanLike): OtlpSpan {
+          const out: OtlpSpan = { name: span.name, kind: SPAN_KIND_INTERNAL };
+          return out;
+        }
+      `;
+      const found = findOtlpSpanKinds(forwarding);
+      expect(found.map((k) => k.value)).toEqual(['SPAN_KIND_INTERNAL']);
+      expect(found[0]!.justified).toBe(false);
+      expect(isAllowed(found[0]!)).toBe(false);
+    });
+
+    it('accepts the same site once it says it authors its span', () => {
+      const authored = `
+        export function remapGenkitSpan(span: ReadableSpanLike): OtlpSpan | null {
+          const out: OtlpSpan = {
+            name: span.name,
+            // @authors-its-span — synthesised, never forwarded (#1029).
+            kind: SPAN_KIND_INTERNAL,
+          };
+          return out;
+        }
+      `;
+      const found = findOtlpSpanKinds(authored);
+      expect(found.map((k) => k.justified)).toEqual([true]);
+      expect(found.every(isAllowed)).toBe(true);
+    });
+
+    it('accepts the marker on the kind line itself', () => {
+      const inline = `const out: OtlpSpan = { kind: SPAN_KIND_INTERNAL }; // @authors-its-span`;
+      expect(findOtlpSpanKinds(inline).every(isAllowed)).toBe(true);
+    });
+
+    it('does not let a marker elsewhere in the file license another site', () => {
+      const mixed = `
+        // @authors-its-span — this construction, and no other.
+        const authored: OtlpSpan = { kind: SPAN_KIND_INTERNAL };
+
+        export function forwarding(span: ReadableSpanLike): OtlpSpan {
+          const out: OtlpSpan = { name: span.name, kind: SPAN_KIND_INTERNAL };
+          return out;
+        }
+      `;
+      expect(findOtlpSpanKinds(mixed).map((k) => k.justified)).toEqual([true, false]);
+    });
+
+    it('reads the marker from the raw source, not from the blanked code', () => {
+      // blankNonCode empties comment bodies but preserves length, so the marker
+      // is only ever visible in the original string (header, `blankNonCode`).
+      const marked = `
+        // @authors-its-span
+        const out: OtlpSpan = { kind: SPAN_KIND_INTERNAL };
+      `;
+      expect(blankNonCode(marked)).not.toMatch(MARKER);
+      expect(findOtlpSpanKinds(marked)[0]!.justified).toBe(true);
+    });
+
+    it('never licenses a forwarded raw API kind, marker or not', () => {
+      const marked = `
+        // @authors-its-span
+        const out: OtlpSpan = { kind: span.kind };
+      `;
+      expect(findOtlpSpanKinds(marked).some(isAllowed)).toBe(false);
+    });
+  });
+
+  // ── A kind written AFTER the literal closed (#1102) ──────────────────────────
+
+  describe('the scan reaches assignments, not only literals', () => {
+    it('catches a post-literal mutation of the constructed span', () => {
+      // Shaped on the idiom two lines below both guarded sites in src:
+      // `const out: OtlpSpan = { … }; if (parent) out.parentSpanId = parent;`.
+      const mutating = `
+        export function mutatingLeg(span: ReadableSpanLike): OtlpSpan {
+          const out: OtlpSpan = {
+            name: span.name,
+            // @authors-its-span
+            kind: SPAN_KIND_INTERNAL,
+          };
+          out.kind = span.kind;
+          return out;
+        }
+      `;
+      const found = findOtlpSpanKinds(mutating);
+      expect(found.map((k) => k.value)).toEqual(['SPAN_KIND_INTERNAL', 'span.kind']);
+      expect(found.map(isAllowed)).toEqual([true, false]);
+    });
+
+    it('catches a mutation through a parameter annotated with the type', () => {
+      const viaParam = `
+        function patchKind(out: OtlpSpan, span: ReadableSpanLike): void {
+          out.kind = span.kind;
+        }
+      `;
+      expect(findOtlpSpanKinds(viaParam).map((k) => k.value)).toEqual(['span.kind']);
+    });
+
+    it('accepts a mapped assignment', () => {
+      const mapped = `
+        const out: OtlpSpan = { kind: toWireSpanKind(span.kind) };
+        out.kind = toWireSpanKind(span.kind);
+      `;
+      const found = findOtlpSpanKinds(mapped);
+      expect(found).toHaveLength(2);
+      expect(found.every(isAllowed)).toBe(true);
+    });
+
+    it('reads a comparison as a comparison, not an assignment', () => {
+      const comparisons = `
+        const out: OtlpSpan = { kind: toWireSpanKind(span.kind) };
+        if (out.kind === span.kind) return;
+        if (out.kind == span.kind) return;
+      `;
+      expect(findOtlpSpanKinds(comparisons).map((k) => k.value)).toEqual([
+        'toWireSpanKind(span.kind)',
+      ]);
+    });
+
+    it('leaves a `.kind =` on a binding that is not an OtlpSpan alone', () => {
+      const unrelated = `
+        const out: OtlpSpan = { kind: toWireSpanKind(span.kind) };
+        const failure: DomainError = { kind: 'NetworkError' };
+        failure.kind = 'StorageError';
+      `;
+      expect(findOtlpSpanKinds(unrelated).map((k) => k.value)).toEqual([
+        'toWireSpanKind(span.kind)',
+      ]);
+    });
   });
 
   // ── The lexer's blind spots, each of which used to fail GREEN (review B1) ────
@@ -503,9 +740,12 @@ describe('observability: every OtlpSpan kind goes through toWireSpanKind', () =>
 
     for (const [name, source] of shapes) {
       it(`catches a raw API kind in a ${name}`, () => {
-        const found = findOtlpSpanKinds(source).map((k) => k.value);
-        expect(found, source).toEqual([expect.stringMatching(/^s(?:pan)?\.kind$/)]);
-        expect(found.every((value) => ALLOWED.some((allowed) => allowed.test(value)))).toBe(false);
+        const found = findOtlpSpanKinds(source);
+        expect(
+          found.map((k) => k.value),
+          source,
+        ).toEqual([expect.stringMatching(/^s(?:pan)?\.kind$/)]);
+        expect(found.some(isAllowed)).toBe(false);
       });
     }
   });

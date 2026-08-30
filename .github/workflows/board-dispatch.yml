@@ -1,0 +1,192 @@
+name: Board dispatch
+
+# Ask Actions to write the board on your behalf — "Salt — The Pass", org project #1.
+#
+# WHY THIS EXISTS, and why no credential fixes it instead. `scripts/board.mjs`
+# shells out to `gh api graphql` (:58), and in a cloud session BOTH halves of
+# that are unavailable: `gh` is absent and cannot be installed, and GraphQL is
+# refused wholesale by the session proxy — even `{viewer{login}}` comes back 403
+# with an Anthropic documentation_url. Projects v2 exists ONLY in GraphQL; there
+# are no REST projectsV2 endpoints. So this is not a token-scope problem, and
+# copying PROJECT_TOKEN into the cloud environment would not work either — the
+# query is refused before the credential is ever evaluated. A relay is the only
+# shape available, and it is the shape we would want regardless: PROJECT_TOKEN
+# stays a repo secret read only by a runner, so a cloud session gains the
+# ability to ASK for a board write and never the credential that performs one.
+#
+# It doubles as a manual lever. Actions → Board dispatch → Run workflow moves an
+# issue from a phone, from a machine with no checkout, or when `gh auth` has
+# expired.
+#
+# THIS IS NOT A SECOND AUTOMATED WRITER. `board-status.yml` remains the sole
+# event-driven path for In review / Merged / Released, keyed on `pull_request`
+# and `workflow_run` payloads. Nothing here fires on an event — every run is a
+# human clicking Run workflow or an agent dispatching it. The concurrency group
+# below is keyed by issue and that one by PR, so the two can never share a key
+# and can never race on the same item.
+#
+# `check` IS DELIBERATELY ABSENT from the command list. The four commands here
+# are writes whose success is visible on the board, so a lost one is a nuisance.
+# `check` is a read whose EXIT CODE is the entire point — it enforces the
+# blocker-promotion invariant (CLAUDE.md rule 12, docs/issue-board.md → "The
+# promotion rule"). Dispatched and unwatched, a red `check` is invisible, which
+# makes relaying it worse than not having it: an agent could report "invariant
+# checked" having observed nothing. It stays a Mac-only command. If a cloud
+# session ever genuinely needs it, the answer is a command that WAITS on the
+# run and reads its conclusion — not adding `check` to this list.
+#
+# TOKEN: as board-status.yml:30-35 — the Actions GITHUB_TOKEN cannot write
+# Projects v2 at any permission level, because an org project sits outside the
+# repo-scoped token entirely. Hence `permissions: contents: read` (this workflow
+# needs no permission of its own) with PROJECT_TOKEN arriving through `env:`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Which board.mjs command to run'
+        type: choice
+        required: true
+        default: set
+        options: [set, add, pr, release]
+      issue:
+        description: 'Issue number for add/set, PR number for pr. Leave empty for release.'
+        type: string
+        required: false
+        default: ''
+      # The four dropdowns below are a COPY of the project's single-select
+      # options, and the only copy anywhere — `board.mjs` stores no ids and
+      # resolves every field and option BY NAME at call time (:74-99). The copy
+      # buys a self-documenting dispatch form and GitHub rejecting a typo before
+      # a runner starts; the cost is that a field gaining an option needs a line
+      # added here too. It is not a validation layer and must not be treated as
+      # one: `option()` at :95 is what actually decides, and it dies loudly on
+      # anything it does not recognise, including a value this list still offers
+      # after the field has changed under it.
+      queue:
+        description: 'Queue'
+        type: choice
+        required: false
+        default: '(unchanged)'
+        options: ['(unchanged)', Recommended, Medium, Low, Deferred]
+      class:
+        description: 'Class'
+        type: choice
+        required: false
+        default: '(unchanged)'
+        options: ['(unchanged)', Defect, Refactor, New feature, Feature update, Infra]
+      size:
+        description: 'Size'
+        type: choice
+        required: false
+        default: '(unchanged)'
+        options: ['(unchanged)', S, M, L]
+      status:
+        description: 'Status'
+        type: choice
+        required: false
+        default: '(unchanged)'
+        options: ['(unchanged)', Triage, Todo, In progress, In review, Merged, Released]
+      sha:
+        description: 'Deployed sha — release only'
+        type: string
+        required: false
+        default: ''
+
+# Never let two board writers race on the same item. Keyed by issue, where
+# board-status.yml is keyed by PR — deliberately disjoint, see the header.
+concurrency:
+  group: board-dispatch-${{ inputs.issue || inputs.sha || 'manual' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    name: ${{ inputs.command }} → the board
+    runs-on: ubuntu-latest
+    steps:
+      # `ref: main` is load-bearing, for the same reason spelled out at
+      # board-status.yml:83-92 for `workflow_run`. This job holds PROJECT_TOKEN
+      # and `workflow_dispatch` lets the DISPATCHER pick the ref, so checking
+      # out the handed ref and then running a script from it would execute
+      # whatever that ref contains with the PAT in scope. Pinning the default
+      # branch is also simply more correct: board.mjs should be the current one,
+      # never whatever sits on the branch someone happened to dispatch from.
+      #
+      # Only `release` needs history — it tests `git merge-base --is-ancestor`
+      # per issue (board.mjs:264). The quotes around '0' and '1' are load-bearing
+      # too: in a GitHub expression the NUMBER 0 is falsy, so an unquoted
+      # `… && 0 || 1` evaluates to 1 every time and would hand `release` a
+      # shallow checkout. A non-empty STRING is truthy, so '0' survives the `&&`.
+      # board.mjs:243-247 catches the USUAL shallow case loudly — the deployed
+      # sha is simply not in the clone — but it is not a safety net for this,
+      # and the boundary matters: if the deployed sha happens to BE the one
+      # commit a depth-1 clone has, `git cat-file -e` passes, every ancestry
+      # test then answers false against absent merge commits, and the run
+      # reports a silent "0 moved" that looks exactly like a release that
+      # shipped nothing. Which is why the quoting is worth getting right here
+      # rather than relying on the script to notice.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: ${{ inputs.command == 'release' && '0' || '1' }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Workflow inputs are attacker-supplied text. spec-shape.yml:22-25 states
+      # that rule for issue bodies; it is identical here with the stakes raised,
+      # because this job holds PROJECT_TOKEN. So every input reaches the shell
+      # through `env:` and the argument list is built as a bash array — no
+      # `${{ … }}` appears anywhere inside the script below, and nothing enforces
+      # that but the reviewer of the next edit. Interpolate an input here and you
+      # have handed everyone with write access arbitrary shell in a job holding
+      # the PAT.
+      #
+      # A value is appended only when it is actually set, which leaves board.mjs
+      # the sole validator rather than this script growing a second, divergent
+      # one: a missing issue number arrives as no positional argument at all, so
+      # board.mjs prints its own usage and exits 1 (:159, :184). An unknown Queue
+      # dies at :95 naming the options it does have, and a non-numeric issue at
+      # :158. Appending an EMPTY string instead would be worse than useless —
+      # `Number('')` is 0, which is a valid integer, so a blank issue number
+      # would sail past that guard and fail later as "#0 is not on the board".
+      - name: Relay to scripts/board.mjs
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          BOARD_COMMAND: ${{ inputs.command }}
+          BOARD_ISSUE: ${{ inputs.issue }}
+          BOARD_QUEUE: ${{ inputs.queue }}
+          BOARD_CLASS: ${{ inputs.class }}
+          BOARD_SIZE: ${{ inputs.size }}
+          BOARD_STATUS: ${{ inputs.status }}
+          BOARD_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+
+          args=("$BOARD_COMMAND")
+
+          # add/set take an issue number and pr takes a PR number; release takes
+          # neither, and a stray positional there would just be ignored anyway.
+          if [ "$BOARD_COMMAND" != 'release' ] && [ -n "$BOARD_ISSUE" ]; then
+            args+=("$BOARD_ISSUE")
+          fi
+
+          # "(unchanged)" is how a required dropdown says "do not touch this
+          # field" — GitHub has no empty state for a choice input.
+          add_flag() {
+            if [ -n "$2" ] && [ "$2" != '(unchanged)' ]; then
+              args+=("$1" "$2")
+            fi
+          }
+          add_flag --queue "$BOARD_QUEUE"
+          add_flag --class "$BOARD_CLASS"
+          add_flag --size "$BOARD_SIZE"
+          add_flag --status "$BOARD_STATUS"
+          add_flag --sha "$BOARD_SHA"
+
+          echo "board.mjs ${args[*]}"
+          node scripts/board.mjs "${args[@]}"

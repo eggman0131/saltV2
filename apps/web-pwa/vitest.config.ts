@@ -40,8 +40,8 @@ export default defineConfig({
     // worker container differs. This suite's cost is almost entirely per-file
     // worker spin-up, not test execution: a trivial test file costs ~1 CPU-second
     // here while `tests` totals ~18s of a ~190 CPU-second full run. Paying a
-    // process fork per file was the dominant expense. Measured across all 8
-    // projects: ~193 → ~147 CPU-seconds, with `sys` alone halving (48s → 24s) —
+    // process fork per file was the dominant expense. Measured across every
+    // project: ~193 → ~147 CPU-seconds, with `sys` alone halving (48s → 24s) —
     // that delta IS the fork overhead. CI's runner is 4-core and this job is
     // CPU-bound, so the saving lands as real wall-clock time.
     //
@@ -50,8 +50,8 @@ export default defineConfig({
     // not globally, and never by reaching for `isolate: false`, which DOES leak
     // module state between files and fails 3 files in this suite today.
     pool: 'threads',
-    // Both numbers below are measured, not guessed. `pnpm soak` runs the full
-    // 8-project suite back to back with 12 spinner processes saturating the CPU
+    // Both numbers below are measured, not guessed. `pnpm soak` runs the root
+    // suite — every project — back to back with 12 spinner processes on the CPU
     // (`scripts/soak-unit-tests.mjs`). Three soaks on 2026-08-13, same load:
     //
     //   1000ms (the library default nobody chose)   2/6  green, load 14–28
