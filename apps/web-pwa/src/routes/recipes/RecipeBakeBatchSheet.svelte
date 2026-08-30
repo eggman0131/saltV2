@@ -33,6 +33,7 @@
   import type { Formula, ProposeScheduleOutput } from '@salt/domain/schemas';
   import { proposeSchedule, startBatch } from '../../lib/batchService.js';
   import { reviewRows, type ProposalStageRow } from './scheduleProposal.js';
+  import { parseUnitCount } from './unitCount.js';
   import { addToast } from '../../lib/toastStore.js';
   import { formatGrams } from '../../lib/quantityDisplay.js';
 
@@ -218,10 +219,7 @@
   const selectedPreset = $derived(
     presetId ? (shapeOptions.find((p) => p.id === presetId) ?? null) : null,
   );
-  const count = $derived.by(() => {
-    const value = Number(countText.trim());
-    return Number.isInteger(value) && value > 0 ? value : null;
-  });
+  const count = $derived(parseUnitCount(countText));
   const shape = $derived(
     selectedPreset && count !== null ? unitShapeFromPreset(selectedPreset, count) : null,
   );

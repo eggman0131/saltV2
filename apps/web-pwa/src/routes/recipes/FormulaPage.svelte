@@ -60,6 +60,7 @@
     ProcessStageKind,
   } from '@salt/domain/schemas';
   import { kindOf } from './recipeKind.js';
+  import { parseUnitCount } from './unitCount.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
   import { formatGrams } from '../../lib/quantityDisplay.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -182,7 +183,20 @@
   let dirty = $state(false);
   let saving = $state(false);
 
-  function parseGrams(text: string): number | null {
+  // A trimmed, finite, strictly-positive number, or nothing. Named for what it
+  // IS rather than for one of the boxes that wants it: this page has three such
+  // boxes (an ingredient's grams, a stage's minutes, a stage's max minutes) and
+  // used to declare the same four lines twice, once as `parseGrams` and once as
+  // `parseMinutes` ten lines apart. `parseGrams(row.minutesText)` would have read
+  // as a mistake at the call site, which is why this is a rename rather than one
+  // parser delegating to the other (issue #1055).
+  //
+  // Deliberately more lenient than `cookTimerDuration.ts`'s `parseMinutes`, which
+  // demands `/^\d+$/` and `>= 1` because the −/+ chips write into that field. A
+  // process stage's duration is `z.number().positive()` — non-integers are
+  // schema-legal — so adopting the strict parser here would start rejecting valid
+  // input. The two are pinned side by side in `FormulaPageStages.test.ts`.
+  function parsePositiveNumber(text: string): number | null {
     const trimmed = text.trim();
     if (trimmed === '') return null;
     const value = Number(trimmed);
@@ -190,11 +204,12 @@
   }
 
   function gramsOf(row: Row): number | null {
-    return parseGrams(row.gramsText);
+    return parsePositiveNumber(row.gramsText);
   }
 
   // Bake loss may legitimately be zero and is a percentage, so it is neither
-  // `parseGrams` (which rejects zero) nor `parseCelsius` (which has no ceiling).
+  // `parsePositiveNumber` (which rejects zero) nor `parseCelsius` (which has no
+  // ceiling).
   // `UnitShapeSchema` bounds it 0–100 and this is the boundary that honours them:
   // a figure outside that range yields no shape at all, which is what keeps Save
   // disabled rather than letting a document be built that the schema would refuse.
@@ -206,19 +221,12 @@
   }
 
   // Temperatures, unlike weights, may be zero or below — a freezer is a legitimate
-  // environment, so this cannot reuse `parseGrams`.
+  // environment, so this cannot reuse `parsePositiveNumber`.
   function parseCelsius(text: string): number | null {
     const trimmed = text.trim();
     if (trimmed === '') return null;
     const value = Number(trimmed);
     return Number.isFinite(value) ? value : null;
-  }
-
-  function parseMinutes(text: string): number | null {
-    const trimmed = text.trim();
-    if (trimmed === '') return null;
-    const value = Number(trimmed);
-    return Number.isFinite(value) && value > 0 ? value : null;
   }
 
   // ─── Stage rows ↔ stages ──────────────────────────────────────────────────────
@@ -250,8 +258,8 @@
   function stageFrom(row: StageRow): ProcessStage {
     const celsius = parseCelsius(row.celsiusText);
     const humidity = row.environment?.relativeHumidityPercent;
-    const minutes = parseMinutes(row.minutesText);
-    const maxMinutes = parseMinutes(row.maxMinutesText);
+    const minutes = parsePositiveNumber(row.minutesText);
+    const maxMinutes = parsePositiveNumber(row.maxMinutesText);
     return {
       id: row.id,
       label: row.label.trim(),
@@ -429,7 +437,7 @@
   // changes again. This is what makes "2 eggs" work — the prompt is the empty box,
   // and leaving it empty is how you leave the eggs out.
   function setGrams(ingredientId: string, text: string): void {
-    patchRow(ingredientId, { gramsText: text, included: parseGrams(text) !== null });
+    patchRow(ingredientId, { gramsText: text, included: parsePositiveNumber(text) !== null });
   }
 
   function setIncluded(ingredientId: string, included: boolean): void {
@@ -541,17 +549,14 @@
 
   const selectedPreset = $derived(presetId ? unitShapePreset(presetId) : null);
   const isCustomShape = $derived(presetId === CUSTOM_SHAPE_ID);
-  const count = $derived.by(() => {
-    const value = Number(countText.trim());
-    return Number.isInteger(value) && value > 0 ? value : null;
-  });
+  const count = $derived(parseUnitCount(countText));
 
   // All three fields or nothing. A half-typed custom shape is not a lenient shape
   // with a default in the gap — it is no declaration yet, and the same `shape ===
   // null` that has always disabled Save covers it without a second rule.
   const customShape = $derived.by(() => {
     const label = customLabel.trim();
-    const unitDoughGrams = parseGrams(customGramsText);
+    const unitDoughGrams = parsePositiveNumber(customGramsText);
     const bakeLossPercent = parseBakeLoss(customLossText);
     return label !== '' && unitDoughGrams !== null && bakeLossPercent !== null
       ? { label, unitDoughGrams, bakeLossPercent }
