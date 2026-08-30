@@ -1,0 +1,31 @@
+{
+  "//": "Copy-paste detection config. Run it with `pnpm dupes`, which pins jscpd@5 — that pin, not anything in this file, is what fixes issue #911. Measured on the tree #911 read: jscpd@4 finds 3 clones, jscpd@5 finds 21, because v4 does not split a .svelte file into its script and template halves and so cannot see inside a Svelte component at all. The caps below are a separate hazard: each, left at its default, silently shrinks the answer with no warning and no exit code.",
+
+  "//minLines": "20 lines / 120 tokens is the 'meaningful clone' threshold: below it the report fills with import blocks and Svelte boilerplate.",
+  "minLines": 20,
+  "minTokens": 120,
+
+  "//maxLines": "Files longer than this are skipped SILENTLY — no warning, no exit code. jscpd v4 defaulted to 1000; v5's default is higher but undocumented, so pin it rather than inherit it. Measured on this repo: at 1000 the report is 4 clones, lifted it is 8. Half the answer, no indication anything was dropped.",
+  "maxLines": 20000,
+
+  "//maxSize": "Same silent skip, by bytes rather than lines (default 100kb). Currently inert here — jscpd splits a .svelte file into its script/template/style halves before this check, so no unit exceeds it even though RecipeViewPage.svelte is 165kb on disk. Pinned as a guard against the next big file, not as a fix for a live miss.",
+  "maxSize": "10mb",
+
+  "//format": "Scopes which FILES are picked up. It does not stop jscpd splitting a .svelte file into its :typescript / :html / :css halves — those are compared regardless, which is what makes template duplication visible at all.",
+  "format": ["typescript", "svelte"],
+
+  "//ignore": "Tests are excluded deliberately. Arrange/assert repetition across test files is desirable, and including them buries the real findings under hundreds of test-to-test clones.",
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.svelte-kit/**",
+    "**/coverage/**",
+    "**/*.d.ts",
+    "**/tests/**",
+    "**/e2e/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+
+  "gitignore": true
+}
