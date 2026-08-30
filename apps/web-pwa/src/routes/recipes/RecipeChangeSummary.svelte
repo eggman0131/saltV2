@@ -11,7 +11,8 @@
   } from '@salt/ui-components';
   import { diffWords, unchangedRatio } from '@salt/domain';
   import type { DiffPart } from '@salt/domain';
-  import type { NullableStringChange, RecipeDiff, StepTimerDoc } from '@salt/domain/schemas';
+  import type { NullableStringChange, RecipeDiff } from '@salt/domain';
+  import type { StepTimerDoc } from '@salt/domain/schemas';
 
   // Review-and-approve gate for an AI-chef recipe edit. Renders the pure
   // `RecipeDiff` produced by `diffRecipe` as a DIFF: one card per change,

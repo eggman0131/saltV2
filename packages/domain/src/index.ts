@@ -234,6 +234,7 @@ export {
 export type { CookShapeSegment } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
+export type { NullableStringChange, StepChange, RecipeDiff } from './recipe/index.js';
 export { parseImportUrl, isHttpsScheme, hostnameAsIpLiteral, isPublicIp } from './recipe/index.js';
 
 // Weather module — pure forecast aggregation + staleness logic (Phase 2) and

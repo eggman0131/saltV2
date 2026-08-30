@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // What changed on this item since it was last approved — by the matching
 // pipeline, or (Phase 2) by the user's own aisle admin (issue #193). Unlike
-// RecipeDiffSchema — which is a pure render contract, built on demand and never
+// RecipeDiff — which is a pure render contract, built on demand and never
 // stored — this one IS PERSISTED, as an array on the canon doc, so it carries a
 // real back-compat surface.
 //

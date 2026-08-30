@@ -11,7 +11,7 @@ import type {
   RecipeMetadataDiff,
   StepChange,
   StepDiffEntry,
-} from '../../schemas/recipeDiff.js';
+} from './recipeDiff.js';
 
 // Pure recipe diff (Phase 1). Compares an `existing` recipe with an edited `draft`
 // and reports only human-signal changes so a client can render a section-grouped
