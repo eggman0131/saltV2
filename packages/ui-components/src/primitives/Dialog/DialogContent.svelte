@@ -4,7 +4,7 @@
   import { cn } from '../../lib/cn';
   import { DIALOG_CONTEXT } from '../../headless/Dialog.headless.svelte';
   import { PORTAL_CONTAINER_CONTEXT } from '../../headless/PortalContainer.headless.svelte';
-  import { dialogContentVariants, dialogOverlayClass } from './Dialog.variants';
+  import { dialogContentVariants, modalOverlayClass } from './Dialog.variants';
   import type { DialogContentProps } from './Dialog.types';
 
   let { size = 'md', class: className, children }: DialogContentProps = $props();
@@ -27,7 +27,7 @@
 </script>
 
 <Dialog.Portal to={portalTo} disabled={portalDisabled}>
-  <Dialog.Overlay class={dialogOverlayClass} />
+  <Dialog.Overlay class={modalOverlayClass} />
   <Dialog.Content bind:ref={contentEl} class={cn(dialogContentVariants({ size }), className)}>
     {@render children?.()}
   </Dialog.Content>

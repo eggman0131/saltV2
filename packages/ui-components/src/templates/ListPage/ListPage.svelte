@@ -8,8 +8,8 @@
   import Icon from '../../primitives/Icon/Icon.svelte';
   import Sheet from '../../primitives/Sheet/Sheet.svelte';
   import SheetContent from '../../primitives/Sheet/SheetContent.svelte';
-  import SheetHeader from '../../primitives/Sheet/SheetHeader.svelte';
-  import SheetTitle from '../../primitives/Sheet/SheetTitle.svelte';
+  import SheetHeader from '../../primitives/Dialog/DialogHeader.svelte';
+  import SheetTitle from '../../primitives/Dialog/DialogTitle.svelte';
   import { LIST_PAGE_CONTEXT } from './ListPage.context.js';
   import type { ListPageProps } from './ListPage.types';
 
