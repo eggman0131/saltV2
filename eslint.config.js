@@ -4,6 +4,7 @@ import boundaries from 'eslint-plugin-boundaries';
 import tsParser from '@typescript-eslint/parser';
 import svelteParser from 'svelte-eslint-parser';
 import playwright from 'eslint-plugin-playwright';
+import sonarjs from 'eslint-plugin-sonarjs';
 
 // Element definitions used by eslint-plugin-boundaries.
 const ELEMENTS = [
@@ -772,6 +773,37 @@ export default [
           ],
         },
       ],
+    },
+  },
+
+  // Preventive duplication check: a function whose body is identical to one
+  // already written (issue #912).
+  //
+  // WARN, never error, and that is load-bearing rather than timid. `pnpm lint`
+  // is bare `eslint "**/*.{ts,js,svelte}"` with no `--max-warnings`, so a
+  // warning reaches the editor and the CI log without failing a build — which
+  // is the only way to switch this on over an existing backlog without
+  // red-lighting PRs that did not create it. IF A FUTURE CHANGE ADDS
+  // `--max-warnings` TO THAT SCRIPT, THIS RULE MUST BE REVISITED FIRST: it
+  // would start blocking every PR on duplication that predates it. Promotion to
+  // `error` is a deliberate, separate decision for once the backlog is clear.
+  //
+  // `.svelte` files are in scope: svelte-eslint-parser exposes `<script>`
+  // blocks to the same rules, so the cook pages are covered.
+  //
+  // Scoped to first-party source only. Tests are excluded because
+  // arrange/assert repetition across cases is desirable — the same reason
+  // `.jscpd.json` excludes them — and `scripts/` is outside the layer map.
+  {
+    files: [
+      'packages/*/src/**/*.{ts,svelte}',
+      'packages/adapters/*/src/**/*.ts',
+      'apps/*/src/**/*.{ts,svelte}',
+    ],
+    ignores: ['**/*.test.ts', '**/*.spec.ts', '**/tests/**', '**/__boundary_tests__/**'],
+    plugins: { sonarjs },
+    rules: {
+      'sonarjs/no-identical-functions': 'warn',
     },
   },
 ];
