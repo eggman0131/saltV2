@@ -186,6 +186,22 @@ describe('push-sw — push', () => {
     expect(showNotification.mock.calls[0]![0]).toBe('A batch stage is due');
   });
 
+  it('falls back to SHOPPING copy, not cook-timer copy, for a shop push with no title', async () => {
+    // The slotless phrasing: the fallback cannot know AM from PM, so it says the
+    // one thing that is true either way. Pinned here (issue #1054, Phase 1)
+    // because this copy is a forced third copy of the shop-day headline —
+    // `push-sw.js` is a classic worker script with no way to import the rule —
+    // and Phase 2 closes it with a parity assertion against the shared rule.
+    const { listeners, showNotification } = loadSw([]);
+    const { event, settle } = pushEvent({ type: 'shopping-reminder', url: '/#/shopping/list-1' });
+    listeners.get('push')!(event);
+    await settle();
+    const [title, opts] = showNotification.mock.calls[0]! as [string, ShownOptions];
+    expect(title).toBe('Shopping tomorrow');
+    expect(opts.body).toBe('Add anything missing to the list.');
+    expect(opts.tag).toBe('shopping-reminder');
+  });
+
   it('falls back to the cook-timer copy on an unparseable payload', async () => {
     const { listeners, showNotification } = loadSw([]);
     const pending: Promise<unknown>[] = [];
