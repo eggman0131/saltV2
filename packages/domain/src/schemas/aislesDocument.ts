@@ -6,6 +6,8 @@ export const AisleSchema = z.object({
   order: z.number(),
 });
 
+export type AisleDoc = z.infer<typeof AisleSchema>;
+
 export const AislesDocumentSchema = z.object({
   schemaVersion: z.literal(1),
   updatedAt: z.string(),

@@ -11,6 +11,7 @@ import {
 import type { MatchOrCreateInput, MatchOrCreateResult, ProductForm } from '@salt/domain';
 import {
   CanonicaliseRecipeIngredientsInputSchema,
+  CanonicaliseRecipeIngredientsOutputSchema,
   type ProductFormProposal,
 } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
@@ -23,27 +24,11 @@ import { reportServerError } from '../observability/reportServerError.js';
 import { arbitrateProductFormFlow } from './arbitrateProductForm.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
-const ItemResultSchema = z.union([
-  z.object({
-    kind: z.literal('ok'),
-    value: z.object({
-      decision: z.enum(['created', 'matched', 'ai_arbitrated']),
-      item: z.any(),
-    }),
-  }),
-  z.object({
-    kind: z.literal('err'),
-    error: z.any(),
-  }),
-]);
-
-const OutputSchema = z.array(ItemResultSchema);
-
 export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
   {
     name: 'canonicaliseRecipeIngredients',
     inputSchema: CanonicaliseRecipeIngredientsInputSchema,
-    outputSchema: OutputSchema,
+    outputSchema: CanonicaliseRecipeIngredientsOutputSchema,
   },
   async (input) => {
     // One parent span for the whole batch so every per-item canon span is

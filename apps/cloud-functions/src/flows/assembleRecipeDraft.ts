@@ -5,7 +5,9 @@ import type {
   IngredientGroupDoc,
   IngredientDoc,
 } from '@salt/domain/schemas';
+import { RecipeSchema } from '@salt/domain/schemas';
 import { normaliseTags, reconcileRecipeTimes } from '@salt/domain';
+import { logger } from 'firebase-functions';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { reportServerError } from '../observability/reportServerError.js';
@@ -257,7 +259,7 @@ export async function assembleRecipeDraft(
   // gets raised to the parts' floor.
   const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
 
-  return {
+  const draft: RecipeDoc = {
     id: recipeId,
     schemaVersion: 1,
     // Authoring and importing both produce a cookable recipe (issue #637) —
@@ -311,4 +313,39 @@ export async function assembleRecipeDraft(
     createdAt: now,
     updatedAt: now,
   };
+
+  // OBSERVE-ONLY (issue #932, Phase 5). Does the draft this function assembles
+  // actually satisfy RecipeSchema? Nobody knew: the three recipe flows declare
+  // `outputSchema: z.custom<RecipeDoc>()`, which validates nothing, and the draft
+  // reaches the `recipes` collection through an `httpsCallable<…, RecipeDoc>`
+  // type argument — a cast — and a full-document `setDoc`. So there is no
+  // RecipeSchema parse anywhere between the model and production.
+  //
+  // This is the measurement, and it is DELIBERATELY NOT ACTED ON: the result is
+  // never read, the draft is returned unchanged either way, and no import that
+  // succeeds today can fail because of this. Turning the flows' output schemas
+  // real is Phase 6, and it ships only if this reports nothing over real traffic
+  // — otherwise it would convert a silently-malformed recipe into a visible
+  // import failure for real users.
+  //
+  // Issue PATHS only, never values: CLAUDE.md's error-reporting conventions
+  // require free-form user content to be scrubbed, and a recipe draft is almost
+  // entirely user- and model-authored text.
+  //
+  // This is the single assembly point all three authoring paths funnel through
+  // (authorRecipe, extractRecipeFromUrl, extractRecipeFromPhoto), so one call
+  // covers all of them.
+  const observed = RecipeSchema.safeParse(draft);
+  if (!observed.success) {
+    const issuePaths = observed.error.issues.map((i) => i.path.join('.'));
+    logger.warn('assembleRecipeDraft: draft does not satisfy RecipeSchema', {
+      issuePaths,
+      issueCount: observed.error.issues.length,
+    });
+    reportServerError(
+      new Error(`assembleRecipeDraft: RecipeSchema mismatch at ${issuePaths.join(', ')}`),
+    );
+  }
+
+  return draft;
 }

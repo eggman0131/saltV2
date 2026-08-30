@@ -1,6 +1,6 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { EmbedTextInputSchema } from '@salt/domain/schemas';
+import { EmbedTextInputSchema, EmbedTextOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
@@ -12,7 +12,7 @@ export const embedTextFlow = ai.defineFlow(
   {
     name: 'embedText',
     inputSchema: EmbedTextInputSchema,
-    outputSchema: z.object({ values: z.array(z.number()) }),
+    outputSchema: EmbedTextOutputSchema,
   },
   async ({ text }) => {
     setActiveSpanName(`embedText: ${text}`);

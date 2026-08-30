@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MessageSchema } from './chatSession.js';
+import { ExtractedIngredientGroupSchema, ExtractedStepSchema } from './extractRecipeFromUrl.js';
 
 // Input to the librarian (authorRecipe) flow: the full conversation that the
 // user wants to turn into a recipe (issue #206, Phase 4).
@@ -26,29 +27,18 @@ export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;
 // The shape the AI model emits inside the flow (never leaves the CF boundary).
 // The model uses 0-based step ordinals for ingredient links; the flow resolves
 // them to step IDs before returning the final RecipeDoc to the client.
-export const LibrarianIngredientSchema = z.object({
-  rawText: z.string(),
-  isOptional: z.boolean(),
-  // Index into the steps array (0-based) for the step where this ingredient
-  // is first used. null = no specific step assignment.
-  firstUsedInStepOrdinal: z.number().int().nullable(),
-});
-
-export const LibrarianGroupSchema = z.object({
-  name: z.string().nullable(),
-  ingredients: z.array(LibrarianIngredientSchema),
-});
-
-export const LibrarianStepSchema = z.object({
-  text: z.string(),
-  timerMinutes: z.number().int().nullable(),
-  // Short human label for the step's timer (e.g. "Simmer the sauce"), or null
-  // when the step has no timer / no sensible label. Maps to StepTimer.description
-  // on the assembled recipe (issue #554). Null when timerMinutes is null.
-  timerLabel: z.string().nullable(),
-  note: z.string().nullable(),
-});
-
+//
+// The three sub-shapes are the EXTRACTOR's (issue #932, B3-003 structural half).
+// `LibrarianIngredientSchema` / `LibrarianGroupSchema` / `LibrarianStepSchema`
+// were byte-identical restatements of `ExtractedIngredientSchema` /
+// `ExtractedIngredientGroupSchema` / `ExtractedStepSchema`, so they are gone and
+// this consumes those directly — one declaration per shape.
+//
+// NOTE the top-level numeric constraints below are NOT unified with the
+// extractor's. That divergence is real and deliberate-for-now: aligning it would
+// start rejecting live model output on a path that costs an AI call to exercise,
+// which is a judgment call about AI behaviour rather than a refactor. Split out
+// of #932; see its Open Questions.
 export const LibrarianOutputSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
@@ -68,10 +58,9 @@ export const LibrarianOutputSchema = z.object({
   prepTimeMinutes: z.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.number().int().nonnegative().nullable(),
   tags: z.array(z.string()),
-  ingredientGroups: z.array(LibrarianGroupSchema),
-  steps: z.array(LibrarianStepSchema),
+  ingredientGroups: z.array(ExtractedIngredientGroupSchema),
+  steps: z.array(ExtractedStepSchema),
   notes: z.string().nullable(),
 });
 
-export type AuthorRecipeInput_ = z.infer<typeof AuthorRecipeInputSchema>;
 export type LibrarianOutput = z.infer<typeof LibrarianOutputSchema>;

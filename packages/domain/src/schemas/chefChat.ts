@@ -30,3 +30,7 @@ export const ChefChatInputSchema = z.object({
 });
 
 export type ChefChatInput = z.infer<typeof ChefChatInputSchema>;
+
+// The chef's reply. The flow streams it in fragments and resolves to the whole
+// text, so the stream and the output share this one schema.
+export const ChefChatOutputSchema = z.string();

@@ -87,38 +87,21 @@ export type DomainError =
   | { readonly kind: 'ValidationError'; readonly code: ErrorCode; readonly message?: string };
 
 // ──────────────────────────────────────────────────────────────────────────
-// DTOs and validation codes
+// Shared enums and validation codes
 // ──────────────────────────────────────────────────────────────────────────
+//
+// NO DOCUMENT-SHAPED TYPE BELONGS HERE (issue #932). `CanonItemDTO`, `AisleDTO`
+// and `AisleListDTO` used to, drifted two schema versions behind their schemas
+// (`schemaVersion: 3` against `CanonItemSchema`'s `z.literal(5)`), were imported
+// by nothing, and were the first thing a grep for `CanonItem` found. Rule 9
+// forbids this package importing `@salt/domain`, so a document type here can
+// never be derived from its schema and can only drift. Document shapes live in
+// `@salt/domain/schemas`. The two enums below stay because they are shared
+// vocabulary with real importers, not document shapes.
 
 export type ShoppingBehavior = 'stocked' | 'check' | 'needed';
 
 export type CanonItemUnit = 'g' | 'ml' | 'count';
-
-export interface CanonItemDTO {
-  readonly id: string;
-  readonly name: string;
-  readonly synonyms: readonly string[];
-  readonly aisleId: string | null;
-  readonly thumbnail: string | null;
-  readonly embedding: readonly number[] | null;
-  readonly needs_approval: boolean;
-  readonly shoppingBehavior: ShoppingBehavior;
-  readonly largeQuantityThreshold?: number;
-  readonly unit?: CanonItemUnit;
-  readonly reasoning?: string;
-  readonly schemaVersion: 3;
-}
-
-export interface AisleDTO {
-  readonly id: string;
-  readonly name: string;
-  readonly order: number;
-}
-
-export interface AisleListDTO {
-  readonly aisles: readonly AisleDTO[];
-  readonly schemaVersion: 1;
-}
 
 export const ErrorCode = {
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',

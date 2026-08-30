@@ -1,0 +1,20 @@
+{
+  // Typechecking config for the `.test-d.ts` type tests, mirroring
+  // packages/ui-components/tsconfig.typetest.json (issue #922).
+  //
+  // The package's own tsconfig is `composite` and rooted at `src/`, so it cannot
+  // compile anything under `tests/`. That is why the `expectTypeOf` assertions
+  // already sitting in `tests/**/*.test.ts` have never been evaluated by
+  // anything: `tsc --build` cannot see them, and `vitest` only executes them,
+  // where `expectTypeOf` is a no-op that returns an object. This config exists
+  // solely for `vitest --typecheck` to point at.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": []
+  },
+  "include": ["tests/**/*.test-d.ts"]
+}

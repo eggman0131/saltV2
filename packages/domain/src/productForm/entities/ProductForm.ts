@@ -1,13 +1,15 @@
 // ProductForm entity: an alternate form of an ingredient that resolves to a
 // parent canon item plus a yield. Internal to the productForm module; other
 // modules access it via the published index (re-exported as a type).
+//
+// Schema-first (issue #417, carried here by issue #932): aliases of the
+// inferred schema types, so the entities and the stored document cannot drift.
 import type { CanonItemUnit } from '@salt/shared-types';
+import type { ProductFormDoc, ProductFormYieldDoc } from '../../schemas/productForm.js';
+import type { FormDemandDoc } from '../../schemas/shoppingListItem.js';
 export type { CanonItemUnit };
 
-export interface ProductFormYield {
-  readonly formUnit: CanonItemUnit;
-  readonly amountPerParent: number;
-}
+export type ProductFormYield = ProductFormYieldDoc;
 
 // One product-form contributor's demand on its parent, persisted on a shopping
 // item so the display layer can aggregate correctly across recipes (issue #501).
@@ -20,38 +22,23 @@ export interface ProductFormYield {
 // (Σaᵢ)/p == Σ(aᵢ/p). That keeps the yield out of the shopping doc entirely —
 // the display aggregation needs no ProductForm snapshot, and a later yield edit
 // can't retro-corrupt an already-written item.
-export interface FormDemand {
-  // The ProductForm this demand came from. Demands sharing a formId SUM (the
-  // same form needed by several recipes); distinct formIds MAX (different forms
-  // of one parent are shared, not double-bought).
-  readonly formId: string;
-  readonly parentCount: number;
-}
+//
+// Demands sharing a `formId` SUM (the same form needed by several recipes);
+// distinct formIds MAX (different forms of one parent are shared, not
+// double-bought).
+//
+// The type is declared by this module but its schema lives beside the item that
+// persists it (`schemas/shoppingListItem.ts`) — a real cross-module oddity that
+// stays; only the declaration moves here.
+export type FormDemand = FormDemandDoc;
 
-export interface ProductForm {
-  readonly id: string;
-  readonly schemaVersion: 1;
-  // EXTRA phrasings a recipe might use, beyond the label itself.
-  readonly matchers: readonly string[];
-  readonly parentCanonId: string;
-  // Human-facing name — and matching input. `resolveProductForm` matches the
-  // label on equal terms with `matchers`; it is not display-only (issue #818).
-  readonly label: string;
-  readonly yield: ProductFormYield;
-  // Sync field — parity with canon; empty string is the pre-sync sentinel.
-  readonly updatedAt: string;
-  // Needs-review flag (issue #500, Phase 3), mirroring canon's `needs_approval`.
-  // Absent/false = confirmed; an AI-seeded proposal carries `true` until an admin
-  // confirms it. TRANSPORT for the review UI only — never a gate on resolution.
-  readonly needs_approval?: boolean;
-  // The form's own Tier-1 pictogram (issue #871). Tri-state exactly as
-  // `CanonItem.thumbnail`: `null` / an https URL / `CANON_ICON_HIDDEN`. REQUIRED
-  // on the entity even though the schema defaults it, because `upsertProductForm`
-  // writes the entity as a full document and Firestore rejects `undefined` — so
-  // every construction site must state the field rather than omit it.
-  readonly thumbnail: string | null;
-  // One-shot generation steer and regenerate nonce; see the schema for why the
-  // nonce exists at all. Both are server-owned — nothing in the domain sets them.
-  readonly iconHint?: string;
-  readonly iconRequestedAt?: number;
-}
+// `matchers` are EXTRA phrasings a recipe might use, beyond the label itself;
+// `resolveProductForm` matches the label on equal terms with them, so the label
+// is not display-only (issue #818). `updatedAt` is a sync field with the empty
+// string as its pre-sync sentinel. `needs_approval` mirrors canon's — absent or
+// false means confirmed, and it is TRANSPORT for the review UI only, never a
+// gate on resolution. `thumbnail` is tri-state exactly as `CanonItem.thumbnail`
+// (`null` / an https URL / `CANON_ICON_HIDDEN`) and stays REQUIRED because
+// `upsertProductForm` writes the entity as a full document and Firestore
+// rejects `undefined`. `iconHint` and `iconRequestedAt` are server-owned.
+export type ProductForm = ProductFormDoc;

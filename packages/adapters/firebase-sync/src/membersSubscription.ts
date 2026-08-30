@@ -21,7 +21,7 @@ export function subscribeMembers(
       path: [COLLECTION],
       schema: MemberSchema,
       label: 'MemberSchema',
-      project: (member) => member as Member,
+      project: (member) => member,
     },
     onMembers,
     onError,

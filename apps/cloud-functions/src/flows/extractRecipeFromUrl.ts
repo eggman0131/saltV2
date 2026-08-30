@@ -49,6 +49,11 @@ export class UrlImportError extends Error {
   }
 }
 
+// TODO(#932 Phase 6): `z.custom()` with no validator accepts ANY value, so this
+// output schema validates nothing. The real schema already exists in domain and
+// is simply unimported. Swapping it in is a deliberate behaviour change — a
+// malformed draft that passes through today would start failing the import — so
+// it is gated on Phase 5's evidence that real drafts satisfy RecipeSchema.
 const OutputSchema = z.custom<RecipeDoc>();
 
 export const extractRecipeFromUrlFlow = ai.defineFlow(

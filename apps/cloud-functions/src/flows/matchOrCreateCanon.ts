@@ -3,7 +3,10 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, resolveProductForm } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
-import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
+import {
+  MatchOrCreateCanonInputSchema,
+  MatchOrCreateCanonOutputSchema,
+} from '@salt/domain/schemas';
 import {
   createServerObservabilityMatchLoggingAdapter,
   initServerObservability,
@@ -27,23 +30,6 @@ import { reportServerError } from '../observability/reportServerError.js';
 // active OTel context before this flow runs — so the wire input is exactly the
 // domain input, with no _trace field to strip.
 //
-// Output is the Result envelope produced by matchOrCreate. CanonItem and
-// DomainError are validated upstream by the domain layer; modelling them
-// again in zod would just duplicate that contract.
-const OutputSchema = z.union([
-  z.object({
-    kind: z.literal('ok'),
-    value: z.object({
-      decision: z.enum(['created', 'matched', 'ai_arbitrated']),
-      item: z.any(),
-    }),
-  }),
-  z.object({
-    kind: z.literal('err'),
-    error: z.any(),
-  }),
-]);
-
 // Stable message for the PostHog report below. A constant rather than an inline
 // literal because its stability IS the feature: PostHog Error Tracking groups by
 // message, so one recurring operational condition stays one issue. The original
@@ -168,7 +154,7 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
   {
     name: 'matchOrCreateCanon',
     inputSchema: MatchOrCreateCanonInputSchema,
-    outputSchema: OutputSchema,
+    outputSchema: MatchOrCreateCanonOutputSchema,
   },
   async (input) => {
     ensureObservabilityInitialised();

@@ -28,7 +28,7 @@ export function subscribeCanonItems(
       // upsertCanonItem). The only per-subscription transform in the package,
       // and the reason `project` exists on the descriptor at all: a shared parse
       // loop without one would have dropped it silently.
-      project: (item) => ({ ...item, embedding: null }) as CanonItem,
+      project: (item) => ({ ...item, embedding: null }),
     },
     onItems,
     onError,

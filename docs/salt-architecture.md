@@ -230,7 +230,7 @@ Common rules for both subpaths:
 ### 6.3 Common rules
 
 - All adapters convert their backend's responses into domain entities or error types.
-- All adapters use `shared-types` for DTOs and result types.
+- All adapters use `shared-types` for result types and non-document DTOs (API request/response shapes, cross-module enums). Document-shaped types (`CanonItem`, `Aisle`, …) live in `@salt/domain` and derive from their `@salt/domain/schemas` schema via `z.infer` — never hand-duplicated in `shared-types`, which cannot import `@salt/domain` (Rule 9) and so cannot keep such a duplicate in sync (issue #932).
 - Adapters must not import each other; all are composed at the application layer.
 - `firebase-sync` is the **only** module permitted to import Firebase SDKs.
 - `observability` is the **only** module permitted to import the PostHog SDKs (`posthog-js` / `posthog-node`).
@@ -429,12 +429,12 @@ The PWA:
 
 shared-types contains:
 
-- DTOs
-- API request/response shapes
+- Non-document DTOs — API request/response shapes
 - Cross-module enums
 - DomainError categories and result types (`Success` / `Failure` / `Conflict`)
 - Nothing with logic
 - Nothing that depends on Firebase, IndexedDB, or browser APIs
+- **No document-shaped type** (a Firestore doc, a flow/callable wire contract) — those derive from their schema in `@salt/domain/schemas` via `z.infer`. `shared-types` cannot import `@salt/domain` (Rule 9), so a document type declared here can only drift from its schema, never stay derived from it (issue #932).
 
 This module must remain extremely small and stable.
 

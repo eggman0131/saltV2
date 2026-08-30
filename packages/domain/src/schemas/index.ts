@@ -15,17 +15,21 @@ export type {
   ProductFormProposal,
 } from './productFormArbitration.js';
 
-export { EmbedTextInputSchema } from './embedTextInput.js';
+export { EmbedTextInputSchema, EmbedTextOutputSchema } from './embedTextInput.js';
 export {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from './identifyEquipment.js';
-export { ParseEntryAIOutputSchema } from './parseEntry.js';
+export { ParseEntryAIOutputSchema, ParseEntryInputSchema } from './parseEntry.js';
+export type { ParseEntryInput } from './parseEntry.js';
 export {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from './populateEquipmentEntry.js';
-export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
+export {
+  MatchOrCreateCanonInputSchema,
+  MatchOrCreateCanonOutputSchema,
+} from './matchOrCreateCanonInput.js';
 // Browser→CF trace-continuity wire envelopes (issue #362): the base callable
 // input + an optional, named, typed `traceparent` transport field. The CF
 // entrypoint validates these, strips `traceparent`, and passes the pure domain
@@ -49,7 +53,11 @@ export type {
   OpenMeteoForecastResponse,
 } from './weatherForecast.js';
 
-export { CanonicaliseRecipeIngredientsInputSchema } from './canonicaliseRecipeIngredientsInput.js';
+export {
+  CanonicaliseRecipeIngredientsInputSchema,
+  CanonicaliseRecipeIngredientsItemSchema,
+  CanonicaliseRecipeIngredientsOutputSchema,
+} from './canonicaliseRecipeIngredientsInput.js';
 export type { CanonicaliseRecipeIngredientsInput } from './canonicaliseRecipeIngredientsInput.js';
 
 export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
@@ -84,10 +92,11 @@ export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
 
 export { ProductFormSchema } from './productForm.js';
-export type { ProductFormDoc } from './productForm.js';
+export type { ProductFormDoc, ProductFormYieldDoc } from './productForm.js';
 
 export { CanonEmbeddingSchema } from './canonEmbedding.js';
 export { AislesDocumentSchema } from './aislesDocument.js';
+export type { AisleDoc } from './aislesDocument.js';
 export { CanonPurchaseCountsSchema } from './canonPurchaseCounts.js';
 export type { CanonPurchaseCountsDoc } from './canonPurchaseCounts.js';
 
@@ -98,7 +107,7 @@ export {
   EQUIPMENT_MANIFEST_COLLECTION,
   EQUIPMENT_MANIFEST_DOC_ID,
 } from './equipmentManifest.js';
-export type { EquipmentItemDoc } from './equipmentManifest.js';
+export type { EquipmentItemDoc, AccessoryDoc, EquipmentManifestDoc } from './equipmentManifest.js';
 
 export {
   EquipmentIconSchema,
@@ -108,8 +117,11 @@ export {
 export type { EquipmentIconDoc, DrawEquipmentIconInput } from './equipmentIcon.js';
 
 export { ShoppingListSchema } from './shoppingList.js';
-export { ShoppingListItemSchema } from './shoppingListItem.js';
+export type { ShoppingListDoc } from './shoppingList.js';
+export { ShoppingListItemSchema, SourceRefSchema, FormDemandSchema } from './shoppingListItem.js';
+export type { ShoppingListItemDoc, SourceRefDoc, FormDemandDoc } from './shoppingListItem.js';
 export { ShoppingListsConfigSchema } from './shoppingListsConfig.js';
+export type { ShoppingListsConfigDoc } from './shoppingListsConfig.js';
 export { ShoppingDaySchema } from './shoppingDay.js';
 export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
 
@@ -143,9 +155,14 @@ export type {
 } from './appSettings.js';
 
 export { MemberSchema } from './member.js';
+export type { MemberDoc } from './member.js';
 export { MealPlanConfigSchema } from './mealPlanConfig.js';
+export type { MealPlanConfigDoc } from './mealPlanConfig.js';
 export { MealPlanTemplateSchema } from './mealPlanTemplate.js';
+export type { MealPlanTemplateDoc } from './mealPlanTemplate.js';
 export { MealPlanWeekSchema } from './mealPlanWeek.js';
+export type { MealPlanWeekDoc } from './mealPlanWeek.js';
+export type { WeekdayDoc, AttendeeDoc, MealPlanDayDoc } from './mealPlanDay.js';
 export {
   ParseRecipeIngredientsInputSchema,
   ParseRecipeIngredientsAIOutputSchema,
@@ -182,7 +199,7 @@ export type { PendingEmailOtp } from './emailOtp.js';
 export { PushSubscriptionSchema } from './pushSubscription.js';
 export type { PushSubscriptionDoc } from './pushSubscription.js';
 
-export { ChefChatInputSchema } from './chefChat.js';
+export { ChefChatInputSchema, ChefChatOutputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
 // identifyRecipeKit (issue #882) — "what do I need to get out?", inferred from the
@@ -226,6 +243,11 @@ export type {
 } from './describeEquipmentSubject.js';
 
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
+export {
+  GenerateChatTitleInputSchema,
+  GenerateChatTitleOutputSchema,
+} from './generateChatTitle.js';
+export type { GenerateChatTitleInput, GenerateChatTitleOutput } from './generateChatTitle.js';
 export type { AuthorRecipeInput, LibrarianOutput } from './authorRecipe.js';
 
 export {

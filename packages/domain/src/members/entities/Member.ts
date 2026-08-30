@@ -1,4 +1,4 @@
-import type { CookMode } from '../../schemas/member.js';
+import type { MemberDoc, CookMode } from '../../schemas/member.js';
 
 // Member entity: a person on the Salt allowlist (issue #155).
 // Lives in members/entities — internal to the members module. Other modules
@@ -10,20 +10,11 @@ import type { CookMode } from '../../schemas/member.js';
 // read their `admin` flag, without a query. Email is normalised (trimmed,
 // lowercased) at every write boundary so the Auth token's email claim matches
 // the key (see normaliseMemberEmail).
-export interface Member {
-  readonly id: string; // = normalised email; also the Firestore doc key
-  readonly schemaVersion: 1;
-  readonly name: string;
-  readonly email: string; // normalised (trimmed, lowercased)
-  readonly admin: boolean;
-  readonly sortOrder: number;
-  // Reserved for richer avatars later (#155 ships initials only). null = render
-  // initials derived from `name`. No image upload/generation in this module.
-  readonly icon: string | null;
-  // Which cook mode this person's Cook button opens (issue #776). The ONLY field
-  // on this entity a non-admin may change about themselves — see firestore.rules,
-  // where every other field is pinned on a self-update precisely because `admin`
-  // is one of them.
-  readonly cookMode: CookMode;
-  readonly updatedAt: string; // ISO-8601, stamped by domain commands on mutation
-}
+//
+// `cookMode` is the ONLY field a non-admin may change about themselves — see
+// firestore.rules, where every other field is pinned on a self-update precisely
+// because `admin` is one of them.
+//
+// Schema-first (issue #417, carried here by issue #932): the file already
+// imported `CookMode` from the schema, so this completes it.
+export type Member = MemberDoc;

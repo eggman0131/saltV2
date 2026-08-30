@@ -1,50 +1,22 @@
-import type { SourceRef } from './SourceRef.js';
-import type { FormDemand } from '../../productForm/index.js';
+import type { ShoppingListItemDoc } from '../../schemas/shoppingListItem.js';
 
-export type MatchState = 'pending' | 'matched' | 'needs_approval' | 'failed';
+// Same enum as the recipe ingredient (issue #179) — a shopping-list item and a
+// recipe ingredient describe their canon match the same way. Derived from the
+// schema so it cannot drift from the wire contract (the `Ingredient.ts` form).
+export type MatchState = ShoppingListItemDoc['matchState'];
 
-export interface ShoppingListItem {
-  readonly id: string;
-  readonly rawText: string;
-  readonly notes: string;
-  readonly sources: readonly SourceRef[];
-  readonly canonId: string | null;
-  readonly matchState: MatchState;
-  readonly amount?: number;
-  readonly unit?: string;
-  // Product-form demand breakdown (issue #501). Present only on a product-form
-  // parent row (`unit === 'count'`): one entry per form of this parent the source
-  // recipe demanded, each with that form's own UNROUNDED parent-count, so the
-  // display aggregation can sum a form's demand across recipes and round once.
-  // Absent on every other item and on items written before the field existed —
-  // those degrade to the old collapsed-count behaviour. Mirrors
-  // ShoppingListItemSchema (the read boundary casts the parsed doc to this type,
-  // so the two must stay structurally compatible).
-  readonly formDemand?: readonly FormDemand[];
-  // The recipe's OWN wording for the ingredient line(s) behind a product-form row
-  // (issue #528). Present only on a product-form parent row (alongside
-  // `formDemand`): the row is labelled with the parent product ("Lime ×3"), so
-  // these carry the lines that justified the count ("juice of 2 limes") through to
-  // the list. Winner first, then source order, de-duplicated. DISPLAY ONLY — no
-  // logic may branch on it. Absent on every other item and on items written before
-  // the field existed; those degrade to today's cleaned-name sub-line. Mirrors
-  // ShoppingListItemSchema (the read boundary casts the parsed doc to this type,
-  // so the two must stay structurally compatible).
-  readonly originalText?: readonly string[];
-  // The recipe's original non-metric measure for this line, verbatim ("6 cloves"),
-  // so a row flattened to grams still says what to reach for. Written only when
-  // the recipe was added at its own servings — the string has no structure to
-  // scale, so at any other serving count it is absent rather than wrong. DISPLAY
-  // ONLY. Mirrors ShoppingListItemSchema (the read boundary casts the parsed doc
-  // to this type, so the two must stay structurally compatible).
-  readonly measureNote?: string;
-  readonly checked: boolean;
-  // Flagged for verification at extraction time (issue #185): a recipe-add put
-  // this on the list as a "check you need it" item (e.g. a near-threshold staple).
-  // Distinct from `checked` — the shopper confirms-keep (clears the flag) or drops
-  // it from the list screen. Always present; defaults false for manual adds.
-  readonly needsCheck: boolean;
-  readonly schemaVersion: 1;
-  readonly createdAt: string; // ISO-8601
-  readonly updatedAt: string; // ISO-8601
-}
+// One Firestore document at `shoppingLists/{listId}/items/{id}`. Schema-first
+// (issue #417, carried here by issue #932): `ShoppingListItemSchema` is the
+// single source of truth, so the entity and the stored document can no longer
+// drift behind a cast at the read boundary.
+//
+// `traceContext` is OMITTED, the same narrowing `CanonItem` makes and for the
+// same reason: it is transport only. The browser stamps it onto the doc at "add
+// to shopping list" so the onShoppingListItemWrite trigger can continue the
+// browser-rooted trace; domain logic must never branch on it, and the pure
+// domain item must not carry it (CLAUDE.md Rule 1). See the field's own comment
+// on ShoppingListItemSchema.
+//
+// Every other field — including the optional `formDemand`, `originalText` and
+// `measureNote` back-compat fields — comes straight from the schema.
+export type ShoppingListItem = Omit<ShoppingListItemDoc, 'traceContext'>;

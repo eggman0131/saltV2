@@ -1,5 +1,9 @@
 import type { CanonItem } from './CanonItem.js';
 
+// HAND-WRITTEN ON PURPOSE (issue #932). In-memory state of the matching
+// pipeline — built, ranked and discarded within a single match. It is never
+// persisted and never parsed, so it has no schema counterpart to derive from.
+
 export type MatchStage = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface MatchCandidate {
