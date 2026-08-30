@@ -34,15 +34,20 @@ export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;
 // `ExtractedIngredientGroupSchema` / `ExtractedStepSchema`, so they are gone and
 // this consumes those directly — one declaration per shape.
 //
-// NOTE the top-level numeric constraints below are NOT unified with the
-// extractor's. That divergence is real and deliberate-for-now: aligning it would
-// start rejecting live model output on a path that costs an AI call to exercise,
-// which is a judgment call about AI behaviour rather than a refactor. Split out
-// of #932; see its Open Questions.
+// The four top-level numeric fields carry the EXTRACTOR's constraints — the three
+// time fields since #952, `servings` since #1123 — so the two schemas accept and
+// reject the same numbers. `authorRecipe.schema.test.ts` runs one value matrix
+// through both and asserts they agree, because "they match" is otherwise a
+// sentence nothing falsifies when one of them is edited alone.
 export const LibrarianOutputSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
-  servings: z.number().nullable(),
+  // The extractor's constraint, for the extractor's reason (issue #739): a recipe
+  // that serves nobody is a model glitch, not an answer. It is also the one of
+  // these four numbers that anything DIVIDES by — a stored 0 scaled a shopping
+  // list by Infinity (issue #1123) — so this path was the last one able to mint
+  // that state.
+  servings: z.number().int().positive().nullable(),
   // Same time constraints as the extractor (ExtractRecipeAIOutputSchema), and
   // for the same reasons — the librarian was the one authoring path that would
   // accept a fractional or negative minute count and store it (issue #952).

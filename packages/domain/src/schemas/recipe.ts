@@ -85,6 +85,12 @@ export const StepSchema = z.object({
 });
 
 export const RecipeMetadataSchema = z.object({
+  // Deliberately permissive, and staying that way (issue #1123). This is the READ
+  // boundary for a production collection: rejecting a bad `servings` here would
+  // skip the whole recipe rather than fix one field, so a document written before
+  // the authoring gates existed would silently vanish from the library. The gates
+  // are on the way IN — the three flows' output schemas — and `buildRecipeAddPlan`
+  // treats a non-positive stored value as unstated rather than dividing by it.
   servings: z.number().nullable(),
   totalTimeMinutes: z.number().nullable(),
   prepTimeMinutes: z.number().nullable(),

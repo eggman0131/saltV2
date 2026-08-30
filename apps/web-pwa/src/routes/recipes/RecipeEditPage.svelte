@@ -192,6 +192,16 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  // Servings only (issue #1123). A 0 typed here is not an answer — it is what
+  // "not stated" means, and `null` is this field's existing sentinel for that,
+  // which every consumer already handles (the chip hides, the scaler falls back
+  // to a base of 1). Deliberately NOT folded into `parseNumberOrNull`: the three
+  // time fields share that helper and `prepTimeMinutes: 0` / `cookTimeMinutes: 0`
+  // are real answers there (issue #739).
+  function positiveOrNull(value: number | null): number | null {
+    return value !== null && value > 0 ? value : null;
+  }
+
   let tagInput = $state('');
 
   const allExistingTags = $derived([...new Set($recipes.flatMap((r) => r.metadata.tags))].sort());
@@ -1080,7 +1090,7 @@
             label="Servings"
             inputmode="numeric"
             value={draft.metadata.servings === null ? '' : String(draft.metadata.servings)}
-            onValueChange={(v) => setMetadata({ servings: parseNumberOrNull(v) })}
+            onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
           />
           <TextField

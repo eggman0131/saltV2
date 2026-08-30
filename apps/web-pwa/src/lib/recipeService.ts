@@ -29,6 +29,7 @@ import {
   maxCountWinners,
   aggregateParentCount,
   quantityToNumber,
+  usableServings,
 } from '@salt/domain';
 import type {
   Recipe,
@@ -958,7 +959,7 @@ export const PRODUCT_FORM_COUNT_UNIT = 'count';
 // caller (review sheet) lets the user adjust the toggles, then hands the rows to
 // commitRecipeAddPlan. Pure read against the canon snapshot — no writes here.
 export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddRow[] {
-  const baseServings = recipe.metadata.servings ?? 1;
+  const baseServings = usableServings(recipe.metadata.servings) ?? 1;
   const scale = servings / baseServings;
   const canonById = canonIndex(getCanonItemsSnapshot());
   const liveCanonIds = new Set(canonById.keys());
@@ -1073,7 +1074,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         // Default to the first producer's OWN base servings — never the master
         // recipe's chosen servings, never the required quantity. 1 when nothing
         // produces this row.
-        madeServings: producers[0]?.metadata.servings ?? 1,
+        madeServings: usableServings(producers[0]?.metadata.servings ?? null) ?? 1,
         subRows: null, // populated eagerly only when the user selects Make
       });
     }

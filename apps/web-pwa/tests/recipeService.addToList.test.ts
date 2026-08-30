@@ -62,7 +62,7 @@ function makeGroup(items: IngredientGroup['items']): IngredientGroup {
   return { id: 'g1', name: null, items };
 }
 
-function makeRecipe(groups: IngredientGroup[]): Recipe {
+function makeRecipe(groups: IngredientGroup[], servings: number | null = 2): Recipe {
   return {
     image: null,
     createdBy: '',
@@ -78,7 +78,7 @@ function makeRecipe(groups: IngredientGroup[]): Recipe {
     ingredients: groups,
     steps: [],
     metadata: {
-      servings: 2,
+      servings,
       prepTimeMinutes: null,
       cookTimeMinutes: null,
       totalTimeMinutes: null,
@@ -297,6 +297,48 @@ describe('buildRecipeAddPlan', () => {
     ]);
     const rows = buildRecipeAddPlan(recipe, 2);
     expect(rows[0]).toMatchObject({ itemText: 'some unknown thing', notes: '' });
+  });
+});
+
+// ─── A servings count that cannot be a scaling base (issue #1123) ────────────
+//
+// `metadata.servings ?? 1` guarded a MISSING count and let a 0 through, so a
+// recipe stored at 0 — which the librarian used to accept from the model, and
+// the editor used to store from a typed "0" — divided by it. The review sheet
+// seeds its stepper from the recipe's own base, so both halves were reachable:
+// 0/0 = NaN on open, 1/0 = Infinity after one press of +. A NaN amount is then
+// REJECTED by ShoppingListItemSchema on the way back in, so the row does not
+// come back at all.
+
+describe('buildRecipeAddPlan — an unusable stored servings count', () => {
+  const plan = (servings: number | null, target: number) => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'needed')]);
+    return buildRecipeAddPlan(
+      makeRecipe([makeGroup([matchedIngredient('i1', 'canon-flour', gramIngredient)])], servings),
+      target,
+    );
+  };
+
+  it('scales a 0-servings recipe exactly as one that states no servings at all', () => {
+    expect(plan(0, 4)).toEqual(plan(null, 4));
+    expect(plan(0, 4)[0]).toMatchObject({ amount: 800, unit: 'g' });
+  });
+
+  it('produces a finite amount at every target the sheet can seed', () => {
+    // 0 is what the sheet seeded from a 0-servings recipe before the stepper was
+    // touched; 1 is one press of + away.
+    for (const target of [0, 1, 2, 4]) {
+      const amount = plan(0, target)[0]?.amount;
+      expect(Number.isFinite(amount)).toBe(true);
+    }
+  });
+
+  it('treats a negative count as unstated too', () => {
+    expect(plan(-2, 4)).toEqual(plan(null, 4));
+  });
+
+  it('leaves a real servings count alone', () => {
+    expect(plan(2, 4)[0]).toMatchObject({ amount: 400, unit: 'g' });
   });
 });
 
