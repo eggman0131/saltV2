@@ -2087,10 +2087,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
               {#if facts.length > 0}
                 <div class="flex flex-wrap items-center gap-2">
                   {#each facts as fact (fact.key)}
-                    <Chip variant="fact" tone={fact.tone ?? 'neutral'} data-testid={fact.testId}>
-                      {#snippet icon()}
-                        {#if fact.icon}<Icon name={fact.icon} />{/if}
-                      {/snippet}
+                    <Chip
+                      variant="fact"
+                      tone={fact.tone ?? 'neutral'}
+                      icon={fact.icon}
+                      data-testid={fact.testId}
+                    >
                       {fact.label}
                     </Chip>
                   {/each}
@@ -2475,7 +2477,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                 version={iconVersionFor(ingredient.canonId)}
                                 matched={marker === null &&
                                   hasLiveCanonMatch(ingredient, liveCanonIds)}
-                                size={36}
+                                size={40}
                               />
                               {#if marker === 'unmatched'}
                                 <button
@@ -2638,7 +2640,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                       name={ingredientLabel(ing)}
                                       version={iconVersionFor(ing.canonId)}
                                       matched={hasLiveCanonMatch(ing, liveCanonIds)}
-                                      size={26}
+                                      size={32}
                                     />
                                   </span>
                                   <span class="sr-only">{ingredientLabel(ing)}</span>
@@ -2685,7 +2687,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                         thumbnail={$kitIcons.kitIconFor(entry.label)}
                                         version={$kitIcons.kitIconVersionFor(entry.label)}
                                         name={entry.label}
-                                        size={26}
+                                        size={32}
                                       />
                                     </span>
                                     <span class="sr-only">{entry.label}</span>

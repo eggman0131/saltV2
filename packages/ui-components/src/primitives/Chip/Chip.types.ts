@@ -1,6 +1,7 @@
-// spec: ui-spec-v09.md §8.23, §8.24 v0.9.3
+// spec: ui-spec-v09.md §8.23, §8.24 v0.9.4
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
+import type { IconName } from '../Icon/iconRegistry';
 
 /**
  * The attribute passthrough shared by all four variants: `onclick`,
@@ -57,8 +58,24 @@ export type ChipFactProps = {
   variant: 'fact';
   /** Not available here: nothing static has a pressed state (§8.23.6). */
   pressed?: never;
-  /** A leading glyph. Sized by the style, not the caller (§8.23.8). */
-  icon?: Snippet;
+  /**
+   * A leading glyph, **named** rather than drawn: `Chip` renders
+   * `<Icon name={icon} size={12} />` itself (§8.23.8, amended v0.9.4).
+   *
+   * It was a `Snippet` held to 12px by `.salt-chip--fact svg`, and that
+   * selector was the whole guarantee. `CanonIcon` renders a `<span>` around an
+   * `<img>`, which the selector never matched, so a pictogram in this slot
+   * sized itself — an 18px nominal tile painting a 15 × 9 px smudge (#955).
+   * TypeScript cannot see inside a `Snippet`, so a name from the closed
+   * registry is the only way to make that unrepresentable rather than merely
+   * discouraged (#1051). A picture with words belongs in `PictogramPill`
+   * (v0.12 §8.30).
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`, so a caller
+   * whose glyph is conditional can pass it straight through — the recipe page's
+   * attribution fact has no honest glyph and passes `undefined`.
+   */
+  icon?: IconName | undefined;
   /**
    * Which hue the tint is, so a row of facts reads as several kinds of thing
    * (§8.23.9). Palette roles, not meanings — what each hue names is the page's

@@ -1,4 +1,4 @@
-// spec: ui-spec-v09.md §8.23, §8.24 v0.9.3
+// spec: ui-spec-v09.md §8.23, §8.24 v0.9.4
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
@@ -74,9 +74,18 @@ describe('Chip', () => {
       expect(chip().className).not.toContain('salt-chip--on');
     });
 
-    it('renders the leading icon a fact is given, and nothing when it is not', () => {
+    // §8.23.8, amended v0.9.4: the caller NAMES the glyph and the chip draws it
+    // at 12px. The size assertion is the point of this test. 12px used to be
+    // carried by `.salt-chip--fact svg` — an `svg`-only selector a raster glyph
+    // walked straight past (#955) — and nothing asserted it anywhere, so the
+    // one clause §8.23.8 has always stated was guarded by a CSS rule and a
+    // hope. Break `size={12}` in Chip.svelte and this goes red.
+    it('draws the glyph a fact names, at 12px, and nothing when it names none', () => {
       render(StaticChipFixture, { props: { variant: 'fact', withIcon: true } });
-      expect(chip().querySelector('svg')).not.toBeNull();
+      const glyph = chip().querySelector('svg');
+      expect(glyph).not.toBeNull();
+      expect(glyph?.getAttribute('width')).toBe('12');
+      expect(glyph?.getAttribute('height')).toBe('12');
       cleanup();
       render(StaticChipFixture, { props: { variant: 'fact', withIcon: false } });
       expect(chip().querySelector('svg')).toBeNull();

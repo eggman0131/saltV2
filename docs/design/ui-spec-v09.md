@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.9.3)
+# Salt 2.0 — UI Primitives Specification (v0.9.4)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`, the value-chip surface  
@@ -48,6 +48,17 @@ v0.9.3 reverses one decision v0.9.2 made, with its reasons:
   **unrepresentable** rather than unsupported. Driven by the recipe detail page
   (issue #878), where six facts of four different kinds render as one grey pill.
   It changes nothing for a caller that does not pass it.
+
+v0.9.4 closes a hole §8.23.8 left open, and the sentence that hid it:
+
+- **`icon` becomes an `IconName`** — the `fact` chip's leading glyph is named by
+  the caller and drawn by the chip, rather than handed over as a `Snippet` and
+  held to 12px by an `svg`-only CSS clamp (§8.23.8). That clamp was the entire
+  enforcement behind "the style sizes the icon, not the caller", and it never
+  matched a `CanonIcon` — a `<span>` around an `<img>` — so a pictogram in that
+  slot sized itself (issues #955, #1051). It changes nothing a reader can see:
+  the one `fact` chip in `apps/web-pwa` already passed a registry name to
+  `Icon`, and it still renders at 12px.
 
 These are **promotions, not inventions**. Every behaviour below already ships in
 `apps/web-pwa`; v0.9 gives it a name so the next list gets it right by default
@@ -221,7 +232,8 @@ it will often share a row with.
 
 **`fact`** — a measured attribute of the thing being read: "Serves 4",
 "Prep 40 min", "Cook 6 hr". Tinted ground (`bg-muted`), `border-transparent`,
-`text-muted-foreground`, and an optional leading `icon` snippet.
+`text-muted-foreground`, and an optional leading `icon`, **named** by the caller
+and drawn by the chip (amended v0.9.4 — see below).
 
 **`tag`** — a word someone attached to the thing rather than measured from it: a
 recipe tag. Quiet outline (`border-border`), no background, no icon.
@@ -256,9 +268,49 @@ that carries meaning before the number is read. A tag is an arbitrary word, and
 any icon beside it would be a guess. The type enforces this: `icon` is `never` on
 every variant but `fact`.
 
-**The style sizes the icon, at 12px, not the caller.** §8.23.4 exists because two
-chip sizes shipped from two pages guessing; an icon size left to the call site
-would drift the same way inside a year.
+**The chip draws the icon, at 12px; the caller only names it.** §8.23.4 exists
+because two chip sizes shipped from two pages guessing; an icon size left to the
+call site would drift the same way inside a year.
+
+*Amended in v0.9.4.* Until then this clause read "the style sizes the icon, at
+12px, not the caller", which was true of the CSS and false of the type — see
+below.
+
+### The caller names the glyph, the chip draws it (v0.9.4)
+
+`icon` is an `IconName`, a key of the closed lucide registry (v0.2 §8.12), and
+`Chip` renders `<Icon name={icon} size={12} />` itself. It was a `Snippet`, and
+`.salt-chip--fact svg { size-3 }` in `salt.css` was what held it to 12px.
+
+**That selector was the whole guarantee, and it only saw `<svg>`.** `CanonIcon`
+renders a `<span>` wrapping an `<img>`, which the rule never matched, so a
+pictogram handed to a `fact` chip's icon slot sized itself with nothing
+objecting: issue #955 shipped an 18px nominal tile painting a 15 × 9 px smudge
+in the recipe page's "You'll need" strip. The clause above had been in this spec
+the whole time. It was guarded by a CSS selector that could not see the case
+that broke it.
+
+**A type is the only closure available.** TypeScript cannot see inside a
+`Snippet`, so no signature can refuse one that renders an `<img>`. Widening the
+selector to `:where(svg, img, span)` would clamp the picture to 12px instead —
+a text pill holding a picture badly rather than refusing to hold one, which
+v0.12 §8.30.2 rejected on design grounds and this section does not reopen. With
+`IconName` the wrong thing is unrepresentable, and 12px is written down once, in
+`Chip.svelte`, rather than in a rule that had to guess which elements to match.
+`packages/ui-components/tests/Chip.test.ts` asserts the rendered glyph is 12 × 12,
+which nothing did before.
+
+The refusal reaches every tree `svelte-check` covers — `packages/ui-components/src`,
+`apps/web-pwa/src` and `apps/storybook/src`, which is where all four call sites
+live. It does **not** reach `packages/*/tests/**`, whose `.svelte` fixtures are
+outside `pnpm check` (only `apps/web-pwa`'s tests are typechecked, since #942).
+A test fixture can therefore still hand `icon` a snippet without a gate
+objecting; a shipping call site cannot.
+
+**What it costs.** A `fact` chip cannot carry a glyph the registry does not
+hold. That is the bound `Icon` has always had (v0.2 §8.12) — adding one is a
+registry entry, a smaller step than the snippet it replaces. A picture with
+words beside it was never this control: it is a `PictogramPill` (v0.12 §8.30).
 
 ### Sizing and the border box
 

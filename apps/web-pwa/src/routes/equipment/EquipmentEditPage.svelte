@@ -376,8 +376,9 @@
         />
       {:else}
         <div class="flex items-center gap-3 min-w-0">
-          <!-- Larger than the 40px list tile, matching the canon detail page's
-               single-icon display spot (ui-spec-v04 §14.6.1). -->
+          <!-- The subject-header rung (ui-spec-v04 §14.6.1): larger than the
+               40px list tile it was opened from, smaller than the 96px the canon
+               detail page gives a record that IS the page. -->
           <CanonIcon
             thumbnail={equipmentThumbnailFor($equipmentIcons, params.id)}
             name={item.name}

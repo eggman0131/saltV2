@@ -1024,9 +1024,18 @@ lit
 
 ### 14.6.1 Sizing
 
-Every in-list and in-chip consumer renders at **40px**: the shopping list row and its combined-parent row, the cook-mode mise row, the cook-step first-use chip, and both `CanonListRow` layouts. Two single-icon display spots are deliberately larger and not part of that set — the shopping edit sheet's header (64px) and the canon detail page (96px).
+A pictogram is drawn at one of **four** sizes, and `size` is typed `CanonIconSize = 32 | 40 | 64 | 96` so there is no fifth. The default is **32**, the bottom rung.
 
-40px is paired with the framing normalisation in `docs/canon-icons.md`: the asset's `contentMax: 108` is chosen for this tile size, and prominence comes from the art filling its frame rather than from growing the tile further.
+| size | what sits there | where |
+| --- | --- | --- |
+| **32px** | a nested or secondary row, and an inline glyph inside a step's wrapped row — a picture that reads *under* a 40px one | the product-form rows nested inside a catalog row; guided cook's mise-card header, prep-card ingredients, step-note container and its contents, and its loose-ingredient rows; the recipe reading view's per-step first-use and kit strips |
+| **40px** | a primary list row, a chip, a pill | both shopping list rows, the recipe reading view's ingredient lines, cook mode's mise row and first-use chip, the catalog row, kitchen tools, the equipment list, guided cook's mise ingredient row, the ingredient match sheet, and `PictogramPill` (v0.12 §8.30) |
+| **64px** | a sheet's or an edit page's subject header | the shopping edit sheet, the equipment edit page |
+| **96px** | a detail page — the record that *is* the page | the canon detail record |
+
+**Why a union and not a sentence.** This section said "every in-list and in-chip consumer renders at 40px" from #610 until #1051, and eight distinct values shipped at call sites underneath it — 26, 28, 32, 36, 40, 44, 64, 96 — with a ninth, 30, sitting in `CanonIcon` as its own default. The claim was guarded by nothing, so nothing went red. The rungs are now the prop's type: `pnpm typecheck` covers the `.ts` call sites and `pnpm check` the `.svelte` ones, which is where all of them live. A fifth rung is an amendment to this section and an edit to `CanonIconSize`, in that order.
+
+**32 and 40 are one framing at two sizes.** Both are paired with the framing normalisation in `docs/canon-icons.md`: the asset's `contentMax: 108` is chosen for the 40px row tile, and 32 is that same art drawn smaller — no asset change, no regeneration. Prominence comes from the art filling its frame rather than from growing the tile.
 
 ## 14.7 Testing requirements
 

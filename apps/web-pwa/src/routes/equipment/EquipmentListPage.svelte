@@ -90,9 +90,8 @@
             data-equipment-id={item.id}
           >
             <!--
-              40px, the in-list size every other CanonIcon consumer uses
-              (ui-spec-v04 §14.6.1) and the size the asset's `contentMax: 108`
-              framing is tuned for. An item with no picture yet renders the pale
+              40px, the primary-list-row rung (ui-spec-v04 §14.6.1) and the size
+              the asset's `contentMax: 108` framing is tuned for. An item with no picture yet renders the pale
               placeholder tile from the same component, which is what holds the
               text column straight while art is still generating.
             -->

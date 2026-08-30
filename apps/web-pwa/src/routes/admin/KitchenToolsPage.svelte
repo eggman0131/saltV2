@@ -386,9 +386,8 @@
                 data-kit-tool-id={tool.id}
               >
                 <!--
-                  40px, the in-list size every other CanonIcon consumer uses
-                  (ui-spec-v04 §14.6.1) and the size the asset's framing is tuned
-                  for. `version` is the cache-bust nonce (§14.4): a regenerated
+                  40px, the primary-list-row rung (ui-spec-v04 §14.6.1) and the
+                  size the asset's framing is tuned for. `version` is the cache-bust nonce (§14.4): a regenerated
                   icon reuses the SAME immutable Storage URL, so without it the
                   browser keeps serving the picture you just replaced.
                 -->

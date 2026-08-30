@@ -1,5 +1,24 @@
 // spec: ui-spec-v04.md §14 v0.4
 
+/**
+ * The four sizes a pictogram is drawn at, and there is no fifth (§14.6.1):
+ *
+ * - **32** — a nested or secondary row, and an inline glyph inside a step's
+ *   wrapped row: a picture that reads *under* a 40px one.
+ * - **40** — a primary list row, a chip, a pill. The size the asset's
+ *   `contentMax: 108` framing is tuned for (`docs/canon-icons.md`).
+ * - **64** — a sheet's or an edit page's subject header.
+ * - **96** — a detail page.
+ *
+ * A union rather than a convention because the convention did not hold. §14.6.1
+ * said "every in-list and in-chip consumer renders at 40px" from #610 until
+ * #1051, and eight distinct values shipped at call sites underneath it — 26, 28,
+ * 32, 36, 40, 44, 64, 96 — with a ninth, 30, sitting in this file as the
+ * default. Nothing could go red, so nothing did. A fifth rung is an amendment to
+ * §14.6.1 and an edit here, in that order.
+ */
+export type CanonIconSize = 32 | 40 | 64 | 96;
+
 export type CanonIconProps = {
   /**
    * The canon item's `thumbnail` field, tri-state: a real icon URL, `null`
@@ -9,8 +28,8 @@ export type CanonIconProps = {
   thumbnail: string | null;
   /** Item name, used for the image alt text. */
   name?: string;
-  /** Tile (and icon) edge length in px. Default 30. */
-  size?: number;
+  /** Tile (and icon) edge length in px — one of four rungs. Default 32. */
+  size?: CanonIconSize;
   /** Dim the icon — e.g. for checked shopping-list items. */
   dimmed?: boolean;
   /**

@@ -6,7 +6,7 @@
   let {
     thumbnail,
     name = '',
-    size = 30,
+    size = 32,
     dimmed = false,
     version,
     matched = false,
