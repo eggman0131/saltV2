@@ -6,7 +6,7 @@
   import { SELECT_CONTEXT } from '../../headless/Select.headless.svelte';
   import {
     PORTAL_CONTAINER_CONTEXT,
-    resolvePortalTarget,
+    usePortalMount,
   } from '../../headless/PortalContainer.headless.svelte';
   import { selectContentVariants } from './Select.variants';
   import type { SelectContentProps } from './Select.types';
@@ -23,15 +23,10 @@
   // Portal: move wrapper to target after mount. By default that is the enclosing
   // Dialog/Sheet content when there is one — a body-portalled listbox inside a
   // modal is inert — and <body> otherwise.
-  $effect(() => {
-    const el = wrapperEl;
-    if (!el) return;
-
-    const target = resolvePortalTarget(ctx.portal, portalContainer?.el ?? null);
-    if (!target) return;
-
-    target.appendChild(el);
-    return () => el.remove();
+  usePortalMount({
+    el: () => wrapperEl,
+    portal: () => ctx.portal,
+    container: () => portalContainer?.el ?? null,
   });
 
   // Floating-UI positioning: anchor the popover to the trigger.
