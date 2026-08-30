@@ -340,7 +340,12 @@ export {
   daysBetween,
   tomorrowInZone,
   shopDayForWeek,
+  // The one rendering of "Shopping today AM" (issue #1054) — the shopping list
+  // and the daily push reminder are different apps and cannot import each
+  // other, so the sentence they must agree on lives here.
+  shopDayHeadline,
 } from './shoppingDay/index.js';
+export type { ShopDayHeadlineInput } from './shoppingDay/index.js';
 
 // Personal-view module (issues #634, #682, #755) — the projections behind
 // "Kitchen": which nights from today onward are yours to cook, across however
