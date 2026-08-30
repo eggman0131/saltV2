@@ -7,3 +7,5 @@ export const MealPlanTemplateSchema = z.object({
   schemaVersion: z.literal(1),
   days: z.record(WeekdayEnum, MealPlanDaySchema),
 });
+
+export type MealPlanTemplateDoc = z.infer<typeof MealPlanTemplateSchema>;

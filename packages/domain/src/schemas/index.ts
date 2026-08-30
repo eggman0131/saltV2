@@ -84,7 +84,7 @@ export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
 
 export { ProductFormSchema } from './productForm.js';
-export type { ProductFormDoc } from './productForm.js';
+export type { ProductFormDoc, ProductFormYieldDoc } from './productForm.js';
 
 export { CanonEmbeddingSchema } from './canonEmbedding.js';
 export { AislesDocumentSchema } from './aislesDocument.js';
@@ -99,7 +99,7 @@ export {
   EQUIPMENT_MANIFEST_COLLECTION,
   EQUIPMENT_MANIFEST_DOC_ID,
 } from './equipmentManifest.js';
-export type { EquipmentItemDoc } from './equipmentManifest.js';
+export type { EquipmentItemDoc, AccessoryDoc, EquipmentManifestDoc } from './equipmentManifest.js';
 
 export {
   EquipmentIconSchema,
@@ -147,9 +147,14 @@ export type {
 } from './appSettings.js';
 
 export { MemberSchema } from './member.js';
+export type { MemberDoc } from './member.js';
 export { MealPlanConfigSchema } from './mealPlanConfig.js';
+export type { MealPlanConfigDoc } from './mealPlanConfig.js';
 export { MealPlanTemplateSchema } from './mealPlanTemplate.js';
+export type { MealPlanTemplateDoc } from './mealPlanTemplate.js';
 export { MealPlanWeekSchema } from './mealPlanWeek.js';
+export type { MealPlanWeekDoc } from './mealPlanWeek.js';
+export type { WeekdayDoc, AttendeeDoc, MealPlanDayDoc } from './mealPlanDay.js';
 export {
   ParseRecipeIngredientsInputSchema,
   ParseRecipeIngredientsAIOutputSchema,

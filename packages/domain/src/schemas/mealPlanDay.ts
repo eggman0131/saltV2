@@ -25,3 +25,7 @@ export const MealPlanDaySchema = z.object({
   attendees: z.array(AttendeeSchema).default([]),
   guests: z.number().int().nonnegative().default(0),
 });
+
+export type WeekdayDoc = z.infer<typeof WeekdayEnum>;
+export type AttendeeDoc = z.infer<typeof AttendeeSchema>;
+export type MealPlanDayDoc = z.infer<typeof MealPlanDaySchema>;

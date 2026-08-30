@@ -21,7 +21,7 @@ export function subscribeProductForms(
       path: [COLLECTION],
       schema: ProductFormSchema,
       label: 'ProductFormSchema',
-      project: (form) => form as ProductForm,
+      project: (form) => form,
     },
     onItems,
     onError,

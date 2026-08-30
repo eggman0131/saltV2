@@ -31,7 +31,7 @@ export function subscribeMealPlanConfig(
       schema: MealPlanConfigSchema,
       label: 'MealPlanConfigSchema',
     },
-    (config) => onConfig(config as MealPlanConfig | null),
+    (config) => onConfig(config),
     onError,
   );
 }
@@ -46,6 +46,16 @@ export function subscribeMealPlanTemplate(
       schema: MealPlanTemplateSchema,
       label: 'MealPlanTemplateSchema',
     },
+    // THE ONE READ-BOUNDARY CAST #932 DOES NOT DELETE, and the only one left.
+    // `MealPlanTemplateSchema.days` is `z.record(WeekdayEnum, …)`, which infers
+    // `Partial<Record<Weekday, Day>>` — a template parsed with a weekday missing
+    // is valid. `MealPlanTemplate` declares the record TOTAL, and
+    // `instantiateWeek` dereferences `template.days[weekday]` unguarded on the
+    // strength of it. This cast is what bridges the two, and it is therefore
+    // finding B3-007 itself, not an artefact of the hand-written type #932
+    // removed — deleting it forces the partial type through to `instantiateWeek`
+    // and demands a guard, which is a behavior change #932 deliberately split
+    // out. It goes when B3-007 is fixed, together with that guard.
     (template) => onTemplate(template as MealPlanTemplate | null),
     onError,
   );
@@ -63,7 +73,7 @@ export function subscribeMealPlanWeek(
       schema: MealPlanWeekSchema,
       label: 'MealPlanWeekSchema',
     },
-    (week) => onWeek(week as MealPlanWeek | null),
+    (week) => onWeek(week),
     onError,
   );
 }
@@ -86,7 +96,7 @@ export async function loadMealPlanWeek(
     if (!snap.exists()) return success(null);
     const result = MealPlanWeekSchema.safeParse(snap.data());
     if (!result.success) return failure({ kind: 'StorageError', reason: 'corruption' });
-    return success(result.data as MealPlanWeek);
+    return success(result.data);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

@@ -36,7 +36,7 @@ export function createFirestoreProductFormStore(db: Firestore): {
             });
             continue;
           }
-          forms.push(result.data as ProductForm);
+          forms.push(result.data);
         }
         return success(forms);
       } catch (err) {

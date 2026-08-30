@@ -60,3 +60,7 @@ export const ProductFormSchema = z.object({
 });
 
 export type ProductFormDoc = z.infer<typeof ProductFormSchema>;
+
+// The yield sub-object, reached through the parent doc: it is declared inline on
+// ProductFormSchema, so there is no standalone schema value to infer from.
+export type ProductFormYieldDoc = ProductFormDoc['yield'];

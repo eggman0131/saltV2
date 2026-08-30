@@ -8,3 +8,5 @@ export const MealPlanConfigSchema = z.object({
   firstDayOfWeek: WeekdayEnum,
   schemaVersion: z.literal(1),
 });
+
+export type MealPlanConfigDoc = z.infer<typeof MealPlanConfigSchema>;

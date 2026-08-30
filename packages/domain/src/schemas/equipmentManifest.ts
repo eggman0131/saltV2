@@ -30,3 +30,6 @@ export const EquipmentManifestSchema = z.object({
 });
 
 export type EquipmentItemDoc = z.infer<typeof EquipmentItemSchema>;
+
+export type AccessoryDoc = z.infer<typeof AccessorySchema>;
+export type EquipmentManifestDoc = z.infer<typeof EquipmentManifestSchema>;
