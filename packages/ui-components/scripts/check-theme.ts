@@ -149,6 +149,14 @@ const SPACING_MAP: Record<string, string> = {
   gutter: '--salt-space-gutter',
 };
 
+/** design.md layout key → CSS var name.
+ * Unlike SPACING_MAP's tokens these are CONSUMED — `BottomNav` and the three
+ * things that reserve space for it read the var — so a drift between design.md
+ * and salt.css here moves pixels, rather than merely disagreeing on paper. */
+const LAYOUT_MAP: Record<string, string> = {
+  'bottom-nav-height': '--salt-layout-bottom-nav-height',
+};
+
 /** design.md controls.checkbox key → CSS var name */
 const CONTROLS_CHECKBOX_MAP: Record<string, string> = {
   sm: '--salt-control-checkbox-sm',
@@ -293,6 +301,29 @@ for (const [key, varName] of Object.entries(SPACING_MAP)) {
   }
   if (!dimEq(dmVal, cssVal)) {
     fail(`  spacing.${key}: design.md=${dmVal}  salt.css ${varName}=${cssVal}`);
+  }
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+// design.md layout[key] ↔ the `--salt-layout-*` :root primitives. Same home as
+// the spacing scale and for the same collision reason, but these are read: the
+// nav's own height and the three reservations that clear it all resolve the var,
+// so a drift here is a visible one (#930).
+
+const designLayout = design.layout as YamlMap | undefined;
+for (const [key, varName] of Object.entries(LAYOUT_MAP)) {
+  const dmVal = designLayout?.[key] as string | undefined;
+  const cssVal = cssVars[varName];
+  if (!dmVal) {
+    fail(`  layout.${key}: not found in design.md`);
+    continue;
+  }
+  if (!cssVal) {
+    fail(`  ${varName}: not found in salt.css (expected for layout.${key})`);
+    continue;
+  }
+  if (!dimEq(dmVal, cssVal)) {
+    fail(`  layout.${key}: design.md=${dmVal}  salt.css ${varName}=${cssVal}`);
   }
 }
 

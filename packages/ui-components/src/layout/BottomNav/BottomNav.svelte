@@ -63,7 +63,8 @@
     <Icon size={20} aria-hidden="true" />
     {#if item.badge}
       <!--
-        Anchored to the pill's top edge, not above it: the row is only h-14, so a
+        Anchored to the pill's top edge, not above it: the row is only one
+        `--salt-layout-bottom-nav-height` tall, so a
         badge hung off the top would poke through the nav's border-t and float over
         the page content behind it.
       -->
@@ -93,7 +94,10 @@
   )}
   aria-label="Main navigation"
 >
-  <ul class="mx-auto flex h-14 w-full max-w-lg items-stretch justify-around" role="list">
+  <ul
+    class="mx-auto flex h-[var(--salt-layout-bottom-nav-height)] w-full max-w-lg items-stretch justify-around"
+    role="list"
+  >
     {#each items as item (item.id)}
       {@const active = isActive(item.href, currentPath)}
       <li class="flex flex-1">

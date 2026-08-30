@@ -99,6 +99,13 @@ spacing:
   xl: 48px
   container-margin: 24px
   gutter: 16px
+layout:
+  # The BottomNav's row height, and the reservation every fixed thing above it
+  # makes to clear it. In `rem`, unlike every value above: this one is CONSUMED
+  # (the spacing scale is a drift-checkable home and nothing reads it), and the
+  # nav has always been `h-14` — 3.5rem — so it grows with the reader's browser
+  # font size. A px value here would quietly freeze it (issue #930).
+  bottom-nav-height: 3.5rem
 controls:
   checkbox:
     sm: 14px

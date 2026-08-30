@@ -213,7 +213,7 @@
   aria-label="Chef chat"
   data-testid="recipe-chat-drawer"
   onkeydown={handleKeydown}
-  class="fixed inset-x-0 bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] z-20 flex flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card shadow-lg lg:bottom-0"
+  class="fixed inset-x-0 bottom-[calc(var(--salt-layout-bottom-nav-height)_+_env(safe-area-inset-bottom))] z-20 flex flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card shadow-lg lg:bottom-0"
   style="height: {Math.round(height.current)}px"
 >
   <div class="shrink-0 border-b border-border">

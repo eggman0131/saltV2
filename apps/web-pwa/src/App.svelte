@@ -161,12 +161,15 @@
     </AppShell>
     <!--
       Lift toasts above the mobile BottomNav so they don't cover it. Mirrors the
-      nav reservation used by AppShell's <main> (h-14 = 3.5rem + safe-area).
+      nav reservation used by AppShell's <main>, and reads the same token it does
+      (`--salt-layout-bottom-nav-height`, design.md `layout`) rather than the number.
       lg:bottom-0: the BottomNav is hidden on desktop, so drop back to the edge —
       as does a full-viewport route, which has no BottomNav to clear at any width.
     -->
     <ToastViewport
-      class={showChrome ? 'bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:bottom-0' : ''}
+      class={showChrome
+        ? 'bottom-[calc(var(--salt-layout-bottom-nav-height)_+_env(safe-area-inset-bottom))] lg:bottom-0'
+        : ''}
     >
       {#each $toasts as toast (toast.id)}
         <Toast

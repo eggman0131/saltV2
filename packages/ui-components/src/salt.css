@@ -401,6 +401,16 @@
   --salt-space-xl: 48px;
   --salt-space-container-margin: 24px;
   --salt-space-gutter: 16px;
+  /* Layout (design.md `layout`). Unlike the spacing scale above, this one IS
+   * consumed: `BottomNav`'s row reads it, and so does every fixed element that
+   * has to sit clear of the nav — AppShell's <main>, the toast viewport, the
+   * recipe chat drawer. It lived as `h-14` in one file and `3.5rem` in three
+   * others, plus two comments restating it in prose, until #930.
+   *
+   * `rem`, not `px`, and deliberately: `h-14` is 3.5rem, so the nav has always
+   * grown with the reader's browser font size. Freezing it at 56px would be a
+   * sizing change wearing a naming change's clothes. */
+  --salt-layout-bottom-nav-height: 3.5rem;
 }
 
 .dark {
