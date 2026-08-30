@@ -3,10 +3,11 @@
 //
 // This exists because the layer it replaces does not work. Issue #912 specced
 // `jscpd --mode weak` for this, on the understanding that weak mode normalises
-// identifiers. Measured over this repo's first-party TS tree at 20 lines/120
-// tokens, strict and weak produce byte-identical output — 2 clones, 0.17% — and
-// neither reports `onKitchenTimerWrite` ↔ `onCookTimerWrite`, which are the same
-// function with the nouns swapped. jscpd's clone detection is anchored on token
+// identifiers. It does not, measurably: over the same trees `pnpm dupes` reads,
+// strict and weak both report 8 clones and 243 duplicated lines, and weak names
+// none of `onCookTimerWrite`, `onKitchenTimerWrite`, `generateEquipmentIcon` or
+// `generateKitchenToolIcon` — two pairs that are the same function with the
+// nouns swapped and score 1.00 here. jscpd anchors clone detection on token
 // VALUES, so a rename breaks the hash chain in both modes.
 //
 // What works instead is to destroy the values before hashing. Every identifier,
