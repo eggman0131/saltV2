@@ -26,7 +26,7 @@
   import { readMealParam } from '../../lib/mealReturn.js';
   import { trackUsageEvent } from '@salt/observability';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     emptyRecipe,
     emptyIngredientGroup,
     newIngredient,
@@ -713,10 +713,7 @@
                 >
                   {#if component.image?.url}
                     <img
-                      src={appendCacheBuster(
-                        component.image.url,
-                        component.imageRequestedAt ?? component.updatedAt,
-                      )}
+                      src={recipeHeroUrl(component)}
                       alt=""
                       loading="lazy"
                       class="h-full w-full object-cover"

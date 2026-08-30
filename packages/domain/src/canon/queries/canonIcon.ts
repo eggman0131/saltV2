@@ -10,6 +10,12 @@
 // schema widening (reversible pre-launch). `isCanonIconRenderable` is the
 // read-boundary guard the UI uses to decide between rendering the icon and
 // showing the bare placeholder tile.
+//
+// `packages/ui-components`' `CanonIcon.svelte` re-implements both, because that
+// package may depend on external packages only and so cannot import this one.
+// The two are held in agreement by `apps/web-pwa/tests/canonIconParity.test.ts`
+// (issue #933) — a test, not a request to the next author. Change the sentinel or
+// the predicate here and that test goes red until the component follows.
 
 /** Sentinel `thumbnail` value meaning "user hid this icon; never regenerate". */
 export const CANON_ICON_HIDDEN = 'hidden';

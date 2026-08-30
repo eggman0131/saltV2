@@ -79,7 +79,7 @@
   import { kitIcons } from '../../lib/kitIcons.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     cookShape,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
@@ -1985,10 +1985,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
           <div class="flex flex-col gap-2" data-testid="recipe-hero">
             <div class="group relative overflow-hidden rounded-lg border bg-muted">
               <img
-                src={appendCacheBuster(
-                  recipe.image!.url,
-                  recipe.imageRequestedAt ?? recipe.updatedAt,
-                )}
+                src={recipeHeroUrl(recipe)}
                 alt={recipe.title}
                 loading="lazy"
                 class="aspect-[3/2] w-full object-cover"
@@ -2273,10 +2270,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                         >
                           {#if component.image?.url}
                             <img
-                              src={appendCacheBuster(
-                                component.image.url,
-                                component.imageRequestedAt ?? component.updatedAt,
-                              )}
+                              src={recipeHeroUrl(component)}
                               alt=""
                               loading="lazy"
                               class="h-full w-full object-cover"

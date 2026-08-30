@@ -18,7 +18,7 @@
   import { ChefHat, X } from '@lucide/svelte';
   import { push } from 'svelte-spa-router';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     expandForPlanner,
     isPlannable,
     memberInitials,
@@ -232,11 +232,8 @@
   // carrying a legacy `true` would blank the planner thumbnail while the same
   // photo showed on every other screen. The schema field stays (production data
   // holds it); this was its last reader in web-pwa.
-  function heroUrl(recipe: Recipe): string | null {
-    return recipe.image?.url
-      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
-      : null;
-  }
+  // The rule itself is `recipeHeroUrl` in `@salt/domain` (issue #933); the
+  // paragraph above is the part that is local to the planner.
   // Tapping a row's thumbnail/title opens that recipe's full view page. Hash
   // routing (svelte-spa-router), identical to RecipeListPage's card click; the
   // Remove button stops propagation so it never triggers navigation.
@@ -371,7 +368,7 @@
     {#if onRecipesChange}
       <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
         {#each attachedRecipes as r (r.id)}
-          {@const url = heroUrl(r)}
+          {@const url = recipeHeroUrl(r)}
           {@const kind = kindOf(r)}
           <div
             class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"

@@ -14,12 +14,26 @@
     class: className,
   }: CanonIconProps = $props();
 
+  // Sentinel `thumbnail` value meaning "user hid this icon; never regenerate".
+  // The same string as @salt/domain's `CANON_ICON_HIDDEN` — see the note below
+  // for why it is respelled here rather than imported.
+  const HIDDEN = 'hidden';
+
   // Tri-state render boundary. This mirrors @salt/domain's
   // `isCanonIconRenderable`; ui-components cannot import @salt/domain
-  // (external-only per the layer map), so the logic is duplicated here as the
-  // single render boundary. Keep the two in sync if the `"hidden"` sentinel or
-  // the rule changes.
-  const renderable = $derived(thumbnail !== null && thumbnail !== 'hidden' && thumbnail.length > 0);
+  // (external-only per the layer map, `eslint.config.js`'s
+  // `{ from: 'ui-components', allow: [] }`, and a package.json carrying no
+  // `@salt/*` dependency at all), so the logic is duplicated here as the single
+  // render boundary.
+  //
+  // THE COPY IS NOW HELD BY A TEST, NOT BY THIS COMMENT (issue #933).
+  // `apps/web-pwa/tests/canonIconParity.test.ts` mounts this component and
+  // asserts its rendered `src` and its render/no-render decision match
+  // `appendCacheBuster` and `isCanonIconRenderable` over a shared input table —
+  // `web-pwa` being the one package that may legally import both. Editing either
+  // side alone turns that test red. Asking the next author to remember is what
+  // failed before.
+  const renderable = $derived(thumbnail !== null && thumbnail !== HIDDEN && thumbnail.length > 0);
 
   // Display-time cache-bust. A regenerated icon reuses the same (byte-identical)
   // Storage download URL, so the browser serves the stale image; appending a
@@ -29,7 +43,9 @@
   // passes through unchanged. Behaviourally identical to @salt/domain's
   // `appendCacheBuster`; the `?`/`&`-aware join is inlined here because
   // ui-components is external-only and cannot import a @salt/domain helper (same
-  // reason `isCanonIconRenderable` is duplicated).
+  // reason `isCanonIconRenderable` is duplicated). `canonIconParity.test.ts`
+  // holds this one to `appendCacheBuster` too — including the `&` join and the
+  // `0`-is-a-real-version case.
   const bustedSrc = $derived(
     renderable && thumbnail !== null && version != null && version !== ''
       ? `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}v=${version}`

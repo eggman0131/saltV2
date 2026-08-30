@@ -395,7 +395,7 @@ export { freezeBatch, currentStage, withStageAdvanced, withBatchAbandoned } from
 export type { FreezeBatchFailure } from './batch/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
-export { appendCacheBuster } from './url/index.js';
+export { appendCacheBuster, recipeHeroUrl, type HeroImageSource } from './url/index.js';
 
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

@@ -33,9 +33,11 @@ const IMAGE_STORAGE_PREFIX = 'recipe-images';
 // returns false the instant `image !== null`, and it never touches a `source:
 // 'upload'` image — so a manual photo is never clobbered by the AI trigger (no new
 // guard needed). `imageRequestedAt` is bumped only as a cache-buster nonce: the
-// hero renders `appendCacheBuster(url, imageRequestedAt ?? updatedAt)`, and since
-// the Storage path is byte-identical across uploads, a fresh nonce is what makes
-// the new photo appear immediately without a hard reload.
+// hero renders through `recipeHeroUrl` in `@salt/domain` — which is
+// `appendCacheBuster(url, imageRequestedAt ?? updatedAt)`, in one place since
+// issue #933 rather than at eight call sites — and since the Storage path is
+// byte-identical across uploads, a fresh nonce is what makes the new photo appear
+// immediately without a hard reload.
 //
 // region/memory are pinned inline (not via setGlobalOptions) because this module
 // is imported at the top of index.ts and its onCall is built before

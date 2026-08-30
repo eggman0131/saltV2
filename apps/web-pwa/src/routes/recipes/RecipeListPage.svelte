@@ -11,7 +11,7 @@
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { appendCacheBuster, recipeMatchIssueCount, type Recipe } from '@salt/domain';
+  import { recipeHeroUrl, recipeMatchIssueCount, type Recipe } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
@@ -68,17 +68,10 @@
     return matchIssuesKnown ? recipeMatchIssueCount(recipe, canonById, $productForms) : 0;
   }
 
-  function heroUrl(recipe: Recipe): string | null {
-    // Display-time cache-bust (issue #460): a regenerated hero reuses the same
-    // byte-identical Storage URL, so bust it with the per-regeneration nonce
-    // (`imageRequestedAt`, falling back to `updatedAt`) only when an image is
-    // present — absent recipes still return null for the fallback tile.
-    // `imageHidden` is retired (inert, kept for back-compat) and no longer read,
-    // mirroring the detail page: a hero shows whenever an image URL exists.
-    return recipe.image?.url
-      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
-      : null;
-  }
+  // The hero rule itself is `recipeHeroUrl` in `@salt/domain` (issue #933). What
+  // is local and worth keeping: `imageHidden` is retired (inert, kept for
+  // back-compat) and no longer read, mirroring the detail page — a hero shows
+  // whenever an image URL exists.
 
   // ─── Search / sort / filter ───────────────────────────────────────────────────
   // The whole recipes collection is subscribed in memory (recipeService), so all
@@ -666,7 +659,7 @@
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
         {#each visible as recipe (recipe.id)}
-          {@const url = heroUrl(recipe)}
+          {@const url = recipeHeroUrl(recipe)}
           {@const count = ingredientCount(recipe)}
           {@const tags = recipe.metadata.tags}
           {@const issues = matchIssueCount(recipe)}

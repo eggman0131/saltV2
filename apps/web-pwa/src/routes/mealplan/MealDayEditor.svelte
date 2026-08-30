@@ -9,7 +9,7 @@
   } from '@salt/ui-components';
   import { ChefHat, Clock, Utensils } from '@lucide/svelte';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     weatherIcon,
     temperatureBand,
     type Day,
@@ -149,11 +149,8 @@
   // carrying a legacy `true` would blank the planner thumbnail while the same
   // photo showed on every other screen. The schema field stays (production data
   // holds it); this was its last reader in web-pwa.
-  function heroUrl(recipe: Recipe): string | null {
-    return recipe.image?.url
-      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
-      : null;
-  }
+  // The rule itself is `recipeHeroUrl` in `@salt/domain` (issue #933); the
+  // paragraph above is the part that is local to the planner.
 
   // The day's weather pictogram (issue #387), resolved from the forecast's
   // weatherCode/isDay. Null for absent/unknown codes — and, crucially, null for
@@ -185,7 +182,7 @@
   // with no recipe (or none with a photo) — the card then becomes a text block
   // with the meal one step larger, deliberately NOT a placeholder tile.
   const photoUrl = $derived(
-    attachedRecipes.map((r) => heroUrl(r)).find((u): u is string => u !== null) ?? null,
+    attachedRecipes.map((r) => recipeHeroUrl(r)).find((u): u is string => u !== null) ?? null,
   );
 
   // Nothing has been decided for this day yet — not a note, not a recipe. That is

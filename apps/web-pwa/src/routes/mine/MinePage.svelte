@@ -18,7 +18,7 @@
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     formatClock,
     timerHeat,
     timerProgress,
@@ -127,13 +127,8 @@
   // little, and a 46px thumbnail of a generated image is mostly mud — whereas the
   // dish you are three steps into is worth looking at.
   //
-  // Cache-busted the same way the recipe list and detail pages do (issue #460):
-  // a regenerated hero reuses the same Storage URL, so the per-regeneration nonce
-  // is what makes the new bytes visible.
-  function heroUrl(recipe: Recipe): string | null {
-    if (!recipe.image?.url) return null;
-    return appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt);
-  }
+  // Cache-busted the same way every other hero is, which since issue #933 means
+  // literally the same function: `recipeHeroUrl` in `@salt/domain`.
 
   // ─── Heat ───────────────────────────────────────────────────────────────────
   // The word and the colour both come from the domain's single decision
@@ -371,7 +366,9 @@
         : $tonight.note
       : '',
   );
-  const tonightHero = $derived($tonight?.recipes.map(heroUrl).find((u) => u !== null) ?? null);
+  const tonightHero = $derived(
+    $tonight?.recipes.map((r) => recipeHeroUrl(r)).find((u) => u !== null) ?? null,
+  );
 
   // ─── Glance strip ─────────────────────────────────────────────────────────
   // A quick read of the same sections below — never a restatement of anything off
@@ -580,7 +577,7 @@
         Cooking now{$liveCooks.length > 1 ? ` · ${$liveCooks.length} on the go` : ''}
       </h2>
       {#each $liveCooks as cook (cook.session.id)}
-        {@const banner = kitchenPrefs.imagery ? heroUrl(cook.recipe) : null}
+        {@const banner = kitchenPrefs.imagery ? recipeHeroUrl(cook.recipe) : null}
         <Card class="overflow-hidden border-primary/40">
           {#if banner}
             <img
