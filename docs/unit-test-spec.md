@@ -265,6 +265,22 @@ has. It is also the easiest to render vacuously green.
 - **UT-G3 (MUST NOT) — Never raise a retry count to green a unit test.** The unit suite has no
   retries and must not gain any. A retry-pass is a finding.
 
+- **UT-G4 (MUST) — A `.test-d.ts` type-assertion file needs its own typecheck wiring, not UT-G1's.**
+  `expectTypeOf` assertions under `tests/**/*.test-d.ts` are inert at runtime — `vitest run` executes
+  them as ordinary code, where `expectTypeOf` returns a no-op object, so a broken assertion never
+  fails the suite. UT-G1's `tsconfig.test.json` wired into the root `typecheck` script does not cover
+  them either: a package's own `tsconfig.json` is `composite`, rooted at `src/`, and cannot see
+  `tests/` at all. The mechanism is a package-local `tsconfig.typetest.json` (`noEmit`,
+  `composite: false`, `include: ["tests/**/*.test-d.ts"]`) referenced from a `test.typecheck` block in
+  that package's `vitest.config.ts` (`enabled: true`, its own `include`, `tsconfig` pointing at the new
+  file) — this folds the type check into `vitest run` itself, so it runs with `pnpm test`, not
+  `pnpm typecheck`. Used by `packages/ui-components` (issue #922) and `packages/domain` (issue #932).
+  **Evidence:** #932 demonstrated that asserting `CanonItem['schemaVersion']` is `number[]` passed both
+  `pnpm typecheck` and every domain test before this wiring existed.
+  _Verify:_ a package with `.test-d.ts` files has a `tsconfig.typetest.json` **and** its
+  `vitest.config.ts` sets `test.typecheck.enabled: true` pointing at it — either alone leaves the
+  assertions unrun.
+
 ---
 
 ## H. Triage — suspect the fixture, not the source
@@ -327,6 +343,7 @@ Tooling (only if a test directory or config is added)
            (n/a to scripts/tests/ — untyped ESM by design)
 [ ] UT-G2  Svelte props still unchecked by tsc — pnpm check is the prop gate
 [ ] UT-G3  No retries added
+[ ] UT-G4  .test-d.ts files have tsconfig.typetest.json + vitest test.typecheck.enabled wired
 
 Triage
 [ ] UT-H1  A bare TypeError means fix the fixture, not soften the source
