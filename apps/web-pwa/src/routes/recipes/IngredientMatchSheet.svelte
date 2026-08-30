@@ -43,6 +43,7 @@
   import { ingredientMatchIssue, isResolvedMatchState, resolveProductForm } from '@salt/domain';
   import type { Ingredient } from '@salt/domain';
   import { canonItems } from '../../lib/canonService.js';
+  import { canonIndex } from '../../lib/canonIndex.js';
   import { productForms } from '../../lib/productFormService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { currentMember } from '../../lib/membersService.js';
@@ -65,7 +66,7 @@
 
   // The recipe list's pip and this sheet must never disagree about what is
   // wrong, so both ask the same pure query rather than re-deriving it.
-  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+  const canonById = $derived(canonIndex($canonItems));
   const issue = $derived(
     ingredient === null ? null : ingredientMatchIssue(ingredient, canonById, $productForms),
   );

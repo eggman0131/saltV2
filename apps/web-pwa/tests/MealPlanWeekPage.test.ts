@@ -1928,6 +1928,48 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     expect(screen.queryByTestId('shop-week-list')).not.toBeInTheDocument();
     expect(vi.mocked(mockCommitRecipeAddPlan)).not.toHaveBeenCalled();
   });
+
+  // ─── Resolving the ids a day holds (issue #1055 characterisation) ────────────
+  // `shopWeekEntries` resolves each night's `recipeIds` against the store and
+  // silently skips an id with no matching document — a recipe deleted since it
+  // was attached. Nothing asserted that: every `recipeIds` fixture in this file
+  // resolves, so deleting the skip failed no test here.
+  //
+  // The eligibility predicate rides in the same filter, and the two are about to
+  // be separated so the resolution can be shared. These rows are what says the
+  // result set did not move: a dead id and an ineligible recipe are BOTH absent,
+  // and they are absent for different reasons.
+  it('skips an id whose recipe is gone, and still offers the ones beside it', async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['ghost', 'r1', 'r2'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+
+    // Never a blank row: the id resolves to nothing and drops out entirely.
+    expect(screen.queryByTestId(`shop-week-row-${TODAY}-ghost`)).not.toBeInTheDocument();
+    expect(screen.getByTestId(`shop-week-row-${TODAY}-r1`)).toBeInTheDocument();
+    expect(screen.getByTestId(`shop-week-row-${TODAY}-r2`)).toBeInTheDocument();
+    expect(screen.getByTestId('shop-week-confirm')).toHaveTextContent('Review 2 recipes');
+
+    await cancelShopWeek();
+  });
+
+  it('leaves a night whose every id is dead out of the list altogether', async () => {
+    mockRecipes._set([RECIPE]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['ghost', 'also-ghost'], [TOMORROW]: ['r1'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+
+    expect(screen.queryByTestId(`shop-week-night-${TODAY}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId(`shop-week-night-${TOMORROW}`)).toBeInTheDocument();
+    expect(screen.getByTestId('shop-week-confirm')).toHaveTextContent('Review 1 recipe');
+
+    await cancelShopWeek();
+  });
 });
 
 // ─── The sequence knows where it is (#724, Phase 2) ────────────────────────

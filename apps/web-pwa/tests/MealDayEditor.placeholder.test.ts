@@ -221,3 +221,60 @@ describe('MealDayEditor — the placeholder attach (#652)', () => {
     expect(screen.getByTestId('day-meal')).toHaveTextContent('Nothing planned');
   });
 });
+
+// ─── Resolving attached recipe ids, in the sheet (issue #1055) ─────────────────
+// The counterpart to `MealDayEditor.summary.test.ts`'s table. The collapsed row
+// resolves ids to pick ONE photograph; the sheet resolves the same ids to a LIST,
+// so this is where the order and the skip are visible as rendered rows rather
+// than inferred from which picture won.
+//
+// `MealDayDetail` renders a KEYED each over the resolved recipes, so a duplicated
+// id is not a question that can be put to this surface — duplicates are pinned
+// against the pure derivation in `personalViewService.test.ts` instead.
+describe('MealDayEditor — the sheet resolves the ids a day holds', () => {
+  const pie: Recipe = { ...emptyRecipe('r2', NOW), title: 'Steak Pie', updatedAt: NOW };
+
+  /** Open the day's sheet without blurring the note, so nothing is attached. */
+  async function openSheet(): Promise<void> {
+    await userEvent.click(screen.getByTestId('day-summary'));
+  }
+
+  async function rowTitles(recipeIds: string[]): Promise<string[]> {
+    render(MealDayEditor, {
+      props: baseProps({
+        day: makeDay({ note: 'Dinner', recipeIds }),
+        recipes: [roast, pie],
+      }),
+    });
+    await openSheet();
+    return [
+      ...screen.getByTestId('day-recipes').querySelectorAll('[data-testid^="day-recipe-row-"]'),
+    ].map((el) => el.textContent?.replace(/\s+/g, ' ').trim() ?? '');
+  }
+
+  it('lists them in the order the DAY holds, not the order the store does', async () => {
+    const titles = await rowTitles(['r2', 'r1']);
+    expect(titles).toHaveLength(2);
+    expect(titles[0]).toContain('Steak Pie');
+    expect(titles[1]).toContain('Sunday Roast');
+  });
+
+  it('skips a recipe deleted since it was attached rather than rendering a blank row', async () => {
+    const titles = await rowTitles(['ghost', 'r1']);
+    expect(titles).toHaveLength(1);
+    expect(titles[0]).toContain('Sunday Roast');
+  });
+
+  it('renders no list at all when not one id resolves', async () => {
+    render(MealDayEditor, {
+      props: baseProps({
+        day: makeDay({ note: 'Dinner', recipeIds: ['ghost', 'also-ghost'] }),
+        recipes: [roast, pie],
+      }),
+    });
+    await openSheet();
+
+    expect(screen.queryByTestId('day-recipe-row-ghost')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-recipe-row-also-ghost')).not.toBeInTheDocument();
+  });
+});

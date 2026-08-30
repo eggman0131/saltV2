@@ -1336,6 +1336,51 @@ describe('RecipeListPage — silent match problems', () => {
     expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
     mockIsLoadingProductForms._set(false);
   });
+
+  // ─── The three-clause readiness gate (issue #1055 characterisation) ──────────
+  // `matchIssuesKnown` is `!$isLoadingAisles && !$isLoadingProductForms &&
+  // $canonItems.length > 0`, and `RecipeViewPage` declares a character-identical
+  // expression under a different name (`matchMarkersKnown`). The two must agree
+  // exactly — the card says a recipe has three problems and the rows on that
+  // recipe must show three (issue #867) — and until this table nothing but a
+  // comment held them together.
+  //
+  // Each suite pinned a DIFFERENT two of the three clauses: `mockIsLoadingAisles`
+  // was declared in this file and never set, and `mockCanonItems._set([])` never
+  // appeared in the other one. So the gate's own suite could not see either half
+  // being deleted. The counterpart table lives in
+  // `RecipeViewPage.matchMarkers.test.ts`; the pair is the machine-checked form
+  // of the claim "these are the same gate".
+  describe('readiness gate — every clause closes it', () => {
+    afterEach(() => {
+      mockIsLoadingAisles._set(false);
+      mockIsLoadingProductForms._set(false);
+    });
+
+    it.each([
+      ['isLoadingAisles is still true', (): void => mockIsLoadingAisles._set(true)],
+      ['isLoadingProductForms is still true', (): void => mockIsLoadingProductForms._set(true)],
+      ['canon has not landed yet', (): void => mockCanonItems._set([])],
+    ])('shows no pip while %s', async (_clause, closeTheGate) => {
+      mockCanonItems._set([LIME]);
+      closeTheGate();
+      seed([citrusRecipe('canon-since-deleted')]);
+      render(RecipeListPage);
+
+      await screen.findAllByTestId('recipe-list-item');
+      expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
+    });
+
+    it('pips as soon as all three clauses are satisfied', async () => {
+      // The control the three rows above need: without it they would all pass on
+      // a fixture that never pips at all, and the table would be vacuous.
+      mockCanonItems._set([LIME]);
+      seed([citrusRecipe('canon-since-deleted')]);
+      render(RecipeListPage);
+
+      expect(await screen.findByTestId('recipe-match-issue-pip')).toHaveTextContent('1');
+    });
+  });
 });
 
 // ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────

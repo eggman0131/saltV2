@@ -324,6 +324,47 @@ describe('RecipeViewPage — ingredient match markers', () => {
     expect(marker.closest('[data-testid="recipe-view-ingredient-inspect"]')).toBeNull();
     expect(getByTestId('recipe-view-ingredient-inspect')).toBeTruthy();
   });
+
+  // ─── The three-clause readiness gate (issue #1055 characterisation) ──────────
+  // `matchMarkersKnown` is `!$isLoadingAisles && !$isLoadingProductForms &&
+  // $canonItems.length > 0` — character-identical to `matchIssuesKnown` on
+  // `RecipeListPage`, under a different name. They must agree exactly, or the
+  // card counts three problems and the recipe you open shows none, which is the
+  // defect issue #867 was filed for.
+  //
+  // Prose was all that held them: this file asserted the two loading clauses and
+  // never `mockCanonItems._set([])`, so `&& $canonItems.length > 0` could be
+  // deleted from the page with this whole suite still green. The counterpart
+  // table is in `RecipeListPage.test.ts`, which had the mirror-image hole.
+  describe('readiness gate — every clause closes it', () => {
+    it.each([
+      ['isLoadingAisles is still true', (): void => mockIsLoadingAisles._set(true)],
+      ['isLoadingProductForms is still true', (): void => mockIsLoadingProductForms._set(true)],
+      ['canon has not landed yet', (): void => mockCanonItems._set([])],
+    ])('marks no row at all while %s', (_clause, closeTheGate) => {
+      closeTheGate();
+      mockRecipes._set([
+        makeRecipe([line({ id: 'ing-juice' }), line({ id: 'ing-new', canonId: null })]),
+      ]);
+      const { queryByTestId } = renderPage();
+
+      expect(queryByTestId('match-state-mismatched')).toBeNull();
+      expect(queryByTestId('match-state-unmatched')).toBeNull();
+      expect(queryByTestId('match-state-no-amount')).toBeNull();
+    });
+
+    it('marks rows as soon as all three clauses are satisfied', () => {
+      // The control the three rows above need: without it they would pass on a
+      // fixture that never marks anything, and the table would be vacuous.
+      mockRecipes._set([
+        makeRecipe([line({ id: 'ing-juice' }), line({ id: 'ing-new', canonId: null })]),
+      ]);
+      const { getAllByTestId } = renderPage();
+
+      expect(getAllByTestId('match-state-mismatched')).toHaveLength(1);
+      expect(getAllByTestId('match-state-unmatched')).toHaveLength(1);
+    });
+  });
 });
 
 // ─── no amount (issue #949) ──────────────────────────────────────────────────

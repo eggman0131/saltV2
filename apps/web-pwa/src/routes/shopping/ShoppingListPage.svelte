@@ -48,6 +48,7 @@
   } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles, purchaseCounts } from '../../lib/canonService.js';
+  import { canonIndex } from '../../lib/canonIndex.js';
   import { recipes } from '../../lib/recipeService.js';
   import {
     lists,
@@ -329,8 +330,8 @@
   // `filteredItems` (:272) and `showCreate` (:278) as plain getters rather than
   // `$derived`, and `computeShowCreate` (:82) and `totalCount` (:86) each call
   // `computeFilteredItems` again, so one keystroke re-filters several times over.
-  // Same shape as RecipeListPage:52 / RecipeViewPage:610 / IngredientMatchSheet:68.
-  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+  // `canonIndex` is that index, shared with the recipe surfaces (issue #1055).
+  const canonById = $derived(canonIndex($canonItems));
 
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
     const q = input.trim().toLowerCase();

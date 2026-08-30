@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/svelte';
 import { emptyRecipe } from '@salt/domain';
 import type { Recipe, Step } from '@salt/domain';
 import type { CookSessionDoc } from '@salt/domain/schemas';
@@ -320,6 +320,38 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     const when = getAllByTestId('cook-plan-row-when').map((n) => n.textContent?.trim());
     expect(when[0]).toBe('START NOW');
     expect(when[1]).toMatch(/^in 30 min$/);
+  });
+
+  // ─── The serve-time window (issue #1055 characterisation) ────────────────────
+  // The 28-entry list was pinned by nothing: this suite asserted only the
+  // trigger's text, so changing `16` to `17` or `28` to `24` broke no test.
+  //
+  // It is deliberately NOT the same window as the planner's home-time picker,
+  // which runs 17:00–22:45 in 24 entries and is pinned at both ends by
+  // `MealPlanWeekPage.test.ts`'s "picks a home time in one tap" test. The two
+  // share their quarter-hour arithmetic and nothing else; the page comment
+  // claiming "the same shape" is true of the expression and false of the window.
+  // These two tests together are what stops a future de-duplication quietly
+  // collapsing them onto one list.
+  //
+  // `fireEvent`, never `userEvent`: the Select is a bits-ui focus trap
+  // (docs/unit-test-spec.md UT-F2).
+  it('offers the dinner window 16:00–22:45 on the quarter hour, and nothing outside it', async () => {
+    seedRoast();
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('cook-plan-serve-trigger'));
+    await waitFor(() => screen.getByRole('option', { name: '19:00' }));
+
+    // 28 entries, both ends inclusive — one quarter-hour step short of 23:00.
+    expect(screen.getAllByRole('option')).toHaveLength(28);
+    expect(screen.getByRole('option', { name: '16:00' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '16:30' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '22:45' })).toBeInTheDocument();
+    // No off-quarter value, and nothing past either end of the window.
+    expect(screen.queryByRole('option', { name: '19:10' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '15:45' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '23:00' })).not.toBeInTheDocument();
   });
 });
 

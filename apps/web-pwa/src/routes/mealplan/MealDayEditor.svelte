@@ -20,6 +20,7 @@
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import MealDayDetail from './MealDayDetail.svelte';
+  import { recipeIndex, resolveRecipeIds } from '../../lib/attachedRecipes.js';
 
   // Editor for a single Day, shared by the weekly page (date-keyed) and the
   // template editor (weekday-keyed).
@@ -128,16 +129,13 @@
   const heading = $derived(sheetTitle ?? `${label}${sublabel ? ` ${sublabel}` : ''}`);
 
   // ─── Attached recipes (issue #17) ──────────────────────────────────────────
-  // The day stores recipe IDS only; titles resolve live from the `recipes` prop
-  // at render time (no denormalisation). Ids with no matching recipe — deleted
-  // since they were attached — are skipped so a broken row is never rendered.
-  // (Also derived inside MealDayDetail, for its own list: three prop-derived
-  // lines in each file beats a shared helper module for two consumers.)
-  // Resolved through the id index (#940); same fallback rule as MealDayDetail.
-  const lookup = $derived(recipesById ?? new Map(recipes.map((r) => [r.id, r])));
-  const attachedRecipes = $derived(
-    day.recipeIds.map((id) => lookup.get(id)).filter((r): r is Recipe => r !== undefined),
-  );
+  // Five consumers now share this resolution, so it lives in
+  // `lib/attachedRecipes.ts` — which carries the reasoning, including why an id
+  // with no matching recipe is skipped rather than rendered. The comment that
+  // used to stand here argued FOR keeping the copy, on a count of two consumers;
+  // at five that argument no longer holds (issue #1055).
+  const lookup = $derived(recipeIndex(recipesById, recipes));
+  const attachedRecipes = $derived(resolveRecipeIds(day.recipeIds, lookup));
 
   // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
   // #460): a regenerated hero reuses the same Storage URL, so bust it with the

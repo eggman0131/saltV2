@@ -17,6 +17,7 @@
     Spinner,
   } from '@salt/ui-components';
   import { canonItems, addCanonItem } from '../../lib/canonService.js';
+  import { canonIndex } from '../../lib/canonIndex.js';
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
@@ -25,7 +26,7 @@
   let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 
   // Indexed, not scanned (issue #939) — see the note on ShoppingListPage's copy.
-  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+  const canonById = $derived(canonIndex($canonItems));
 
   // Case-insensitive substring match on name and synonyms
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {

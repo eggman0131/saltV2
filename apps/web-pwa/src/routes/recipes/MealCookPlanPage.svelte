@@ -49,6 +49,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
   import { kindOf } from './recipeKind.js';
+  import { quarterHourOptions } from '../../lib/timeOptions.js';
 
   // The cook plan (issue #752, phase 4) — `/recipes/:id/cook-plan`.
   //
@@ -146,13 +147,14 @@
 
   /** Where a serve time falls back to when the plan has nothing to say. */
   const DEFAULT_SERVE_TIME = '19:00';
-  // Quarter hours across the plausible dinner window, the same shape the planner's
-  // home-time picker uses. A picker, not a free-text box: there is nothing to parse
-  // and nothing to get wrong.
-  const TIME_OPTIONS = Array.from(
-    { length: 28 },
-    (_, i) => `${16 + Math.floor(i / 4)}:${String((i % 4) * 15).padStart(2, '0')}`,
-  );
+  // Quarter hours across the plausible dinner window: 16:00–22:45. A picker, not
+  // a free-text box — there is nothing to parse and nothing to get wrong.
+  //
+  // The same GENERATOR as the planner's home-time picker, but deliberately not
+  // the same window: that one runs 17:00–22:45 in 24 entries. The difference is
+  // in the arguments where a reader can see it, which is the point of sharing
+  // the arithmetic rather than the list (issue #1055).
+  const TIME_OPTIONS = quarterHourOptions(16, 28);
 
   const CLOCK_FORMAT = new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',

@@ -454,3 +454,106 @@ describe('FormulaPage — stages and the document', () => {
     );
   });
 });
+
+// ─── The two positive-number parsers (issue #1055 characterisation) ────────────
+// `FormulaPage` declares `parseGrams` and `parseMinutes` ten lines apart, and
+// their bodies are byte-identical but for the name:
+//
+//   const trimmed = text.trim();
+//   if (trimmed === '') return null;
+//   const value = Number(trimmed);
+//   return Number.isFinite(value) && value > 0 ? value : null;
+//
+// Neither was exercised beyond the happy path and `''`, so swapping `> 0` for
+// `>= 0`, dropping `Number.isFinite`, or accepting `'1e3'` on one of them and not
+// the other would have failed nothing.
+//
+// ONE table, driven through BOTH boxes. That is the point: the rows below are the
+// machine-checked form of the claim "these two are the same function", which is
+// what makes deleting one of them a legal move. If they ever diverge, one of the
+// two tables goes red and names the input that split them.
+//
+// Deliberately NOT the same table as `cookTimerDuration.test.ts:50-61`. That
+// parser is stricter — `/^\d+$/` and `>= 1`, so it rejects `'2.5'` and `'1e3'`
+// which both of these accept — because a cook timer's field is the one the −/+
+// chips write into. A process stage's duration is `z.number().positive()`, where
+// non-integers are schema-legal, so these two must NOT converge on it.
+const POSITIVE_NUMBER_INPUTS: readonly {
+  readonly label: string;
+  readonly text: string;
+  readonly value: number | null;
+}[] = [
+  { label: 'an empty box', text: '', value: null },
+  { label: 'zero', text: '0', value: null },
+  { label: 'a negative number', text: '-5', value: null },
+  { label: 'a non-integer', text: '2.5', value: 2.5 },
+  { label: 'letters', text: 'abc', value: null },
+  { label: 'exponent notation', text: '1e3', value: 1000 },
+  { label: 'a number padded with spaces', text: ' 500 ', value: 500 },
+];
+
+function percentsIn(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('[data-testid="formula-row-percent"]')].map(
+    (el) => el.textContent?.trim() ?? '',
+  );
+}
+
+describe('FormulaPage — the grams box and the minutes box parse identically', () => {
+  it.each(POSITIVE_NUMBER_INPUTS)(
+    'the grams box takes $label ($text) as $value',
+    async ({ text, value }) => {
+      // The water row, which is not in the basis — so its inclusion moves without
+      // dragging every other percentage with it. A rejected figure leaves the row
+      // OUT of the formula, which reads as '—' rather than a number.
+      const { container } = await openWith(STORED);
+      const grams = inputsIn(container, 'formula-row-grams');
+
+      await fireEvent.input(grams[1]!, { target: { value: text } });
+      await waitFor(() => expect(percentsIn(container)[1] === '—').toBe(value === null));
+    },
+  );
+
+  it.each(POSITIVE_NUMBER_INPUTS)(
+    'the stage minutes box takes $label ($text) as $value',
+    async ({ text, value }) => {
+      // Read off the SAVED document rather than the box: a rejected figure is no
+      // duration at all (a legitimate observational stage — "until doubled"),
+      // and an accepted one is a fixed duration carrying the parsed number.
+      const { getByTestId, container } = await openWith({ ...STORED, process: [BAKE] });
+
+      await fireEvent.input(inputsIn(container, 'formula-stage-minutes')[0]!, {
+        target: { value: text },
+      });
+      await fireEvent.click(getByTestId('formula-save-button'));
+
+      await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+      const written = vi.mocked(saveFormula).mock.calls[0]![0];
+      expect(written.process![0]!.duration).toEqual(
+        value === null ? null : { kind: 'fixed', minutes: value },
+      );
+    },
+  );
+
+  it.each(POSITIVE_NUMBER_INPUTS)(
+    'the stage max-minutes box takes $label ($text) as $value',
+    async ({ text, value }) => {
+      // The third call site, driven by nothing until now. A filled second box that
+      // differs makes the duration a RANGE; anything the parser rejects leaves the
+      // fixed duration the first box already established.
+      const { getByTestId, container } = await openWith({ ...STORED, process: [BAKE] });
+
+      await fireEvent.input(inputsIn(container, 'formula-stage-max-minutes')[0]!, {
+        target: { value: text },
+      });
+      await fireEvent.click(getByTestId('formula-save-button'));
+
+      await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+      const written = vi.mocked(saveFormula).mock.calls[0]![0];
+      expect(written.process![0]!.duration).toEqual(
+        value === null || value === 40
+          ? { kind: 'fixed', minutes: 40 }
+          : { kind: 'range', minMinutes: 40, maxMinutes: value },
+      );
+    },
+  );
+});

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { normaliseMemberEmail } from '@salt/domain';
 import type { Member } from '@salt/domain';
 
 const { mockMembers, mockIsLoading, mockAuth } = await vi.hoisted(async () => {
@@ -21,6 +22,19 @@ vi.mock('../src/lib/membersService.js', () => ({
   createMemberEntry: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   updateMemberEntry: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   deleteMemberEntry: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  // AdminGuard reads this since #1055 (Phase 5) instead of re-deriving admin
+  // itself; derived here from the same members/auth stubs as the real
+  // `currentMember` in membersService.ts.
+  currentMember: {
+    subscribe(fn: (v: Member | null) => void) {
+      return mockMembers.subscribe((roster) => {
+        const email = mockAuth.user?.email ?? '';
+        if (!email) return fn(null);
+        const normalised = normaliseMemberEmail(email);
+        fn(roster.find((m) => m.email === normalised) ?? null);
+      });
+    },
+  },
 }));
 
 import AdminMembersPage from '../src/routes/admin/AdminMembersPage.svelte';

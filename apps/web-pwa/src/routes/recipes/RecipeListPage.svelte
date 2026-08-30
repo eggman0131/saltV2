@@ -21,6 +21,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { currentMember } from '../../lib/membersService.js';
   import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
+  import { canonIndex, matchMarkersReady } from '../../lib/canonIndex.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     KIND_COPY,
@@ -46,22 +47,14 @@
   // they get a marker on the LIST: the whole point is knowing which recipe to
   // open. A never-matched line is deliberately NOT counted — see the domain query.
   //
-  // Both stores are app-wide (App.svelte), so this costs no extra read. The map is
-  // built once per canon change rather than per card, and `recipeMatchIssueCount`
-  // rejects almost every line on two field reads before it ever walks the forms.
-  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+  // Index and gate both come from `lib/canonIndex.ts`, which carries the whole
+  // of the reasoning. The gate in particular is shared with RecipeViewPage's row
+  // markers, which must answer it identically or the card and the recipe
+  // disagree (issue #867).
+  const canonById = $derived(canonIndex($canonItems));
 
-  // NOTHING is judged until both collections have actually landed. Canon leads
-  // and arrives after first paint, and an empty canon makes every matched line
-  // look dangling — so without this gate the whole library flashes amber on every
-  // cold load, which is exactly how a marker gets trained out of a person. The
-  // length check backs up the load flags: `isLoadingAisles` starts false, so a
-  // surface that never initialises sync (a test, a stray mount) would otherwise
-  // read "loaded" over an empty store. Product forms get the flag but NOT a
-  // length check — an empty form table is a legitimate state and precisely the
-  // one that should be lighting these pips up (issue #855).
   const matchIssuesKnown = $derived(
-    !$isLoadingAisles && !$isLoadingProductForms && $canonItems.length > 0,
+    matchMarkersReady($isLoadingAisles, $isLoadingProductForms, $canonItems.length),
   );
 
   function matchIssueCount(recipe: Recipe): number {

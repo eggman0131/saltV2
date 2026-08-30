@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { normaliseMemberEmail } from '@salt/domain';
 import type { Aisle, CanonItem, Member } from '@salt/domain';
 
 /**
@@ -40,6 +41,19 @@ vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
   members: mockMembers,
   isLoadingMembers: mockIsLoading,
+  // AdminGuard reads this since #1055 (Phase 5) instead of re-deriving admin
+  // itself; derived here from the same members/auth stubs as the real
+  // `currentMember` in membersService.ts.
+  currentMember: {
+    subscribe(fn: (v: Member | null) => void) {
+      return mockMembers.subscribe((roster) => {
+        const email = mockAuth.user?.email ?? '';
+        if (!email) return fn(null);
+        const normalised = normaliseMemberEmail(email);
+        fn(roster.find((m) => m.email === normalised) ?? null);
+      });
+    },
+  },
 }));
 vi.mock('../src/lib/toastStore.js', () => ({
   addToast: vi.fn((message: string, variant?: string) => {

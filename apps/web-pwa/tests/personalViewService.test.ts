@@ -22,10 +22,22 @@ const {
   mockToday,
   mockMember,
   mockKitchenTimers,
+  mockRecipesById,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
+  const recipes = makeStore<unknown[]>([]);
   return {
-    mockRecipes: makeStore<unknown[]>([]),
+    mockRecipes: recipes,
+    // The id index the service resolves attached recipes through (#940). Derived
+    // from the SAME store, so it stays in step with every `mockRecipes._set`
+    // rather than being a second thing each test has to remember to seed.
+    mockRecipesById: {
+      subscribe(fn: (v: ReadonlyMap<string, unknown>) => void) {
+        return recipes.subscribe((list) =>
+          fn(new Map((list as { id: string }[]).map((r) => [r.id, r]))),
+        );
+      },
+    },
     mockSessions: makeStore<unknown[]>([]),
     mockChats: makeStore<unknown[]>([]),
     mockKitchenWeeks: makeStore<unknown[]>([]),
@@ -35,7 +47,14 @@ const {
   };
 });
 
-vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
+// `recipesById` is derived from the same store the mock already serves, so the
+// index the service now resolves through stays in step with `mockRecipes._set`
+// (issue #1055 Phase 4). Both are exported because the service still wants the
+// ARRAY for its single-session lookups and the INDEX for list resolution.
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  recipesById: mockRecipesById,
+}));
 vi.mock('../src/lib/kitchenTimerService.js', () => ({ kitchenTimers: mockKitchenTimers }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
 vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));
@@ -53,6 +72,7 @@ import {
   needsReviewRecipes,
   recentChats,
   timerNowMs,
+  tonight,
   upcomingChefNights,
 } from '../src/lib/personalViewService.js';
 
@@ -396,6 +416,43 @@ describe('timerNowMs', () => {
   });
 });
 
+// ─── Attached-recipe id resolution (issue #1055) ─────────────────────────────
+// `upcomingChefNights` and `tonight` each resolve `day.recipeIds` against the
+// recipes store with the same expression, copied verbatim. Those two copies are
+// about to be unified onto one helper, and nothing in the repo currently asserts
+// what the expression guarantees — dropping its `.filter(...)` fails no test and
+// shows up only as a type error. This characterisation table is what makes the
+// unification legal: it runs at BOTH sites, so the surviving helper has to keep
+// every property both callers already depend on.
+//
+// Order is the row that matters most on screen: the night lists what you attached,
+// in the order you attached it, however the store happens to be sorted. Skipping
+// is what keeps a recipe deleted since it was planned from rendering as a blank
+// row. Duplication is deliberate — two portions of the same thing is a real plan.
+const recipeIdResolutionCases = [
+  {
+    name: 'output order follows recipeIds, not the order of the recipes store',
+    store: ['r2', 'r1'],
+    attached: ['r1', 'r2'],
+    expected: ['r1', 'r2'],
+  },
+  {
+    name: 'an id deleted since it was attached is skipped, never a blank entry',
+    store: ['r1', 'r2'],
+    attached: ['r1', 'gone', 'r2'],
+    expected: ['r1', 'r2'],
+  },
+  {
+    name: 'a duplicated id still yields two entries',
+    store: ['r1'],
+    attached: ['r1', 'r1'],
+    expected: ['r1', 'r1'],
+  },
+] as const;
+
+/** The store contents a row asks for, in the row's own (deliberate) order. */
+const storeOf = (ids: readonly string[]) => ids.map((id) => recipe(id, `Recipe ${id}`));
+
 // "Cooking soon" (#755). The window and the span are the domain helper's; what is
 // asserted here is the RESOLUTION — the member id, the entries that name the meal,
 // and the distance from the same today the weeks were subscribed for.
@@ -449,6 +506,21 @@ describe('upcomingChefNights', () => {
     expect(get(upcomingChefNights)[0]?.recipes.map((r) => r.id)).toEqual(['r1']);
   });
 
+  // Site 1 of the shared table above.
+  it.each(recipeIdResolutionCases)(
+    'resolves attached ids: $name',
+    ({ store, attached, expected }) => {
+      mockRecipes._set(storeOf(store));
+      mockMember._set(ALEX);
+      mockToday._set('2026-08-05');
+      mockKitchenWeeks._set([setDayRecipes(week(MONDAY, ['2026-08-06']), '2026-08-06', attached)]);
+
+      expect(get(upcomingChefNights)[0]?.recipes).toEqual(
+        expected.map((id) => expect.objectContaining({ id })),
+      );
+    },
+  );
+
   it('carries the day itself, so a note-only night can still say what it is', () => {
     mockMember._set(ALEX);
     mockToday._set('2026-08-05');
@@ -480,6 +552,24 @@ describe('upcomingChefNights', () => {
     expect(get(upcomingChefNights)).toHaveLength(1);
     expect(get(mineOpenCount)).toBe(0);
   });
+});
+
+describe('tonight', () => {
+  const MONDAY = '2026-08-03';
+  const TODAY = '2026-08-05';
+
+  // Site 2 of the shared table above: the same three properties, asserted through
+  // the other copy of the expression, so unifying them cannot quietly change one.
+  it.each(recipeIdResolutionCases)(
+    'resolves attached ids: $name',
+    ({ store, attached, expected }) => {
+      mockRecipes._set(storeOf(store));
+      mockToday._set(TODAY);
+      mockKitchenWeeks._set([setDayRecipes(emptyWeek(MONDAY), TODAY, attached)]);
+
+      expect(get(tonight)?.recipes).toEqual(expected.map((id) => expect.objectContaining({ id })));
+    },
+  );
 });
 
 describe('needsReviewRecipes', () => {
