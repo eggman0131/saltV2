@@ -325,13 +325,6 @@ export type {
   ProposeScheduleOutput,
 } from './proposeSchedule.js';
 
-// Process diff (issue #812, phase 2) — the render contract for reviewing a
-// proposed restructure. NEVER persisted, so there is no back-compat surface, and
-// there is deliberately no `split`: one stage becoming two is a removal plus two
-// additions. `recipeDiff` is the precedent.
-export { ProcessDiffSchema } from './processDiff.js';
-export type { ProcessStageDiffEntry, ProcessDiff } from './processDiff.js';
-
 // Batch (issue #812, phase 1) — ONE RUN at `batches/{batchId}`, family-shared with
 // a random id. Everything on it is FROZEN at start: resolved grams AND their
 // labels, the resolved totals, and the resolved schedule. Read batch.ts's header

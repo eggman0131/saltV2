@@ -1,14 +1,25 @@
-import { z } from 'zod';
-import { ProcessStageKindSchema, StageDurationSchema, StageEnvironmentSchema } from './process.js';
+import type { ProcessStageKind, StageDuration, StageEnvironment } from '../schemas/index.js';
 
 // Structured diff between a formula's REFERENCE process and a proposed one
 // (issue #812, phase 2 of epic #778). PURE data: `diffProcess`
 // (packages/domain/src/process) produces it and it carries only human-signal
 // changes, so the review screen can render a deterministic summary — "Bulk ferment
 // 90 min → 20 min", "Added: Cold retard, 8 h at 4 °C", "Removed: Second rise".
-// This schema is a render contract, not a Firestore document: it is never
+// This type is a render contract, not a Firestore document: it is never
 // persisted, so there is no back-compat surface. `recipeDiff.ts` is the precedent
 // in every respect.
+//
+// PLAIN TYPES, NOT ZOD, AND THAT IS THE RULE RATHER THAN AN EXCEPTION TO IT
+// (issue #973). CLAUDE.md's Zod conventions say validate at trust boundaries only.
+// A diff is computed in-process by `diffProcess` from two arguments and handed
+// straight to the review screen: it never arrives from a client, a model or
+// Firestore, and it is never written back to any of them. There is no boundary
+// here, so there is nothing to validate — and a schema whose `.parse()` is never
+// called is validation machinery that only reads as though it runs. Every
+// declaration below was a `z.object` until #973; each one still carries the comment
+// it had then, and none of them gained or lost a field in the conversion.
+// `resolveSchedule.ts` and `totalDuration.ts` in this same directory own their
+// result types the same way.
 //
 // WHAT IS NOT DIFFED, and why:
 //
@@ -34,40 +45,40 @@ import { ProcessStageKindSchema, StageDurationSchema, StageEnvironmentSchema } f
 
 // A change on a required string field (a stage's label). `from !== to` by
 // construction.
-export const StageTextChangeSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-});
+export interface StageTextChange {
+  from: string;
+  to: string;
+}
 
 // A change on a nullable string field (`until`). null means "no criterion"; a
 // null→string or string→null transition is a real change.
-export const StageNullableTextChangeSchema = z.object({
-  from: z.string().nullable(),
-  to: z.string().nullable(),
-});
+export interface StageNullableTextChange {
+  from: string | null;
+  to: string | null;
+}
 
 // `active` ⇄ `wait`. Rare, and worth shouting about when it happens: it is the
 // difference between an evening you can leave the house for and one you cannot.
-export const StageKindChangeSchema = z.object({
-  from: ProcessStageKindSchema,
-  to: ProcessStageKindSchema,
-});
+export interface StageKindChange {
+  from: ProcessStageKind;
+  to: ProcessStageKind;
+}
 
 // Where the stage happens. Nullable on both sides — a mix has no temperature, and
 // moving a prove from the counter to the fridge is null→{4 °C} as often as it is
 // {20 °C}→{4 °C}.
-export const StageEnvironmentChangeSchema = z.object({
-  from: StageEnvironmentSchema.nullable(),
-  to: StageEnvironmentSchema.nullable(),
-});
+export interface StageEnvironmentChange {
+  from: StageEnvironment | null;
+  to: StageEnvironment | null;
+}
 
 // How long it takes. The WHOLE duration on each side, never a single number: a
 // 45–60 minute prove becoming a fixed 30 is a range collapsing, and the review has
 // to be able to say so.
-export const StageDurationChangeSchema = z.object({
-  from: StageDurationSchema.nullable(),
-  to: StageDurationSchema.nullable(),
-});
+export interface StageDurationChange {
+  from: StageDuration | null;
+  to: StageDuration | null;
+}
 
 // An added or removed stage.
 //
@@ -77,12 +88,14 @@ export const StageDurationChangeSchema = z.object({
 // to a proposal. Nothing here invents one.
 //
 // `position` is 1-based: in the reference process for a removal, in the proposed
-// process for an addition, so the review can say "stage 3".
-export const ProcessStageDiffEntrySchema = z.object({
-  id: z.string().nullable(),
-  position: z.number().int().positive(),
-  label: z.string(),
-});
+// process for an addition, so the review can say "stage 3". A positive integer by
+// construction — it is `index + 1` over an array — which is what the `z.number()
+// .int().positive()` it replaced asserted and never checked.
+export interface ProcessStageDiffEntry {
+  id: string | null;
+  position: number;
+  label: string;
+}
 
 // A stage the proposal kept and altered. `id` is the reference stage's — a change
 // exists only where the two sides matched, so there is always one. `position` is
@@ -90,27 +103,23 @@ export const ProcessStageDiffEntrySchema = z.object({
 //
 // Each facet is present only when that facet changed; at least one always is (a
 // stage that changed in no facet is not a change and is omitted entirely).
-export const ProcessStageChangeSchema = z.object({
-  id: z.string(),
-  position: z.number().int().positive(),
-  label: StageTextChangeSchema.optional(),
-  kind: StageKindChangeSchema.optional(),
-  environment: StageEnvironmentChangeSchema.optional(),
-  duration: StageDurationChangeSchema.optional(),
-  until: StageNullableTextChangeSchema.optional(),
-});
+export interface ProcessStageChange {
+  id: string;
+  position: number;
+  label?: StageTextChange;
+  kind?: StageKindChange;
+  environment?: StageEnvironmentChange;
+  duration?: StageDurationChange;
+  until?: StageNullableTextChange;
+}
 
 // The full process diff. All three lists are always present (empty when nothing
 // fell into them) so the render shape is stable. `hasChanges` is the single no-op
 // signal: false ⟺ all three are empty — which is precisely how "the model declined
 // to restructure, and was right to" reaches the screen.
-export const ProcessDiffSchema = z.object({
-  hasChanges: z.boolean(),
-  added: z.array(ProcessStageDiffEntrySchema),
-  removed: z.array(ProcessStageDiffEntrySchema),
-  changed: z.array(ProcessStageChangeSchema),
-});
-
-export type ProcessStageDiffEntry = z.infer<typeof ProcessStageDiffEntrySchema>;
-export type ProcessStageChange = z.infer<typeof ProcessStageChangeSchema>;
-export type ProcessDiff = z.infer<typeof ProcessDiffSchema>;
+export interface ProcessDiff {
+  hasChanges: boolean;
+  added: ProcessStageDiffEntry[];
+  removed: ProcessStageDiffEntry[];
+  changed: ProcessStageChange[];
+}

@@ -1,5 +1,5 @@
+import type { ProcessDiff } from '@salt/domain';
 import type {
-  ProcessDiff,
   ProcessStage,
   ProcessStageKind,
   ProposedStage,
@@ -23,7 +23,7 @@ import { formatStatedDuration } from '../../lib/durationDisplay.js';
 // review row when the thing worth arguing with is "8 h at 4 °C" — so the entry is
 // joined back to the stage it names, using the position the diff already states
 // (1-based in the PROPOSED process for an addition, in the REFERENCE process for a
-// removal — see `schemas/processDiff.ts`). The diff says WHICH; the process says
+// removal — see `process/processDiff.ts`). The diff says WHICH; the process says
 // WHAT. Nothing is re-derived and nothing is guessed: a position that does not
 // resolve simply renders as a bare label.
 //
