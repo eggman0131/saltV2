@@ -43,6 +43,7 @@
     type RecipeKind,
     type IngredientGroup,
     memberFirstName,
+    normaliseTags,
     type Ingredient,
     type Step,
     type RecipeMetadata,
@@ -191,10 +192,6 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  function normalizeTag(raw: string): string {
-    return raw.toLowerCase().trim().replace(/\s+/g, '-');
-  }
-
   let tagInput = $state('');
 
   const allExistingTags = $derived([...new Set($recipes.flatMap((r) => r.metadata.tags))].sort());
@@ -203,11 +200,13 @@
     allExistingTags.filter((t) => !draft.metadata.tags.includes(t)),
   );
 
+  // Tag normalisation is `@salt/domain`'s `normaliseTags` (issue #1054) — the
+  // same rule the recipe-authoring flows apply to what the model emits, which
+  // live in an app this one cannot import. One raw string can yield more than
+  // one tag, because the rule splits on commas.
   function addTag(raw: string): void {
-    const tag = normalizeTag(raw);
-    if (tag && !draft.metadata.tags.includes(tag)) {
-      setMetadata({ tags: [...draft.metadata.tags, tag] });
-    }
+    const fresh = normaliseTags([raw]).filter((t) => !draft.metadata.tags.includes(t));
+    if (fresh.length > 0) setMetadata({ tags: [...draft.metadata.tags, ...fresh] });
     tagInput = '';
   }
 

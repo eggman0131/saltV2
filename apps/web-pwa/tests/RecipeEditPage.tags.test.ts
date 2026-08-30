@@ -14,20 +14,26 @@ import type { Recipe } from '@salt/domain';
  * below. Pinning the CURRENT answers first is what makes that change a one-line
  * diff to a test rather than something absorbed silently (#941 Track B).
  *
- * THE ROW THAT WILL FLIP — Exception 1. `'vegetarian, quick'` arriving in the
- * field as a whole string (a paste, an autofill, a soft keyboard that does not
- * report the comma keydown) is stored today as the single tag
- * `'vegetarian,-quick'`, because the client normaliser kebab-cases whitespace
- * and never splits on commas. After Phase 5 it becomes two tags. Every other row
- * here is unchanged by that phase; a second flipped row means the phase is wrong.
+ * EXCEPTION 1, now landed (Phase 5). `'vegetarian, quick'` arriving in the field
+ * as a whole string — a paste, an autofill, a soft keyboard that does not report
+ * the comma keydown — used to be stored as the single tag `'vegetarian,-quick'`,
+ * because the client normaliser kebab-cased whitespace and never split on
+ * commas. It is now two tags, because both apps share `normaliseTags`.
  *
  * THE BOUNDARY OF THAT CLAIM, pinned rather than assumed. Typing the comma as a
- * KEYSTROKE already yields two tags today, because `handleTagKeydown` treats
- * `,` exactly as it treats Enter and commits the buffer before the comma can
- * reach the normaliser. So the divergence between the two implementations is
- * reachable only when the comma arrives inside the value rather than as a key —
- * and both paths are asserted below, so Phase 5 has to leave the keystroke path
- * alone.
+ * KEYSTROKE already yielded two tags BEFORE the change, because
+ * `handleTagKeydown` treats `,` exactly as it treats Enter and commits the
+ * buffer before the comma can reach the normaliser. So what Exception 1 actually
+ * fixes is the paste/autofill path, not typing — and the keystroke path is
+ * asserted below precisely so it can be shown not to have moved.
+ *
+ * THE SECOND SURFACE OF THE SAME RULE. A comma now splits wherever it appears,
+ * including in a tag drawn from the SUGGESTION list. A household that already
+ * stored `vegetarian,-quick` before the fix sees that chip add two tags when
+ * clicked, rather than re-adding the malformed one. That is the same comma rule,
+ * not a second exception — the contract's carve-out is explicitly "input without
+ * a comma is unaffected" — and it repairs the legacy tag instead of propagating
+ * it. Asserted below so it is a stated property rather than a surprise.
  *
  * Driven with `fireEvent`, never `userEvent.type` (UT-F2): the field sits in a
  * page with focus-trapping siblings.
@@ -98,10 +104,10 @@ describe('RecipeEditPage — the tag field, as it behaves today', () => {
     ['a space becomes a hyphen', 'Comfort Food', ['comfort-food']],
     ['runs of whitespace collapse to one hyphen', 'batch   cook', ['batch-cook']],
     ['surrounding whitespace is trimmed', '   spicy  ', ['spicy']],
-    // EXCEPTION 1 (issue #1054): a comma inside the value is kebab-cased rather
-    // than split on, so two tags arrive as one malformed one. Phase 5 flips THIS
-    // ROW ONLY, to ['vegetarian', 'quick'].
-    ['a pasted comma list becomes ONE malformed tag', 'vegetarian, quick', ['vegetarian,-quick']],
+    // EXCEPTION 1 (issue #1054), flipped by Phase 5: a comma inside the value
+    // used to be kebab-cased rather than split on, so two tags arrived as one
+    // malformed one (`vegetarian,-quick`). The shared `normaliseTags` splits.
+    ['a pasted comma list becomes TWO tags', 'vegetarian, quick', ['vegetarian', 'quick']],
   ])('%s', async (_name, raw, expected) => {
     const field = openEditor();
     await pasteAndCommit(field, raw);
@@ -151,15 +157,30 @@ describe('RecipeEditPage — the tag field, as it behaves today', () => {
   it('adds a suggestion drawn from other recipes when its chip is clicked', async () => {
     // The suggestion pool is every tag on every stored recipe — which is why a
     // malformed tag created here goes on to be offered on every future draft.
-    mockRecipes._set([makeRecipe('r1', ['quick', 'vegetarian,-quick'])]);
+    mockRecipes._set([makeRecipe('r1', ['quick', 'comfort-food'])]);
     openEditor();
 
     await fireEvent.click(screen.getByRole('button', { name: '+ quick' }));
     expect(tagsOnScreen()).toEqual(['quick']);
 
-    // An already-normalised suggestion must survive the round trip untouched —
-    // the property Phase 5's replacement has to keep.
+    // A well-formed suggestion survives the round trip untouched: `normaliseTags`
+    // is idempotent on its own output, which is what lets the chip's tag go back
+    // through the same rule.
+    await fireEvent.click(screen.getByRole('button', { name: '+ comfort-food' }));
+    expect(tagsOnScreen()).toEqual(['quick', 'comfort-food']);
+  });
+
+  it('splits a LEGACY malformed suggestion rather than re-adding it', async () => {
+    // The second surface of Exception 1, stated rather than discovered later. A
+    // `vegetarian,-quick` created before the fix is still offered as a
+    // suggestion; clicking it now yields two tags, one of which carries the
+    // leading hyphen the old kebab-casing left behind. Nothing rewrites stored
+    // data — the malformed tag keeps rendering and keeps being searchable on the
+    // recipes that already carry it.
+    mockRecipes._set([makeRecipe('r1', ['vegetarian,-quick'])]);
+    openEditor();
+
     await fireEvent.click(screen.getByRole('button', { name: '+ vegetarian,-quick' }));
-    expect(tagsOnScreen()).toEqual(['quick', 'vegetarian,-quick']);
+    expect(tagsOnScreen()).toEqual(['vegetarian', '-quick']);
   });
 });

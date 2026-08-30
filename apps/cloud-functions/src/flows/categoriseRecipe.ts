@@ -4,10 +4,11 @@ import {
   CategoriseRecipeAIOutputSchema,
   CategoriseRecipeOutputSchema,
 } from '@salt/domain/schemas';
+import { normaliseTags } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
+import { CATEGORY_TAG_RULES } from './categoryTags.js';
 
 // categoriseRecipe (issue: tighten recipe categories). Given a recipe's content,
 // returns clean search/filter category tags under the SHARED category-tag rules

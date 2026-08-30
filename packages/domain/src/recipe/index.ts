@@ -20,6 +20,10 @@ export {
   newStep,
 } from './commands/builders.js';
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
+// The one tag normalisation (issue #1054) — the recipe editor and the authoring
+// flows are different apps that cannot import each other, so the rule that
+// decides what a typed or generated tag becomes lives here.
+export { normaliseTags } from './commands/normaliseTags.js';
 export { flattenIngredients } from './queries/ingredients.js';
 // The ONE numeric reduction of a `Quantity` (issue #917) — shared by the shopping
 // list and the formula mapping screen so a range cannot mean two amounts. The

@@ -207,6 +207,9 @@ export {
   newIngredient,
   newStep,
   clearIngredientMatch,
+  // The one tag normalisation (issue #1054) — the recipe editor and the
+  // authoring flows are different apps and cannot import each other.
+  normaliseTags,
   flattenIngredients,
   quantityToNumber,
   ingredientMatchIssue,
