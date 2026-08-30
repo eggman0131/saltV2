@@ -1,9 +1,6 @@
 // spec: ui-spec-v03.md §5 v0.3
 import { cva, type VariantProps } from '../../lib/variants';
 
-export const sheetOverlayClass =
-  'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out fade-in-0 fade-out-0 duration-base ease-standard motion-reduce:animate-none';
-
 export const sheetContentVariants = cva(
   'fixed z-dialog flex flex-col gap-4 border bg-background p-6 shadow-dialog data-[state=open]:animate-in data-[state=closed]:animate-out duration-slow ease-emphasized motion-reduce:animate-none',
   {

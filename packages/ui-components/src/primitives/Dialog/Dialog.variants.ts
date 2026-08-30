@@ -1,7 +1,11 @@
 // spec: ui-spec-v02.md §8.6 v0.2.9
 import { cva, type VariantProps } from '../../lib/variants';
 
-export const dialogOverlayClass =
+// The scrim behind a modal surface, shared by Dialog and Sheet — the two are the
+// same 152-character string, and were kept as two identical constants until #929.
+// Named for the role rather than for Dialog so `SheetContent` importing it does
+// not read as a mistake waiting to be re-forked (ui-spec-v02 §3.1).
+export const modalOverlayClass =
   'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out fade-in-0 fade-out-0 duration-base ease-standard motion-reduce:animate-none';
 
 // `w-full` and the mobile `max-w`/`max-h` clamps are load-bearing, not cosmetic.

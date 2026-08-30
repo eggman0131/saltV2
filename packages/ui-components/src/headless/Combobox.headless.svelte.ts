@@ -1,6 +1,7 @@
 // spec: ui-spec-v04.md §6 v0.4
 import { createContext } from '../lib/context';
 import type { ComboboxItem } from '../primitives/Combobox/Combobox.types';
+import { nextActiveIndex } from '../lib/nextActiveIndex';
 
 export type ComboboxState = {
   readonly inputValue: string;
@@ -22,7 +23,12 @@ export type ComboboxState = {
   readonly openWhenTyping: () => void;
   readonly closePopup: () => void;
   readonly togglePopup: () => void;
-  readonly moveActive: (delta: number | 'first' | 'last') => void;
+  /**
+   * Narrowed from `number` in #929: both keydown handlers only ever pass ±1, and
+   * `nextActiveIndex` — now shared with Select — accepts exactly this. Internal
+   * to the headless module; `ComboboxState` is not on the package surface.
+   */
+  readonly moveActive: (delta: 1 | -1 | 'first' | 'last') => void;
   readonly selectActive: () => void;
   readonly selectItem: (value: string) => void;
   readonly createCustom: () => void;
@@ -123,22 +129,12 @@ export function createComboboxState(opts: {
     opts.getOnCreate()?.(input);
   }
 
-  function moveActive(delta: number | 'first' | 'last'): void {
-    const total = totalCount();
-    if (total === 0) return;
-    const current = opts.activeIndex();
-    let next: number;
-    if (delta === 'first') {
-      next = 0;
-    } else if (delta === 'last') {
-      next = total - 1;
-    } else {
-      if (current === null) {
-        next = delta > 0 ? 0 : total - 1;
-      } else {
-        next = Math.max(0, Math.min(total - 1, current + delta));
-      }
-    }
+  function moveActive(delta: 1 | -1 | 'first' | 'last'): void {
+    // Combobox navigates an index into the filtered list plus the synthetic
+    // create row, which `totalCount` accounts for. Only the arithmetic is
+    // shared with Select (see nextActiveIndex).
+    const next = nextActiveIndex(opts.activeIndex(), totalCount(), delta);
+    if (next === null) return;
     opts.setActiveIndex(next);
   }
 

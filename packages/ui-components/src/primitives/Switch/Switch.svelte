@@ -3,7 +3,7 @@
   import { untrack } from 'svelte';
   import { Switch } from 'bits-ui';
   import { cn } from '../../lib/cn';
-  import { createSwitchState } from '../../headless/Switch.headless.svelte';
+  import { createFieldState } from '../../headless/Field.headless.svelte';
   import { switchRootVariants, switchThumbVariants } from './Switch.variants';
   import type { SwitchProps } from './Switch.types';
 
@@ -24,7 +24,8 @@
 
   if (checked === undefined) checked = untrack(() => defaultChecked);
 
-  const fieldState = createSwitchState({
+  const fieldState = createFieldState({
+    prefix: 'switch',
     id: () => undefined,
     error: () => error,
     description: () => description,

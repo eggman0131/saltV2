@@ -4,8 +4,8 @@
   import { cn } from '../../lib/cn';
   import Sheet from '../../primitives/Sheet/Sheet.svelte';
   import SheetContent from '../../primitives/Sheet/SheetContent.svelte';
-  import SheetHeader from '../../primitives/Sheet/SheetHeader.svelte';
-  import SheetTitle from '../../primitives/Sheet/SheetTitle.svelte';
+  import SheetHeader from '../../primitives/Dialog/DialogHeader.svelte';
+  import SheetTitle from '../../primitives/Dialog/DialogTitle.svelte';
   import SheetTrigger from '../../primitives/Sheet/SheetTrigger.svelte';
   import type { NavItem } from '../NavItem.types';
   import type { BottomNavProps } from './BottomNav.types';

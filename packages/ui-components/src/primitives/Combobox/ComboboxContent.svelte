@@ -1,12 +1,12 @@
 <!-- spec: ui-spec-v04.md §5.2 v0.4 -->
 <script lang="ts">
-  import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
   import { cn } from '../../lib/cn';
   import { COMBOBOX_CONTEXT } from '../../headless/Combobox.headless.svelte';
   import {
     PORTAL_CONTAINER_CONTEXT,
-    resolvePortalTarget,
+    usePortalMount,
   } from '../../headless/PortalContainer.headless.svelte';
+  import { useAnchoredPosition } from '../../headless/FloatingPosition.headless.svelte';
   import { comboboxContentVariants } from './Combobox.variants';
   import type { ComboboxContentProps } from './Combobox.types';
 
@@ -21,48 +21,14 @@
   // Portal: move wrapper to target after mount. By default that is the enclosing
   // Dialog/Sheet content when there is one — a body-portalled listbox inside a
   // modal is inert — and <body> otherwise.
-  $effect(() => {
-    const el = wrapperEl;
-    if (!el) return;
-
-    const target = resolvePortalTarget(ctx.portal, portalContainer?.el ?? null);
-    if (!target) return;
-
-    target.appendChild(el);
-    return () => el.remove();
+  usePortalMount({
+    el: () => wrapperEl,
+    portal: () => ctx.portal,
+    container: () => portalContainer?.el ?? null,
   });
 
   // Floating-UI positioning: anchor the popover to the input/field.
-  $effect(() => {
-    const el = wrapperEl;
-    const anchor = ctx.anchorEl;
-    if (!el || !anchor) return;
-
-    return autoUpdate(anchor, el, () => {
-      void computePosition(anchor, el, {
-        placement: 'bottom-start',
-        middleware: [
-          offset(4),
-          flip({ padding: 8 }),
-          shift({ padding: 8 }),
-          size({
-            apply({ rects, elements, availableHeight }) {
-              elements.floating.style.minWidth = `${rects.reference.width}px`;
-              elements.floating.style.maxHeight = `${Math.max(120, availableHeight - 8)}px`;
-              elements.floating.style.overflowY = 'auto';
-            },
-          }),
-        ],
-      }).then(({ x, y }) => {
-        Object.assign(el.style, {
-          position: 'absolute',
-          left: '0',
-          top: '0',
-          transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)`,
-        });
-      });
-    });
-  });
+  useAnchoredPosition({ el: () => wrapperEl, anchor: () => ctx.anchorEl });
 
   function handleMousedown(e: MouseEvent) {
     // Prevent input blur when clicking inside the popup

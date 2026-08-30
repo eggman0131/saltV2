@@ -4,7 +4,8 @@
   import { cn } from '../../lib/cn';
   import { SHEET_CONTEXT } from '../../headless/Sheet.headless.svelte';
   import { PORTAL_CONTAINER_CONTEXT } from '../../headless/PortalContainer.headless.svelte';
-  import { sheetContentVariants, sheetOverlayClass } from './Sheet.variants';
+  import { modalOverlayClass } from '../Dialog/Dialog.variants';
+  import { sheetContentVariants } from './Sheet.variants';
   import type { SheetContentProps } from './Sheet.types';
 
   let { class: className, children }: SheetContentProps = $props();
@@ -28,7 +29,7 @@
 </script>
 
 <Dialog.Portal to={portalTo} disabled={portalDisabled}>
-  <Dialog.Overlay class={sheetOverlayClass} />
+  <Dialog.Overlay class={modalOverlayClass} />
   <Dialog.Content bind:ref={contentEl} class={cn(sheetContentVariants({ side }), className)}>
     {@render children?.()}
   </Dialog.Content>

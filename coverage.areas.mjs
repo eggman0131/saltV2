@@ -118,7 +118,38 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // valid ratchet — the same compiler runs on both sides of a change.
 export const coverageThresholds = {
   'packages/domain/src/**': { lines: 98.74, branches: 91.64 },
-  'packages/ui-components/src/**': { lines: 88.03, branches: 74.74 },
+  // Branches CORRECTED DOWN 74.74 → 74.47 in #929, and like observability's
+  // lines below this is NOT a ratchet release. #929 deleted duplicated code —
+  // three byte-identical field-state headless modules became one, four Sheet
+  // part components became Dialog's, and the two anchored listboxes stopped
+  // carrying two copies of the portal and floating-ui blocks. Every branch it
+  // removed was already COVERED, so the ratio fell while the testing did not:
+  //
+  //     before   649 / 866 branches   →   217 uncovered
+  //     after    633 / 850 branches   →   217 uncovered
+  //
+  // **The uncovered count is the invariant, and it is unchanged.** Sixteen
+  // fully-covered branches left the denominator, which drags a 74.7% pool down
+  // by construction: restoring the two deleted field-module copies alone puts
+  // the area back at 74.94%. Nothing became less tested — #929 added four test
+  // files and edited none, and every file it introduced measures 100% or
+  // carries no branch at all.
+  //
+  // This is the one operation that lowers a coverage RATIO without lowering
+  // coverage: removing a duplicate that was better covered than its area's
+  // average. The ratchet cannot see it, because a ratio over a shrinking file
+  // set is not the quantity the ratchet means to protect. Re-measure once, on
+  // the finished branch, exactly as #994 did when it moved well-covered code
+  // across the two web-pwa globs — that raised both pins and this lowers one,
+  // but the reason for re-measuring is identical: the refactor moved the basis.
+  //
+  // What this does NOT license: lowering a pin because a PR is red. The header
+  // above says never, and it means it. The test that separates the two cases is
+  // the uncovered count — if it had risen by even one branch, this would be a
+  // regression wearing a dedup's clothes, and the fix would have been a test.
+  // Lines are UNMOVED at 88.03: the same deletions left that metric above its
+  // floor, and a pin that does not need to move does not move.
+  'packages/ui-components/src/**': { lines: 88.03, branches: 74.47 },
   // Lines CORRECTED DOWN 83.56 → 82.58 in #977, and this is the one case
   // where that is not a ratchet release. 83.56 was never measured: it was
   // the output of a corrupted v8 merge. `browserTracer.ts` loads its OTel

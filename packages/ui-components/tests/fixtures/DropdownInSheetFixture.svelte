@@ -2,7 +2,7 @@
 <script lang="ts">
   import Sheet from '../../src/primitives/Sheet/Sheet.svelte';
   import SheetContent from '../../src/primitives/Sheet/SheetContent.svelte';
-  import SheetTitle from '../../src/primitives/Sheet/SheetTitle.svelte';
+  import SheetTitle from '../../src/primitives/Dialog/DialogTitle.svelte';
   import Select from '../../src/primitives/Select/Select.svelte';
   import SelectTrigger from '../../src/primitives/Select/SelectTrigger.svelte';
   import SelectContent from '../../src/primitives/Select/SelectContent.svelte';
