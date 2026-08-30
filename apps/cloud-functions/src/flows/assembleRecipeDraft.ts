@@ -5,7 +5,7 @@ import type {
   IngredientGroupDoc,
   IngredientDoc,
 } from '@salt/domain/schemas';
-import { normaliseTags } from '@salt/domain';
+import { normaliseTags, reconcileRecipeTimes } from '@salt/domain';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { reportServerError } from '../observability/reportServerError.js';
@@ -233,32 +233,11 @@ export async function assembleRecipeDraft(
     );
   }
 
-  // "No cooking" is a real answer (a salad, a dressing, a cocktail) and the
-  // extractor now accepts it as `0` (issue #739). A stored recipe has only one
-  // way to say "no time to state" — null — so fold 0 back to it here rather than
-  // teaching every card, editor and diff to render a 0 that means "none".
-  //
-  // ORDER MATTERS: the total is derived from the RAW values, and only the result
-  // is folded — so prep 15 + cook 0 still totals 15. Folding first would read
-  // cook 0 as "not stated" and throw the total away entirely. A derived total of
-  // 0 (both parts 0) folds too: a recipe that takes no time at all is the same
-  // nonsense the schema rejects on the way in.
-  const zeroToNull = (n: number | null): number | null => (n === 0 ? null : n);
-
-  // The stored total must never contradict its own parts (issue #952).
-  // `recipeFieldRules` now asks every path for `total >= prep + cook`; this is
-  // where that becomes true of the DOCUMENT rather than of the request, because
-  // a model that returns prep 10, cook 35, total 35 breaks the rule silently and
-  // nothing downstream can tell an understated total from a short one. It is not
-  // cosmetic either: `cookShape` derives the displayed hands-on figure as
-  // `total − timer waits`, so an understated total either poisons that number or
-  // trips its fallback down to the equally-optimistic prep.
-  //
-  // One expression covers both jobs — a missing total is DERIVED from the parts,
-  // a stated one is RAISED to them when it is too small. It stays conditional on
-  // both parts being known: one known part is not a floor for a total (a stated
-  // total of 20 with an unknown prep says nothing wrong), and deriving from one
-  // part would invent the other as 0.
+  // The three time figures are reconciled and zero-folded by the ONE
+  // implementation of that arithmetic, in `packages/domain` (issue #1116). The
+  // rule itself (`total >= prep + cook`), the reconcile-then-fold ordering and
+  // why 0 folds to null are all argued there. What is specific to THIS call site
+  // is which way `deriveMissingTotal` goes, and that is argued here:
   //
   // This derivation used to be opt-in (`deriveTotalTime`, true for the two
   // imports and off for the librarian, on the grounds that a chat "either stated
@@ -267,23 +246,16 @@ export async function assembleRecipeDraft(
   // no reason left and the option had one value at every call site.
   //
   // EDIT MODE IS THE ONE EXCEPTION (review finding on #1048/#952). The repair
-  // above raises an understated STATED total — it must never fabricate one that
-  // was never stated. On a fresh draft that distinction is moot: there is no
-  // stored value to protect. But `baseRecipe` means this draft is about to be
-  // spread over an existing recipe by `mergeAmendedRecipe`'s `draft ?? existing`
-  // (or, for a refresh, an equivalent client-side merge) — and a fabricated
-  // non-null total wins that `??` and silently overwrites the real stored one
-  // (a 4-hour chill, say) with `prep + cook`. So in edit mode a librarian
-  // `total: null` stays null, exactly like a forgotten `servings`; only a
-  // STATED total still gets raised to the parts' floor.
-  const partsTotalMinutes =
-    raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-      ? raw.prepTimeMinutes + raw.cookTimeMinutes
-      : null;
-  const reconciledTotalTimeMinutes =
-    partsTotalMinutes === null || (raw.totalTimeMinutes === null && baseRecipe !== null)
-      ? raw.totalTimeMinutes
-      : Math.max(raw.totalTimeMinutes ?? 0, partsTotalMinutes);
+  // raises an understated STATED total — it must never fabricate one that was
+  // never stated. On a fresh draft that distinction is moot: there is no stored
+  // value to protect. But `baseRecipe` means this draft is about to be spread
+  // over an existing recipe by `mergeAmendedRecipe`'s `draft ?? existing` (or,
+  // for a refresh, an equivalent client-side merge) — and a fabricated non-null
+  // total wins that `??` and silently overwrites the real stored one (a 4-hour
+  // chill, say) with `prep + cook`. So in edit mode a librarian `total: null`
+  // stays null, exactly like a forgotten `servings`; only a STATED total still
+  // gets raised to the parts' floor.
+  const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
 
   return {
     id: recipeId,
@@ -298,9 +270,9 @@ export async function assembleRecipeDraft(
     steps,
     metadata: {
       servings: raw.servings,
-      totalTimeMinutes: zeroToNull(reconciledTotalTimeMinutes),
-      prepTimeMinutes: zeroToNull(raw.prepTimeMinutes),
-      cookTimeMinutes: zeroToNull(raw.cookTimeMinutes),
+      totalTimeMinutes: times.totalTimeMinutes,
+      prepTimeMinutes: times.prepTimeMinutes,
+      cookTimeMinutes: times.cookTimeMinutes,
       tags: normaliseTags(raw.tags),
     },
     source,

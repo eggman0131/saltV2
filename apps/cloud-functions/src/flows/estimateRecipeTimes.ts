@@ -6,6 +6,7 @@ import {
   type EstimateRecipeTimesInput,
   type EstimateRecipeTimesOutput,
 } from '@salt/domain/schemas';
+import { reconcileRecipeTimes } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { TIME_RULES } from './recipeFieldRules.js';
 import { ai } from '../genkit.js';
@@ -85,26 +86,20 @@ Do not comment, do not explain, and do not return anything about the recipe othe
 /**
  * Impose the arithmetic contract on a model's three numbers, and fold the zeros.
  *
- * Pure and exported so it can be tested without a model, and applied INSIDE the
- * flow rather than at the trigger for the reason CLAUDE.md gives about wrapping AI
- * calls: the flow is the one place every caller passes through, so a second caller
- * cannot forget it.
+ * A thin wrapper over the ONE implementation of that arithmetic, in
+ * `packages/domain` (issue #1116) — the rule, the reconcile-then-fold ordering and
+ * the zero fold are all argued there. Kept as a named export because it is applied
+ * INSIDE the flow rather than at the trigger, for the reason CLAUDE.md gives about
+ * wrapping AI calls: the flow is the one place every caller passes through, so a
+ * second caller cannot forget it.
  *
- * Two jobs, in this order — and the order is the same one `assembleRecipeDraft`
- * documents at its own zero fold, for the same reason:
- *
- *   1. Reconcile. `totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes` is
- *      asked for in TIME_RULES and enforced here, because asking is not
- *      guaranteeing — the whole second half of issue #952 is documents where a
- *      model stated a total below its own parts (Paneer Makhanwala: 10 + 35 → 35).
- *      A stated total below the parts is RAISED to the parts; one above them is
- *      left alone, because the excess is an unattended wait and those are real.
- *   2. Fold 0 → null, and only afterwards. The parts are reconciled from the RAW
- *      values, so prep 15 + cook 0 still totals 15; folding first would read a
- *      genuine "no cooking" as "not stated" and throw the total away. A stored
- *      recipe has exactly one way to say "no time to state" — null — and teaching
- *      every card, chip and editor to render a 0 that means "none" is the change
- *      this avoids.
+ * `deriveMissingTotal: true` — the opposite of what `assembleRecipeDraft` passes in
+ * edit mode, and right here for a reason that does not apply there. This path
+ * always runs against an ALREADY-STORED recipe, so refusing to derive would write
+ * `null` over a perfectly good stored total. `floorTotalAtStoredWait` in
+ * `onRecipeWritten` is what protects a stored total that recorded a real
+ * unattended wait on this path; it does not cover the case where the stored total
+ * recorded none, which is exactly the case "never derive" would erase.
  */
 export function reconcileEstimatedTimes(
   raw: Readonly<{
@@ -113,18 +108,7 @@ export function reconcileEstimatedTimes(
     totalTimeMinutes: number | null;
   }>,
 ): EstimateRecipeTimesOutput {
-  const partsTotal =
-    raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-      ? raw.prepTimeMinutes + raw.cookTimeMinutes
-      : null;
-  const total =
-    partsTotal === null ? raw.totalTimeMinutes : Math.max(partsTotal, raw.totalTimeMinutes ?? 0);
-  const zeroToNull = (n: number | null): number | null => (n === 0 ? null : n);
-  return {
-    prepTimeMinutes: zeroToNull(raw.prepTimeMinutes),
-    cookTimeMinutes: zeroToNull(raw.cookTimeMinutes),
-    totalTimeMinutes: zeroToNull(total),
-  };
+  return reconcileRecipeTimes(raw, { deriveMissingTotal: true });
 }
 
 export const estimateRecipeTimesFlow = ai.defineFlow(
