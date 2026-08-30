@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MessageSchema } from './chatSession.js';
+import { RecipeSchema } from './recipe.js';
 import { ExtractedIngredientGroupSchema, ExtractedStepSchema } from './extractRecipeFromUrl.js';
 
 // Input to the librarian (authorRecipe) flow: the full conversation that the
@@ -23,6 +24,11 @@ export const AuthorRecipeInputSchema = z.object({
 });
 
 export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;
+
+// What the librarian flow returns: a complete, persistable recipe document.
+// The canonical RecipeSchema, exactly as the two extractor flows use it — a
+// draft that does not satisfy it is not a recipe, whichever path authored it.
+export const AuthorRecipeOutputSchema = RecipeSchema;
 
 // The shape the AI model emits inside the flow (never leaves the CF boundary).
 // The model uses 0-based step ordinals for ingredient links; the flow resolves

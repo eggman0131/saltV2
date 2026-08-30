@@ -1,7 +1,12 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { AuthorRecipeInputSchema, LibrarianOutputSchema, RecipeSchema } from '@salt/domain/schemas';
+import {
+  AuthorRecipeInputSchema,
+  AuthorRecipeOutputSchema,
+  LibrarianOutputSchema,
+  RecipeSchema,
+} from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -13,18 +18,19 @@ import { readEquipmentContext, equipmentSectionForLibrarian } from './equipmentC
 import { readComponentContext, componentSectionForLibrarian } from './componentContext.js';
 import { formatRecipeForPrompt, withComponents } from './recipeText.js';
 
-// TODO(#932 Phase 6): `z.custom()` with no validator accepts ANY value, so this
-// output schema validates nothing. The real schema already exists in domain and
-// is simply unimported. Swapping it in is a deliberate behaviour change — a
-// malformed draft that passes through today would start failing the import — so
-// it is gated on Phase 5's evidence that real drafts satisfy RecipeSchema.
-const OutputSchema = z.custom<RecipeDoc>();
-
 export const authorRecipeFlow = ai.defineFlow(
   {
     name: 'authorRecipe',
     inputSchema: AuthorRecipeInputSchema,
-    outputSchema: OutputSchema,
+    // Validated against the real recipe contract (issue #932, Phase 6). This was
+    // `z.custom<RecipeDoc>()`, which — with no validator function — accepts any
+    // value, so the declared output type was a claim Genkit never checked. The
+    // swap is a deliberate behaviour change: a malformed draft that used to pass
+    // straight through to the `recipes` collection now fails the flow instead.
+    // Shipped on Phase 5's evidence — its observing `safeParse` reported no
+    // mismatch across a URL import, a photo import and a chat-authored recipe,
+    // run against real model output on staging.
+    outputSchema: AuthorRecipeOutputSchema,
   },
   async (input) => {
     const conversationText = input.messages

@@ -1,7 +1,11 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
-import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
+import {
+  ExtractRecipeFromUrlInputSchema,
+  ExtractRecipeAIOutputSchema,
+  ExtractRecipeFromUrlOutputSchema,
+} from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
@@ -49,18 +53,19 @@ export class UrlImportError extends Error {
   }
 }
 
-// TODO(#932 Phase 6): `z.custom()` with no validator accepts ANY value, so this
-// output schema validates nothing. The real schema already exists in domain and
-// is simply unimported. Swapping it in is a deliberate behaviour change — a
-// malformed draft that passes through today would start failing the import — so
-// it is gated on Phase 5's evidence that real drafts satisfy RecipeSchema.
-const OutputSchema = z.custom<RecipeDoc>();
-
 export const extractRecipeFromUrlFlow = ai.defineFlow(
   {
     name: 'extractRecipeFromUrl',
     inputSchema: ExtractRecipeFromUrlInputSchema,
-    outputSchema: OutputSchema,
+    // Validated against the real recipe contract (issue #932, Phase 6). This was
+    // `z.custom<RecipeDoc>()`, which — with no validator function — accepts any
+    // value, so the declared output type was a claim Genkit never checked. The
+    // swap is a deliberate behaviour change: a malformed draft that used to pass
+    // straight through to the `recipes` collection now fails the flow instead.
+    // Shipped on Phase 5's evidence — its observing `safeParse` reported no
+    // mismatch across a URL import, a photo import and a chat-authored recipe,
+    // run against real model output on staging.
+    outputSchema: ExtractRecipeFromUrlOutputSchema,
   },
   async ({ url }): Promise<RecipeDoc> => {
     // 1. Validate the URL shape + scheme before any I/O. The SSRF guard does
