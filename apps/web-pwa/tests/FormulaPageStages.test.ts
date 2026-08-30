@@ -419,8 +419,8 @@ describe('FormulaPage — stages and the document', () => {
     const { getByTestId } = await openWith({ ...STORED, process: [BULK, untimed] });
 
     const total = getByTestId('formula-stages-total').textContent ?? '';
-    expect(total).toContain('4 h');
-    expect(total).toContain('5 h');
+    expect(total).toContain('4 hr');
+    expect(total).toContain('5 hr');
     expect(total).toContain('no time on it');
   });
 

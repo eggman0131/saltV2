@@ -102,7 +102,7 @@
     type Step,
   } from '@salt/domain';
   import { KIND_COPY, kindOf } from './recipeKind.js';
-  import { formatMinutes } from './recipeDuration.js';
+  import { formatMinutes } from '../../lib/durationDisplay.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';

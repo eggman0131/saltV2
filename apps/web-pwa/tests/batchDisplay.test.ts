@@ -77,13 +77,13 @@ describe('formatWhen', () => {
 describe('formatStatedDuration', () => {
   it('keeps a range as a range — the recipe said 45 to 60, not 52.5', () => {
     expect(formatStatedDuration({ kind: 'range', minMinutes: 45, maxMinutes: 60 })).toBe(
-      '45 min – 1 h',
+      '45 min – 1 hr',
     );
   });
 
   it('reads a hand-typed range backwards without printing a negative span', () => {
     expect(formatStatedDuration({ kind: 'range', minMinutes: 60, maxMinutes: 45 })).toBe(
-      '45 min – 1 h',
+      '45 min – 1 hr',
     );
   });
 
@@ -94,7 +94,7 @@ describe('formatStatedDuration', () => {
   });
 
   it('spells a fixed duration in hours and minutes', () => {
-    expect(formatStatedDuration({ kind: 'fixed', minutes: 90 })).toBe('1 h 30 min');
+    expect(formatStatedDuration({ kind: 'fixed', minutes: 90 })).toBe('1 hr 30 min');
     expect(formatStatedDuration({ kind: 'fixed', minutes: 15 })).toBe('15 min');
   });
 });

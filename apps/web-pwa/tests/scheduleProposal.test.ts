@@ -62,10 +62,11 @@ describe('reviewRows — a change reads as before → after', () => {
 
     expect(changed).toHaveLength(1);
     expect(changed[0]!.label).toBe('Bulk ferment');
-    // "1 h 30 min", not "90 min": `formatMinutes` is shared with the formula screen
+    // "1 hr 30 min", not "90 min": `formatMinutes` is shared with the formula screen
     // and the batch screens, so a stage reads the same way while it is reviewed and
-    // once the run is going.
-    expect(changed[0]!.details).toEqual(['1 h 30 min → 20 min', '20 °C → 4 °C']);
+    // once the run is going. The spelling is `hr` since issue #933 retired the
+    // second `formatMinutes` the recipe page used to keep beside this one.
+    expect(changed[0]!.details).toEqual(['1 hr 30 min → 20 min', '20 °C → 4 °C']);
   });
 
   it('names a renamed stage on both sides, since neither name alone is the truth', () => {
@@ -87,7 +88,7 @@ describe('reviewRows — a change reads as before → after', () => {
       proposed('prove', { label: 'Prove', duration: { kind: 'fixed', minutes: 30 } }),
     ];
 
-    expect(rows(reference, stages).changed[0]!.details).toEqual(['45 min – 1 h → 30 min']);
+    expect(rows(reference, stages).changed[0]!.details).toEqual(['45 min – 1 hr → 30 min']);
   });
 
   it('spells out a stage arriving at or losing a length and a criterion', () => {
@@ -102,7 +103,7 @@ describe('reviewRows — a change reads as before → after', () => {
     ];
 
     expect(rows(reference, stages).changed[0]!.details).toEqual([
-      'no set time → 8 h',
+      'no set time → 8 hr',
       'Wait → Active',
       'until doubled → no criterion',
     ]);
@@ -144,11 +145,11 @@ describe('reviewRows — a restructure is a removal plus additions', () => {
 
   it('joins each added and removed row back to what the stage actually was', () => {
     // `ProcessStageDiffEntry` carries only a label; "Added: Cold retard" is a poor
-    // row when "8 h at 4 °C" is the part worth arguing with.
+    // row when "8 hr at 4 °C" is the part worth arguing with.
     const review = rows(reference, stages);
 
-    expect(review.removed[0]!.details).toEqual(['1 h 30 min', '20 °C']);
-    expect(review.added[1]!.details).toEqual(['8 h', '4 °C']);
+    expect(review.removed[0]!.details).toEqual(['1 hr 30 min', '20 °C']);
+    expect(review.added[1]!.details).toEqual(['8 hr', '4 °C']);
   });
 
   it('leaves an untouched stage out of every list', () => {
