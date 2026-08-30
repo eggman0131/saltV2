@@ -249,3 +249,56 @@ describe('MealDayEditor — hero URL rule (issue #933 characterisation)', () => 
     expect(queryByTestId('day-photo')).not.toBeInTheDocument();
   });
 });
+
+// ─── Resolving attached recipe ids (issue #1055 characterisation) ──────────────
+// A day stores recipe IDS only; the titles and the photograph resolve live at
+// render time (issue #17, no denormalisation). The rule that resolution follows
+// was asserted NOWHERE in the repo: every `recipeIds` fixture resolved cleanly,
+// so deleting the skip from any of its copies failed no test — it surfaced only
+// as a TypeScript error.
+//
+// The collapsed row's observable is its photograph: the FIRST attached recipe
+// that has a hero. That makes it a direct read on both halves of the rule — the
+// order the ids are walked in, and what happens to an id that resolves to
+// nothing. The sheet's own list is pinned in `MealDayEditor.placeholder.test.ts`,
+// and duplicate ids in `personalViewService.test.ts` (this surface renders a
+// KEYED each, so a duplicated id is not something it can be asked about).
+describe('MealDayEditor — how it resolves the ids a day holds', () => {
+  const second: Recipe = {
+    ...emptyRecipe('r2', '2026-06-30T00:00:00.000Z'),
+    title: 'Pie',
+    image: { url: 'https://example.test/pie.jpg', source: 'ai' },
+    updatedAt: '2026-06-30T00:00:00.000Z',
+  };
+
+  function photoSrc(recipeIds: string[], recipes: Recipe[]): string | null {
+    const { queryByTestId } = render(MealDayEditor, {
+      props: baseProps(makeDay({ recipeIds }), undefined, { recipes }),
+    });
+    return (queryByTestId('day-photo') as HTMLImageElement | null)?.getAttribute('src') ?? null;
+  }
+
+  it.each([
+    ['follows the ids, not the order the store happens to hold', ['r2', 'r1'], 'pie.jpg'],
+    ['skips an id whose recipe has been deleted since', ['ghost', 'r1'], 'roast.jpg'],
+    ['resolves nothing at all when no id matches', ['ghost'], null],
+  ])('%s', (_case, recipeIds, expected) => {
+    const src = photoSrc(recipeIds, [roast, second]);
+    if (expected === null) expect(src).toBeNull();
+    else expect(src).toContain(expected);
+  });
+
+  it('reads a day whose every id is dead as unplanned, not as a broken row', () => {
+    // The failure this skip exists to prevent: a row rendered for a recipe that
+    // is not there. With nothing resolvable and no note, the day is simply the
+    // hole in the week it actually is.
+    const { queryByTestId, getByTestId } = render(MealDayEditor, {
+      props: baseProps(makeDay({ note: '', recipeIds: ['ghost', 'also-ghost'] }), undefined, {
+        recipes: [roast],
+      }),
+    });
+
+    expect(queryByTestId('day-photo')).not.toBeInTheDocument();
+    expect(getByTestId('day-meal')).toHaveTextContent('Nothing planned');
+  });
+});

@@ -15,6 +15,7 @@ const {
   mockExtensionStartDate,
   mockFirstDayOfWeek,
   mockUnsub,
+  mockUpcomingUnsub,
 } = await vi.hoisted(async () => {
   // A minimal readable store, hand-rolled: vi.hoisted runs before imports, so
   // svelte/store's writable is not available here yet.
@@ -26,7 +27,12 @@ const {
     mockSelectedStartDate: makeStore(''),
     mockExtensionStartDate: makeStore(''),
     mockFirstDayOfWeek: makeStore('mon'),
+    // Two unsubscribe spies, not one: `mockUnsub` is handed back for the
+    // per-WEEK range reads, `mockUpcomingUnsub` for the single lookahead read
+    // (see the mockImplementation in beforeEach). A shared spy could only say
+    // "two of something fired" on teardown — these say which.
     mockUnsub: vi.fn(),
+    mockUpcomingUnsub: vi.fn(),
   };
 });
 
@@ -83,7 +89,11 @@ beforeEach(() => {
   // the async mutation tests from waiting on a frozen clock.
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date('2026-08-10T09:00:00.000Z'));
-  mockSubscribeInRange.mockReturnValue(mockUnsub);
+  // A week read spans seven days, the lookahead fourteen — the only thing that
+  // tells the two subscriptions apart at the adapter seam.
+  mockSubscribeInRange.mockImplementation((start: string, end: string) =>
+    (Date.parse(end) - Date.parse(start)) / 86_400_000 > 6 ? mockUpcomingUnsub : mockUnsub,
+  );
   mockSaveShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockDeleteShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockSelectedStartDate.set('');
@@ -180,16 +190,85 @@ describe('initShoppingDaySync', () => {
     expect(get(upcomingShopDay)).toBeNull();
   });
 
-  it('tears both subscriptions down on sign-out', () => {
-    mockSelectedStartDate.set('2026-08-10');
-    const stop = initShoppingDaySync();
-    mockUnsub.mockClear();
-    stop();
-    expect(mockUnsub).toHaveBeenCalledTimes(2);
-    expect(get(weekShopDay)).toBeNull();
-    // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
-    expect(get(upcomingShopDay)).toBeUndefined();
-  });
+  // Teardown is written out TWICE in the service — the closure
+  // `initShoppingDaySync` returns, and `__resetShoppingDayServiceForTest` — as
+  // two byte-identical blocks that differ only by a comment. A store added to
+  // one and not the other bleeds state from test to test and surfaces as an
+  // unrelated flake somewhere else entirely. Driving both entry points through
+  // the SAME table makes their equivalence a machine-checked fact rather than
+  // something a reader has to diff by eye, which is what makes collapsing them
+  // onto a single hoisted `teardown()` legal (issue #1055).
+  const TEARDOWN_ENTRY_POINTS: { name: string; teardown: (stop: () => void) => void }[] = [
+    { name: 'the closure initShoppingDaySync returns', teardown: (stop) => stop() },
+    {
+      name: '__resetShoppingDayServiceForTest',
+      teardown: () => __resetShoppingDayServiceForTest(),
+    },
+  ];
+
+  it.each(TEARDOWN_ENTRY_POINTS)(
+    'drops every subscription and resets every store — via $name',
+    async ({ teardown }) => {
+      const THIS_WEEK = '2026-08-10';
+      const NEXT_WEEK = '2026-08-17';
+      const NEXT_WEEK_SHOP: ShoppingDayDoc = { ...SATURDAY, date: '2026-08-19', slot: 'pm' };
+
+      // Both planner weeks are set BEFORE init, so the two week reads land first
+      // and the lookahead is the last subscribe call.
+      mockSelectedStartDate.set(THIS_WEEK);
+      mockExtensionStartDate.set(NEXT_WEEK);
+      const stop = initShoppingDaySync();
+      const rangeCallFor = (start: string) =>
+        mockSubscribeInRange.mock.calls.find((c) => (c as RangeCall)[0] === start) as RangeCall;
+
+      rangeCallFor(THIS_WEEK)[2]([SATURDAY]);
+      rangeCallFor(NEXT_WEEK)[2]([NEXT_WEEK_SHOP]);
+      (mockSubscribeInRange.mock.calls.at(-1) as RangeCall)[2]([SATURDAY]);
+
+      // Every store holds something other than its reset value, so what follows
+      // is a transition and not a vacuous truth.
+      expect(get(weekShopDay)).toEqual(SATURDAY);
+      expect(get(extensionWeekShopDay)).toEqual(NEXT_WEEK_SHOP);
+      expect(get(upcomingShopDay)).toEqual(SATURDAY);
+
+      mockUnsub.mockClear();
+      mockUpcomingUnsub.mockClear();
+
+      teardown(stop);
+
+      // One unsubscribe per subscribed week, plus the lookahead's own.
+      expect(mockUnsub).toHaveBeenCalledTimes(2);
+      expect(mockUpcomingUnsub).toHaveBeenCalledTimes(1);
+
+      expect(get(weekShopDay)).toBeNull();
+      expect(get(extensionWeekShopDay)).toBeNull();
+      // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
+      expect(get(upcomingShopDay)).toBeUndefined();
+
+      // The two planner-store subscriptions are gone: navigating the planner now
+      // starts nothing. (These unsubscribes return no spy, so the observable
+      // fact is that no further week read is opened.)
+      mockSubscribeInRange.mockClear();
+      mockSelectedStartDate.set('2026-08-24');
+      mockExtensionStartDate.set('2026-08-31');
+      expect(mockSubscribeInRange).not.toHaveBeenCalled();
+
+      // `_shopDayByWeek` is empty, read back through the one-shop-per-week clear:
+      // a stale SATURDAY left in the map would have this delete it.
+      await setShopDay('2026-08-13', 'am');
+      expect(mockDeleteShoppingDay).not.toHaveBeenCalled();
+
+      // `_weekStart` and `_extensionWeekStart` are back to '', read back through
+      // the derived stores they feed: a marker seeded under '' surfaces on
+      // weekShopDay only while _weekStart is '', and extensionWeekShopDay is
+      // null for an empty extension start whatever the map holds.
+      const EMPTY_WEEK_PROBE: ShoppingDayDoc = { ...SATURDAY, date: '2026-08-01' };
+      seedShopDayForWeek('', EMPTY_WEEK_PROBE);
+      seedShopDayForWeek(NEXT_WEEK, NEXT_WEEK_SHOP);
+      expect(get(weekShopDay)).toEqual(EMPTY_WEEK_PROBE);
+      expect(get(extensionWeekShopDay)).toBeNull();
+    },
+  );
 });
 
 describe('setShopDay', () => {

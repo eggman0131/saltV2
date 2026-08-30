@@ -664,3 +664,63 @@ describe('FormulaPage — what it refuses', () => {
     expect(queryByTestId('formula-editor')).toBeNull();
   });
 });
+
+// ─── The unit-count derivation (issue #1055 characterisation) ──────────────────
+// `FormulaPage` and `RecipeBakeBatchSheet` each derive `count` from their own
+// count box with a byte-identical three-line body:
+//
+//   const value = Number(countText.trim());
+//   return Number.isInteger(value) && value > 0 ? value : null;
+//
+// Both surfaces were covered for `''` and nothing else, so the integer test in
+// particular was held by nothing. The table below is shared by the two suites —
+// same inputs, same verdict — which is the machine-checked form of the claim
+// that one of the two copies can be deleted.
+//
+// The integer test is not decoration: `UnitShapeSchema.count` is
+// `z.number().int().positive()`, so a fractional count would build a document the
+// schema refuses. That is why this parser is stricter than the page's own grams
+// parser, which takes `2.5` happily.
+const UNIT_COUNT_INPUTS: readonly {
+  readonly label: string;
+  readonly text: string;
+  readonly value: number | null;
+}[] = [
+  { label: 'an empty box', text: '', value: null },
+  { label: 'zero', text: '0', value: null },
+  { label: 'a negative number', text: '-1', value: null },
+  { label: 'a fraction of a loaf', text: '2.5', value: null },
+  { label: 'letters', text: 'abc', value: null },
+  { label: 'a whole number of loaves', text: '3', value: 3 },
+];
+
+describe('FormulaPage — what counts as a count', () => {
+  it.each(UNIT_COUNT_INPUTS)('takes $label ($text) as $value', async ({ text, value }) => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    const select = container.querySelector('[data-testid="formula-shape-select"]')!;
+    await fireEvent.click(select);
+    await waitFor(() => expect(document.querySelector('[role="option"]')).toBeTruthy());
+    const tin = [...document.querySelectorAll('[role="option"]')].find((o) =>
+      o.textContent?.includes('900 g tin loaf'),
+    )!;
+    await fireEvent.click(tin);
+    await fireEvent.input(getByTestId('formula-count'), { target: { value: text } });
+
+    // No count means no shape, and no shape is what has always disabled Save —
+    // a half-typed declaration is not a lenient one with a default in the gap.
+    await waitFor(() =>
+      expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(value === null),
+    );
+    if (value === null) return;
+
+    await fireEvent.click(getByTestId('formula-save-button'));
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFormula).mock.calls[0]![0].referenceYield).toEqual({
+      kind: 'target',
+      shape: { label: '900 g tin loaf', count: value, unitDoughGrams: 900, bakeLossPercent: 12 },
+    });
+  });
+});

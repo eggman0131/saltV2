@@ -278,3 +278,55 @@ describe('RecipeBakeBatchSheet — starting the run', () => {
     expect(screen.getByTestId('bake-batch-confirm')).toBeDisabled();
   });
 });
+
+// ─── The unit-count derivation (issue #1055 characterisation) ──────────────────
+// `FormulaPage` and `RecipeBakeBatchSheet` each derive `count` from their own
+// count box with a byte-identical three-line body:
+//
+//   const value = Number(countText.trim());
+//   return Number.isInteger(value) && value > 0 ? value : null;
+//
+// Both surfaces were covered for `''` and nothing else, so the integer test in
+// particular was held by nothing. The table below is shared by the two suites —
+// same inputs, same verdict — which is the machine-checked form of the claim
+// that one of the two copies can be deleted.
+//
+// The integer test is not decoration: `UnitShapeSchema.count` is
+// `z.number().int().positive()`, so a fractional count would build a document the
+// schema refuses. That is why this parser is stricter than the page's own grams
+// parser, which takes `2.5` happily.
+const UNIT_COUNT_INPUTS: readonly {
+  readonly label: string;
+  readonly text: string;
+  readonly value: number | null;
+}[] = [
+  { label: 'an empty box', text: '', value: null },
+  { label: 'zero', text: '0', value: null },
+  { label: 'a negative number', text: '-1', value: null },
+  { label: 'a fraction of a loaf', text: '2.5', value: null },
+  { label: 'letters', text: 'abc', value: null },
+  { label: 'a whole number of loaves', text: '3', value: 3 },
+];
+
+describe('RecipeBakeBatchSheet — what counts as a count', () => {
+  it.each(UNIT_COUNT_INPUTS)('takes $label ($text) as $value', async ({ text, value }) => {
+    renderSheet();
+    await waitFor(() => expect(screen.getByTestId('bake-batch-preview')).toBeInTheDocument());
+
+    await fireEvent.input(screen.getByTestId('bake-batch-count'), { target: { value: text } });
+    await fireEvent.click(screen.getByTestId('bake-batch-confirm'));
+
+    await waitFor(() => expect(mockStartBatch).toHaveBeenCalledTimes(1));
+    const input = mockStartBatch.mock.calls[0]![0];
+    // No count means no shape, and no shape means the key is left OFF the input
+    // entirely — `startBatch` then uses the formula's own reference yield.
+    // Omitted, never invented, and never a null the schema would have to allow.
+    expect('atYield' in input).toBe(value !== null);
+    if (value !== null) {
+      expect(input.atYield).toEqual({
+        kind: 'target',
+        shape: { label: '120 g roll', count: value, unitDoughGrams: 120, bakeLossPercent: 10 },
+      });
+    }
+  });
+});
