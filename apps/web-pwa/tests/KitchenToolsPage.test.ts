@@ -431,3 +431,56 @@ describe('KitchenToolsPage — the icon escape hatch', () => {
     expect(typeof written.iconRequestedAt).toBe('number');
   });
 });
+
+// The dialog's own surface, characterized (issue #930, Phase 1). Phase 7 folds
+// this dialog and `RecordEditor`'s near-identical copy into one component; what
+// differs between the two — placeholder wording, test-id prefix, busy source,
+// open binding — must survive as per-site props rather than be harmonised away,
+// and these are the assertions that say so. The matching pins for the other
+// copy live in `CatalogPage.icon.test.ts`.
+describe('KitchenToolsPage — the regenerate dialog’s own surface', () => {
+  async function openDialog() {
+    setTools([tool({ id: 'whisk', label: 'Whisk' })]);
+    render(KitchenToolsPage);
+    await userEvent.click(await screen.findByTestId('kitchen-tool-icon-regenerate'));
+    return screen.findByTestId('kitchen-tool-regenerate-dialog');
+  }
+
+  it('is titled and framed as an optional steer, not a confirmation', async () => {
+    const q = within(await openDialog());
+    expect(q.getByText('Regenerate icon')).toBeInTheDocument();
+    expect(
+      q.getByText('Optionally add guidance for the new icon. Leave blank to just try again.'),
+    ).toBeInTheDocument();
+    expect(q.getByText('Extra guidance (optional)')).toBeInTheDocument();
+    expect(q.getByText('Regenerate')).toBeInTheDocument();
+    expect(q.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  it('carries the kitchen-tool placeholder, which is not the canon one', async () => {
+    await openDialog();
+    expect(screen.getByTestId('kitchen-tool-regenerate-hint')).toHaveAttribute(
+      'placeholder',
+      'e.g. show it from the side, wooden handle',
+    );
+  });
+
+  it('prefixes all three of its test ids with the page’s own fixed prefix', async () => {
+    await openDialog();
+    for (const suffix of ['dialog', 'hint', 'confirm']) {
+      expect(screen.getByTestId(`kitchen-tool-regenerate-${suffix}`)).toBeInTheDocument();
+    }
+  });
+
+  it('Enter in the hint field regenerates without reaching the confirm button', async () => {
+    await openDialog();
+    const hint = screen.getByTestId('kitchen-tool-regenerate-hint');
+    // fireEvent, not userEvent: the field sits inside a bits-ui focus trap
+    // (docs/unit-test-spec.md UT-F2).
+    await fireEvent.input(hint, { target: { value: 'wooden handle' } });
+    await fireEvent.keyDown(hint, { key: 'Enter' });
+
+    await waitFor(() => expect(vi.mocked(upsertKitchenTool)).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(upsertKitchenTool).mock.calls[0]![0].iconHint).toBe('wooden handle');
+  });
+});

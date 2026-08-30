@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { normaliseMemberEmail } from '@salt/domain';
 import type { CanonItem, ProductForm } from '@salt/domain';
 
@@ -160,5 +160,56 @@ describe('the catalog record editor — icon escape hatch', () => {
     expect(queryByTestId('canon-icon-img')).toBeNull();
     await fireEvent.click(getByTestId('canon-detail-icon-unhide'));
     await waitFor(() => expect(unhideCanonIcon).toHaveBeenCalledWith(ITEM_ID));
+  });
+});
+
+// The dialog's own surface, characterized (issue #930, Phase 1). Phase 7 folds
+// this dialog and `KitchenToolsPage`'s near-identical copy into one component;
+// what differs between the two — placeholder wording, test-id prefix, busy
+// source, open binding — must survive as per-site props rather than be
+// harmonised away, and these are the assertions that say so. The matching pins
+// for the other copy live in `KitchenToolsPage.test.ts`.
+describe('the catalog record editor — the regenerate dialog’s own surface', () => {
+  async function openDialog() {
+    mockCanonItems._set([canonItem()]);
+    const view = render(CatalogPage, { props: { params: { id: ITEM_ID } } });
+    await fireEvent.click(view.getByTestId('canon-detail-icon-regenerate'));
+    return { view, dialog: await view.findByTestId('canon-detail-regenerate-dialog') };
+  }
+
+  it('is titled and framed as an optional steer, not a confirmation', async () => {
+    const { dialog } = await openDialog();
+    const q = within(dialog);
+    expect(q.getByText('Regenerate icon')).toBeInTheDocument();
+    expect(
+      q.getByText('Optionally add guidance for the new icon. Leave blank to just try again.'),
+    ).toBeInTheDocument();
+    expect(q.getByText('Extra guidance (optional)')).toBeInTheDocument();
+    // No "are you sure?" — the commit contract drops the confirmation, not the input.
+    expect(q.getByText('Regenerate')).toBeInTheDocument();
+    expect(q.getByText('Cancel')).toBeInTheDocument();
+  });
+
+  it('carries the canon-side placeholder, which is not the kitchen-tool one', async () => {
+    const { view } = await openDialog();
+    expect(view.getByTestId('canon-detail-regenerate-hint')).toHaveAttribute(
+      'placeholder',
+      'e.g. show it as a tin, sliced, make it greener',
+    );
+  });
+
+  it('prefixes all three of its test ids with the record’s own id', async () => {
+    const { view } = await openDialog();
+    for (const suffix of ['dialog', 'hint', 'confirm']) {
+      expect(view.getByTestId(`canon-detail-regenerate-${suffix}`)).toBeInTheDocument();
+    }
+  });
+
+  it('Enter in the hint field regenerates without reaching the confirm button', async () => {
+    const { view } = await openDialog();
+    const hint = view.getByTestId('canon-detail-regenerate-hint');
+    await fireEvent.input(hint, { target: { value: 'greener' } });
+    await fireEvent.keyDown(hint, { key: 'Enter' });
+    await waitFor(() => expect(regenerateCanonIcon).toHaveBeenCalledWith(ITEM_ID, 'greener'));
   });
 });
