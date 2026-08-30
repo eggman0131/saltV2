@@ -1,5 +1,12 @@
 /**
- * Source guard: nothing re-declares a display rule (issue #933).
+ * Source guard: nothing re-declares a shared rule (issues #933, #1055).
+ *
+ * Two issues' worth of rows, one walk of `src`. #933 collapsed eleven DISPLAY
+ * rules — what a number, a date, a URL or a viewport reads as. #1055 collapsed
+ * eight PAGE-LOCAL copies where the answer already existed a few lines away and
+ * the page wrote it again. Same cause, same shape of fix, so the same guard
+ * rather than a second file scanning the same tree (which would itself have been
+ * #1055's subject matter).
  *
  * Eleven rules that decide what a number, a date, a URL or a viewport READS AS on
  * screen each had between two and eight implementations. Three of them had
@@ -75,6 +82,11 @@ const OWNERS: readonly { readonly path: string; readonly rule: string }[] = [
   { path: 'lib/mediaQuery.svelte.ts', rule: 'a live media query, read safely' },
   { path: 'lib/reducedMotion.ts', rule: 'the reduced-motion preference' },
   { path: 'lib/swipe.ts', rule: 'the gesture thresholds' },
+  // ── issue #1055 ──
+  { path: 'lib/canonIndex.ts', rule: 'canon by id, and whether it may be judged yet' },
+  { path: 'lib/attachedRecipes.ts', rule: "which recipes a day's ids point at" },
+  { path: 'lib/timeOptions.ts', rule: 'the quarter-hour pickers' },
+  { path: 'routes/recipes/unitCount.ts', rule: 'how many units a shape declares' },
 ];
 
 /** Every source file under `src`, found by walking — never by a hand-kept list. */
@@ -211,7 +223,103 @@ const FORBIDDEN: readonly Shape[] = [
       "split(' ') takes an empty leading field and never sees a tab or a newline as a separator, so a name typed with either rendered wrong",
     pattern: /\.split\(\s*['"] ['"]\s*\)\s*\[\s*0\s*\]/,
   },
+
+  // ── issue #1055 ────────────────────────────────────────────────────────────
+  {
+    instead: 'canonIndex(items) from lib/canonIndex.js',
+    because:
+      'six surfaces built this map for themselves, four of them under the same name; the domain match queries already take the ReadonlyMap it produces',
+    pattern: /\.map\(\s*\(c\)\s*=>\s*\[\s*c\.id\s*,\s*c\s*\]\s*\)/,
+  },
+  {
+    instead: 'matchMarkersReady(...) from lib/canonIndex.js',
+    because:
+      "the recipe list's pip and the recipe view's row markers must answer 'has canon landed' identically or the card counts problems the recipe does not show (#867); two comments used to ask the next author to keep them in step",
+    pattern: /!\$?isLoadingAisles\s*&&\s*!\$?isLoadingProductForms/,
+  },
+  {
+    instead: 'resolveRecipeIds(ids, byId) from lib/attachedRecipes.js',
+    because:
+      'the skip is the whole rule — a recipe deleted since it was attached must drop out rather than render as a blank row (#17) — and until #1055 no test anywhere asserted it, so every copy could lose it silently',
+    pattern: /\.filter\(\s*\(\s*r\s*\)\s*:\s*r\s+is\s+Recipe\s*=>\s*r\s*!==\s*undefined\s*\)/,
+  },
+  {
+    instead: 'quarterHourOptions(fromHour, count) from lib/timeOptions.js',
+    because:
+      'two pickers shared this arithmetic and NOT their windows; written out by hand the difference hides inside the expression, where a later reader collapses two deliberately different lists into one',
+    pattern: /Math\.floor\(\s*i\s*\/\s*4\s*\)/,
+  },
+  {
+    instead: 'currentMember from lib/membersService.js',
+    because:
+      'AdminGuard re-derived the signed-in member and disagreed with the exported store on a signed-out session, admitting one against an empty-email admin row; membersService is the only place that may resolve a uid to a member',
+    pattern: /\.find\(\s*\(m\)\s*=>\s*m\.email\s*===/,
+    // The authority itself, which resolves it twice on purpose: once reactively
+    // for components (`currentMember`) and once as a snapshot for the route
+    // guard (`findMemberByEmail`). It is not an OWNER row because #1055 added no
+    // module here — it deleted the copy that shadowed this one.
+    allowed: ['lib/membersService.ts'],
+  },
 ];
+
+// ─── Half three: the rule collapsed WITHIN one file ───────────────────────────
+//
+// Three of #1055's eight collapses exported nothing new — the copy and its twin
+// were both inside one file, and the fix was to delete one of them. There is no
+// owning module to read a name out of and no shape that is forbidden everywhere,
+// so neither half above can see them. What is true instead is an OCCURRENCE
+// COUNT inside one named file, and that is what is asserted.
+//
+// The path is stated and the count is stated; everything else is read off disk.
+// `sourceOf` throws if a named file moves or is renamed, so this cannot go
+// vacuously green by losing its subject (UT-E2) — which is the failure mode that
+// matters, since a guard keyed on a path is exactly the kind that rots quietly.
+interface Counted {
+  readonly path: string;
+  readonly what: string;
+  readonly pattern: RegExp;
+  readonly expected: number;
+  readonly because: string;
+}
+
+const COUNTED: readonly Counted[] = [
+  {
+    path: 'routes/recipes/FormulaPage.svelte',
+    what: 'a trimmed, finite, strictly-positive number parser',
+    pattern: /Number\.isFinite\(value\)\s*&&\s*value\s*>\s*0/g,
+    expected: 1,
+    because:
+      'this file declared `parseGrams` and `parseMinutes` ten lines apart with byte-identical bodies; `parseBakeLoss` and `parseCelsius` stay because their predicates genuinely differ (>= 0 with a ceiling, and no lower bound at all)',
+  },
+  {
+    path: 'lib/shoppingDayService.ts',
+    what: 'a teardown',
+    pattern: /weekUnsubs\.clear\(\)/g,
+    expected: 1,
+    because:
+      'the closure `initShoppingDaySync` returns and `__resetShoppingDayServiceForTest` were ten identical statements written twice; a store added to one and not the other bleeds state between tests and surfaces as a flake somewhere else entirely',
+  },
+  {
+    path: 'lib/recipeService.ts',
+    what: 'a root user-action span',
+    pattern: /startUserActionSpan\(/g,
+    // TWO, deliberately, and this is the honest count rather than the tidy one.
+    // One is `tracedUserAction`, the shared helper behind `importRecipeFromUrl`,
+    // `importRecipeFromPhoto` and `authorRecipeTraced`. The other is
+    // `describeScene`, the fourth instance of the same skeleton, which #1055 left
+    // alone on purpose: unlike the other three it MAPS its success value and
+    // RETURNS from its failure branch, so folding it in would cost two more
+    // parameters to serve one caller. If it is ever absorbed — or if the four
+    // callers outside this file are swept — this number comes down and the change
+    // is deliberate. What it must never do is drift UP.
+    expected: 2,
+    because:
+      'three exported functions each opened a root span, a named child span and an outcome attribute in the same twenty-four-line skeleton, under three different attribute names',
+  },
+];
+
+const occurrences = (code: string, pattern: RegExp): number =>
+  [...code.matchAll(new RegExp(pattern.source, 'g'))].length;
 
 const carries = (code: string, shape: Shape): boolean => shape.pattern.test(code);
 
@@ -246,6 +354,13 @@ describe('display rules are declared once', () => {
     expect(names).toContain('DRAG_START_PX');
     expect(names).toContain('SPLIT_QUERY');
     expect(names).toContain('prefersReducedMotion');
+    // ── issue #1055's four modules ──
+    expect(names).toContain('canonIndex');
+    expect(names).toContain('matchMarkersReady');
+    expect(names).toContain('resolveRecipeIds');
+    expect(names).toContain('recipeIndex');
+    expect(names).toContain('quarterHourOptions');
+    expect(names).toContain('parseUnitCount');
   });
 
   it('recognises a re-declaration when it sees one', () => {
@@ -293,6 +408,31 @@ describe('display rules are declared once', () => {
     expect(carries("  import { prefersReducedMotion } from './reducedMotion.js';", shape('prefersReducedMotion'))).toBe(false); // prettier-ignore
     expect(carries("  name.trim().split(/\\s+/).filter(Boolean)[0]", shape('memberFirstName'))).toBe(false); // prettier-ignore
     expect(carries("  text.split(', ')[0]", shape('memberFirstName'))).toBe(false);
+
+    // ── issue #1055: a real line it deleted, then the near-miss beside it ──
+    expect(carries('  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));', shape('canonIndex'))).toBe(true); // prettier-ignore
+    // Still live, and a DIFFERENT rule: these index the name, not the item.
+    expect(carries('  const canonNameById = $derived(new Map($canonItems.map((c) => [c.id, c.name])));', shape('canonIndex'))).toBe(false); // prettier-ignore
+    expect(carries('  $canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) }))', shape('canonIndex'))).toBe(false); // prettier-ignore
+
+    expect(carries('    !$isLoadingAisles && !$isLoadingProductForms && $canonItems.length > 0,', shape('matchMarkersReady'))).toBe(true); // prettier-ignore
+    expect(carries('  matchMarkersReady($isLoadingAisles, $isLoadingProductForms, $canonItems.length)', shape('matchMarkersReady'))).toBe(false); // prettier-ignore
+
+    expect(carries('    .filter((r): r is Recipe => r !== undefined),', shape('resolveRecipeIds'))).toBe(true); // prettier-ignore
+    // The two shapes that look like it and are not: a SINGLE id resolved (one
+    // id, not a list — MealDayDetail does this and must keep doing it), and a
+    // display join with no skip at all.
+    expect(carries('    const picked = recipes.find((r) => r.id === id);', shape('resolveRecipeIds'))).toBe(false); // prettier-ignore
+    expect(carries("  dup.prepIds.map((id) => prepNumbers.get(id) ?? '?').join(', ')", shape('resolveRecipeIds'))).toBe(false); // prettier-ignore
+    expect(carries('  .filter((r): r is Recipe => r !== undefined && takesIngredients(kindOf(r)))', shape('resolveRecipeIds'))).toBe(false); // prettier-ignore
+
+    expect(carries('    (_, i) => `${16 + Math.floor(i / 4)}:${String((i % 4) * 15).padStart(2, \'0\')}`,', shape('quarterHourOptions'))).toBe(true); // prettier-ignore
+    expect(carries('  const TIME_OPTIONS = quarterHourOptions(16, 28);', shape('quarterHourOptions'))).toBe(false); // prettier-ignore
+    expect(carries('  Math.floor(index / 4)', shape('quarterHourOptions'))).toBe(false);
+
+    expect(carries('  const currentMember = $derived($members.find((m) => m.email === currentEmail) ?? null);', shape('currentMember'))).toBe(true); // prettier-ignore
+    expect(carries('  const isAdmin = $derived($currentMember?.admin === true);', shape('currentMember'))).toBe(false); // prettier-ignore
+    expect(carries('  members.find((m) => m.id === memberId)', shape('currentMember'))).toBe(false);
   });
 
   it('has no file outside its owning module re-declaring one of them', () => {
@@ -330,5 +470,43 @@ describe('display rules are declared once', () => {
       ).map(({ name, owner, rule }) => `${file.path}: ${name} (${rule}) — import it from ${owner}`);
     });
     expect(unsourced).toEqual([]);
+  });
+
+  // ─── Half three: the intra-file collapses ──────────────────────────────────
+
+  it('can still find every file it counts within', () => {
+    // The anti-vacuity anchor for the count half (UT-E2). A path-keyed guard is
+    // the kind that rots silently, so this fails loudly when a subject moves
+    // rather than counting zero of something in a file that is no longer there.
+    for (const { path, pattern } of COUNTED) {
+      expect(() => sourceOf(path)).not.toThrow();
+      // And the pattern must still match SOMETHING, or `expected` is being met
+      // by a regex that stopped working rather than by the code being right.
+      expect(occurrences(sourceOf(path), pattern)).toBeGreaterThan(0);
+    }
+  });
+
+  it('counts occurrences the way the rows assume', () => {
+    // The matchers, against a synthetic copy each must catch and a near-miss
+    // each must not — the same discipline the two halves above follow.
+    const parser = COUNTED[0]!.pattern;
+    expect(occurrences('return Number.isFinite(value) && value > 0 ? value : null;', parser)).toBe(1); // prettier-ignore
+    // The two parsers that legitimately stay: a percentage with a floor of zero
+    // and a ceiling, and a temperature with no bound at all.
+    expect(occurrences('return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;', parser)).toBe(0); // prettier-ignore
+    expect(occurrences('return Number.isFinite(value) ? value : null;', parser)).toBe(0);
+    // Two copies read as two, or the count can never rise.
+    expect(occurrences('Number.isFinite(value) && value > 0; Number.isFinite(value) && value > 0;', parser)).toBe(2); // prettier-ignore
+
+    const span = COUNTED[2]!.pattern;
+    expect(occurrences('const span = startUserActionSpan(name);', span)).toBe(1);
+    // The import is not a call site, and must not inflate the count.
+    expect(occurrences("import { startUserActionSpan } from '@salt/observability';", span)).toBe(0);
+  });
+
+  it.each(COUNTED)('declares $what exactly $expected time(s) in $path', (row) => {
+    // Read off disk, not asserted about a symbol this file imports — the whole
+    // point is that no `vi.mock` can make it agree.
+    expect(occurrences(sourceOf(row.path), row.pattern)).toBe(row.expected);
   });
 });

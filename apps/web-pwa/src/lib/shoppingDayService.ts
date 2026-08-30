@@ -168,6 +168,9 @@ export function initShoppingDaySync(): () => void {
  * hand-kept copies of them (issue #1055). A store added to one and not the other
  * bleeds state between tests and surfaces as an unrelated flake somewhere else
  * entirely — which is the failure this collapse removes rather than documents.
+ *
+ * `sharedHelperGuard.test.ts` asserts this file holds exactly one
+ * `weekUnsubs.clear()`, so a second teardown cannot reappear quietly.
  */
 function teardown(): void {
   startDateUnsub?.();

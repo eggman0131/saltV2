@@ -488,6 +488,10 @@ function hostForSpan(url: string): string {
  * more `startUserActionSpan` callers elsewhere in `lib/` and `routes/`; sweeping
  * them is a different change with a different blast radius, and this promotes to
  * `lib/` on the day a caller in another file wants it.
+ *
+ * `sharedHelperGuard.test.ts` asserts this file holds exactly TWO
+ * `startUserActionSpan(` call sites — this helper and `describeScene`, which is
+ * named there with the reason it was left out. A third fails.
  */
 // `E` is unconstrained deliberately: the helper never inspects the error, it
 // hands it to `outcomeLabel` and `onFailure`. Constraining it to `DomainError`

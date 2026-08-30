@@ -42,6 +42,9 @@ export function recipeIndex(
  *    already attached), so this is inherited behaviour rather than a feature —
  *    but callers that render a KEYED `{#each}` over the result would throw on
  *    one, which is worth knowing before adding a path that can create them.
+ *
+ * A second copy fails `apps/web-pwa/tests/sharedHelperGuard.test.ts`, which walks
+ * the whole of `src` — including the skip, which is the half a copy loses first.
  */
 export function resolveRecipeIds(
   ids: readonly string[],

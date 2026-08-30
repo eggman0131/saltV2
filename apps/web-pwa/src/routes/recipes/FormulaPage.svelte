@@ -195,7 +195,8 @@
   // demands `/^\d+$/` and `>= 1` because the −/+ chips write into that field. A
   // process stage's duration is `z.number().positive()` — non-integers are
   // schema-legal — so adopting the strict parser here would start rejecting valid
-  // input. The two are pinned side by side in `FormulaPageStages.test.ts`.
+  // input. The two are pinned side by side in `FormulaPageStages.test.ts`, and
+  // `sharedHelperGuard.test.ts` asserts this file declares exactly one of these.
   function parsePositiveNumber(text: string): number | null {
     const trimmed = text.trim();
     if (trimmed === '') return null;

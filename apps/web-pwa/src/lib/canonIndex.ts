@@ -56,6 +56,9 @@ export function canonIndex(items: readonly CanonItem[]): ReadonlyMap<string, Can
  *
  * `IngredientMatchSheet` deliberately has NO gate: it is opened by a tap, long
  * after the stores have landed, and gating it would change when it renders.
+ *
+ * A second copy of either half fails `apps/web-pwa/tests/sharedHelperGuard.test.ts`,
+ * which walks the whole of `src`. The agreement is enforced, not requested.
  */
 export function matchMarkersReady(
   loadingAisles: boolean,

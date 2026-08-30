@@ -21,6 +21,9 @@
  * Nothing rather than a default: a half-typed declaration is not a shape with a
  * gap filled in, it is no declaration yet, and the same `shape === null` that
  * has always disabled Save covers it without a second rule.
+ *
+ * A third surface re-declaring it fails
+ * `apps/web-pwa/tests/sharedHelperGuard.test.ts`.
  */
 export function parseUnitCount(text: string): number | null {
   const value = Number(text.trim());

@@ -23,6 +23,9 @@
  * Making them one list would be a product change — the serve-time picker would
  * lose its 16:00–16:45, or the home-time picker would gain them — and is not
  * this function's call to make.
+ *
+ * A third picker writing the arithmetic out by hand fails
+ * `apps/web-pwa/tests/sharedHelperGuard.test.ts`.
  */
 export function quarterHourOptions(fromHour: number, count: number): readonly string[] {
   return Array.from(
