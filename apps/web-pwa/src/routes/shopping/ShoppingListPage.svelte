@@ -77,6 +77,11 @@
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
+  import {
+    shoppingRowClass,
+    shoppingRowCollapseClass,
+    SHOPPING_ROW_INNER_CLASS,
+  } from './shoppingRowShell.js';
   import { createMatchReveal } from '../../lib/matchReveal.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
   import ShoppingItemRow from './ShoppingItemRow.svelte';
@@ -1043,18 +1048,18 @@
                          any contributor is held. Same shell and same button as
                          ShoppingItemRow; only the row's own content differs. -->
                   {@const rowExiting = row.contributors.some((c) => checkOffHold.isExiting(c.id))}
-                  <div
-                    class="salt-row-collapse motion-reduce:transition-none {rowExiting
-                      ? 'salt-row-collapse-out'
-                      : ''}"
-                  >
-                    <div class="min-h-0 overflow-hidden">
+                  <!-- No `out:collapseOut` / `in:riseIn` here, unlike
+                       ShoppingItemRow's own root: the combined row collapses by
+                       CSS class alone. #930 rules that asymmetry deliberate and
+                       out of its scope; it is why the shell is shared as class
+                       strings and not as a component (see shoppingRowShell.ts). -->
+                  <div class={shoppingRowCollapseClass(rowExiting)}>
+                    <div class={SHOPPING_ROW_INNER_CLASS}>
                       <div
-                        class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {rowExiting
-                          ? 'border-secondary/40 bg-secondary-container/50'
-                          : row.needsCheck
-                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                            : 'border-border bg-card'}"
+                        class={shoppingRowClass({
+                          exiting: rowExiting,
+                          needsVerify: row.needsCheck,
+                        })}
                         data-testid="shopping-item-row"
                         data-combined="true"
                         data-canon-id={row.canonId}

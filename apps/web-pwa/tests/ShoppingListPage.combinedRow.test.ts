@@ -269,12 +269,24 @@ describe('combined aisle row — the asymmetry #930 rules deliberate', () => {
     expect(shell).toContain('out:collapseOut|global');
     expect(shell).toContain('in:riseIn|global');
 
-    // The page renders exactly one `salt-row-collapse` root of its own — the
-    // combined row's — and it takes neither transition.
-    const roots = [...page.matchAll(/<div\b[^>]*salt-row-collapse[^>]*>/g)].map((m) => m[0]);
-    expect(roots).toHaveLength(1);
-    expect(roots[0]).not.toContain('collapseOut');
-    expect(roots[0]).not.toContain('riseIn');
+    // Both roots are found by the shared helper #930 Phase 8 extracted them to,
+    // not by the class literal — which is no longer written at either site.
+    const rootsIn = (source: string): string[] =>
+      [...source.matchAll(/<div\b[^>]*shoppingRowCollapseClass\([^)]*\)[^>]*>/g)].map((m) => m[0]);
+
+    // The page renders exactly one collapse root of its own — the combined
+    // row's — and it takes neither transition.
+    const pageRoots = rootsIn(page);
+    expect(pageRoots).toHaveLength(1);
+    expect(pageRoots[0]).not.toContain('collapseOut');
+    expect(pageRoots[0]).not.toContain('riseIn');
+
+    // And the single row's one root takes both, so the asymmetry is a fact about
+    // two live call sites rather than about one of them having been deleted.
+    const shellRoots = rootsIn(shell);
+    expect(shellRoots).toHaveLength(1);
+    expect(shellRoots[0]).toContain('out:collapseOut|global');
+    expect(shellRoots[0]).toContain('in:riseIn|global');
   });
 
   it('renders its contributors only once expanded', async () => {
