@@ -15,6 +15,7 @@
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
   import type { Recipe } from '@salt/domain';
+  import { usableServings } from '@salt/domain';
   import {
     buildRecipeAddPlan,
     buildMadeSubRows,
@@ -75,7 +76,8 @@
   // that has already moved it.
   let wasOpen = false;
   $effect(() => {
-    if (open && !wasOpen) selectedServings = servings ?? recipe.metadata.servings ?? 1;
+    if (open && !wasOpen)
+      selectedServings = servings ?? usableServings(recipe.metadata.servings) ?? 1;
     wasOpen = open;
   });
 
@@ -124,13 +126,12 @@
     }
   }
 
-  // The currently-selected producer's own base servings (`metadata.servings ?? 1`),
-  // used to (re)default the per-header stepper. 1 when nothing is resolvable.
+  // The currently-selected producer's own base servings, used to (re)default the
+  // per-header stepper. 1 when nothing is resolvable, and 1 when the producer's
+  // own count is not a usable base (issue #1123).
   function producerBase(row: RecipeAddRow): number {
-    return (
-      (row.producers.find((r) => r.id === row.producerId) ?? row.producers[0])?.metadata.servings ??
-      1
-    );
+    const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0];
+    return usableServings(producer?.metadata.servings ?? null) ?? 1;
   }
 
   // When the chosen producer changes, reset the per-header servings to the NEW

@@ -216,6 +216,7 @@ export {
   reconcileRecipeTimes,
   flattenIngredients,
   quantityToNumber,
+  usableServings,
   ingredientMatchIssue,
   recipeMatchIssueCount,
   takesIngredients,

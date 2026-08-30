@@ -34,6 +34,10 @@ export { flattenIngredients } from './queries/ingredients.js';
 // list and the formula mapping screen so a range cannot mean two amounts. The
 // choice of which end a range collapses to is argued in the file, once.
 export { quantityToNumber } from './queries/quantity.js';
+// The ONE rule for whether a recipe's own servings count can be a scaling base
+// (issue #1123) — the plan builder and the review sheet both read it, and a 0
+// that reached either divided a shopping list by zero.
+export { usableServings } from './queries/servings.js';
 // Silent match problems — a line that reads as matched and buys the wrong thing
 // (or nothing). Shared by the recipe list's pip and the ingredient match sheet so
 // the two can never disagree about what counts as wrong.
