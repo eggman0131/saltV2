@@ -21,6 +21,9 @@
 // batch totals arrive pre-rounded from the freeze, which is why their copies
 // never needed it.
 
+// `tests/sharedHelperGuard.test.ts` is what keeps this the only one: it walks the
+// whole of `src` and fails on a second declaration of this name.
+
 /** A gram figure, already rounded by whoever decided what the number is. */
 export function formatGrams(grams: number): string {
   return `${grams} g`;

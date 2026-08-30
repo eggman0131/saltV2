@@ -29,6 +29,9 @@ import { dateInZone } from '@salt/domain';
 // Pacific/Chatham (2,016 instants each, no mismatch) before it was made, and the
 // half-hour and 45-minute offsets in that list are the ones that would break a
 // naive UTC-slice answer.
+// `tests/sharedHelperGuard.test.ts` fails on a second `toLocaleDateString('en-CA')`
+// anywhere under `src` — the shape all five deleted copies had, and the one a
+// name-based guard cannot see because it declares nothing shared.
 export function todayIso(): string {
   return dateInZone(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
 }

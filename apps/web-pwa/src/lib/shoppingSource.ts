@@ -24,6 +24,7 @@ import type { ShoppingListItem } from '@salt/domain';
 // Presentation over a domain entity, so `src/lib` rather than `@salt/domain`:
 // the wording, the `(N servings)` suffix and the link are rendering choices.
 
+// One declaration, held there by `tests/sharedHelperGuard.test.ts`.
 export type SourceParts =
   | { kind: 'manual'; text: string }
   | { kind: 'recipe'; recipeId: string; name: string; servings: string };

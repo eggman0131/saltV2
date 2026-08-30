@@ -612,17 +612,20 @@
   // on, and suppressing the sheet — so the page holds one reactive boolean rather
   // than a second copy of the gate in markup.
   //
-  // ⚠ This is the SAME query as `@custom-variant split` in `src/app.css`. A
-  // Tailwind variant cannot be read from JS, so it is written out twice and the
-  // two MUST move together. The reasoning behind the two numbers (and why this is
-  // not `md:`, and why it is not the nav's `lg` seam) is on the variant, which is
-  // where a reader looking at the layout will land.
+  // ⚠ The query is the SAME one as `@custom-variant split` in `src/app.css`. A
+  // Tailwind variant cannot be read from JS, so the seam is spelled twice and the
+  // two MUST move together. This page no longer holds either spelling — the JS
+  // one is `SPLIT_QUERY` in `lib/mediaQuery.svelte.ts` (issue #933), and
+  // `tests/sharedHelperGuard.test.ts` fails if a third appears anywhere in `src`.
+  // The reasoning behind the two numbers (and why this is not `md:`, and why it
+  // is not the nav's `lg` seam) is on the variant, which is where a reader
+  // looking at the layout will land.
   //
-  // Written in RANGE syntax, which is what Tailwind v4 actually emits for that
-  // variant (`@media (width>=700px) and (height>=480px)`), rather than the
-  // `min-width:`/`min-height:` form the variant is authored in. It has to be the
-  // form the browser sees, not the form we typed: on an engine too old for range
-  // syntax the emitted CSS is inert, and a `min-width:` query here would answer
+  // That constant is written in RANGE syntax, which is what Tailwind v4 actually
+  // emits for the variant (`@media (width>=700px) and (height>=480px)`), rather
+  // than the `min-width:`/`min-height:` form the variant is authored in. It has
+  // to be the form the browser sees, not the form we typed: on an engine too old
+  // for range syntax the emitted CSS is inert, and a `min-width:` query would answer
   // "yes, split" to a page that is still one column — suppressing the sheet with
   // no pane to replace it, which is a planner where tapping a day does nothing.
   // Same syntax, same parser, so the two agree in both directions; an unparseable

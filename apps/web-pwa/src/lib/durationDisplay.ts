@@ -23,6 +23,8 @@ import type { StageDuration } from '@salt/domain/schemas';
 // called — `1 hr 30 min` on the recipe page, `1 h 30 min` on the formula,
 // schedule and batch screens. Issue #933 retired the fork onto the recipe page's
 // implementation, and this is now the only one. `hr` is what the whole app says.
+// `tests/sharedHelperGuard.test.ts` walks the whole of `src` and fails on a
+// second declaration, which is what a comment could not do.
 
 const MINUTES_PER_HOUR = 60;
 
