@@ -2,7 +2,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
-  import { createTextFieldState } from '../../headless/TextField.headless.svelte';
+  import { createFieldState } from '../../headless/Field.headless.svelte';
   import { textareaFrameVariants } from './Textarea.variants';
   import type { TextareaProps } from './Textarea.types';
 
@@ -32,7 +32,11 @@
 
   if (value === undefined) value = untrack(() => defaultValue);
 
-  const fieldState = createTextFieldState({
+  const fieldState = createFieldState({
+    // Textarea's ids have always been `textfield-N`: it shared TextField's
+    // headless module long before this one existed. Changing it would change
+    // rendered `id`/`for`/`aria-describedby` attributes.
+    prefix: 'textfield',
     id: () => idProp,
     error: () => error,
     description: () => description,

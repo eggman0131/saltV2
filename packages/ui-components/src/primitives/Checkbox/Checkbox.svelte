@@ -3,7 +3,7 @@
   import { untrack } from 'svelte';
   import { Checkbox } from 'bits-ui';
   import { cn } from '../../lib/cn';
-  import { createCheckboxState } from '../../headless/Checkbox.headless.svelte';
+  import { createFieldState } from '../../headless/Field.headless.svelte';
   import { checkboxRootVariants } from './Checkbox.variants';
   import type { CheckboxProps, CheckedState } from './Checkbox.types';
 
@@ -27,7 +27,8 @@
 
   if (checked === undefined) checked = untrack(() => defaultChecked);
 
-  const fieldState = createCheckboxState({
+  const fieldState = createFieldState({
+    prefix: 'checkbox',
     id: () => undefined,
     error: () => error,
     description: () => description,
