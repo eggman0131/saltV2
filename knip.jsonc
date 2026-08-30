@@ -1,0 +1,87 @@
+// Dead-code layer of the weekly duplication sweep (issue #912). Run: `pnpm dead`.
+//
+// Tuned so the output is quiet enough to put in front of a human. Bare, knip
+// reports 56 unused files / 129 exports / 165 types here — that is a wall, not a
+// finding list, and a wall gets filtered out mentally, which is the same failure
+// as a sweep that cries wolf every Monday.
+//
+// Everything switched off below is off because it is a FALSE positive in this
+// repo, and each says which. Nothing is off merely to make the number smaller.
+//
+// JSONC rather than the `knip.json` the issue specced: knip rejects unknown
+// keys, so the `"//"` trick that documents `.jscpd.json` is not available, and a
+// config this full of judgement calls should not be the one file that cannot
+// explain itself.
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // knip's defaults do not know this repo's real roots: Vite's index.html, the
+  // CF barrel Firebase deploys, and each package's `exports` subpath. Without
+  // them a barrel looks like an entry point, its re-exports look consumed, and
+  // knip under-reports dead public surface by roughly a factor of three.
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs", "scripts/*.ts", "coverage.areas.mjs"],
+      "project": ["scripts/**/*.{mjs,ts}"]
+    },
+    "apps/web-pwa": {
+      "entry": ["index.html", "public/*.js", "e2e/**/*.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.{ts,svelte}"]
+    },
+    "apps/cloud-functions": {
+      "entry": ["src/dev.ts", "probes/**/*.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "apps/storybook": {
+      "entry": ["src/stories/**/*.{ts,svelte}", ".storybook/*.{ts,js}"],
+      "project": ["src/**/*.{ts,svelte}"]
+    },
+    // domain and shared-types only; ui-components has its own block below.
+    "packages/*": {
+      "entry": ["tests/**/*.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/adapters/*": {
+      "entry": ["tests/**/*.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui-components": {
+      "entry": ["tests/**/*.ts", "scripts/*.ts"],
+      "project": ["src/**/*.{ts,svelte}"]
+    }
+  },
+
+  // Deliberate lint-violation fixtures — `pnpm boundary:test` asserts each one
+  // produces an error. Nothing imports them and nothing ever should. They were
+  // 21 of knip's 21 "unused files": the entire category was noise.
+  "ignore": ["**/__boundary_tests__/**"],
+
+  // Workspace siblings resolve through pnpm, not through anything knip traces.
+  "ignoreDependencies": ["@salt/*"],
+
+  "ignoreExportsUsedInFile": true,
+
+  // What this layer is FOR is code nothing calls. The rules set to "off" are all
+  // things knip cannot judge here:
+  //   - dependencies / binaries are reached from config files and shell scripts
+  //     knip does not read — tailwind through a PostCSS config, `gcloud` from
+  //     the deploy scripts. Dependency hygiene is Dependabot's job anyway.
+  //   - exported TYPES are a package's published surface. A type in
+  //     `@salt/domain` that no sibling imports is API, not dead code, and
+  //     reporting 133 of them buries the ~20 exports that genuinely are
+  //     uncalled. Type-level dead surface stays with issue #909, which is
+  //     exactly the fallback #912's open question prescribes.
+  "rules": {
+    "files": "error",
+    "exports": "error",
+    "duplicates": "error",
+    "types": "off",
+    "enumMembers": "off",
+    "dependencies": "off",
+    "devDependencies": "off",
+    "optionalPeerDependencies": "off",
+    "unlisted": "off",
+    "unresolved": "off",
+    "binaries": "off"
+  }
+}

@@ -26,6 +26,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "dupes": "npx --yes jscpd@5 apps/web-pwa/src apps/cloud-functions/src packages/domain/src packages/adapters packages/ui-components/src --reporters console",
+    "dupes:renamed": "node scripts/check-renamed-clones.mjs",
+    "dead": "npx --yes knip@6 --no-progress",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
     "dev": "node scripts/host-guard.mjs dev && node scripts/sync-worktree-env.mjs && node scripts/free-ports.mjs 5173 && exec pnpm --filter @salt/web-pwa dev",

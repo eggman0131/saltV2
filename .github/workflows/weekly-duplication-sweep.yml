@@ -1,0 +1,263 @@
+name: Weekly Duplication Sweep
+
+# The judgement half of duplication hygiene: "is this copy worth removing?" —
+# which is the only question here that a tool cannot answer.
+#
+# The mechanical half deliberately does NOT live in the model. jscpd, the
+# renamed-clone detector and knip run in seconds, produce a deterministic list,
+# and are checked in as `pnpm dupes` / `pnpm dupes:renamed` / `pnpm dead` so a
+# local run and this job cannot disagree. The agent is HANDED that output and
+# never searches for duplication itself. Spending model turns on arithmetic is
+# the same category of waste as the nightly batching pr-doc-review.yml replaced.
+#
+# What is left for the model is what the arithmetic cannot settle: whether a
+# clone is deliberate (three headless primitives that are near-identical BY
+# DESIGN), whether it has already drifted, whether an open issue already tracks
+# it, and whether it is worth anyone's afternoon.
+#
+# It is silent unless something is wrong, raises AT MOST ONE issue, does not
+# re-raise while its previous issue is still open, and never fails — same rule
+# as weekly-doc-sweep.yml: a red run means the workflow itself is broken, never
+# that duplication was found.
+#
+# Standing blind spot, restated in every issue this raises: all four mechanical
+# layers are token-level. Two files expressing the SAME RULE in different words
+# share no tokens and score zero — the #785 shape, where CONVERSION_RULES and
+# the librarian prompt stated contradictory unit policies and no tool could have
+# noticed. A quiet week is not evidence of a clean codebase, and saying so is
+# the whole correction being applied here: #911's real failure was not its wrong
+# numbers, it was the false confidence they manufactured.
+
+on:
+  schedule:
+    # Wednesdays, 04:00 UTC. Deliberately not Monday — weekly-doc-sweep.yml owns
+    # that slot, and two agent jobs landing together makes one week's findings
+    # arrive as one wall of notification.
+    - cron: '0 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write # required by claude-code-action for OIDC token exchange
+
+concurrency:
+  group: weekly-duplication-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Duplication sweep
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Dedupe before spending anything. A weekly job that re-raises the same
+      # finding every week teaches you to filter it out, which is the same
+      # failure as commenting on every PR. This is also what makes the sweep
+      # safe to switch on mid-epic: if the last finding is still open, nothing
+      # is spent at all.
+      - name: Skip if the last sweep's issue is still open
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          open=$(gh issue list --state open --search 'weekly-duplication-sweep in:body' --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "An earlier sweep's issue is still open — staying quiet this week."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "### Weekly Duplication Sweep — skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "A previous sweep's issue is still open; resolve it and the next sweep will look again." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # knip resolves the real import graph, so it needs the workspace installed.
+      # jscpd and the renamed-clone detector do not, but one install is cheaper
+      # than branching on it.
+      - uses: ./.github/actions/workspace
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+
+      # The arithmetic. `continue-on-error` because a tool that fails must not
+      # take the run red — a red run has exactly one meaning here, and it is not
+      # this. A layer that produced nothing says so in its report, and the agent
+      # is told to treat a missing layer as unknown rather than as clean.
+      - name: Run the mechanical layers
+        id: tools
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p .dupe-sweep
+
+          echo "== jscpd: token-level clones (pnpm dupes) ==" > .dupe-sweep/report.txt
+          pnpm dupes >> .dupe-sweep/report.txt 2>&1 \
+            || echo "(jscpd failed — this layer is UNKNOWN this week, not clean)" >> .dupe-sweep/report.txt
+
+          echo "" >> .dupe-sweep/report.txt
+          echo "== renamed clones: same shape, different names (pnpm dupes:renamed) ==" >> .dupe-sweep/report.txt
+          pnpm dupes:renamed >> .dupe-sweep/report.txt 2>&1 \
+            || echo "(renamed-clone detector failed — this layer is UNKNOWN this week, not clean)" >> .dupe-sweep/report.txt
+
+          echo "" >> .dupe-sweep/report.txt
+          echo "== knip: code nothing calls (pnpm dead) ==" >> .dupe-sweep/report.txt
+          pnpm dead >> .dupe-sweep/report.txt 2>&1 \
+            || echo "(knip failed — this layer is UNKNOWN this week, not clean)" >> .dupe-sweep/report.txt
+
+          echo "Report is $(wc -l < .dupe-sweep/report.txt) lines."
+
+      - name: Triage the findings
+        id: sweep
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 60
+            --max-budget-usd 3
+            --model sonnet
+            --allowed-tools "Read,Write,Grep,Glob,Bash(git:*),Bash(gh issue list:*),Bash(gh issue view:*)"
+          prompt: |
+            You are triaging a weekly duplication sweep of the Salt 2.0 monorepo.
+            You are read-only: you do NOT edit any file, you do NOT commit, and
+            you do NOT post anything. Your entire output is one optional file,
+            described at the end.
+
+            ## What is already done — do not spend turns on it
+
+            `.dupe-sweep/report.txt` holds the output of three tools that have
+            already run. Read it first. It is the complete mechanical result:
+
+              - **jscpd** — token-level copy-paste, 20 lines / 120 tokens minimum.
+              - **renamed clones** — whole files that are the same code with
+                different names throughout, which jscpd cannot see in either of
+                its modes.
+              - **knip** — exported code that nothing imports.
+
+            Do NOT search for duplication yourself. Do not run these tools again,
+            do not grep for similar-looking files, do not go looking for a class
+            the report does not cover. If you find yourself hunting for clones,
+            you are doing the wrong job. Your turns go on JUDGEMENT, not search.
+
+            If a section of the report says a layer failed, treat that layer as
+            UNKNOWN this week and say so in your output. Do not treat it as clean.
+
+            ## What you are actually deciding
+
+            For each entry in the report, in order, answer four questions. Only
+            an entry that survives all four is a finding.
+
+            1. **Is it deliberate?** Some near-identical code is the pattern
+               working as designed. Known-intentional, never a finding:
+               `packages/ui-components/src/headless/Checkbox.headless.svelte.ts`
+               ↔ `Switch.headless.svelte.ts` ↔ `TextField.headless.svelte.ts` —
+               three headless primitives that are near-identical on purpose.
+               A `*.variants.ts` pair or a `*Subscription.ts` pair is very often
+               the same story: one shape applied to several nouns. Read enough of
+               both sides to tell a deliberate pattern from a lazy copy.
+
+            2. **Has it already drifted?** This is the highest-value signal in
+               the whole sweep. Two copies that are still identical are a cost;
+               two copies that have started to DISAGREE are a bug waiting to be
+               found by a user. If one side has a fix, a guard or a branch the
+               other lacks, say so explicitly and quote both.
+
+            3. **Is it already tracked?** Check open issues before reporting
+               anything: `gh issue list --state open --search "<the filename>"`.
+               The #894 architecture review is still open and is cataloguing
+               exactly this class of finding. Something an open issue already
+               covers is NOT a finding — say what covers it and move on.
+
+            4. **Is it worth an afternoon?** Two 25-line clones that will never
+               diverge are not worth a refactor, an issue, or your remaining
+               turns. Hold a high bar. "Could be DRYer" is not a finding.
+
+            Prefer depth over breadth. You will not get through everything in
+            your budget — that is expected and fine. Going deep on the two or
+            three most likely findings produces a usable issue; skimming all of
+            them produces confident, wrong ones.
+
+            ## Output
+
+            If nothing survives all four questions — which is the expected
+            outcome most weeks — write no file at all and say so. Silence is the
+            correct result.
+
+            Only if you have at least one real finding, write `.dupe-sweep/issue.md`:
+              - First line exactly: `TITLE: <one-line summary>`
+              - Then, for each finding: the files and line ranges, a quote of
+                enough of both sides to see the duplication, whether it has
+                already drifted (with the evidence) or merely could, and why it
+                is worth fixing.
+              - Order by confidence, most certain first.
+              - Name any layer that failed and is therefore unknown this week.
+
+      # Same never-fail rule as weekly-doc-sweep.yml. Anything other than a clean
+      # "success" means the sweep was cut short, so a silent run this week is not
+      # evidence the codebase is clean — say so in the summary rather than letting
+      # quiet be misread as clean.
+      - name: Report and raise at most one issue
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXECUTION_FILE: ${{ steps.sweep.outputs.execution_file }}
+          TOOLS_OUTCOME: ${{ steps.tools.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          subtype=""
+          if [ -n "${EXECUTION_FILE:-}" ] && [ -f "$EXECUTION_FILE" ]; then
+            subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last | .subtype' "$EXECUTION_FILE" 2>/dev/null || true)
+          fi
+          case "$subtype" in '' | null) subtype="unknown" ;; esac
+          echo "Sweep result subtype: $subtype"
+
+          # The standing note. It goes in the step summary AND in every issue
+          # body, because the failure being corrected here is not a wrong number
+          # — it is a quiet result read as proof of health.
+          blind_spot='Token-level tooling cannot see two files that express the **same rule in different words** — they share no tokens and score zero. A quiet week is not evidence of a clean codebase.'
+
+          file=".dupe-sweep/issue.md"
+          if [ ! -s "$file" ]; then
+            echo "### Weekly Duplication Sweep — nothing to report" >> "$GITHUB_STEP_SUMMARY"
+            echo "$blind_spot" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$subtype" != "success" ]; then
+              echo "Note: the sweep was cut short (\`$subtype\`), so this silence is **not** evidence the codebase is healthy." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            if [ "$TOOLS_OUTCOME" != "success" ]; then
+              echo "Note: at least one mechanical layer failed to run, so its class of duplication is **unknown** this week rather than absent." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          title=$(head -n 1 "$file" | sed 's/^TITLE:[[:space:]]*//')
+          [ -n "$title" ] || title="chore: weekly sweep found duplication worth removing"
+
+          {
+            tail -n +2 "$file"
+            echo ""
+            if [ "$subtype" != "success" ]; then
+              echo "> ⚠️ The sweep was cut short (\`$subtype\`), so these findings are partial."
+              echo ""
+            fi
+            if [ "$TOOLS_OUTCOME" != "success" ]; then
+              echo "> ⚠️ At least one mechanical layer failed to run. Its class of duplication is unknown this week, not absent."
+              echo ""
+            fi
+            echo "> **What this sweep cannot see.** $blind_spot"
+            echo ""
+            # The marker the dedupe step searches for. Keep it in the body: it is
+            # what stops this job re-raising the same finding every week.
+            echo "<!-- weekly-duplication-sweep -->"
+            echo "_Raised by [Weekly Duplication Sweep](${RUN_URL}). Close this issue and the next sweep will look again._"
+          } > .dupe-sweep/issue-body.md
+
+          # Labels are best-effort — losing the finding over a renamed label would
+          # be the worst possible trade.
+          gh issue create --title "$title" --label "tech-debt" --body-file .dupe-sweep/issue-body.md \
+            || gh issue create --title "$title" --body-file .dupe-sweep/issue-body.md
