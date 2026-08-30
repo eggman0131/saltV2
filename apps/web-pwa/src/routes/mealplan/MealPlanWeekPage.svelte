@@ -32,6 +32,8 @@
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { kindOf } from '../recipes/recipeKind.js';
   import { formatDayKey } from '../../lib/dateFormat.js';
+  import { todayIso } from '../../lib/today.js';
+  import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
@@ -98,11 +100,11 @@
 
   const dates = $derived(weekDates($selectedStartDate));
 
-  // Today, as the same local `YYYY-MM-DD` the week is keyed by (en-CA renders
-  // local-tz ISO order — the trick mealPlanService already uses). Read once per
-  // mount: the planner is remounted on every visit, and a week view that ticks
-  // over at midnight while open is not worth a timer.
-  const todayDate = new Date().toLocaleDateString('en-CA');
+  // Today, as the same local `YYYY-MM-DD` the week is keyed by. Read once per
+  // mount, and deliberately a plain `const` rather than a `$derived`: the planner
+  // is remounted on every visit, and a week view that ticks over at midnight
+  // while open is not worth a timer.
+  const todayDate = todayIso();
 
   // ─── Land on today (#639, Phase 2) ────────────────────────────────────────
   // The week OPENS ON TODAY: today's row is put directly under the sticky app
@@ -610,47 +612,30 @@
   // on, and suppressing the sheet — so the page holds one reactive boolean rather
   // than a second copy of the gate in markup.
   //
-  // ⚠ This is the SAME query as `@custom-variant split` in `src/app.css`. A
-  // Tailwind variant cannot be read from JS, so it is written out twice and the
-  // two MUST move together. The reasoning behind the two numbers (and why this is
-  // not `md:`, and why it is not the nav's `lg` seam) is on the variant, which is
-  // where a reader looking at the layout will land.
+  // ⚠ The query is the SAME one as `@custom-variant split` in `src/app.css`. A
+  // Tailwind variant cannot be read from JS, so the seam is spelled twice and the
+  // two MUST move together. This page no longer holds either spelling — the JS
+  // one is `SPLIT_QUERY` in `lib/mediaQuery.svelte.ts` (issue #933), and
+  // `tests/sharedHelperGuard.test.ts` fails if a third appears anywhere in `src`.
+  // The reasoning behind the two numbers (and why this is not `md:`, and why it
+  // is not the nav's `lg` seam) is on the variant, which is where a reader
+  // looking at the layout will land.
   //
-  // Written in RANGE syntax, which is what Tailwind v4 actually emits for that
-  // variant (`@media (width>=700px) and (height>=480px)`), rather than the
-  // `min-width:`/`min-height:` form the variant is authored in. It has to be the
-  // form the browser sees, not the form we typed: on an engine too old for range
-  // syntax the emitted CSS is inert, and a `min-width:` query here would answer
+  // That constant is written in RANGE syntax, which is what Tailwind v4 actually
+  // emits for the variant (`@media (width>=700px) and (height>=480px)`), rather
+  // than the `min-width:`/`min-height:` form the variant is authored in. It has
+  // to be the form the browser sees, not the form we typed: on an engine too old
+  // for range syntax the emitted CSS is inert, and a `min-width:` query would answer
   // "yes, split" to a page that is still one column — suppressing the sheet with
   // no pane to replace it, which is a planner where tapping a day does nothing.
   // Same syntax, same parser, so the two agree in both directions; an unparseable
   // query is `not all`, i.e. `false`, which is exactly the phone path.
-  const SPLIT_QUERY = '(width >= 700px) and (height >= 480px)';
-
-  // `false` — the phone path — is the honest default whenever the answer cannot
-  // be read: SSR, a jsdom without `matchMedia`, a query the engine rejects. Same
-  // shape as `isCoarsePointer` in `lib/swipe.svelte.ts`, which is the house
-  // pattern for a live media read.
-  let isSplit = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(SPLIT_QUERY);
-    } catch {
-      return;
-    }
-    isSplit = mql.matches;
-    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener
-    // API at all, and folding/unfolding is the only thing the listener is for — so
-    // a one-shot read is the whole answer wherever it is missing.
-    if (typeof mql.addEventListener !== 'function') return;
-    const onChange = (event: MediaQueryListEvent): void => {
-      isSplit = event.matches;
-    };
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  });
+  // The read itself, and the four ways it can fail, are
+  // `lib/mediaQuery.svelte.ts` — which generalises the shape `isCoarsePointer`
+  // in `lib/swipe.svelte.ts` already used, and which this page's own comment
+  // called the house pattern for a live media read.
+  const split = createMediaQuery(SPLIT_QUERY);
+  const isSplit = $derived(split.matches);
 
   // The pane opens on TODAY, the same day the deck itself lands on, so arriving
   // with the phone unfolded shows tonight without a tap.

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { appendCacheBuster } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 
 // Building a meal in the editor (issue #752). A recipe BECOMES a meal by gaining
@@ -212,5 +213,50 @@ describe('RecipeEditPage — building a meal out of recipes', () => {
     expect(screen.getByText('Method')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-notes-input')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-tags-input')).toBeInTheDocument();
+  });
+});
+
+// ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────
+// This is issue #933's characterisation net for the "hero URL" rule — one of
+// eight identical copies of `appendCacheBuster(recipe.image.url,
+// recipe.imageRequestedAt ?? recipe.updatedAt)` scattered across web-pwa, here
+// at the sub-recipe COMPONENT row thumbnail. It must stay green, UNMODIFIED,
+// once all eight collapse onto one shared `@salt/domain` function.
+// Expectations are computed by calling the REAL `appendCacheBuster` rather than
+// hand-encoding a query string. The row's `<img>` carries no testid of its own,
+// so it is queried off the row's DOM directly. Reuses this file's own
+// hand-rolled `makeRecipe` (UT-C2: an existing suite's helper, not a second one).
+describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #933 characterisation)', () => {
+  it.each([
+    { name: 'busts with imageRequestedAt when present', imageRequestedAt: 777 },
+    {
+      name: 'falls back to updatedAt when imageRequestedAt is absent',
+      imageRequestedAt: undefined,
+    },
+  ])('$name', async ({ imageRequestedAt }) => {
+    const url = 'https://example.com/hero-component.webp';
+    const HERO_COMPONENT = makeRecipe({
+      id: 'hero-component',
+      title: 'Hero Component',
+      image: { url, source: 'ai' },
+      updatedAt: '2026-01-05T00:00:00.000Z',
+      ...(imageRequestedAt !== undefined ? { imageRequestedAt } : {}),
+    });
+    mockRecipes._set([{ ...ROAST, componentRecipeIds: ['hero-component'] }, HERO_COMPONENT]);
+    await openEditor();
+
+    const row = screen.getByTestId('recipe-component-row');
+    expect(row.querySelector('img')).toHaveAttribute(
+      'src',
+      appendCacheBuster(url, imageRequestedAt ?? HERO_COMPONENT.updatedAt),
+    );
+  });
+
+  it('renders the fallback icon, not an img, when the component has no image', async () => {
+    mockRecipes._set([{ ...ROAST, componentRecipeIds: ['gravy'] }, GRAVY]);
+    await openEditor();
+
+    const row = screen.getByTestId('recipe-component-row');
+    expect(row.querySelector('img')).toBeNull();
   });
 });

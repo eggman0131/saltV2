@@ -4,7 +4,12 @@
 // bytes for up to ~1h. Appending a per-regeneration `?v=`/`&v=` nonce forces a
 // re-fetch. This is the shared, testable home for the append logic used by the
 // recipe pages; `CanonIcon.svelte` inlines an IDENTICAL copy because ui-components
-// is external-only and cannot import `@salt/domain` (keep the two in sync).
+// is external-only and cannot import `@salt/domain`.
+//
+// That copy is held in agreement by `apps/web-pwa/tests/canonIconParity.test.ts`
+// (issue #933), not by this comment: editing either side alone turns it red.
+// `web-pwa` is the only package that may import both. Recipe heroes go through
+// `recipeHeroUrl` beside this file rather than composing the nonce themselves.
 //
 // Behaviour: when `version` is null/undefined/empty-string the url passes through
 // unchanged — nothing to bust, and a bare `?v=` carries no cache-key information.

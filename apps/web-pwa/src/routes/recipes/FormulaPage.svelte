@@ -61,6 +61,7 @@
   } from '@salt/domain/schemas';
   import { kindOf } from './recipeKind.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
+  import { formatGrams } from '../../lib/quantityDisplay.js';
   import { addToast } from '../../lib/toastStore.js';
 
   // The formula screen (issue #806, phase 1 of epic #778) — `/recipes/:id/formula`.
@@ -593,10 +594,6 @@
     return `${text.endsWith('.0') ? text.slice(0, -2) : text}%`;
   }
 
-  function formatGrams(grams: number): string {
-    return `${roundGrams(grams)} g`;
-  }
-
   // ─── The two disclosures ──────────────────────────────────────────────────────
   //
   // Both are places information is lost or asserted, and both are stated plainly
@@ -821,7 +818,9 @@
                 {@const grams = gramsOf(row)}
                 <p class="text-sm text-amber-900">
                   <span class="font-medium">{row.rawText}</span>
-                  — taken at {grams === null ? 'the top of its range' : formatGrams(grams)}
+                  — taken at {grams === null
+                    ? 'the top of its range'
+                    : formatGrams(roundGrams(grams))}
                 </p>
               {/each}
             </div>
@@ -925,7 +924,7 @@
               <div class="text-sm" data-testid="formula-dough-total">
                 <p>
                   As written, this weighs
-                  <span class="font-medium">{formatGrams(asWrittenDoughGrams)}</span> of dough.
+                  <span class="font-medium">{formatGrams(roundGrams(asWrittenDoughGrams))}</span> of dough.
                 </p>
                 {#if declaredDoughGrams !== null && shape !== null}
                   <!-- The baked figure sits next to the dough figure because
@@ -935,9 +934,10 @@
                        it is the only reading anyone gets on the number entered. -->
                   <p>
                     You've declared {shape.count} × {shape.label} —
-                    <span class="font-medium">{formatGrams(declaredDoughGrams)}</span> of dough,
-                    about
-                    <span class="font-medium">{formatGrams(bakedUnitGrams(shape))}</span> each baked.
+                    <span class="font-medium">{formatGrams(roundGrams(declaredDoughGrams))}</span>
+                    of dough, about
+                    <span class="font-medium">{formatGrams(roundGrams(bakedUnitGrams(shape)))}</span
+                    > each baked.
                   </p>
                   {#if declarationDriftPercent !== null && Math.abs(declarationDriftPercent) >= 0.5}
                     <p class="text-muted-foreground" data-testid="formula-declaration-drift">

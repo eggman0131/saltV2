@@ -79,7 +79,7 @@
   import { kitIcons } from '../../lib/kitIcons.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     cookShape,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
@@ -97,17 +97,19 @@
     takesIngredients,
     type CookShapeSegment,
     type IngredientGroup,
+    memberFirstName,
     type Ingredient,
     type Recipe,
     type Step,
   } from '@salt/domain';
   import { KIND_COPY, kindOf } from './recipeKind.js';
-  import { formatMinutes } from './recipeDuration.js';
+  import { formatMinutes } from '../../lib/durationDisplay.js';
+  import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { formula, initFormulaSync } from '../../lib/formulaService.js';
-  import { currentMember, firstName } from '../../lib/membersService.js';
+  import { currentMember } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -222,7 +224,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // nothing to read, so only a DIFFERENT last editor earns the second half.
   //
   // First names on screen, full names in the comparison. The stored value is the
-  // verbatim `Member.name`, and `firstName` shortens it only for reading — a
+  // verbatim `Member.name`, and `memberFirstName` shortens it only for reading — a
   // household shares a surname, so the rest is noise. The "is this the same
   // person" test deliberately stays on the FULL values: comparing first names
   // would silently merge two genuinely different people who share one.
@@ -230,8 +232,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
     !recipe?.createdBy
       ? null
       : recipe.lastEditedBy && recipe.lastEditedBy !== recipe.createdBy
-        ? `Added by ${firstName(recipe.createdBy)} · edited by ${firstName(recipe.lastEditedBy)}`
-        : `Added by ${firstName(recipe.createdBy)}`,
+        ? `Added by ${memberFirstName(recipe.createdBy)} · edited by ${memberFirstName(recipe.lastEditedBy)}`
+        : `Added by ${memberFirstName(recipe.createdBy)}`,
   );
 
   // What this entry can do (issue #637). Everything that gates a section or an
@@ -886,33 +888,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // nothing for a drawer to do; below it, opening a chat raises the drawer over the
   // live recipe. `false` — the phone path — is the honest default whenever the answer
   // cannot be read: SSR, a jsdom without `matchMedia`, a query the engine rejects.
-  // Same shape as `MealPlanWeekPage`'s split read, which is the house pattern.
-  //
   // This must stay the SAME GATE as the `split:` variant the column is laid out with
   // (`app.css`), and in the same RANGE SYNTAX the browser actually sees: on an engine
   // too old for range queries the emitted CSS is inert, and a `min-width:` query here
   // would answer "yes, docked" for a page that is still one column — suppressing the
   // drawer with no pane to replace it, i.e. a recipe where tapping a chat does nothing.
-  const DOCKED_QUERY = '(width >= 700px) and (height >= 480px)';
-  let docked = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(DOCKED_QUERY);
-    } catch {
-      return;
-    }
-    docked = mql.matches;
-    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener API at
-    // all, and resizing is the only thing the listener is for.
-    if (typeof mql.addEventListener !== 'function') return;
-    const onChange = (event: MediaQueryListEvent): void => {
-      docked = event.matches;
-    };
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  });
+  // The read itself, and the four ways it can fail, are `lib/mediaQuery.svelte.ts`.
+  const split = createMediaQuery(SPLIT_QUERY);
+  const docked = $derived(split.matches);
 
   // The drawer's stop is in-memory only and so is whether it is open — Rule 3, and
   // nothing here is worth restoring across a reload anyway.
@@ -1985,10 +1968,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
           <div class="flex flex-col gap-2" data-testid="recipe-hero">
             <div class="group relative overflow-hidden rounded-lg border bg-muted">
               <img
-                src={appendCacheBuster(
-                  recipe.image!.url,
-                  recipe.imageRequestedAt ?? recipe.updatedAt,
-                )}
+                src={recipeHeroUrl(recipe)}
                 alt={recipe.title}
                 loading="lazy"
                 class="aspect-[3/2] w-full object-cover"
@@ -2273,10 +2253,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                         >
                           {#if component.image?.url}
                             <img
-                              src={appendCacheBuster(
-                                component.image.url,
-                                component.imageRequestedAt ?? component.updatedAt,
-                              )}
+                              src={recipeHeroUrl(component)}
                               alt=""
                               loading="lazy"
                               class="h-full w-full object-cover"

@@ -8,6 +8,7 @@ import {
   saveMealPlanWeek,
 } from '@salt/firebase-sync';
 import {
+  addCalendarDays,
   weekStartFor,
   emptyDay,
   emptyWeek,
@@ -36,6 +37,7 @@ import { trackUsageEvent } from '@salt/observability';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { subscriptionErrorHandler } from './errorReporting.js';
+import { todayIso } from './today.js';
 
 // Meal planning service (issue #169). Subscribes to the two singletons (config +
 // template) once and to the currently-selected week, re-subscribing as the user
@@ -60,18 +62,6 @@ import { subscriptionErrorHandler } from './errorReporting.js';
 // see `pruneWeekSubscriptions`.
 
 const DEFAULT_FIRST_DAY: Weekday = 'mon';
-
-// ─── Local date helpers (date-only YYYY-MM-DD, UTC arithmetic) ────────────────
-
-function todayIso(): string {
-  return new Date().toLocaleDateString('en-CA'); // en-CA renders local-tz YYYY-MM-DD
-}
-
-function addDays(date: string, n: number): string {
-  const d = new Date(`${date}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 // Drop a key from a record without mutating it (returns the same object when
 // the key is absent, so derived stores don't churn).
@@ -291,7 +281,7 @@ let kitchenActive = false;
 function kitchenStartsForToday(today: string): string[] {
   const day = firstDay();
   const start = weekStartFor(today, day);
-  return weekExtendsIntoNext(start, today, day) ? [start, addDays(start, 7)] : [start];
+  return weekExtendsIntoNext(start, today, day) ? [start, addCalendarDays(start, 7)] : [start];
 }
 
 // (Re)assert the kitchen's claim on its weeks. No-op unless the page is mounted.
@@ -377,11 +367,11 @@ export function thisWeek(): void {
 }
 
 export function nextWeek(): void {
-  goToWeek(addDays(get(_subscribedStart) || todayIso(), 7));
+  goToWeek(addCalendarDays(get(_subscribedStart) || todayIso(), 7));
 }
 
 export function prevWeek(): void {
-  goToWeek(addDays(get(_subscribedStart) || todayIso(), -7));
+  goToWeek(addCalendarDays(get(_subscribedStart) || todayIso(), -7));
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

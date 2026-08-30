@@ -26,7 +26,7 @@
   import { readMealParam } from '../../lib/mealReturn.js';
   import { trackUsageEvent } from '@salt/observability';
   import {
-    appendCacheBuster,
+    recipeHeroUrl,
     emptyRecipe,
     emptyIngredientGroup,
     newIngredient,
@@ -42,6 +42,7 @@
     type Recipe,
     type RecipeKind,
     type IngredientGroup,
+    memberFirstName,
     type Ingredient,
     type Step,
     type RecipeMetadata,
@@ -56,7 +57,7 @@
   } from '../../lib/recipeService.js';
   import { RecipeKindSchema } from '@salt/domain/schemas';
   import { canonItems } from '../../lib/canonService.js';
-  import { members, firstName } from '../../lib/membersService.js';
+  import { members } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import NotesFormattingToolbar from './NotesFormattingToolbar.svelte';
@@ -713,10 +714,7 @@
                 >
                   {#if component.image?.url}
                     <img
-                      src={appendCacheBuster(
-                        component.image.url,
-                        component.imageRequestedAt ?? component.updatedAt,
-                      )}
+                      src={recipeHeroUrl(component)}
                       alt=""
                       loading="lazy"
                       class="h-full w-full object-cover"
@@ -1146,7 +1144,7 @@
                  italic (ui-spec-v03 §3.4). -->
             <SelectTrigger aria-label="Added by" data-testid="recipe-added-by-select">
               <span class={draft.createdBy ? 'text-foreground' : 'text-placeholder italic'}>
-                {draft.createdBy ? firstName(draft.createdBy) : 'Not recorded'}
+                {draft.createdBy ? memberFirstName(draft.createdBy) : 'Not recorded'}
               </span>
               <Icon name="ChevronDown" size={16} class="text-muted-foreground" />
             </SelectTrigger>
@@ -1155,7 +1153,7 @@
                    label is shortened. What is stored, compared and de-duplicated
                    is the full name — see `authorOptions` above. -->
               {#each authorOptions as name (name)}
-                <SelectItem value={name}>{firstName(name)}</SelectItem>
+                <SelectItem value={name}>{memberFirstName(name)}</SelectItem>
               {/each}
             </SelectContent>
           </Select>

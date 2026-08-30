@@ -16,10 +16,17 @@ export const CHECK_THRESHOLD_PX = 78;
 /** Swipe LEFT past -78px → delete it (runs Phase 2's undo snackbar). */
 export const DELETE_THRESHOLD_PX = 78;
 /**
- * Horizontal slop before a move is claimed as a drag rather than a tap or a
- * vertical scroll — mirrors CookModePage's `DRAG_START_PX`. Below this the touch
- * is left alone so `touch-action: pan-y` still scrolls and a tap still reaches the
- * button underneath.
+ * Slop before a move is claimed as a drag rather than a tap or a scroll. Below
+ * this the touch is left alone so `touch-action: pan-y` still scrolls and a tap
+ * still reaches the button underneath.
+ *
+ * THE ONE DECLARATION, for every gesture surface in the app (issue #933). It used
+ * to say it "mirrors CookModePage's `DRAG_START_PX`", which was a request to keep
+ * three copies in agreement — `lib/deck.svelte.ts` and `RecipeChatDrawer.svelte`
+ * each had their own `= 6`. Both now import this one, so there is nothing to
+ * mirror. It is about the human hand rather than about any surface's travel,
+ * which is why it is shared where the per-surface commit and fling thresholds
+ * beside it are not.
  */
 export const DRAG_START_PX = 6;
 

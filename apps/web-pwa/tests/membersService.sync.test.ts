@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
 import { get } from 'svelte/store';
-import type { Member } from '@salt/domain';
+import { memberFirstName, type Member } from '@salt/domain';
 
 vi.mock('@salt/firebase-sync', () => ({
   subscribeMembers: vi.fn(),
@@ -21,7 +21,6 @@ import * as firebaseSync from '@salt/firebase-sync';
 import {
   members,
   currentMember,
-  firstName,
   kitchenLabel,
   isLoadingMembers,
   initMembersSync,
@@ -144,26 +143,65 @@ describe('membersService — currentMember', () => {
   });
 });
 
-// The one rendering rule this service owns, and the reason it is a function
-// rather than an inline `split(' ')[0]`: the kitchen label and recipe
-// attribution (issue #845) both shorten a display name, and two copies drift.
-describe('membersService — firstName', () => {
-  it('takes the first word, and leaves a name that has only one alone', () => {
-    expect(firstName('Kate Pendery')).toBe('Kate');
-    expect(firstName('Daniel')).toBe('Daniel');
-    expect(firstName('Mary Jane Pendery')).toBe('Mary');
-  });
-
-  it('passes an empty name straight through', () => {
+// How a member is NAMED on screen, anywhere a full name would be noise — the
+// kitchen label here, and recipe attribution (issue #845).
+//
+// This service used to own its own `firstName` (`name.split(' ')[0]`) beside
+// `@salt/domain`'s `memberFirstName`, and the two DISAGREED. Issue #933 Phase 7
+// deleted the local copy; the domain's answer is what these screens render now.
+// The rows marked EXCEPTION 2 are the ones that changed, and they carry the old
+// answer so the delta stays on the record rather than only in a commit message.
+//
+// `memberFirstName` is also what Pushover device-prefix matching depends on
+// (`apps/cloud-functions/src/adapters/pushoverRecipient.ts`), so this converged
+// display onto the delivery-load-bearing definition rather than the other way
+// round.
+describe('membersService — how a member is named on screen', () => {
+  const cases = [
+    { name: 'a plain two-word name', input: 'Kate Pendery', rendered: 'Kate' },
+    { name: 'a single word', input: 'Daniel', rendered: 'Daniel' },
+    { name: 'three words', input: 'Mary Jane Pendery', rendered: 'Mary' },
+    { name: 'a doubled separator', input: 'Mary  Jane', rendered: 'Mary' },
+    { name: 'a trailing space', input: 'Kate ', rendered: 'Kate' },
     // `''` is a real state, not a bug: an unattributed recipe has no name to
     // shorten, and the caller decides what to render instead.
-    expect(firstName('')).toBe('');
+    { name: 'the empty name', input: '', rendered: '' },
+    { name: 'whitespace only', input: '   ', rendered: '' },
+    // EXCEPTION 2 — the two rows that flipped in Phase 7. The retired copy
+    // rendered `''` for the first (a BLANK chef label) and the whole undivided
+    // string for the second, because `split(' ')` takes the empty leading field
+    // and never sees a tab or a newline as a separator.
+    { name: 'a LEADING space (EXCEPTION 2, was "")', input: '  Kate Pendery', rendered: 'Kate' },
+    {
+      name: 'tab and newline separators (EXCEPTION 2, was the whole string)',
+      input: '\tDaniel\nPendery',
+      rendered: 'Daniel',
+    },
+  ];
+
+  it.each(cases)('$name → $rendered', ({ input, rendered }) => {
+    expect(memberFirstName(input)).toBe(rendered);
   });
 
   it('is what kitchenLabel shortens with', () => {
     seedMembers([member({ id: 'kate@e.org', name: 'Kate Pendery' })]);
     mockAuth.user = { email: 'kate@e.org' };
     expect(get(kitchenLabel)).toBe("Kate's Kitchen");
+  });
+
+  it('shortens a leading-whitespace name in the kitchen label too', () => {
+    // The user-visible half of Exception 2: this rendered "'s Kitchen" before.
+    seedMembers([member({ id: 'kate@e.org', name: '  Kate Pendery' })]);
+    mockAuth.user = { email: 'kate@e.org' };
+    expect(get(kitchenLabel)).toBe("Kate's Kitchen");
+  });
+
+  it('leaves the service with no second implementation to drift from', async () => {
+    // UT-E2 in spirit: the point of Phase 7 was ONE importable name. A
+    // re-exported alias would satisfy every assertion above while restoring the
+    // fork, so the absence is asserted rather than assumed.
+    const service = await import('../src/lib/membersService.js');
+    expect(Object.keys(service)).not.toContain('firstName');
   });
 });
 

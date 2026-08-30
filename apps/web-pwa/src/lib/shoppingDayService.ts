@@ -10,6 +10,7 @@ import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
 import { subscriptionErrorHandler } from './errorReporting.js';
+import { todayIso } from './today.js';
 import { selectedStartDate, extensionStartDate, firstDayOfWeek } from './mealPlanService.js';
 
 // Shop-day service (issue #629). The shop date is provisioning state for the
@@ -74,10 +75,6 @@ const weekUnsubs = new Map<string, () => void>();
 let upcomingUnsub: (() => void) | null = null;
 let startDateUnsub: (() => void) | null = null;
 let extensionStartUnsub: (() => void) | null = null;
-
-function todayIso(): string {
-  return new Date().toLocaleDateString('en-CA'); // en-CA renders local-tz YYYY-MM-DD
-}
 
 // Subscribe to one week's shop days. Idempotent — a re-emit of the same start is
 // a no-op, so callers may re-assert the weeks they want freely.

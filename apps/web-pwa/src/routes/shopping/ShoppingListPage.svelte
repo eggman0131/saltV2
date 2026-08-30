@@ -35,6 +35,8 @@
     createListSelection,
   } from '@salt/ui-components';
   import { formatDayKey } from '../../lib/dateFormat.js';
+  import { todayIso } from '../../lib/today.js';
+  import { describeSource } from '../../lib/shoppingSource.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { onDestroy, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
@@ -107,8 +109,6 @@
   // It reads relative only where relative beats a weekday: "today" and
   // "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
   // arithmetic the reader has to undo to know whether to plan around it.
-  // en-CA renders a local-timezone YYYY-MM-DD, the same trick the planner uses.
-  const todayIso = () => new Date().toLocaleDateString('en-CA');
   const shopDays = $derived(
     $upcomingShopDay ? daysBetween(todayIso(), $upcomingShopDay.date) : null,
   );
@@ -746,24 +746,9 @@
     push(`/recipes/${id}`);
   }
 
-  // Parts, not one flat string (#860): the recipe's NAME carries the tap target
-  // and its servings stay plain text beside it, so the two cannot be rendered
-  // as a single blob. The manual branch stays plain — "Added by Daniel" is a
-  // person, not a destination.
-  type SourceParts =
-    | { kind: 'manual'; text: string }
-    | { kind: 'recipe'; recipeId: string; name: string; servings: string };
-
-  function describeSource(src: ShoppingListItem['sources'][number]): SourceParts {
-    if (src.kind === 'manual')
-      return { kind: 'manual', text: src.addedBy ? `Added by ${src.addedBy}` : 'Added manually' };
-    return {
-      kind: 'recipe',
-      recipeId: src.recipeId,
-      name: src.label ?? 'Recipe',
-      servings: `(${src.servings} serving${src.servings === 1 ? '' : 's'})`,
-    };
-  }
+  // `describeSource` moved to `lib/shoppingSource.ts` (issue #933) — the row had
+  // its own second answer, and the two disagreed about a hand-added item with no
+  // attributed adder.
 </script>
 
 {#snippet verifyControls(ids: string[])}

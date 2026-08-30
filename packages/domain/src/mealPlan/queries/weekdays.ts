@@ -1,3 +1,4 @@
+import { addCalendarDays, daysBetween } from '../../shoppingDay/calendarDates.js';
 import type { Weekday } from '../entities/Weekday.js';
 import { WEEKDAYS } from '../entities/Weekday.js';
 
@@ -14,6 +15,13 @@ export const WEEKDAY_INDEX: Readonly<Record<Weekday, number>> = {
 
 // Parse a date-only "YYYY-MM-DD" string as a UTC instant. All week arithmetic is
 // done in UTC so it never drifts across DST or the local timezone.
+//
+// Day SHIFTS do not go through here — they go through `addCalendarDays`, and
+// day COUNTS through `daysBetween`, both from `shoppingDay/calendarDates.ts`
+// (issue #933). What is left of these two is the part that is genuinely about
+// weekdays rather than about calendar arithmetic: `mondayFirstIndex` needs a
+// real `Date` to ask `getUTCDay()`, and `weekStartFor`'s `Date` overload needs
+// to project a LOCAL calendar day onto one before anything else can happen.
 function toUtcDate(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`);
 }
@@ -38,13 +46,17 @@ export function weekdayOf(date: string): Weekday {
 // on `firstDayOfWeek`. Accepts a Date (its local calendar day is used) or a
 // "YYYY-MM-DD" string.
 export function weekStartFor(date: Date | string, firstDayOfWeek: Weekday): string {
-  const d =
+  // The `Date` branch reads LOCAL getters on purpose and must keep doing so: the
+  // caller is asking "which week is the day I am living through in?", so the
+  // device's calendar day is the question, not the instant's UTC one. This is
+  // deliberately NOT `dateInZone` — that would be the same answer by a longer
+  // road, and this branch predates it.
+  const day =
     typeof date === 'string'
-      ? toUtcDate(date)
-      : new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const diff = (mondayFirstIndex(d) - WEEKDAY_INDEX[firstDayOfWeek] + 7) % 7;
-  d.setUTCDate(d.getUTCDate() - diff);
-  return formatUtc(d);
+      ? date
+      : formatUtc(new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())));
+  const diff = (mondayFirstIndex(toUtcDate(day)) - WEEKDAY_INDEX[firstDayOfWeek] + 7) % 7;
+  return addCalendarDays(day, -diff);
 }
 
 // The 0–6 position of `date` within the week starting at `startDate`, or -1 when
@@ -55,9 +67,10 @@ export function weekStartFor(date: Date | string, firstDayOfWeek: Weekday): stri
 // planner opens on today, with that many earlier days scrollable above it).
 // Pure by contract: there is no clock in domain, so the caller supplies today.
 export function dayIndexInWeek(startDate: string, date: string): number {
-  const diff = Math.round(
-    (toUtcDate(date).getTime() - toUtcDate(startDate).getTime()) / 86_400_000,
-  );
+  const diff = daysBetween(startDate, date);
+  // `-1`, never `NaN`: an unparseable date is "not in this week", and every
+  // caller tests `>= 0`. `daysBetween` returns `NaN` for one, so the guard is
+  // load-bearing rather than defensive decoration.
   return Number.isFinite(diff) && diff >= 0 && diff < 7 ? diff : -1;
 }
 
@@ -106,20 +119,13 @@ export const TEMPLATE_WEEK_OFFERS = 3;
 //
 // Pure by contract: there is no clock in domain, so the caller supplies today.
 export function templateWeekStarts(today: string, firstDayOfWeek: Weekday): string[] {
-  const start = toUtcDate(weekStartFor(today, firstDayOfWeek));
-  return Array.from({ length: TEMPLATE_WEEK_OFFERS }, (_unused, i) => {
-    const d = new Date(start);
-    d.setUTCDate(d.getUTCDate() + i * 7);
-    return formatUtc(d);
-  });
+  const start = weekStartFor(today, firstDayOfWeek);
+  return Array.from({ length: TEMPLATE_WEEK_OFFERS }, (_unused, i) =>
+    addCalendarDays(start, i * 7),
+  );
 }
 
 // The seven consecutive "YYYY-MM-DD" date keys of a week starting at `startDate`.
 export function weekDates(startDate: string): string[] {
-  const start = toUtcDate(startDate);
-  return Array.from({ length: 7 }, (_unused, i) => {
-    const d = new Date(start);
-    d.setUTCDate(d.getUTCDate() + i);
-    return formatUtc(d);
-  });
+  return Array.from({ length: 7 }, (_unused, i) => addCalendarDays(startDate, i));
 }

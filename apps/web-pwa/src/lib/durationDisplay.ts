@@ -16,20 +16,63 @@ import type { StageDuration } from '@salt/domain/schemas';
 // NOTHING HERE COMPUTES ANYTHING. These take a number the domain already decided
 // and choose words for it. The moment one of them adds a minute or rounds a gram,
 // a screen has started re-deriving what the freeze exists to pin down.
+//
+// It happened once more before it stopped: the recipe page grew its OWN
+// `formatMinutes` (`routes/recipes/recipeDuration.ts`, issue #878) rather than
+// import this one, and the two then disagreed about what ninety minutes is
+// called — `1 hr 30 min` on the recipe page, `1 h 30 min` on the formula,
+// schedule and batch screens. Issue #933 retired the fork onto the recipe page's
+// implementation, and this is now the only one. `hr` is what the whole app says.
+// `tests/sharedHelperGuard.test.ts` walks the whole of `src` and fails on a
+// second declaration, which is what a comment could not do.
 
-/** "45 min", "1 h", "1 h 30 min". */
+const MINUTES_PER_HOUR = 60;
+
+/**
+ * A duration in minutes, written the way a cook would say it.
+ *
+ * - Under an hour stays in minutes — `40` → `40 min`. This is the range where
+ *   minutes ARE the unit a cook thinks in ("give it twenty").
+ * - An hour and over becomes hours, with the leftover minutes when there are
+ *   any — `60` → `1 hr`, `75` → `1 hr 15 min`, `90` → `1 hr 30 min`,
+ *   `360` → `6 hr`, `1440` → `24 hr`.
+ *
+ * The switch is at 60 because it is the only boundary that needs no explanation:
+ * one rule, one threshold, and no band in the middle where the same dish reads
+ * two ways depending on which field you are looking at.
+ *
+ * **No days.** A 36-hour cure is `36 hr`, not `1 day 12 hr`. A cook plans a long
+ * ferment in hours — "twenty-four hours in the fridge" — and days would force a
+ * two-unit phrase to say something one unit already says clearly.
+ *
+ * **`hr` and `min`, never pluralised.** They are unit abbreviations, matching the
+ * `min` the app has always used, so `1 hr` and `6 hr` line up as a column of
+ * chips rather than jittering between two spellings.
+ *
+ * ROUND FIRST, THEN SPLIT — and that ordering is the whole of what the retired
+ * copy got wrong. Taking `Math.floor(m / 60)` and `Math.round(m % 60)` on the raw
+ * input rendered `59.6` as `60 min` (the hour branch was never reached), `NaN` as
+ * `NaN h NaN min`, and `-5` as `-1 h -5 min`. The schema types these as `number`
+ * and an imported recipe can carry a fractional one, so all three were reachable.
+ * Anything non-finite or at or below zero is `0 min`, which is the honest
+ * rendering of a nonsense value and never a thrown error on a page whose only job
+ * is to display it.
+ */
 export function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const rest = Math.round(minutes % 60);
-  if (hours === 0) return `${rest} min`;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+  const whole = Math.round(minutes);
+  if (!Number.isFinite(whole) || whole <= 0) return '0 min';
+  if (whole < MINUTES_PER_HOUR) return `${whole} min`;
+
+  const hours = Math.floor(whole / MINUTES_PER_HOUR);
+  const rest = whole % MINUTES_PER_HOUR;
+  return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
 }
 
 /**
  * What the recipe ACTUALLY SAID a stage takes — never the single number the
  * schedule had to commit to.
  *
- * A range stays a range ("45 min – 1 h"). `resolveSchedule` places it at its long
+ * A range stays a range ("45 min – 1 hr"). `resolveSchedule` places it at its long
  * end and the frozen stage keeps the whole `duration` precisely so a screen can
  * show both; collapsing it here would throw away the honesty the schema went out
  * of its way to preserve.

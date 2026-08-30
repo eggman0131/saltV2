@@ -9,7 +9,7 @@
     SheetHeader,
     SheetTitle,
   } from '@salt/ui-components';
-  import { appendCacheBuster, hasComponents, type Recipe } from '@salt/domain';
+  import { recipeHeroUrl, hasComponents, type Recipe } from '@salt/domain';
   import { formatDayKey } from '../../lib/dateFormat.js';
   import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
 
@@ -153,16 +153,6 @@
   function nightLabel(date: string): string {
     return formatDayKey(date, { weekday: 'long', day: 'numeric', month: 'short' });
   }
-
-  // Display-time cache-bust, same rule as the planner's own recipe rows (#460):
-  // a regenerated hero reuses its Storage URL, so the per-regeneration nonce is
-  // what makes the new picture appear. Null when there is no image — the row then
-  // wears the kind's pictogram.
-  function heroUrl(recipe: Recipe): string | null {
-    return recipe.image?.url
-      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
-      : null;
-  }
 </script>
 
 <!-- `side="bottom"` explicitly: the primitive defaults to 'right', and this is a
@@ -199,7 +189,7 @@
           </p>
           {#each night.groups as group (group.lead.recipe.id)}
             {@const entry = group.lead}
-            {@const url = heroUrl(entry.recipe)}
+            {@const url = recipeHeroUrl(entry.recipe)}
             <div
               class="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-sm"
               data-testid={`shop-week-row-${night.date}-${entry.recipe.id}`}

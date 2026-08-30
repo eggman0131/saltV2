@@ -239,3 +239,91 @@ describe("ShoppingListPage — the edit sheet's Sources block", () => {
     expect(within(sources).queryAllByRole('button')).toHaveLength(0);
   });
 });
+
+// Issue #933 characterisation net. `ShoppingItemRow.svelte`'s `sourceLabel` and
+// `ShoppingListPage.svelte`'s `describeSource` both render the same `SourceRef`,
+// and they DISAGREE on a `manual` source with no `addedBy`: `sourceLabel`
+// returns `''`, which the row's `{#if showSource && sourceLabel(item)}` guard
+// turns into no sub-line at all; `describeSource` returns `'Added manually'`,
+// which the edit sheet shows. A later phase makes the row say "Added manually"
+// too — at that point these two pinned answers are EXPECTED to converge, and
+// this test's "no sub-line" half should be the one that changes, not the
+// sheet's. The other two shapes (`manual` WITH `addedBy`, and a `recipe`
+// source) already agree and must stay that way.
+describe('ShoppingListPage — the row and the sheet describe a source the same way (#933)', () => {
+  it('EXCEPTION 3: the ROW now says "Added manually" for a manual source with no addedBy', async () => {
+    // The flip. This row rendered NOTHING before Phase 7 — `sourceLabel`
+    // returned `''` and the template's `{#if showSource && sourceLabel(item)}`
+    // guard swallowed it — so an item added by hand by someone signed out was
+    // indistinguishable in the list from an item with no source at all, while
+    // the edit sheet said exactly what it was.
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).toContain('Added manually');
+  });
+
+  it('EXCEPTION 3: the EDIT SHEET says the same thing it always did', async () => {
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    await openEditSheet(findByTestId);
+
+    const sources = await findByTestId('shopping-edit-sources');
+    expect(sources.textContent).toContain('Added manually');
+  });
+
+  it('EXCEPTION 3: and the two now agree, which is the whole point of the phase', async () => {
+    // The convergence stated as one assertion rather than inferred from the two
+    // above passing separately.
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    const rowSaid = row.textContent ?? '';
+
+    await openEditSheet(findByTestId);
+    const sources = await findByTestId('shopping-edit-sources');
+
+    expect(rowSaid).toContain('Added manually');
+    expect(sources.textContent).toContain('Added manually');
+  });
+
+  it('must not change: both surfaces already agree once addedBy is set', async () => {
+    mockItems._set([
+      item({
+        id: 'i1',
+        rawText: 'onion',
+        canonId: 'c-onion',
+        sources: [{ kind: 'manual', addedBy: 'Daniel' }],
+      }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).toContain('Added by Daniel');
+
+    await openEditSheet(findByTestId);
+    const sources = await findByTestId('shopping-edit-sources');
+    expect(sources.textContent).toContain('Added by Daniel');
+  });
+
+  it('must not change: a recipe source stays a bare label in the row (the sheet’s label + servings + link is pinned above)', async () => {
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: fromRecipe('Bolognese') }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).toContain('Bolognese');
+    expect(row.textContent).not.toContain('serving');
+  });
+});

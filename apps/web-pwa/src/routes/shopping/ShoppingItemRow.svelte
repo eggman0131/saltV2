@@ -30,6 +30,7 @@
   import { productForms } from '../../lib/productFormService.js';
   import { swipe } from '../../lib/swipe.svelte.js';
   import { revealProgress } from '../../lib/swipe.js';
+  import { describeSource } from '../../lib/shoppingSource.js';
   import CheckOffButton from './CheckOffButton.svelte';
 
   // Only the canon name is read here (for a product-form row's parent headline);
@@ -244,13 +245,15 @@
     return form && form.parentCanonId === value.canonId ? form : null;
   }
 
-  function sourceLabel(value: ShoppingListItem): string {
-    const src = value.sources[0];
-    if (!src) return '';
-    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : '';
-    if (src.kind === 'recipe') return src.label ?? 'Recipe';
-    return '';
-  }
+  // The row describes its FIRST source only, and deliberately: it has one line of
+  // room, and the edit sheet is where every source is listed. What it says about
+  // that source is now `describeSource` — the same function the sheet uses
+  // (issue #933) — where the row previously carried a second answer that
+  // disagreed for a hand-added item with no attributed adder.
+  const source = $derived(item.sources[0] ? describeSource(item.sources[0]) : null);
+  const sourceText = $derived(
+    source === null ? null : source.kind === 'manual' ? source.text : source.name,
+  );
 
   function formatAmount(amount: number | undefined, unit: string | undefined): string | null {
     if (amount === undefined) return null;
@@ -371,8 +374,11 @@
     {#if item.notes}
       <span class="block text-xs text-muted-foreground truncate">{toSentenceCase(item.notes)}</span>
     {/if}
-    {#if showSource && sourceLabel(item)}
-      <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
+    <!-- "Is there a source at all", not "is the label non-empty": a hand-added
+         item with no attributed adder now says "Added manually" here, as it has
+         always said in the edit sheet (issue #933, Behaviour Exception 3). -->
+    {#if showSource && sourceText !== null}
+      <span class="block text-xs text-muted-foreground/70">{sourceText}</span>
     {/if}
   </button>
   {#if pending}

@@ -2,6 +2,7 @@ import { currentStage } from '@salt/domain';
 import type { BatchDoc, BatchStageDoc, BatchTotalsDoc } from '@salt/domain/schemas';
 import { formatInstant } from '../../lib/dateFormat.js';
 import { formatMinutes, formatStatedDuration } from '../../lib/durationDisplay.js';
+import { formatGrams } from '../../lib/quantityDisplay.js';
 
 // How a batch READS (issue #812, phase 1 of epic #778) — the words and formats the
 // two batch screens share, in one place so the list and the run's own page can
@@ -21,13 +22,13 @@ import { formatMinutes, formatStatedDuration } from '../../lib/durationDisplay.j
 // a home. Phase 2's proposal review was that third surface, so they moved to
 // `lib/durationDisplay.ts` and are re-exported here — the batch screens keep
 // importing one display module rather than two.
+//
+// `formatGrams` followed the same road for the same reason and now lives in
+// `lib/quantityDisplay.ts` (issue #933). It is re-exported here rather than
+// re-pointed at both batch screens so that this stays the one display module a
+// batch screen imports; the pattern is deliberate, not an accident to unwind.
 
-export { formatMinutes, formatStatedDuration };
-
-/** A gram figure, already rounded by the domain's one rounding authority. */
-export function formatGrams(grams: number): string {
-  return `${grams} g`;
-}
+export { formatMinutes, formatStatedDuration, formatGrams };
 
 /** True when the stage carries no length — observational, not instantaneous. */
 export function isObservational(stage: BatchStageDoc): boolean {

@@ -337,10 +337,10 @@ describe('RecipeBakeBatchSheet — the proposal reads as a diff', () => {
     expect(screen.getByTestId('bake-batch-rationale')).toHaveTextContent('so you sleep');
     // The ninety-minute bulk is genuinely gone; there is no honest way to say which
     // half inherited it, so nothing pretends one did.
-    expect(rowsOfKind('removed')).toEqual(['Bulk ferment — 1 h 30 min · 20 °C']);
+    expect(rowsOfKind('removed')).toEqual(['Bulk ferment — 1 hr 30 min · 20 °C']);
     expect(rowsOfKind('added')).toEqual([
       'Bulk ferment, counter — 20 min · 20 °C',
-      'Cold retard — 8 h · 4 °C',
+      'Cold retard — 8 hr · 4 °C',
     ]);
     // Mix and Bake were untouched and say nothing, which is what keeps the two rows
     // that matter readable.

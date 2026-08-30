@@ -34,6 +34,7 @@
   import { proposeSchedule, startBatch } from '../../lib/batchService.js';
   import { reviewRows, type ProposalStageRow } from './scheduleProposal.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { formatGrams } from '../../lib/quantityDisplay.js';
 
   // "Bake a batch" (issue #812, phases 1 and 2 of epic #778) — the scale sheet.
   //
@@ -290,10 +291,6 @@
         return "This formula doesn't resolve into weights.";
     }
   });
-
-  function formatGrams(grams: number): string {
-    return `${grams} g`;
-  }
 
   // ─── The review ───────────────────────────────────────────────────────────────
 

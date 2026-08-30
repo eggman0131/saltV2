@@ -284,7 +284,7 @@ describe('BatchDetailPage — the schedule', () => {
     await waitFor(() => expect(screen.getByTestId('batch-stages')).toBeInTheDocument());
     const bulk = screen.getAllByTestId('batch-stage')[1]!;
     expect(bulk.querySelector('[data-testid="batch-stage-stated"]')).toHaveTextContent(
-      '45 min – 1 h',
+      '45 min – 1 hr',
     );
     expect(bulk.querySelector('[data-testid="batch-stage-stated"]')).toHaveTextContent(
       'planned at the long end',

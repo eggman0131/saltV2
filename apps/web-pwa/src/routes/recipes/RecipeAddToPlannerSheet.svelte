@@ -10,6 +10,7 @@
   } from '@salt/ui-components';
   import { addCalendarDays, weekStartFor, type Recipe } from '@salt/domain';
   import { formatDayKey } from '../../lib/dateFormat.js';
+  import { todayIso } from '../../lib/today.js';
   import { addRecipeToDay, firstDayOfWeek } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -32,12 +33,6 @@
     open: boolean;
   }
   let { recipe, open = $bindable() }: Props = $props();
-
-  // Today as the same local `YYYY-MM-DD` the planner keys days by (en-CA renders
-  // local-tz ISO order — the trick mealPlanService already uses).
-  function todayIso(): string {
-    return new Date().toLocaleDateString('en-CA');
-  }
 
   let selected = $state(todayIso());
   // First of the month on show. The grid derives from this; nothing else does.

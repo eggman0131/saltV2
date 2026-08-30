@@ -7,6 +7,7 @@ import {
   type DeckThresholds,
 } from './cookDeck.js';
 import { createDeckSpring } from './deckSpring.svelte.js';
+import { DRAG_START_PX } from './swipe.js';
 
 /**
  * A gesture-owned pager over a column of sections — the machinery cook mode's step deck
@@ -44,7 +45,6 @@ import { createDeckSpring } from './deckSpring.svelte.js';
 // paging (the recipe chat drawer, issue #696).
 
 /** Slop before a touch counts as a drag rather than a tap. */
-const DRAG_START_PX = 6;
 /** How long the wheel must go quiet before the deck settles to a stop. */
 const WHEEL_IDLE_MS = 110;
 /** A wheel line, in px, when the browser reports `deltaMode: 1` (Firefox). */

@@ -327,7 +327,15 @@ export type {
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"
 // projection, and the one-shop-per-week reducer. No I/O, no clock.
+//
+// `dateInZone` was the one of the four the module barrel exported and this one
+// did not, and that omission had a cost: five call sites in `web-pwa` wrote
+// `new Date().toLocaleDateString('en-CA')` out again rather than import the rule
+// (issue #933). It is the same projection with the zone named rather than
+// implied, so the caller supplies both the instant and the zone — Rule 1 keeps
+// the clock out of here.
 export {
+  dateInZone,
   addCalendarDays,
   daysBetween,
   tomorrowInZone,
@@ -387,7 +395,7 @@ export { freezeBatch, currentStage, withStageAdvanced, withBatchAbandoned } from
 export type { FreezeBatchFailure } from './batch/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
-export { appendCacheBuster } from './url/index.js';
+export { appendCacheBuster, recipeHeroUrl, type HeroImageSource } from './url/index.js';
 
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

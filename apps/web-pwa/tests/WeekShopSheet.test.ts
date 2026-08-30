@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { appendCacheBuster } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 
 import WeekShopSheet from '../src/routes/mealplan/WeekShopSheet.svelte';
@@ -14,7 +15,12 @@ import WeekShopSheet from '../src/routes/mealplan/WeekShopSheet.svelte';
 // what comes back out is still a FLAT list of entries, in the order the rows
 // offered them, because the page opens one review sheet per entry in it.
 
-function makeRecipe(id: string, title: string, componentRecipeIds: string[] = []): Recipe {
+function makeRecipe(
+  id: string,
+  title: string,
+  componentRecipeIds: string[] = [],
+  overrides: Partial<Recipe> = {},
+): Recipe {
   return {
     kit: [],
     createdBy: '',
@@ -40,6 +46,7 @@ function makeRecipe(id: string, title: string, componentRecipeIds: string[] = []
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -233,5 +240,47 @@ describe('WeekShopSheet — what a meal does NOT swallow', () => {
     expect(rowTitles()).toEqual(['Fish pie', 'Onion gravy']);
     await confirm();
     expect(onConfirm.mock.calls[0]![0].map((e: Entry) => e.recipe.id)).toEqual(['pie', 'gravy']);
+  });
+});
+
+// ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────
+// This is issue #933's characterisation net for the "hero URL" rule — one of
+// eight identical copies of `appendCacheBuster(recipe.image.url,
+// recipe.imageRequestedAt ?? recipe.updatedAt)` scattered across web-pwa, here
+// at the row thumbnail. It must stay green, UNMODIFIED, once all eight collapse
+// onto one shared `@salt/domain` function. Expectations are computed by calling
+// the REAL `appendCacheBuster` rather than hand-encoding a query string. The
+// `<img>` here carries no testid of its own — only the row does — so it is
+// queried off the row's DOM directly.
+describe('WeekShopSheet — hero URL rule (issue #933 characterisation)', () => {
+  it.each([
+    { name: 'busts with imageRequestedAt when present', imageRequestedAt: 5000 },
+    {
+      name: 'falls back to updatedAt when imageRequestedAt is absent',
+      imageRequestedAt: undefined,
+    },
+  ])('$name', async ({ imageRequestedAt }) => {
+    const url = 'http://img.test/hero-rule.jpg';
+    const heroRecipe = makeRecipe('hero-rule', 'Hero Rule', [], {
+      image: { url, source: 'ai' },
+      ...(imageRequestedAt !== undefined ? { imageRequestedAt } : {}),
+      updatedAt: '2026-01-05T00:00:00.000Z',
+    });
+    renderSheet([entry(SUNDAY, heroRecipe)]);
+    await waitFor(() => expect(screen.getByTestId('shop-week-list')).toBeInTheDocument());
+
+    const row = screen.getByTestId(`shop-week-row-${SUNDAY}-hero-rule`);
+    expect(row.querySelector('img')).toHaveAttribute(
+      'src',
+      appendCacheBuster(url, imageRequestedAt ?? heroRecipe.updatedAt),
+    );
+  });
+
+  it('shows the fallback pictogram, not an img, when there is no image', async () => {
+    renderSheet([entry(SUNDAY, makeRecipe('hero-none', 'Hero None'))]);
+    await waitFor(() => expect(screen.getByTestId('shop-week-list')).toBeInTheDocument());
+
+    const row = screen.getByTestId(`shop-week-row-${SUNDAY}-hero-none`);
+    expect(row.querySelector('img')).toBeNull();
   });
 });
