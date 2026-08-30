@@ -17,6 +17,7 @@
     SelectAllCheckbox,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
     Select,
     SelectContent,
@@ -870,37 +871,33 @@
           <p class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Sort by
           </p>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="Check"
+            iconVisible={sortMode === 'aisle'}
             onclick={() => selectSortMode('aisle')}
             data-testid="shopping-sort-aisle"
           >
-            <Icon name="Check" size={14} class={sortMode === 'aisle' ? '' : 'invisible'} />
             Aisle
-          </button>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          </PopoverMenuItem>
+          <PopoverMenuItem
+            icon="Check"
+            iconVisible={sortMode === 'recipe'}
             onclick={() => selectSortMode('recipe')}
             data-testid="shopping-sort-recipe"
           >
-            <Icon name="Check" size={14} class={sortMode === 'recipe' ? '' : 'invisible'} />
             Recipe
-          </button>
+          </PopoverMenuItem>
           <div class="my-1 h-px bg-border"></div>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon="LayoutList"
             onclick={() => {
               overflowMenuOpen = false;
               push('/shopping/lists');
             }}
             data-testid="shopping-lists-btn"
           >
-            <Icon name="LayoutList" size={14} />
             Manage lists
-          </button>
+          </PopoverMenuItem>
         </PopoverContent>
       </Popover>
     {/snippet}
@@ -923,12 +920,8 @@
           </PopoverTrigger>
           <PopoverContent align="start" class="p-1 min-w-40">
             {#each $lists as list (list.id)}
-              <button
-                type="button"
-                class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent {list.id ===
-                params.listId
-                  ? 'font-medium'
-                  : ''}"
+              <PopoverMenuItem
+                selected={list.id === params.listId}
                 onclick={() => {
                   listSwitcherOpen = false;
                   push(`/shopping/${list.id}`);
@@ -936,7 +929,7 @@
                 data-testid="shopping-list-picker-option"
               >
                 {list.name}
-              </button>
+              </PopoverMenuItem>
             {/each}
           </PopoverContent>
         </Popover>

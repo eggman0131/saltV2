@@ -7,6 +7,7 @@
     Icon,
     Popover,
     PopoverContent,
+    PopoverMenuItem,
     PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -349,54 +350,46 @@
         {/snippet}
       </PopoverTrigger>
       <PopoverContent align="end" class="min-w-48 p-1">
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        <PopoverMenuItem
+          icon="Link"
           onclick={() => {
             newMenuOpen = false;
             showImport = true;
           }}
           data-testid="recipe-new-import"
         >
-          <Icon name="Link" size={14} />
           Import URL
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Camera"
           onclick={() => {
             newMenuOpen = false;
             showPhotoImport = true;
           }}
           data-testid="recipe-new-import-photo"
         >
-          <Icon name="Camera" size={14} />
           Import from photo
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Sparkles"
           onclick={() => {
             newMenuOpen = false;
             push('/chat');
           }}
           data-testid="recipe-new-chat"
         >
-          <Icon name="Sparkles" size={14} />
           Chat with AI
-        </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+        </PopoverMenuItem>
+        <PopoverMenuItem
+          icon="Pencil"
           onclick={() => {
             newMenuOpen = false;
             push('/recipes/new');
           }}
           data-testid="recipe-new-manual"
         >
-          <Icon name="Pencil" size={14} />
           Manual
-        </button>
+        </PopoverMenuItem>
         <!-- One entry per non-recipe section (issue #637) — "When you CBA", then
              Cocktails. Derived from KIND_SECTIONS rather than written out per kind
              so a section and its way in can never disagree about which kinds
@@ -405,18 +398,16 @@
              The kind is set by the route and never again — there is no selector in
              the editor, because an outing does not become a recipe. -->
         {#each KIND_SECTIONS.slice(1) as kind (kind)}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          <PopoverMenuItem
+            icon={KIND_COPY[kind].menuIcon}
             onclick={() => {
               newMenuOpen = false;
               push(`/recipes/new/${kind}`);
             }}
             data-testid="recipe-new-{kind}"
           >
-            <Icon name={KIND_COPY[kind].menuIcon} size={14} />
             {KIND_COPY[kind].label}
-          </button>
+          </PopoverMenuItem>
         {/each}
       </PopoverContent>
     </Popover>
@@ -528,9 +519,9 @@
             Sort by
           </p>
           {#each Object.entries(SORT_LABELS) as [value, label] (value)}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            <PopoverMenuItem
+              icon="Check"
+              iconVisible={sortBy === value}
               onclick={() => {
                 sortBy = value as SortBy;
                 sortMenuOpen = false;
@@ -538,9 +529,8 @@
               data-testid="recipe-sort-option"
               data-sort={value}
             >
-              <Icon name="Check" size={14} class={sortBy === value ? '' : 'invisible'} />
               {label}
-            </button>
+            </PopoverMenuItem>
           {/each}
         </PopoverContent>
       </Popover>

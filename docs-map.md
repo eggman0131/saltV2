@@ -95,7 +95,12 @@ fails CI on a row that routes nothing or links to a file that is gone.
   not exist, so it ratifies what is already live rather than planning something
   new. Read §8.31.2 before reaching for either state panel — empty is
   `role="status"` and error is `role="alert"`, and that split is why there are
-  two components and not one with a `tone`. Touching
+  two components and not one with a `tone`,
+  [v14](docs/design/ui-spec-v14.md) `PopoverMenuItem` (§8.33 — one row of the
+  menu a `PopoverContent` holds; the string it replaces was hand-written 28
+  times across four pages and still climbing, and §8.33.5/§8.33.6 record the two
+  tokens the component adds to some of those rows and why each is inert where it
+  was not written before). Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.
