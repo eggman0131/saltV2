@@ -1,13 +1,8 @@
-import { z } from 'genkit';
+import { GenerateChatTitleInputSchema, GenerateChatTitleOutputSchema } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
-
-const InputSchema = z.object({
-  userMessage: z.string(),
-  assistantResponse: z.string(),
-});
 
 const SYSTEM_PROMPT = `You are a conversation title generator.
 Given the user's first message to a cooking assistant and the assistant's first reply,
@@ -18,8 +13,8 @@ Output only the title — no quotes, no punctuation, no explanation.`;
 export const generateChatTitleFlow = ai.defineFlow(
   {
     name: 'generateChatTitle',
-    inputSchema: InputSchema,
-    outputSchema: z.string(),
+    inputSchema: GenerateChatTitleInputSchema,
+    outputSchema: GenerateChatTitleOutputSchema,
   },
   async (input) => {
     const prompt = `User's message: "${input.userMessage}"\n\nChef's reply:\n${input.assistantResponse.slice(0, 500)}`;

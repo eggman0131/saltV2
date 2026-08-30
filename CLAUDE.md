@@ -130,7 +130,7 @@ never find.
 
 ## Zod schema conventions
 
-- **Schemas live in `@salt/domain/schemas`.** Defined under `packages/domain/src/schemas/`, exported via the `@salt/domain/schemas` subpath. Never in adapters, apps, or `@salt/shared-types`.
+- **SHARED schemas live in `@salt/domain/schemas`.** Any shape crossing an `@salt` boundary — every Firestore document, every flow/callable wire contract an adapter also names — is defined under `packages/domain/src/schemas/` and never in an adapter, an app, or `@salt/shared-types`. Narrowed from "never in apps" by #932: a schema wholly internal to one app, crossing no boundary and having no second declaration to drift from, may stay there — parsers for third-party responses (scraped JSON-LD, Google's model catalog) and admin-only callable inputs are the standing cases. Moving those would put a foreign wire shape in the pure domain with no consumer. If an adapter also names the shape, it is shared, and it moves.
 - **Schema-first.** Define the schema, derive the type with `z.infer`. Never maintain a hand-written type alongside a schema for the same shape.
 - **Validate at trust boundaries only** — AI/Genkit flow outputs, Firestore reads (in `firebase-sync`), callable CF inputs, and "type laundering" sites (`as` casts, `unknown` narrowings, `JSON.parse`, string → structured parsers). **Not** on internal domain → domain calls, adapter internals, or anything the compiler already proves.
 - **Always `.safeParse()`, never `.parse()`** at those boundaries. What to do with the failure differs per boundary and is tabulated in [docs/data-model.md](docs/data-model.md) — the short version: adapters return `Failure`, list reads skip the bad doc, callables throw `HttpsError`, triggers log and return.

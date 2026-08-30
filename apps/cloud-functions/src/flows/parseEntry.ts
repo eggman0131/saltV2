@@ -1,13 +1,9 @@
 import { z } from 'genkit';
-import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
+import { ParseEntryAIOutputSchema, ParseEntryInputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
-
-const ParseEntryInputSchema = z.object({
-  rawText: z.string(),
-});
 
 export const parseEntryFlow = ai.defineFlow(
   {

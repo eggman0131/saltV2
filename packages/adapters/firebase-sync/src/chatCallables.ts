@@ -1,5 +1,9 @@
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
-import type { ChefChatInput } from '@salt/domain/schemas';
+import type {
+  ChefChatInput,
+  GenerateChatTitleInput,
+  GenerateChatTitleOutput,
+} from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
 import { callableRef, callFunction } from './callFunction.js';
 
@@ -7,7 +11,7 @@ export async function callGenerateChatTitle(
   userMessage: string,
   assistantResponse: string,
 ): Promise<ReadResult<string, DomainError>> {
-  return callFunction<{ userMessage: string; assistantResponse: string }, string>({
+  return callFunction<GenerateChatTitleInput, GenerateChatTitleOutput>({
     name: 'generateChatTitle',
     input: { userMessage, assistantResponse },
   });

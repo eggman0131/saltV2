@@ -15,17 +15,21 @@ export type {
   ProductFormProposal,
 } from './productFormArbitration.js';
 
-export { EmbedTextInputSchema } from './embedTextInput.js';
+export { EmbedTextInputSchema, EmbedTextOutputSchema } from './embedTextInput.js';
 export {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from './identifyEquipment.js';
-export { ParseEntryAIOutputSchema } from './parseEntry.js';
+export { ParseEntryAIOutputSchema, ParseEntryInputSchema } from './parseEntry.js';
+export type { ParseEntryInput } from './parseEntry.js';
 export {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from './populateEquipmentEntry.js';
-export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
+export {
+  MatchOrCreateCanonInputSchema,
+  MatchOrCreateCanonOutputSchema,
+} from './matchOrCreateCanonInput.js';
 // Browser→CF trace-continuity wire envelopes (issue #362): the base callable
 // input + an optional, named, typed `traceparent` transport field. The CF
 // entrypoint validates these, strips `traceparent`, and passes the pure domain
@@ -49,7 +53,11 @@ export type {
   OpenMeteoForecastResponse,
 } from './weatherForecast.js';
 
-export { CanonicaliseRecipeIngredientsInputSchema } from './canonicaliseRecipeIngredientsInput.js';
+export {
+  CanonicaliseRecipeIngredientsInputSchema,
+  CanonicaliseRecipeIngredientsItemSchema,
+  CanonicaliseRecipeIngredientsOutputSchema,
+} from './canonicaliseRecipeIngredientsInput.js';
 export type { CanonicaliseRecipeIngredientsInput } from './canonicaliseRecipeIngredientsInput.js';
 
 export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
@@ -191,7 +199,7 @@ export type { PendingEmailOtp } from './emailOtp.js';
 export { PushSubscriptionSchema } from './pushSubscription.js';
 export type { PushSubscriptionDoc } from './pushSubscription.js';
 
-export { ChefChatInputSchema } from './chefChat.js';
+export { ChefChatInputSchema, ChefChatOutputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
 // identifyRecipeKit (issue #882) — "what do I need to get out?", inferred from the
@@ -235,6 +243,11 @@ export type {
 } from './describeEquipmentSubject.js';
 
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
+export {
+  GenerateChatTitleInputSchema,
+  GenerateChatTitleOutputSchema,
+} from './generateChatTitle.js';
+export type { GenerateChatTitleInput, GenerateChatTitleOutput } from './generateChatTitle.js';
 export type { AuthorRecipeInput, LibrarianOutput } from './authorRecipe.js';
 
 export {

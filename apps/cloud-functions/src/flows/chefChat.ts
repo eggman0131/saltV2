@@ -1,7 +1,7 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { ChefChatInputSchema } from '@salt/domain/schemas';
+import { ChefChatInputSchema, ChefChatOutputSchema } from '@salt/domain/schemas';
 import { RecipeSchema } from '@salt/domain/schemas';
 import { CanonItemSchema, CanonPurchaseCountsSchema } from '@salt/domain/schemas';
 import {
@@ -219,8 +219,8 @@ export const chefChatFlow = ai.defineFlow(
   {
     name: 'chefChat',
     inputSchema: ChefChatInputSchema,
-    outputSchema: z.string(),
-    streamSchema: z.string(),
+    outputSchema: ChefChatOutputSchema,
+    streamSchema: ChefChatOutputSchema,
   },
   async (input, streamingCallback) => {
     try {
