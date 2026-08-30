@@ -1,10 +1,6 @@
 import type { ProcessStage, StageDuration, StageEnvironment } from '../schemas/index.js';
 import type { ProposedStage } from '../schemas/proposeSchedule.js';
-import type {
-  ProcessDiff,
-  ProcessStageChange,
-  ProcessStageDiffEntry,
-} from '../schemas/processDiff.js';
+import type { ProcessDiff, ProcessStageChange, ProcessStageDiffEntry } from './processDiff.js';
 
 // Rendering a proposed restructure for review (issue #812, phase 2 of epic #778).
 //

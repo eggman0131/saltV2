@@ -62,6 +62,11 @@ export { hasRecipeChanged } from './queries/hasRecipeChanged.js';
 export { kitByStep } from './queries/kitByStep.js';
 export { findProducingRecipes } from './queries/producers.js';
 export { diffRecipe } from './queries/diffRecipe.js';
+// The diff's own contract, beside the function that produces it since #973 (it
+// was zod in `schemas/` until then, and validated nothing). Only the three names
+// with importers are re-exported; the rest of the shape stays internal to the
+// file, exactly as `schemas/index.ts` exposed three of thirteen before.
+export type { NullableStringChange, StepChange, RecipeDiff } from './queries/recipeDiff.js';
 // One level below diffRecipe: what moved INSIDE a changed field, so the review
 // gate can show a reword as the words that differ (issue #825).
 export { diffWords, unchangedRatio } from './queries/diffWords.js';

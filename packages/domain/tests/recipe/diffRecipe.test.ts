@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { diffRecipe, emptyRecipe, newIngredient, newStep } from '@salt/domain';
 import type { Recipe, Ingredient, Step } from '@salt/domain';
-import type { RecipeDiff } from '@salt/domain/schemas';
+import type { RecipeDiff } from '@salt/domain';
 
 const ISO = '2026-01-01T00:00:00.000Z';
 

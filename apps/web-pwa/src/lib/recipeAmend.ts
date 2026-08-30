@@ -1,5 +1,6 @@
 import { diffRecipe, type Recipe } from '@salt/domain';
-import type { AuthorRecipeInput, RecipeDiff, RecipeDoc } from '@salt/domain/schemas';
+import type { RecipeDiff } from '@salt/domain';
+import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
 import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { authorRecipeTraced, stampRecipeAttribution } from './recipeService.js';

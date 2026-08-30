@@ -234,6 +234,7 @@ export {
 export type { CookShapeSegment } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
+export type { NullableStringChange, StepChange, RecipeDiff } from './recipe/index.js';
 export { parseImportUrl, isHttpsScheme, hostnameAsIpLiteral, isPublicIp } from './recipe/index.js';
 
 // Weather module — pure forecast aggregation + staleness logic (Phase 2) and
@@ -387,7 +388,12 @@ export {
   diffProcess,
   remindableStages,
 } from './process/index.js';
-export type { ScheduleAnchor } from './process/index.js';
+export type {
+  ScheduleAnchor,
+  ProcessStageDiffEntry,
+  ProcessStageChange,
+  ProcessDiff,
+} from './process/index.js';
 
 // Batch module (issue #812, epic #778) — one run of a formula: the freeze that
 // starts it, and the producers that move it along. Pure; every instant injected.

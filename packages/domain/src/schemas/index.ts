@@ -268,12 +268,6 @@ export type {
   RecipeDoc,
 } from './recipe.js';
 
-// `RecipeDiffSchema` is exported alongside the type it derives: it is the source
-// of truth for `RecipeDiff` (schema-first, CLAUDE.md), and a type-only export
-// would leave the zod unreachable at runtime.
-export { RecipeDiffSchema } from './recipeDiff.js';
-export type { NullableStringChange, StepChange, RecipeDiff } from './recipeDiff.js';
-
 // Formula module (issue #782) — composition as ratios against a declared basis.
 // Written to `formulas/{recipeId}` since issue #806; the shape is unchanged from
 // #782, which landed the schema alongside the pure arithmetic typed against it.
@@ -324,13 +318,6 @@ export type {
   ComponentAdjustment,
   ProposeScheduleOutput,
 } from './proposeSchedule.js';
-
-// Process diff (issue #812, phase 2) — the render contract for reviewing a
-// proposed restructure. NEVER persisted, so there is no back-compat surface, and
-// there is deliberately no `split`: one stage becoming two is a removal plus two
-// additions. `recipeDiff` is the precedent.
-export { ProcessDiffSchema } from './processDiff.js';
-export type { ProcessStageDiffEntry, ProcessDiff } from './processDiff.js';
 
 // Batch (issue #812, phase 1) — ONE RUN at `batches/{batchId}`, family-shared with
 // a random id. Everything on it is FROZEN at start: resolved grams AND their

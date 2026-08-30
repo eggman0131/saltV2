@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/svelte';
-import type { RecipeDiff } from '@salt/domain/schemas';
+import type { RecipeDiff } from '@salt/domain';
 import RecipeChangeSummary from '../src/routes/recipes/RecipeChangeSummary.svelte';
 
 // The review gate reads as a diff, not a wall of text (issue #825). What is

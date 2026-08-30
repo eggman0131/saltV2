@@ -18,7 +18,7 @@
 // proposal flow (#812 phase 2) restructures a process, and a restructure is only
 // reviewable as a diff. It is pure in the strictest sense — BOTH sides are
 // arguments, so it can never reach for "the current process" — and it produces the
-// never-persisted render contract in `schemas/processDiff.ts`.
+// never-persisted render contract in `processDiff.ts` beside it.
 export { withStageAdded, withStageRemoved, withStageUpdated, withStageMoved } from './stages.js';
 export { totalDurationMinutes } from './totalDuration.js';
 export type { DurationRange } from './totalDuration.js';
@@ -30,6 +30,7 @@ export type {
   ResolveScheduleResult,
 } from './resolveSchedule.js';
 export { diffProcess } from './diffProcess.js';
+export type { ProcessStageDiffEntry, ProcessStageChange, ProcessDiff } from './processDiff.js';
 // Which stages are worth a notification (#812 phase 3). Here rather than in
 // `batch/` for the same reason `resolveSchedule` is: it is a fact about the shape
 // of a PROCESS — where the unattended periods end — and the batch is only its
