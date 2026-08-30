@@ -64,6 +64,11 @@ export {
   setCanonItemThreshold,
 } from './commands/setCanonItemShoppingFields.js';
 export { setCanonItemThumbnail } from './commands/setCanonItemThumbnail.js';
+// The one description of an icon-regeneration write (issue #1054), shared by the
+// admin screens and the canon/product-form callables — different apps that
+// cannot import each other.
+export { iconRegenerationFields } from './commands/iconRegenerationFields.js';
+export type { IconRegenerationFields } from './commands/iconRegenerationFields.js';
 export { createAisle } from './commands/createAisle.js';
 export type { CreateAisleInput } from './commands/createAisle.js';
 export { createAislesBulk } from './commands/createAislesBulk.js';

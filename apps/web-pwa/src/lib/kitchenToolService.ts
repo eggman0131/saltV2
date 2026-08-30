@@ -9,6 +9,7 @@ import {
   isCanonIconRenderable,
   createKitchenTool,
   updateKitchenTool,
+  iconRegenerationFields,
   CANON_ICON_HIDDEN,
 } from '@salt/domain';
 import type { CreateKitchenToolInput, UpdateKitchenToolInput } from '@salt/domain';
@@ -193,18 +194,15 @@ export async function removeKitchenTool(id: string): Promise<Result<void, Domain
 /**
  * Regenerate a tool's icon.
  *
- * This reproduces `requestIconRegeneration`'s server-side write field for field,
- * and every field is load-bearing. Clearing `thumbnail` is what re-fires the
- * `onKitchenToolWritten` icon branch. The `iconRequestedAt` nonce is what makes
- * the clear a real write: when the tool has no icon YET, `thumbnail` is already
- * null, so writing null again mutates nothing, Firestore emits no write event and
- * the trigger never runs — which is exactly the case a person hits when a
- * just-added tool's drawing fails to arrive. And passing no `hint` DELETES any
- * stale one, so a plain regenerate is plain rather than silently inheriting the
- * last steer somebody typed.
+ * The fields written are `@salt/domain`'s `iconRegenerationFields` — the same
+ * ones the canon and product-form callables write, which live in an app this one
+ * cannot import. Why each field is load-bearing is documented there.
  *
- * The write is a whole-document `setDoc`, so dropping the key IS the delete —
- * there is no `FieldValue.delete()` to reach for and no merge to write around.
+ * What is THIS side's, and stays here: the write is a whole-document `setDoc`,
+ * so dropping the `iconHint` key IS the delete — there is no `FieldValue.delete()`
+ * to reach for and no merge to write around. That is what the destructure below
+ * is doing, and it is why the shared piece is a field builder rather than a
+ * shared write.
  */
 export async function regenerateKitchenToolIcon(
   id: string,
@@ -215,12 +213,7 @@ export async function regenerateKitchenToolIcon(
   // was already open, which is an expected race and not a defect (§7.6).
   if (!tool) return failure({ kind: 'NotFound', resource: 'kitchenTool', id });
   const { iconHint: _stale, ...rest } = tool;
-  return commitKitchenTool({
-    ...rest,
-    thumbnail: null,
-    ...(hint?.trim() ? { iconHint: hint.trim() } : {}),
-    iconRequestedAt: Date.now(),
-  });
+  return commitKitchenTool({ ...rest, ...iconRegenerationFields(Date.now(), hint) });
 }
 
 /** Hide a tool's icon: sets `thumbnail` to the shared "hidden" sentinel so the

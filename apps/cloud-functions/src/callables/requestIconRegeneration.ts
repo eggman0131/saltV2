@@ -1,4 +1,5 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { iconRegenerationFields } from '@salt/domain';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 /**
@@ -14,6 +15,12 @@ import { reportFlowError } from '../observability/reportServerError.js';
  * Passing no `hint` deletes any stale hint, so a plain regenerate is plain rather
  * than silently inheriting the last steer someone typed.
  *
+ * The field set itself is `@salt/domain`'s `iconRegenerationFields`, shared with
+ * the admin screens' `regenerateKitchenToolIcon` — an app this one cannot import.
+ * What is NOT shared is the delete: this is a partial `.update()`, where an
+ * absent key means "leave it alone", so the delete has to be spelled out. The
+ * client's whole-document `setDoc` deletes by omission instead.
+ *
  * Parameterised on collection because the two callables differ ONLY in which
  * collection and which id field they address — the semantics above are one
  * behaviour, and two copies of them would be two places to get the nonce wrong.
@@ -25,14 +32,17 @@ export async function requestIconRegeneration(
   id: string,
   hint: string | undefined,
 ): Promise<void> {
+  const fields = iconRegenerationFields(Date.now(), hint);
   try {
     await getFirestore()
       .collection(collection)
       .doc(id)
       .update({
-        thumbnail: null,
-        iconHint: hint ? hint : FieldValue.delete(),
-        iconRequestedAt: Date.now(),
+        ...fields,
+        // Absence is the builder's way of saying "no steer"; on a partial update
+        // it has to become an explicit delete. Never `iconHint: undefined` —
+        // the Admin SDK rejects that outright.
+        ...('iconHint' in fields ? {} : { iconHint: FieldValue.delete() }),
       });
   } catch (err) {
     // An unexpected Firestore write failure (StorageError-class) — report it

@@ -50,8 +50,12 @@ export {
   setCanonItemShoppingBehavior,
   setCanonItemThreshold,
   setCanonItemThumbnail,
+  // The one description of an icon-regeneration write (issue #1054) — the admin
+  // screens and the canon/product-form callables are different apps and cannot
+  // import each other, so the field set they must agree on lives here.
+  iconRegenerationFields,
 } from './canon/index.js';
-export type { ApproveCanonItemOverrides } from './canon/index.js';
+export type { ApproveCanonItemOverrides, IconRegenerationFields } from './canon/index.js';
 
 // ProductForm module — published surface.
 export type {
