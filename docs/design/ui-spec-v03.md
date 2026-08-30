@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.3.4, Draft for Planning)
+# Salt 2.0 — UI Primitives Specification (v0.3.5, Draft for Planning)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
@@ -285,14 +285,34 @@ APG pattern: **Dialog** (non-modal variant is out of scope; Sheet is modal).
 
 ### 5.2 Parts
 
-- `Sheet.svelte` (Root)
-- `SheetTrigger.svelte`
-- `SheetContent.svelte`
-- `SheetHeader.svelte`
-- `SheetTitle.svelte`
-- `SheetDescription.svelte`
-- `SheetFooter.svelte`
-- `SheetClose.svelte`
+Sheet publishes eight parts. Four of them are Sheet's own files; four are Dialog's
+files published under Sheet names, because they never differed — a Sheet *is* a
+bits-ui `Dialog` with a side, and `SheetClose`, `SheetTitle`, `SheetDescription`
+and `SheetHeader` rendered byte-identical markup to their Dialog counterparts.
+Sharing the file is what makes a fix to one reach the other; ui-spec-v02 §3.1 is
+the rule this follows.
+
+| Part                  | File                                     |
+| --------------------- | ---------------------------------------- |
+| `Sheet` (root)        | `Sheet/Sheet.svelte`                     |
+| `SheetTrigger`        | `Sheet/SheetTrigger.svelte`              |
+| `SheetContent`        | `Sheet/SheetContent.svelte`              |
+| `SheetFooter`         | `Sheet/SheetFooter.svelte`               |
+| `SheetHeader`         | `Dialog/DialogHeader.svelte`             |
+| `SheetTitle`          | `Dialog/DialogTitle.svelte`              |
+| `SheetDescription`    | `Dialog/DialogDescription.svelte`        |
+| `SheetClose`          | `Dialog/DialogClose.svelte`              |
+
+The four that stay Sheet's own are the four that genuinely differ: the root takes
+`side`; `SheetContent` calls `sheetContentVariants` and publishes its own portal
+container (#691); `SheetFooter` is `flex justify-end gap-2` where `DialogFooter` is
+`flex flex-col-reverse gap-2 sm:flex-row sm:justify-end`; and `SheetTrigger`
+forwards `class` (§5.3.1) where `DialogTrigger` does not. **Sharing is by identity,
+not by resemblance** — a part that differs at all stays two files.
+
+The public surface is unchanged by this: every one of the eight names is still
+exported from `@salt/ui-components`, and `SheetPartProps` (§5.3.1) remains Sheet's
+own type.
 
 ### 5.3 Root Props
 
@@ -464,6 +484,7 @@ Amendments follow the v0.2 procedure (ui-spec-v02 §1.5): bump the version in th
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-30 | v0.3.5  | §5.2 Parts: recorded which Sheet parts are Sheet's own files and which are **Dialog's files published under Sheet names**. `SheetClose`, `SheetTitle`, `SheetDescription` and `SheetHeader` rendered byte-identical markup to their Dialog counterparts, so the four Sheet copies are deleted and `src/index.ts` publishes Dialog's under both names — a fix to one now reaches the other, which nothing in the suite would previously have caught. The root, `SheetContent`, `SheetFooter` and `SheetTrigger` stay Sheet's own, because each genuinely differs (`side`; `sheetContentVariants` plus the #691 portal container; `justify-end` vs `flex-col-reverse sm:flex-row sm:justify-end`; and `SheetTrigger` forwarding `class` per §5.3.1). Sharing is by identity, not resemblance. No public export name and no rendered DOM changed. Rule: ui-spec-v02 §3.1 (v0.2.18). Re-stamped `DialogClose`, `DialogTitle`, `DialogDescription` and `DialogHeader` with dual citations. Issue #929 Phase 1. |
 | 2026-08-15 | v0.3.4  | §3.4 Select: specified `SelectTrigger`'s **default label rendering** — the single `<span>`, the `displayLabel ?? placeholder ?? 'Select…'` precedence and that the `'Select…'` literal is a non-configurable last resort, and the empty-vs-filled styling (`text-foreground` / `text-placeholder italic`). All of it shipped undocumented; a second undocumented state was not worth leaving behind while amending the same line. The empty branch is the **one** placeholder in Salt written by hand: its text is a `<span>`, not a `::placeholder` pseudo-element, so the base rule that now styles every other field (ui-spec-v02 §4.1) cannot reach it — the two must be kept in step. Re-stamped `SelectTrigger.svelte` (§3 → §3.4). Issue #821 Phase 1. **v0.3.3 is absent from this table on purpose:** the header was bumped to it without a row being added, so the number is already spent — pre-existing doc drift, not amended here. |
 | 2026-07-28 | v0.3.2  | §5.3.1 Sheet: recorded the shared `SheetPartProps` shape (`class?`, `children?`) carried by every non-root part, and why `SheetTrigger`'s `class` is load-bearing rather than cosmetic — `BottomNav`'s overflow ("More") tab is a `SheetTrigger`, and ui-spec-v04 §13.2 requires every tab column's interactive element to be `flex flex-1`. Ratifies the `class` prop shipped in #605. Re-stamped `SheetTrigger.svelte` provenance (the only part whose contract changed; `SheetPartProps` itself is unchanged). Resolves part of doc/code drift issue #608. |
 | 2026-07-23 | v0.3.1  | §6.3/§6.7 Toast: added opt-in `showCountdown` prop — a circular ring that drains over `duration`, pauses with the dismiss timer on hover, hidden under reduced motion. Drives the deferred-delete "Undo" snackbar's visible window. No colour/anchoring change. Re-stamped `Toast.svelte` + `Toast.types.ts` provenance to v0.3.1 (the parts whose contract changed). |
