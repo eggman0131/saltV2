@@ -1,9 +1,12 @@
 # Vitest Unit Suite — Non-Functional Specification
 
 This is the **quality contract** for the Vitest suite: every `*.test.ts` under `packages/**/tests/`
-and `apps/**/tests/`. Like [docs/e2e-test-spec.md](e2e-test-spec.md) it is a _non-functional_ spec —
-it does not say what a test should assert (that is the test's job), it says what qualities every
-test must have to be **behaviour-anchored, cheap to read, and safe to refactor around**.
+and `apps/**/tests/`, plus every `*.test.mjs` under `scripts/tests/` — the untyped-ESM eighth
+project (#1021). UT-G1 and UT-G2 are the only two rules that do not reach those `.mjs` files, and
+each states that limit where it is written. Like [docs/e2e-test-spec.md](e2e-test-spec.md) it is a
+_non-functional_ spec — it does not say what a test should assert (that is the test's job), it says
+what qualities every test must have to be **behaviour-anchored, cheap to read, and safe to refactor
+around**.
 
 **How to use it.** Apply this checklist to any new or changed test file _before_ a functional review
 of what it asserts. A file that fails a `MUST` is not ready for review. The condensed
@@ -245,11 +248,19 @@ has. It is also the easiest to render vacuously green.
   `packages/ui-components/tsconfig.test.json` exists and **nothing runs it**, which is the same
   latent state web-pwa was in before #942.
   _Verify:_ `grep typecheck package.json` — the config must appear there, not merely exist.
+  **Limit — TypeScript test directories only.** `scripts/tests/` is untyped ESM by design, and
+  [`scripts/vitest.config.ts`](../scripts/vitest.config.ts) states why next to the `include` that
+  makes it so. The obligation there is that the config keeps saying so, not that a
+  `tsconfig.test.json` appears; adding one would pull an untyped `.mjs` subject into a TypeScript
+  program for no gain. Nothing else in this spec is narrowed by that — A through F, G3 and H bind
+  those files exactly as written.
 
 - **UT-G2 (MUST) — Note what the typecheck does not cover.** `tsconfig.test.json` types the test
   file against the module under test, but `src/env.d.ts`'s `*.svelte` shim types every component as
   a bare `Component` — **props passed from a test are not checked**. Prop checking is `svelte-check`
   (`pnpm check`), a separate job. Do not read a green `typecheck` as "the props are right".
+  **Limit —** same boundary as UT-G1, and narrower still: it is about a Svelte component's props, so
+  it has nothing to say outside `apps/web-pwa` and `packages/ui-components`.
 
 - **UT-G3 (MUST NOT) — Never raise a retry count to green a unit test.** The unit suite has no
   retries and must not gain any. A retry-pass is a finding.
@@ -312,7 +323,8 @@ Async & harness
 [ ] UT-F5  A production timer is driven with fake timers, never waited out
 
 Tooling (only if a test directory or config is added)
-[ ] UT-G1  New tests/ dir has a tsconfig.test.json wired into root `typecheck`
+[ ] UT-G1  New TS tests/ dir has a tsconfig.test.json wired into root `typecheck`
+           (n/a to scripts/tests/ — untyped ESM by design)
 [ ] UT-G2  Svelte props still unchecked by tsc — pnpm check is the prop gate
 [ ] UT-G3  No retries added
 
