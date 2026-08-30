@@ -1,5 +1,6 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import { matchOrCreate, resolveProductForm } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
 import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
@@ -18,6 +19,7 @@ import { createServerEmbeddingAdapter } from '../adapters/serverEmbedding.js';
 import { createServerArbitrationAdapter } from '../adapters/serverArbitration.js';
 import { createServerMatchLoggingAdapter } from '../adapters/serverMatchLog.js';
 import { resolveServerEnvironment } from '../observability/environment.js';
+import { reportServerError } from '../observability/reportServerError.js';
 
 // Trace context is no longer piggy-backed on the payload. Server-side trace
 // unification now happens at the callable entrypoint (index.ts), which extracts
@@ -42,6 +44,13 @@ const OutputSchema = z.union([
   }),
 ]);
 
+// Stable message for the PostHog report below. A constant rather than an inline
+// literal because its stability IS the feature: PostHog Error Tracking groups by
+// message, so one recurring operational condition stays one issue. The original
+// throw cannot be carried — `firestoreProductFormStore.classify` discards it, as
+// its two sibling stores do (issue #1117, Open Questions).
+const PRODUCT_FORMS_READ_FAILED = 'productForms read failed — derived-name synonym guard disabled';
+
 /**
  * Reads `productForms` and builds the "is this name a derivation" predicate the
  * synonym guard consults (`appendCanonSynonym`, issue #865/#866).
@@ -54,7 +63,27 @@ const OutputSchema = z.union([
  * a `productForms` read is failing, a derivation can still be written into a
  * synonym list, exactly as it could before this existed.
  *
- * An empty table is folded into the same branch for clarity, not for behaviour —
+ * That limit is now ANNOUNCED rather than merely documented (issue #1117): a
+ * failed read emits a `firebase-functions/logger` line and a `StorageError`
+ * report, so the window in which the guard was off is recoverable afterwards from
+ * Cloud Logging, and from PostHog wherever server observability is initialised
+ * (an emulator with no POSTHOG_API_KEY drops it — the logger line is the half
+ * that always lands).
+ *
+ * It is a signal, not a gate, stated as precisely as it holds: the value returned
+ * on a failed read is unchanged (`undefined`), and no refusal, retry or throw path
+ * was added. The two emitters are the house's non-throwing pair —
+ * `reportServerError` swallows by contract (Rule 10), and `logger.warn` is used
+ * exactly this way in the degrade paths of this flow's neighbours.
+ *
+ * Two things the signal does NOT cover, so nobody reads more into it: a bad
+ * synonym written during the window persists after the read recovers and nothing
+ * here retracts it; and this announces the read THIS function performs, not the
+ * recipe batch's own read (announced separately at its own site) or the browser
+ * fast path's unrelated no-opinion window.
+ *
+ * The two states are deliberately NOT folded together any more. An empty table is
+ * a normal state (fresh environment, emulator) and stays silent;
  * `resolveProductForm(name, [])` is always `null`, so a present-but-empty
  * predicate would answer `false` to everything anyway.
  */
@@ -62,7 +91,12 @@ async function buildDefaultDerivedNamePredicate(
   db: ReturnType<typeof getFirestore>,
 ): Promise<MatchOrCreatePorts['isDerivedName']> {
   const formsResult = await createFirestoreProductFormStore(db).list();
-  if (formsResult.kind !== 'ok' || formsResult.value.length === 0) return undefined;
+  if (formsResult.kind !== 'ok') {
+    logger.warn(`matchOrCreateCanon: ${PRODUCT_FORMS_READ_FAILED}`, { error: formsResult.error });
+    reportServerError(new Error(PRODUCT_FORMS_READ_FAILED), 'StorageError');
+    return undefined;
+  }
+  if (formsResult.value.length === 0) return undefined;
   const forms = formsResult.value;
   return (name: string) => resolveProductForm(name, forms) !== null;
 }

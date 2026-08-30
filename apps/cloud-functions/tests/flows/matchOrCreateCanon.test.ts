@@ -76,6 +76,24 @@ vi.mock('../../src/flows/arbitrateCanon.js', () => ({
   arbitrateCanonFlow: (input: unknown) => mockArbitrate(input),
 }));
 
+// ─── Spy on the two signals the failed-read branch emits (issue #1117) ────────
+//
+// Spread the actual module rather than listing `logger` alone: several modules in
+// this graph (firestoreProductFormStore, serverMatchLog, the adapters) import
+// other things from `firebase-functions`, and a factory that returns only
+// `logger` would make them all resolve `undefined`.
+const mockLoggerWarn = vi.fn();
+vi.mock('firebase-functions', async (importActual) => ({
+  ...(await importActual<object>()),
+  logger: { info: vi.fn(), warn: mockLoggerWarn, error: vi.fn() },
+}));
+
+const mockReportServerError = vi.fn();
+vi.mock('../../src/observability/reportServerError.js', () => ({
+  reportServerError: (...args: unknown[]) => mockReportServerError(...(args as [])),
+  reportFlowError: vi.fn(async () => undefined),
+}));
+
 // Import after all mocks so the module graph picks them up.
 const { matchOrCreateCanonFlow, buildMatchOrCreatePorts } =
   await import('../../src/flows/matchOrCreateCanon.js');
@@ -117,6 +135,8 @@ beforeEach(() => {
   resetFirestore();
   mockEmbed.mockClear();
   mockArbitrate.mockReset();
+  mockLoggerWarn.mockClear();
+  mockReportServerError.mockClear();
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -417,6 +437,66 @@ describe('buildMatchOrCreatePorts', () => {
     });
 
     expect(ports.isDerivedName).toBe(override);
+  });
+});
+
+// ─── The guard's off-window is announced, not silent (issue #1117) ────────────
+//
+// The degrade itself is correct and pinned above ("omits the predicate entirely
+// when the productForms read fails"). What was missing was any way to tell that
+// window apart from a normal one. These pin the SIGNAL, and — just as important —
+// pin the silence on the states that are not faults, so the fix cannot decay into
+// "log on every undefined".
+describe('buildMatchOrCreatePorts — the failed-read window is announced', () => {
+  it('logs and reports a StorageError when the productForms read fails', async () => {
+    seedGarlicCloveForm();
+    failingReads.add('productForms');
+
+    const ports = await buildMatchOrCreatePorts();
+
+    // The degrade is unchanged — the signal is additive, not a gate.
+    expect(ports.isDerivedName).toBeUndefined();
+
+    expect(mockLoggerWarn).toHaveBeenCalledTimes(1);
+    expect(String(mockLoggerWarn.mock.calls[0]![0])).toContain('productForms read failed');
+
+    expect(mockReportServerError).toHaveBeenCalledTimes(1);
+    const [reported, category] = mockReportServerError.mock.calls[0]!;
+    expect(reported).toBeInstanceOf(Error);
+    // Stable message: PostHog Error Tracking groups by it, so one recurring
+    // operational condition stays one issue.
+    expect((reported as Error).message).toBe(
+      'productForms read failed — derived-name synonym guard disabled',
+    );
+    // Explicit category, so isReportableCategory honours it identically to a
+    // client-side report (CLAUDE.md §Observability — StorageError is reportable).
+    expect(category).toBe('StorageError');
+  });
+
+  it('stays silent when the productForms table is merely empty', async () => {
+    const ports = await buildMatchOrCreatePorts();
+
+    expect(ports.isDerivedName).toBeUndefined();
+    // An empty table is a normal state (fresh environment, emulator). Reporting it
+    // would bury the real signal above in noise — this is the assertion that fails
+    // if the split is ever implemented as "log whenever we return undefined".
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+    expect(mockReportServerError).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when an extras predicate skips the read altogether', async () => {
+    failingReads.add('productForms'); // never read: the override short-circuits it
+
+    await buildMatchOrCreatePorts(undefined, undefined, {
+      isDerivedName: (name: string) => name === 'anything at all',
+    });
+
+    // No read happened, so there is no off-window to announce. Without this, a
+    // future refactor that moved the read above the override would report on every
+    // recipe batch — which supplies its own predicate precisely because it already
+    // holds the forms.
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+    expect(mockReportServerError).not.toHaveBeenCalled();
   });
 });
 
