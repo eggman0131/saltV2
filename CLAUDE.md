@@ -13,6 +13,33 @@ directory it is in, or it spans three or more packages. Otherwise:
 | needed only inside one package | in a nested `CLAUDE.md` there ([apps/cloud-functions/CLAUDE.md](apps/cloud-functions/CLAUDE.md)) — loaded only when working in that tree |
 | looked up once per task | in a doc under `docs/`, with a row in [docs-map.md](docs-map.md) |
 
+## How to report to Daniel
+
+Daniel is not a coder. Technical explanation is not just unhelpful to him, it is
+what buries the thing he actually has to do. **Every reply obeys this shape.**
+
+1. **His decision or next action goes first**, in bold — before any explanation.
+   If there is nothing for him to do, say so in those words ("Nothing needed from
+   you") rather than leaving him to work it out.
+2. **Then two or three plain sentences**: what changed, who it affects when they
+   use the app, and why it matters. Consequences, never mechanism.
+3. **Then risk**, one line, only when there is a real one.
+4. **Nothing else.** No walkthrough of how the code works, no restating the
+   request, no listing options you already rejected, no summary of what you just
+   said. State a thing once.
+
+**Technical detail is written down, not spoken.** When the reasoning genuinely is
+technical, it belongs in the PR description, the issue, or a doc — then link it
+and move on ("detail is in the PR"). Never inline it in chat as a courtesy.
+Jargon that survives into a reply gets a plain-English gloss in brackets, or gets
+cut.
+
+**Uncertainty is a decision to surface, not detail to bury.** If you need his
+call, the whole reply is that question and what each answer costs him.
+
+Chat replies only — commit messages, PR bodies and docs stay as technical as
+they need to be.
+
 ## Layer map
 
 ```
