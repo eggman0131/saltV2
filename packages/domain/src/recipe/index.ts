@@ -24,6 +24,11 @@ export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 // flows are different apps that cannot import each other, so the rule that
 // decides what a typed or generated tag becomes lives here.
 export { normaliseTags } from './commands/normaliseTags.js';
+// The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
+// flows and the re-estimate trigger each had a copy, identical apart from the
+// clause that is now the `deriveMissingTotal` argument.
+export { reconcileRecipeTimes } from './commands/reconcileRecipeTimes.js';
+export type { RecipeTimes } from './commands/reconcileRecipeTimes.js';
 export { flattenIngredients } from './queries/ingredients.js';
 // The ONE numeric reduction of a `Quantity` (issue #917) — shared by the shopping
 // list and the formula mapping screen so a range cannot mean two amounts. The

@@ -150,9 +150,14 @@ three paths (librarian, URL import, photo import):
 Two decisions worth keeping:
 
 - **The arithmetic rule is both asked for and enforced.** `recipeFieldRules.ts`
-  states it to the model; `assembleRecipeDraft` re-imposes it on the assembled
-  document, deriving a missing total from the parts and raising a stated total that
-  is below them. Asking alone is not enough — the library holds recipes stored with
+  states it to the model; `reconcileRecipeTimes` (`domain/recipe/commands/`)
+  re-imposes it on the numbers, deriving a missing total from the parts and raising
+  a stated total that is below them. It lives in the domain because both write
+  paths need it and had a copy each (issue #1116): `assembleRecipeDraft` calls it
+  for the authoring flows, `reconcileEstimatedTimes` for the re-estimate trigger.
+  They differ on one input — both parts known, no total stated — and that
+  difference is the function's `deriveMissingTotal` argument, argued at each call
+  site and pinned by a single test asserting both answers. Asking alone is not enough — the library holds recipes stored with
   `prep: 10, cook: 35, total: 35` — and enforcing alone is not either, because the
   repaired number is only as honest as the parts it is built from. Note the repair
   raises a floor and never caps a ceiling, so an overnight prove keeps its 762.
