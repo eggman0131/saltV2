@@ -55,7 +55,7 @@ Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `refactor: <concise target>` (imperative, no trailing period)
-- Labels: the area and topical labels that fit (`gh label list` — e.g. `domain`, `area: web-pwa`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `refactor` or `tech-debt`, and **not** a `priority:` label — those facts live on the board as `Class` and `Queue`, and the labels that carried them are gone.
+- Labels: the area and topical labels that fit (`gh label list` — e.g. `domain`, `area: web-pwa`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `refactor` or `tech-debt`, and **not** a `priority:` label — those facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class Refactor --queue <band> --size <S|M|L>`. A refactor reaches `Recommended` only when the drift it describes is **proven** to be costing something now; the shape being wrong is not by itself proof. See [docs/issue-board.md](../../docs/issue-board.md).
 
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
@@ -140,6 +140,18 @@ back with `gh issue view <n>` and confirm the top-level headings are spelled exa
 phase block carries all six fields — **Safe to stop here?** included, since `/run` reads a `No` there as
 "not shippable at this boundary" — and that the call sites listed in **Context pointers** actually exist.
 Check them. That inventory is the most expensive thing Step 1 produced and the thing every phase needs;
-a path written from memory sends `/run` to find them all again. Fix anything wrong with `gh issue edit`.
+a path written from memory sends `/run` to find them all again. The headings and the phase fields are checked mechanically, by the same code that decides the label:
+
+```
+gh issue view <n> --json body -q .body | node scripts/check-spec-shape.mjs
+```
+
+`spec-shape.yml` runs that on every issue opened or edited and applies the **`specced`** label when it
+passes, removing it when it stops passing — so the label appearing on the posted issue is the
+confirmation that the shape is right, which is worth knowing in a cloud session where the checker is not
+reachable but the label still is. It reads shape, never truth: whether those paths are real is the part
+it cannot see, and stays yours.
+
+Fix anything wrong with `gh issue edit`.
 
 Then share the issue URL and ask me to confirm the **Behavior Contract** before any implementation starts.

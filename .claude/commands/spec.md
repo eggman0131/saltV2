@@ -88,7 +88,7 @@ Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `feat: <concise feature name>` (imperative, no trailing period)
-- Labels: the area and topical labels that fit (`gh label list` for the current set — e.g. `area: web-pwa`, `domain`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `feature`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone.
+- Labels: the area and topical labels that fit (`gh label list` for the current set — e.g. `area: web-pwa`, `domain`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `feature`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class "New feature" --queue <band> --size <S|M|L>`. `New feature` is something Salt cannot do at all today; `Feature update` is something it already does, done better. See [docs/issue-board.md](../../docs/issue-board.md).
 
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
@@ -162,6 +162,18 @@ back with `gh issue view <n>` and confirm:
   costs `/run` a fresh Explore sweep for that phase, which is the whole thing Step 1 paid to avoid;
 - the paths in **Context pointers** actually exist — check them. A `file:line` written from memory is
   worse than no pointer at all, because `/run` will trust it and read the wrong thing.
+
+The first two are checked mechanically, and by the same code that decides the label:
+
+```
+gh issue view <n> --json body -q .body | node scripts/check-spec-shape.mjs
+```
+
+`spec-shape.yml` runs that on every issue opened or edited and applies the **`specced`** label when it
+passes, removing it when it stops passing. So the label appearing on the posted issue is the
+confirmation that the headings and phase fields are right — worth checking in a cloud session, where the
+checker is not reachable but the label still is. What it cannot check is the third bullet, whether those
+paths are real: it reads shape, never truth. That one stays yours.
 
 Fix anything wrong with `gh issue edit` before handing it over.
 

@@ -69,7 +69,7 @@ Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `fix: <concise defect description>` (imperative, no trailing period)
-- Labels: the area and topical labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `flaky-test`, `breaking-change` when the fix changes a behavior contract). **Not** `bug`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone.
+- Labels: the area and topical labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `flaky-test`, `breaking-change` when the fix changes a behavior contract). **Not** `bug`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class Defect --queue <band> --size <S|M|L>`. `Recommended` means actionable **and proven** — regular user impact, a security risk, or dev friction actually being felt. A defect that is real but has never been triggered is `Low`, however alarming it reads. See [docs/issue-board.md](../../docs/issue-board.md).
 
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
@@ -148,6 +148,18 @@ preserved behavior stays green; no schema/data regressions.]
 back with `gh issue view <n>` and confirm the top-level headings are spelled exactly as above, that every
 phase block carries all five fields, and that the paths in **Context pointers** actually exist — check
 them. A `file:line` written from memory is worse than no pointer, because `/run` will trust it and go
-re-investigate a root cause you already found. Fix anything wrong with `gh issue edit`.
+re-investigate a root cause you already found. The headings and the phase fields are checked mechanically, by the same code that decides the label:
+
+```
+gh issue view <n> --json body -q .body | node scripts/check-spec-shape.mjs
+```
+
+`spec-shape.yml` runs that on every issue opened or edited and applies the **`specced`** label when it
+passes, removing it when it stops passing — so the label appearing on the posted issue is the
+confirmation that the shape is right, which is worth knowing in a cloud session where the checker is not
+reachable but the label still is. It reads shape, never truth: whether those paths are real is the part
+it cannot see, and stays yours.
+
+Fix anything wrong with `gh issue edit`.
 
 Then share the issue URL and ask me to confirm the **Root Cause and Fix Approach** before any implementation starts.

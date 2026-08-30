@@ -35,6 +35,31 @@ Every `area: *` label and every topical label (`flaky-test`, `performance`,
 `security`, `architecture`, `canon`, `domain`, `ci`, …) stays. They are
 multi-valued and filter-only, which is exactly what a label is good at.
 
+### `specced` — the one label added since
+
+**`specced` means the issue BODY is in a shape `/run` can execute**, not that a
+spec command was once run on it. `/spec`, `/defect` and `/refactor-spec` each
+post in a fixed structure that `/run` then consumes by exact heading, and until
+this label existed you found out an issue was not in that structure by handing it
+to `/run` and watching it fail to find `## Phases`.
+
+It is a label rather than a board field for the same reason the others are not:
+it is a filter (`label:specced` — what can I start right now?), never something
+to group or order by. And it is one label, not three: WHICH command produced an
+issue is `Class`, and nothing is kept in both places.
+
+Nothing applies it by hand. [`spec-shape.yml`](../.github/workflows/spec-shape.yml)
+re-derives it from the body on every issue opened, edited or reopened, so an issue
+whose phase blocks are later gutted loses the label instead of keeping a claim
+that stopped being true. Its `workflow_dispatch` is the backfill sweep over every
+open issue — run it once after adding the label, and after any change to what
+counts as runnable.
+
+**It reads shape, never truth.** Present-and-not-a-placeholder is all it can see
+of **Context pointers**; whether the `file:line` in there points at anything is
+the expensive failure, and it is still checked only by the agent that wrote the
+issue. See the header of [`scripts/lib/specIssueShape.mjs`](../scripts/lib/specIssueShape.mjs).
+
 ---
 
 ## `Queue` — which pile
