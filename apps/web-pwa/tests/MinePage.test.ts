@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { emptyRecipe } from '@salt/domain';
+import { appendCacheBuster, emptyRecipe } from '@salt/domain';
 import type { Member, Recipe } from '@salt/domain';
 import type { KitchenTimersDoc } from '@salt/domain/schemas';
 
@@ -1105,5 +1105,49 @@ describe('MinePage — a timer of your own', () => {
     const { getByTestId } = render(MinePage);
     expect(getByTestId('mine-timer-state')).toHaveTextContent('Finished');
     expect(getByTestId('mine-timer-dismiss')).toHaveAttribute('aria-label', 'Dismiss Eggs');
+  });
+});
+
+// ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────
+// This is issue #933's characterisation net for the "hero URL" rule — one of
+// eight identical copies of `appendCacheBuster(recipe.image.url,
+// recipe.imageRequestedAt ?? recipe.updatedAt)` scattered across web-pwa, here
+// at the "cooking now" banner (guard-clause form: `heroUrl` returns `string |
+// null` and the banner is gated on `kitchenPrefs.imagery` too). It must stay
+// green, UNMODIFIED, once all eight collapse onto one shared `@salt/domain`
+// function. Expectations are computed by calling the REAL `appendCacheBuster`
+// rather than hand-encoding a query string.
+describe('MinePage — hero URL rule (issue #933 characterisation)', () => {
+  const url = 'https://example.test/hero-rule.webp';
+
+  it.each([
+    { name: 'busts with imageRequestedAt when present', imageRequestedAt: 4321 },
+    {
+      name: 'falls back to updatedAt when imageRequestedAt is absent',
+      imageRequestedAt: undefined,
+    },
+  ])('$name', ({ imageRequestedAt }) => {
+    mockLiveCooks._set([
+      liveCook('r-hero', 'Hero Dish', {
+        recipe: recipe('r-hero', 'Hero Dish', {
+          image: { url, source: 'ai' },
+          ...(imageRequestedAt !== undefined ? { imageRequestedAt } : {}),
+        }),
+      }),
+    ]);
+    const { getByTestId } = render(MinePage);
+
+    // `recipe()`'s default updatedAt, since these rows don't override it.
+    const updatedAt = '2026-08-01T11:56:00.000Z';
+    expect(getByTestId('mine-live-banner')).toHaveAttribute(
+      'src',
+      appendCacheBuster(url, imageRequestedAt ?? updatedAt),
+    );
+  });
+
+  it('renders no banner when the live cook’s recipe has no image', () => {
+    mockLiveCooks._set([liveCook('r-hero', 'Hero None')]);
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-live-banner')).not.toBeInTheDocument();
   });
 });

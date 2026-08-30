@@ -239,3 +239,68 @@ describe("ShoppingListPage — the edit sheet's Sources block", () => {
     expect(within(sources).queryAllByRole('button')).toHaveLength(0);
   });
 });
+
+// Issue #933 characterisation net. `ShoppingItemRow.svelte`'s `sourceLabel` and
+// `ShoppingListPage.svelte`'s `describeSource` both render the same `SourceRef`,
+// and they DISAGREE on a `manual` source with no `addedBy`: `sourceLabel`
+// returns `''`, which the row's `{#if showSource && sourceLabel(item)}` guard
+// turns into no sub-line at all; `describeSource` returns `'Added manually'`,
+// which the edit sheet shows. A later phase makes the row say "Added manually"
+// too — at that point these two pinned answers are EXPECTED to converge, and
+// this test's "no sub-line" half should be the one that changes, not the
+// sheet's. The other two shapes (`manual` WITH `addedBy`, and a `recipe`
+// source) already agree and must stay that way.
+describe('ShoppingListPage — the source sub-line disagrees with itself (#933 Behaviour Exception 3)', () => {
+  it('Behaviour Exception 3 of #933: the ROW shows no sub-line for a manual source with no addedBy', async () => {
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).not.toContain('Added');
+  });
+
+  it('Behaviour Exception 3 of #933: the EDIT SHEET says "Added manually" for the same source', async () => {
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: [{ kind: 'manual' }] }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    await openEditSheet(findByTestId);
+
+    const sources = await findByTestId('shopping-edit-sources');
+    expect(sources.textContent).toContain('Added manually');
+  });
+
+  it('must not change: both surfaces already agree once addedBy is set', async () => {
+    mockItems._set([
+      item({
+        id: 'i1',
+        rawText: 'onion',
+        canonId: 'c-onion',
+        sources: [{ kind: 'manual', addedBy: 'Daniel' }],
+      }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).toContain('Added by Daniel');
+
+    await openEditSheet(findByTestId);
+    const sources = await findByTestId('shopping-edit-sources');
+    expect(sources.textContent).toContain('Added by Daniel');
+  });
+
+  it('must not change: a recipe source stays a bare label in the row (the sheet’s label + servings + link is pinned above)', async () => {
+    mockItems._set([
+      item({ id: 'i1', rawText: 'onion', canonId: 'c-onion', sources: fromRecipe('Bolognese') }),
+    ]);
+
+    const { findByTestId } = render(ShoppingListPage, props);
+    const row = await findByTestId('shopping-item-row');
+    expect(row.textContent).toContain('Bolognese');
+    expect(row.textContent).not.toContain('serving');
+  });
+});

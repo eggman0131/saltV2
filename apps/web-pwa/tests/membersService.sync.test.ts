@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
 import { get } from 'svelte/store';
-import type { Member } from '@salt/domain';
+import { memberFirstName, type Member } from '@salt/domain';
 
 vi.mock('@salt/firebase-sync', () => ({
   subscribeMembers: vi.fn(),
@@ -164,6 +164,63 @@ describe('membersService — firstName', () => {
     seedMembers([member({ id: 'kate@e.org', name: 'Kate Pendery' })]);
     mockAuth.user = { email: 'kate@e.org' };
     expect(get(kitchenLabel)).toBe("Kate's Kitchen");
+  });
+
+  // ── Characterisation net, issue #933 Phase 1 ────────────────────────────────
+  //
+  // `@salt/domain` owns the SAME rule as `memberFirstName`, and the two disagree.
+  // Both answers are pinned here, side by side, because Phase 7 deletes this copy
+  // and the domain's answer becomes what these screens render — the recipe-view
+  // attribution chips and the recipe-edit attribution rows.
+  //
+  // BEHAVIOUR EXCEPTION 2 of issue #933 is exactly the `diverges: true` rows: only
+  // those two are permitted to flip, and only in Phase 7. Every `diverges: false`
+  // row is a well-formed name the two copies already agree on, and any of those
+  // moving means the phase went further than it was asked to.
+  describe('against @salt/domain’s memberFirstName', () => {
+    const cases = [
+      { name: 'a plain two-word name', input: 'Kate Pendery', local: 'Kate', diverges: false },
+      { name: 'a single word', input: 'Daniel', local: 'Daniel', diverges: false },
+      { name: 'three words', input: 'Mary Jane Pendery', local: 'Mary', diverges: false },
+      { name: 'a doubled separator', input: 'Mary  Jane', local: 'Mary', diverges: false },
+      { name: 'a trailing space', input: 'Kate ', local: 'Kate', diverges: false },
+      { name: 'the empty name', input: '', local: '', diverges: false },
+      { name: 'whitespace only', input: '   ', local: '', diverges: false },
+      // The two live forks. A member whose name was typed with a leading space
+      // renders a BLANK chef label today; one separated by a tab or a newline
+      // renders their whole undivided name.
+      { name: 'a LEADING space', input: '  Kate Pendery', local: '', diverges: true },
+      { name: 'a tab and a newline as separators', input: '\tDaniel\nPendery', local: '\tDaniel\nPendery', diverges: true }, // prettier-ignore
+    ];
+
+    it.each(cases)('$name — firstName renders $local', ({ input, local }) => {
+      expect(firstName(input)).toBe(local);
+    });
+
+    it.each(cases.filter((c) => !c.diverges))(
+      '$name — memberFirstName agrees, so Phase 7 cannot move it',
+      ({ input, local }) => {
+        expect(memberFirstName(input)).toBe(local);
+      },
+    );
+
+    it.each(cases.filter((c) => c.diverges))(
+      '$name — memberFirstName DISAGREES (Exception 2, flips in Phase 7)',
+      ({ input, local }) => {
+        const domainAnswer = memberFirstName(input);
+        expect(domainAnswer).not.toBe(local);
+        // The domain finds the actual first word where the local copy cannot.
+        expect(domainAnswer).toMatch(/^(Kate|Daniel)$/);
+      },
+    );
+
+    it('has a table that still covers both sides of the fork', () => {
+      // UT-E2 in spirit: if a future edit makes the two implementations agree on
+      // everything, this net has stopped pinning a fork and must be revisited
+      // rather than quietly greening.
+      expect(cases.filter((c) => c.diverges)).toHaveLength(2);
+      expect(cases.some((c) => !c.diverges)).toBe(true);
+    });
   });
 });
 

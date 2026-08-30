@@ -13,6 +13,7 @@ import {
   type Recipe,
   type RecipeKind,
 } from '@salt/domain';
+import { formatDayKey } from '../src/lib/dateFormat.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 
@@ -2083,5 +2084,133 @@ describe('MealPlanWeekPage — shop the week, in sequence (#724, Phase 2)', () =
     await waitFor(() =>
       expect(vi.mocked(addToast)).toHaveBeenCalledWith('Added 1 item to the list.', 'success'),
     );
+  });
+});
+
+// Issue #933 characterisation net. `MealPlanWeekPage` carries a guarded
+// `matchMedia` `$effect` (byte-identical to the one in `CatalogPage` and
+// `RecipeViewPage`) that a later phase will extract into one shared helper.
+// This file pins every failure path the extraction must preserve — today none
+// of them is tested anywhere.
+//
+// Asserted through rendered output: `isSplit` gates whether `<aside
+// data-testid="day-pane">` gets CONTENT — `paneDate = isSplit ? openDay :
+// null`, and `openDay` seeds itself to the week's first day (`todayIndex < 0`
+// here, since the fixture week is not the real calendar week) the instant
+// `isSplit` goes true, with no click required. `day-pane-title` is therefore
+// present iff the query reads as split.
+describe('MealPlanWeekPage — the split-pane media query, failure paths (#933)', () => {
+  const realMatchMedia = window.matchMedia;
+
+  afterEach(() => {
+    window.matchMedia = realMatchMedia;
+  });
+
+  /** A complete `MediaQueryList` stub — the shape the house pattern expects. */
+  function fullStub(
+    matches: boolean,
+    addEventListener: (type: string, fn: (e: MediaQueryListEvent) => void) => void = () => {},
+    removeEventListener: (type: string, fn: (e: MediaQueryListEvent) => void) => void = () => {},
+  ): typeof window.matchMedia {
+    return ((query: string) => ({
+      media: query,
+      matches,
+      onchange: null,
+      addEventListener,
+      removeEventListener,
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  const expectedPaneTitle = formatDayKey('2026-06-08', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  // UT-D1/D2: these four differ only in the `matchMedia` stub, and each row
+  // names the failure path it stands for.
+  it.each([
+    [
+      'matches: true, full listener API — the pane shows the day (the positive control every other row depends on)',
+      () => {
+        window.matchMedia = fullStub(true);
+      },
+      true,
+    ],
+    [
+      'matchMedia missing entirely — falls back to the phone layout, no throw',
+      () => {
+        window.matchMedia = undefined as unknown as typeof window.matchMedia;
+      },
+      false,
+    ],
+    [
+      'matchMedia throws on call — falls back to the phone layout, no throw',
+      () => {
+        window.matchMedia = (() => {
+          throw new Error('matchMedia is not supported here');
+        }) as unknown as typeof window.matchMedia;
+      },
+      false,
+    ],
+    [
+      'MediaQueryList with no addEventListener, matches: true — the one-shot read still splits',
+      () => {
+        window.matchMedia = ((query: string) => ({
+          media: query,
+          matches: true,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        })) as unknown as typeof window.matchMedia;
+      },
+      true,
+    ],
+  ] as const)('%s', async (_label, setUp, expectSplit) => {
+    setUp();
+    render(MealPlanWeekPage);
+
+    // `week-deck` always mounts; waiting on it settles the initial render before
+    // asserting the pane one way or the other.
+    await waitFor(() => expect(screen.getByTestId('week-deck')).toBeInTheDocument());
+
+    if (expectSplit) {
+      await waitFor(() => {
+        expect(screen.getByTestId('day-pane-title')).toHaveTextContent(expectedPaneTitle);
+      });
+    } else {
+      expect(screen.queryByTestId('day-pane-title')).toBeNull();
+    }
+  });
+
+  it('subscribes the query’s change listener, follows it live, and unsubscribes the SAME handler on unmount', async () => {
+    const addEventListener = vi.fn();
+    const removeEventListener = vi.fn();
+    // Starts unsplit so the live flip (not just the initial read) is what
+    // proves the listener works.
+    window.matchMedia = fullStub(false, addEventListener, removeEventListener);
+
+    const { unmount } = render(MealPlanWeekPage);
+
+    await waitFor(() =>
+      expect(addEventListener).toHaveBeenCalledWith('change', expect.any(Function)),
+    );
+    const onChange = addEventListener.mock.calls[0]![1] as (e: MediaQueryListEvent) => void;
+
+    expect(screen.queryByTestId('day-pane-title')).toBeNull();
+
+    // Fire the captured handler — the observable fact is the rendering flips,
+    // with no remount.
+    onChange({ matches: true } as MediaQueryListEvent);
+    await waitFor(() => {
+      expect(screen.getByTestId('day-pane-title')).toHaveTextContent(expectedPaneTitle);
+    });
+
+    unmount();
+    expect(removeEventListener).toHaveBeenCalledWith('change', onChange);
   });
 });

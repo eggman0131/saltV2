@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { roundGrams } from '@salt/domain';
 import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
 import {
+  formatGrams,
   formatStatedDuration,
   formatWhen,
   nextAction,
@@ -165,5 +167,45 @@ describe('yieldSummary', () => {
     expect(
       yieldSummary({ basisGrams: 2400, totalGrams: 2460, usableGrams: 2460, units: null }),
     ).toBe('2460 g');
+  });
+});
+
+/**
+ * Characterisation net for `formatGrams` (issue #933, Phase 1). This describe did
+ * not exist; the function had no direct coverage at all, which is how a third
+ * copy on `FormulaPage.svelte` came to round where these two do not.
+ *
+ * The rule this pins is the one the module header states and the one Phase 3 must
+ * not break: **it formats, it does not compute.** A figure arrives already rounded
+ * by the domain's one rounding authority (`roundGrams`), and this only chooses
+ * words for it. The rows below are what makes that sentence checkable rather than
+ * merely written down.
+ */
+describe('formatGrams', () => {
+  const cases = [
+    { name: 'a whole-gram total', grams: 1483, rendered: '1483 g' },
+    { name: 'a single gram', grams: 1, rendered: '1 g' },
+    { name: 'nothing at all', grams: 0, rendered: '0 g' },
+    { name: 'the one-decimal figure a small quantity keeps', grams: 2.5, rendered: '2.5 g' },
+    { name: 'a large basis', grams: 2460, rendered: '2460 g' },
+  ];
+
+  it.each(cases)('$name — $grams → $rendered', ({ grams, rendered }) => {
+    expect(formatGrams(grams)).toBe(rendered);
+  });
+
+  it('renders the number it was handed, unrounded — the rounding is the caller’s', () => {
+    // The load-bearing assertion. `FormulaPage.svelte:596` carries a third copy
+    // that reads `${roundGrams(grams)} g`, so the same float renders two ways in
+    // the app today. Phase 3 deletes that copy and makes the round EXPLICIT at
+    // FormulaPage's four call sites — which is behaviour-preserving only while
+    // this function goes on doing no arithmetic of its own.
+    expect(formatGrams(1234.56)).toBe('1234.56 g');
+    expect(formatGrams(roundGrams(1234.56))).toBe('1235 g');
+
+    // Below the decimal threshold the authority keeps one decimal, so the two
+    // spellings can agree — the divergence is not everywhere, which is exactly
+    // why it survived.
+    expect(formatGrams(roundGrams(2.5))).toBe('2.5 g');
   });
 });

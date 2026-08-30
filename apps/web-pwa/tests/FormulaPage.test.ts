@@ -357,6 +357,38 @@ describe('FormulaPage — the declaration', () => {
     expect(getByTestId('formula-dough-total').textContent).toContain('867 g');
   });
 
+  // Characterisation net, issue #933 Phase 1.
+  //
+  // `asWrittenDoughGrams` is a RAW SUM of the weights on the page — nothing
+  // rounds it on the way in — and this screen's private `formatGrams`
+  // (`FormulaPage.svelte:596`) rounds where the two batch-screen copies do not.
+  // Every existing assertion here sums to a whole number, so that local round has
+  // never been exercised. Phase 3 deletes the copy and makes the round explicit
+  // at the call site; this is the row that says whether it stayed the same screen.
+  it('rounds a fractional dough total rather than rendering the float', async () => {
+    mockRecipes._set([
+      makeRecipe([
+        {
+          id: 'ing-flour',
+          rawText: '500 g strong white flour',
+          canonId: 'canon-flour',
+          grams: 500,
+        },
+        { id: 'ing-water', rawText: '350.4 g water', canonId: 'canon-water', grams: 350.4 },
+        { id: 'ing-salt', rawText: '10.2 g salt', canonId: 'canon-salt', grams: 10.2 },
+      ]),
+    ]);
+    const { getByTestId } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    // 500 + 350.4 + 10.2 is 860.5999999999999 in IEEE 754 — the exact value this
+    // screen would print without the round.
+    const total = getByTestId('formula-dough-total').textContent ?? '';
+    expect(total).toContain('861 g');
+    expect(total).not.toContain('860.5999');
+  });
+
   it('saves the declared shape and the derived percentages', async () => {
     const { getByTestId, container } = renderPage();
     mockFormula._set(null);

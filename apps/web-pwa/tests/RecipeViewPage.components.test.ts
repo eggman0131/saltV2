@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/svelte';
+import { appendCacheBuster } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 
 // Meals on the recipe page (issue #752). A meal is an ordinary recipe document
@@ -333,5 +334,49 @@ describe('RecipeViewPage — the dishes a meal is made of', () => {
     expect(lines[0]!.textContent).toContain('A jug of gravy, warmed');
     // And the meal's own method survives beside the components.
     expect(screen.getByTestId('recipe-view-step').textContent).toContain('Carve.');
+  });
+});
+
+// ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────
+// This is issue #933's characterisation net for the "hero URL" rule — one of
+// eight identical copies of `appendCacheBuster(recipe.image.url,
+// recipe.imageRequestedAt ?? recipe.updatedAt)` scattered across web-pwa, here
+// at the sub-recipe COMPONENT thumbnail (`recipe-component-thumb`). It must
+// stay green, UNMODIFIED, once all eight collapse onto one shared
+// `@salt/domain` function. Expectations are computed by calling the REAL
+// `appendCacheBuster` rather than hand-encoding a query string. Reuses this
+// file's own hand-rolled `makeComponent`/`makeEntry` (UT-C2: an existing
+// suite's helper, not a second one).
+describe('RecipeViewPage — hero URL rule at the sub-recipe thumbnail (issue #933 characterisation)', () => {
+  it.each([
+    { name: 'busts with imageRequestedAt when present', imageRequestedAt: 555 },
+    {
+      name: 'falls back to updatedAt when imageRequestedAt is absent',
+      imageRequestedAt: undefined,
+    },
+  ])('$name', ({ imageRequestedAt }) => {
+    const url = 'https://example.com/hero-component.webp';
+    const HERO_COMPONENT = makeComponent({
+      id: 'hero-component',
+      title: 'Hero Component',
+      image: { url, source: 'ai' },
+      updatedAt: '2026-01-05T00:00:00.000Z',
+      ...(imageRequestedAt !== undefined ? { imageRequestedAt } : {}),
+    });
+    mockRecipes._set([makeEntry({ componentRecipeIds: ['hero-component'] }), HERO_COMPONENT]);
+    renderPage();
+
+    expect(screen.getByTestId('recipe-component-thumb')).toHaveAttribute(
+      'src',
+      appendCacheBuster(url, imageRequestedAt ?? HERO_COMPONENT.updatedAt),
+    );
+  });
+
+  it('renders the fallback tile, not a thumb, when the component has no image', () => {
+    mockRecipes._set([makeEntry({ componentRecipeIds: ['gravy'] }), GRAVY]);
+    renderPage();
+
+    expect(screen.queryByTestId('recipe-component-thumb')).toBeNull();
+    expect(screen.getByTestId('recipe-component-thumb-fallback')).toBeInTheDocument();
   });
 });

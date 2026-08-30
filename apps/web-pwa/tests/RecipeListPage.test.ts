@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { appendCacheBuster } from '@salt/domain';
 import type { Recipe, RecipeKind } from '@salt/domain';
 import { setNextCrop } from './fixtures/cropStub.js';
 
@@ -1334,5 +1335,73 @@ describe('RecipeListPage — silent match problems', () => {
     await screen.findAllByTestId('recipe-list-item');
     expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
     mockIsLoadingProductForms._set(false);
+  });
+});
+
+// ─── Hero URL rule (issue #933 characterisation) ──────────────────────────────
+// This is issue #933's characterisation net for the "hero URL" rule — one of
+// eight identical copies of `appendCacheBuster(recipe.image.url,
+// recipe.imageRequestedAt ?? recipe.updatedAt)` scattered across web-pwa. It
+// must stay green, UNMODIFIED, once all eight collapse onto one shared
+// `@salt/domain` function. Expectations are computed by calling the REAL
+// `appendCacheBuster` rather than hand-encoding a query string, so the net pins
+// the RULE rather than one particular encoding of it.
+describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () => {
+  it.each([
+    {
+      name: 'busts with imageRequestedAt when present',
+      url: 'http://img.test/hero-rule.jpg',
+      imageRequestedAt: 5000,
+    },
+    {
+      name: 'falls back to updatedAt when imageRequestedAt is absent',
+      url: 'http://img.test/hero-rule.jpg',
+      imageRequestedAt: undefined,
+    },
+    {
+      // ?/&-aware: covered here because this suite's fixture already lets the
+      // stored URL carry an arbitrary query string for free.
+      name: 'is &-aware when the stored URL already carries a query string',
+      url: 'http://img.test/hero-rule.jpg?w=400',
+      imageRequestedAt: 42,
+    },
+  ])('$name', ({ url, imageRequestedAt }) => {
+    const heroRecipe = makeRecipe({
+      id: 'hero-rule',
+      title: 'Hero Rule',
+      tags: [],
+      totalTimeMinutes: null,
+      servings: null,
+      ingredientCount: 0,
+      image: { url, source: 'ai' },
+      ...(imageRequestedAt !== undefined ? { imageRequestedAt } : {}),
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    seed([heroRecipe]);
+    render(RecipeListPage);
+
+    expect(screen.getByTestId('recipe-list-thumb')).toHaveAttribute(
+      'src',
+      appendCacheBuster(url, imageRequestedAt ?? heroRecipe.updatedAt),
+    );
+  });
+
+  it('renders no thumb — only the fallback tile — when there is no image', () => {
+    seed([
+      makeRecipe({
+        id: 'hero-none',
+        title: 'Hero None',
+        tags: [],
+        totalTimeMinutes: null,
+        servings: null,
+        ingredientCount: 0,
+        image: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    ]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-list-thumb')).toBeNull();
+    expect(screen.getByTestId('recipe-list-thumb-fallback')).toBeInTheDocument();
   });
 });
