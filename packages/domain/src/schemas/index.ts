@@ -242,7 +242,11 @@ export type {
   DescribeEquipmentSubjectOutput,
 } from './describeEquipmentSubject.js';
 
-export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
+export {
+  AuthorRecipeInputSchema,
+  AuthorRecipeOutputSchema,
+  LibrarianOutputSchema,
+} from './authorRecipe.js';
 export {
   GenerateChatTitleInputSchema,
   GenerateChatTitleOutputSchema,
@@ -253,6 +257,7 @@ export type { AuthorRecipeInput, LibrarianOutput } from './authorRecipe.js';
 export {
   ExtractRecipeFromUrlInputSchema,
   ExtractRecipeAIOutputSchema,
+  ExtractRecipeFromUrlOutputSchema,
   URL_IMPORT_FAILURE_CODES,
 } from './extractRecipeFromUrl.js';
 export type {
@@ -264,6 +269,7 @@ export type {
 export {
   ExtractRecipeFromPhotoInputSchema,
   ExtractRecipeFromPhotoAIOutputSchema,
+  ExtractRecipeFromPhotoOutputSchema,
   MAX_RECIPE_PAGE_PHOTOS,
   PHOTO_IMPORT_TIMEOUT_SECONDS,
   PHOTO_IMPORT_FAILURE_CODES,
