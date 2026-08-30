@@ -27,6 +27,7 @@
   } from '@salt/domain';
   import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
+  import RegenerateIconDialog from '../../components/RegenerateIconDialog.svelte';
   import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
   import AdminGuard from './AdminGuard.svelte';
   import { goBack } from '../../lib/nav.js';
@@ -233,8 +234,8 @@
   // per page, so `iconBusyId` holds WHICH row is working instead of a bare flag.
 
   let iconBusyId = $state<string | null>(null);
+  // The open tool IS the state; the hint lives in RegenerateIconDialog.
   let regenerateTool = $state<KitchenToolDoc | null>(null);
-  let regenerateHint = $state('');
 
   function isHidden(tool: KitchenToolDoc): boolean {
     return tool.thumbnail === CANON_ICON_HIDDEN;
@@ -259,14 +260,12 @@
   }
 
   function openRegenerateDialog(tool: KitchenToolDoc): void {
-    regenerateHint = '';
     regenerateTool = tool;
   }
 
-  async function handleRegenerateIcon(): Promise<void> {
+  async function handleRegenerateIcon(hint: string): Promise<void> {
     const tool = regenerateTool;
     if (!tool) return;
-    const hint = regenerateHint.trim();
     iconBusyId = tool.id;
     const result = await regenerateKitchenToolIcon(tool.id, hint || undefined);
     iconBusyId = null;
@@ -614,56 +613,16 @@
   </DialogContent>
 </Dialog>
 
-<!-- Regenerate icon — an optional one-shot prompt steer, not a confirmation.
-     The commit contract drops "are you sure?", not inputs. -->
-<Dialog
+<RegenerateIconDialog
   open={regenerateTool !== null}
   onOpenChange={(v) => {
     if (!v) regenerateTool = null;
   }}
->
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="kitchen-tool-regenerate-dialog">
-      <DialogHeader>
-        <DialogTitle>Regenerate icon</DialogTitle>
-        <DialogDescription>
-          Optionally add guidance for the new icon. Leave blank to just try again.
-        </DialogDescription>
-      </DialogHeader>
-      <TextField
-        label="Extra guidance (optional)"
-        value={regenerateHint}
-        onValueChange={(v) => (regenerateHint = v)}
-        placeholder="e.g. show it from the side, wooden handle"
-        data-testid="kitchen-tool-regenerate-hint"
-        disabled={iconBusyId !== null}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            handleRegenerateIcon();
-          }
-        }}
-      />
-      <DialogFooter>
-        <Button
-          variant="outline"
-          onclick={() => (regenerateTool = null)}
-          disabled={iconBusyId !== null}
-        >
-          Cancel
-        </Button>
-        <Button
-          onclick={handleRegenerateIcon}
-          loading={iconBusyId !== null}
-          disabled={iconBusyId !== null}
-          data-testid="kitchen-tool-regenerate-confirm"
-        >
-          Regenerate
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+  placeholder="e.g. show it from the side, wooden handle"
+  testidPrefix="kitchen-tool"
+  busy={iconBusyId !== null}
+  onConfirm={handleRegenerateIcon}
+/>
 
 <!-- Remove a tool -->
 <Dialog

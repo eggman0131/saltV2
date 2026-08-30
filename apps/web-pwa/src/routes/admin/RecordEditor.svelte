@@ -28,6 +28,7 @@
     TextField,
   } from '@salt/ui-components';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
+  import RegenerateIconDialog from '../../components/RegenerateIconDialog.svelte';
   import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
   import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { CanonItem, ProductForm } from '@salt/domain';
@@ -223,11 +224,10 @@
 
   // The regenerate dialog stays: it collects an optional one-shot prompt steer.
   // It is an input, not a "are you sure?" — the thing the commit contract drops.
+  // The hint itself lives in RegenerateIconDialog, which clears it on open.
   let regenerateOpen = $state(false);
-  let regenerateHint = $state('');
 
   function openRegenerateDialog(): void {
-    regenerateHint = '';
     regenerateOpen = true;
   }
 
@@ -237,8 +237,7 @@
   let uploadOpen = $state(false);
   const promptFamily = $derived(record.kind === 'canon' ? 'canon' : 'productForm');
 
-  async function handleRegenerateIcon(): Promise<void> {
-    const hint = regenerateHint.trim();
+  async function handleRegenerateIcon(hint: string): Promise<void> {
     iconBusy = true;
     const result =
       record.kind === 'canon'
@@ -843,48 +842,14 @@
   {/if}
 </div>
 
-<!-- Regenerate icon dialog — an optional additive prompt steer, not a
-     confirmation. The commit contract drops "are you sure?", not inputs. Shared
-     by both record kinds (issue #871), like the section that opens it. -->
-<Dialog bind:open={regenerateOpen}>
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="{iconTestid}-regenerate-dialog">
-      <DialogHeader>
-        <DialogTitle>Regenerate icon</DialogTitle>
-        <DialogDescription>
-          Optionally add guidance for the new icon. Leave blank to just try again.
-        </DialogDescription>
-      </DialogHeader>
-      <TextField
-        label="Extra guidance (optional)"
-        value={regenerateHint}
-        onValueChange={(v) => (regenerateHint = v)}
-        placeholder="e.g. show it as a tin, sliced, make it greener"
-        data-testid="{iconTestid}-regenerate-hint"
-        disabled={iconBusy}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            handleRegenerateIcon();
-          }
-        }}
-      />
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (regenerateOpen = false)} disabled={iconBusy}>
-          Cancel
-        </Button>
-        <Button
-          data-testid="{iconTestid}-regenerate-confirm"
-          onclick={handleRegenerateIcon}
-          loading={iconBusy}
-          disabled={iconBusy}
-        >
-          Regenerate
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+<RegenerateIconDialog
+  open={regenerateOpen}
+  onOpenChange={(v) => (regenerateOpen = v)}
+  placeholder="e.g. show it as a tin, sliced, make it greener"
+  testidPrefix={iconTestid}
+  busy={iconBusy}
+  onConfirm={handleRegenerateIcon}
+/>
 
 <ImagePromptDialog
   bind:open={promptOpen}

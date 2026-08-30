@@ -205,6 +205,22 @@ describe('the catalog record editor — the regenerate dialog’s own surface', 
     }
   });
 
+  it('a hint typed and then abandoned does not ride along with the next attempt', async () => {
+    // Both pages used to clear their own `regenerateHint` when opening the
+    // dialog; #930 Phase 7 moved that into the shared component. Pinned because
+    // the failure is silent and wrong in the worst direction — a steer meant for
+    // one icon quietly steering the next.
+    const { view } = await openDialog();
+    await fireEvent.input(view.getByTestId('canon-detail-regenerate-hint'), {
+      target: { value: 'make it purple' },
+    });
+    await fireEvent.click(view.getByText('Cancel'));
+
+    await fireEvent.click(view.getByTestId('canon-detail-icon-regenerate'));
+    await fireEvent.click(await view.findByTestId('canon-detail-regenerate-confirm'));
+    await waitFor(() => expect(regenerateCanonIcon).toHaveBeenCalledWith(ITEM_ID, undefined));
+  });
+
   it('Enter in the hint field regenerates without reaching the confirm button', async () => {
     const { view } = await openDialog();
     const hint = view.getByTestId('canon-detail-regenerate-hint');
