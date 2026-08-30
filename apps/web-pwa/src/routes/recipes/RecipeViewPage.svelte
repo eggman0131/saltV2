@@ -103,6 +103,7 @@
   } from '@salt/domain';
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
+  import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
@@ -886,33 +887,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // nothing for a drawer to do; below it, opening a chat raises the drawer over the
   // live recipe. `false` — the phone path — is the honest default whenever the answer
   // cannot be read: SSR, a jsdom without `matchMedia`, a query the engine rejects.
-  // Same shape as `MealPlanWeekPage`'s split read, which is the house pattern.
-  //
   // This must stay the SAME GATE as the `split:` variant the column is laid out with
   // (`app.css`), and in the same RANGE SYNTAX the browser actually sees: on an engine
   // too old for range queries the emitted CSS is inert, and a `min-width:` query here
   // would answer "yes, docked" for a page that is still one column — suppressing the
   // drawer with no pane to replace it, i.e. a recipe where tapping a chat does nothing.
-  const DOCKED_QUERY = '(width >= 700px) and (height >= 480px)';
-  let docked = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(DOCKED_QUERY);
-    } catch {
-      return;
-    }
-    docked = mql.matches;
-    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener API at
-    // all, and resizing is the only thing the listener is for.
-    if (typeof mql.addEventListener !== 'function') return;
-    const onChange = (event: MediaQueryListEvent): void => {
-      docked = event.matches;
-    };
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  });
+  // The read itself, and the four ways it can fail, are `lib/mediaQuery.svelte.ts`.
+  const split = createMediaQuery(SPLIT_QUERY);
+  const docked = $derived(split.matches);
 
   // The drawer's stop is in-memory only and so is whether it is open — Rule 3, and
   // nothing here is worth restoring across a reload anyway.

@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import { prefersReducedMotion } from 'svelte/motion';
+import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
  * The one spring in the app: a plain integrator over a single number, seeded with the
@@ -51,7 +51,7 @@ export function createDeckSpring(initial = 0) {
      */
     animateTo(target: number, velocity0 = 0): void {
       stop();
-      if (prefersReducedMotion.current || typeof requestAnimationFrame !== 'function') {
+      if (prefersReducedMotion() || typeof requestAnimationFrame !== 'function') {
         value = target;
         return;
       }

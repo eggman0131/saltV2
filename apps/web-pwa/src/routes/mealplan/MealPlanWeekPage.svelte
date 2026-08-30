@@ -33,6 +33,7 @@
   import { kindOf } from '../recipes/recipeKind.js';
   import { formatDayKey } from '../../lib/dateFormat.js';
   import { todayIso } from '../../lib/today.js';
+  import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
@@ -626,32 +627,12 @@
   // no pane to replace it, which is a planner where tapping a day does nothing.
   // Same syntax, same parser, so the two agree in both directions; an unparseable
   // query is `not all`, i.e. `false`, which is exactly the phone path.
-  const SPLIT_QUERY = '(width >= 700px) and (height >= 480px)';
-
-  // `false` — the phone path — is the honest default whenever the answer cannot
-  // be read: SSR, a jsdom without `matchMedia`, a query the engine rejects. Same
-  // shape as `isCoarsePointer` in `lib/swipe.svelte.ts`, which is the house
-  // pattern for a live media read.
-  let isSplit = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(SPLIT_QUERY);
-    } catch {
-      return;
-    }
-    isSplit = mql.matches;
-    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener
-    // API at all, and folding/unfolding is the only thing the listener is for — so
-    // a one-shot read is the whole answer wherever it is missing.
-    if (typeof mql.addEventListener !== 'function') return;
-    const onChange = (event: MediaQueryListEvent): void => {
-      isSplit = event.matches;
-    };
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  });
+  // The read itself, and the four ways it can fail, are
+  // `lib/mediaQuery.svelte.ts` — which generalises the shape `isCoarsePointer`
+  // in `lib/swipe.svelte.ts` already used, and which this page's own comment
+  // called the house pattern for a live media read.
+  const split = createMediaQuery(SPLIT_QUERY);
+  const isSplit = $derived(split.matches);
 
   // The pane opens on TODAY, the same day the deck itself lands on, so arriving
   // with the phone unfolded shows tonight without a tap.

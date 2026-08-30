@@ -40,11 +40,22 @@ afterEach(() => {
   document.body.style.pointerEvents = '';
 });
 
-// jsdom ships no `window.matchMedia`. Svelte's `prefersReducedMotion` (svelte/motion)
-// builds a `MediaQuery` at MODULE level, so any component importing it throws on
-// import — the whole test file fails to collect, before a single test runs. Reported
-// as "no reduced-motion preference", which is the honest default for a headless run:
-// the motion-reduce branches stay unexercised here and belong to a real browser.
+// jsdom ships no `window.matchMedia`.
+//
+// This stub was originally here because Svelte's `prefersReducedMotion`
+// (`svelte/motion`) builds a `MediaQuery` at MODULE level, so any component
+// importing it threw on import and the whole file failed to collect before a
+// single test ran. NOTHING IMPORTS `svelte/motion` ANY MORE — issue #933 pointed
+// `lib/deckSpring.svelte.ts`, its last consumer, at `lib/reducedMotion.ts` like
+// its five siblings — so that is no longer the reason.
+//
+// It stays for a plainer one: every media read in the app is guarded and answers
+// `false` when `matchMedia` is missing, so without a stub the suite would exercise
+// the "cannot ask" path everywhere and never the ordinary one. `matches: false`
+// reports "no reduced-motion preference, phone-sized viewport", which is the
+// honest default for a headless run — the motion-reduce and two-pane branches
+// belong to a real browser, or to a test that supplies its own stub (see
+// `CatalogPage.docked.test.ts`, `RecipeViewPage.docked.test.ts`).
 if (typeof window.matchMedia !== 'function') {
   // `vi.fn` cannot satisfy `matchMedia`'s overloads, so the assignment needs the
   // cast; the stub is complete for everything the code under test reads.

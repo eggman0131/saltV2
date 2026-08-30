@@ -30,6 +30,7 @@
     regenerateProductFormIcon,
   } from '../../lib/productFormService.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import AdminGuard from './AdminGuard.svelte';
@@ -100,27 +101,10 @@
   // Is the editor docked in a column of its own? From `split:` up it is. This must
   // stay the SAME GATE as the `split:` variant the columns are laid out with, and
   // it is what `fill` is passed from as well — one gate, so the classes and the
-  // prop cannot disagree (ui-spec-v07 §1.4). `false` is the honest default
-  // whenever the answer cannot be read: SSR, a jsdom without `matchMedia`, a query
-  // the engine rejects. Same shape as `RecipeViewPage`'s docked read.
-  const DOCKED_QUERY = '(width >= 700px) and (height >= 480px)';
-  let docked = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    let mql: MediaQueryList;
-    try {
-      mql = window.matchMedia(DOCKED_QUERY);
-    } catch {
-      return;
-    }
-    docked = mql.matches;
-    if (typeof mql.addEventListener !== 'function') return;
-    const onChange = (event: MediaQueryListEvent): void => {
-      docked = event.matches;
-    };
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  });
+  // prop cannot disagree (ui-spec-v07 §1.4). The read itself, and the four ways
+  // it can fail, are `lib/mediaQuery.svelte.ts`.
+  const split = createMediaQuery(SPLIT_QUERY);
+  const docked = $derived(split.matches);
 
   // ─── Which record the editor is on ──────────────────────────────────────────
   // Seeded from the route, then owned by the page: on the two-pane breakpoint

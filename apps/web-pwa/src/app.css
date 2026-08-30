@@ -35,9 +35,11 @@
  * A one-app page-layout breakpoint is not a token.
  *
  * ⚠ The query below is duplicated, as a string, in
- * `src/routes/mealplan/MealPlanWeekPage.svelte` (`SPLIT_QUERY`) — two behaviours
- * there need the answer in JS and a Tailwind variant cannot be read from script.
- * The two MUST move together. It is written there in the RANGE syntax Tailwind v4
- * compiles this to (`@media (width>=700px) and (height>=480px)`) rather than in
- * the form below, deliberately: see the comment at that constant. */
+ * `src/lib/mediaQuery.svelte.ts` (`SPLIT_QUERY`) — three route components need
+ * the answer in JS and a Tailwind variant cannot be read from script. That
+ * constant is now the ONE JS-side spelling; it used to be re-declared in each of
+ * the three pages (issue #933). The two MUST move together. It is written there
+ * in the RANGE syntax Tailwind v4 compiles this to
+ * (`@media (width>=700px) and (height>=480px)`) rather than in the form below,
+ * deliberately: see the comment at that constant. */
 @custom-variant split (@media (min-width: 700px) and (min-height: 480px));

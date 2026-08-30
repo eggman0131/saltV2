@@ -31,6 +31,7 @@
     rubberBand,
   } from '../../lib/cookDeck.js';
   import { createDeckSpring } from '../../lib/deckSpring.svelte.js';
+  import { DRAG_START_PX } from '../../lib/swipe.js';
   import ChatThread from '../chat/ChatThread.svelte';
   import type { ChatThreadState } from '../chat/chatThreadState.svelte.js';
   import { deriveDrawerStops, type DrawerStops } from './chatDrawer.js';
@@ -54,8 +55,11 @@
   }
   let { session, thread, onClose, onOpenFull, headerActions, starters }: Props = $props();
 
-  /** Slop before a touch counts as a drag rather than a tap on the handle. */
-  const DRAG_START_PX = 6;
+  // `DRAG_START_PX` — the slop before a touch counts as a drag rather than a tap
+  // on the handle — is imported from `lib/swipe.js` (issue #933). It is the one
+  // number here that is NOT drawer-specific: it is about the human hand, not
+  // about how far this surface travels.
+  //
   // Cook mode's thresholds are stated relative to a SCREEN-sized section; the drawer's
   // travel is roughly half a screen, so a slow drag would have to cross most of it to
   // commit. These are the same numbers scaled to that travel — a fifth of it commits,
