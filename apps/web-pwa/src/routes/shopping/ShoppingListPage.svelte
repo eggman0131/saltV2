@@ -322,10 +322,19 @@
       .map((c) => ({ value: c.id, label: titleCase(c.name) })),
   );
 
+  // Indexed, not scanned (issue #939). The combobox calls `filterFn` once per
+  // candidate and the candidates ARE `$canonItems`, so a `.find` in there was
+  // quadratic in canon size. It compounded: `Combobox.headless.svelte.ts` exposes
+  // `filteredItems` (:272) and `showCreate` (:278) as plain getters rather than
+  // `$derived`, and `computeShowCreate` (:82) and `totalCount` (:86) each call
+  // `computeFilteredItems` again, so one keystroke re-filters several times over.
+  // Same shape as RecipeListPage:52 / RecipeViewPage:610 / IngredientMatchSheet:68.
+  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
     const q = input.trim().toLowerCase();
     if (!q) return true;
-    const canon = $canonItems.find((c) => c.id === comboItem.value);
+    const canon = canonById.get(comboItem.value);
     return (
       comboItem.label.toLowerCase().includes(q) ||
       (canon?.synonyms.some((s) => s.toLowerCase().includes(q)) ?? false)
