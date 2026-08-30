@@ -183,7 +183,7 @@
     if (!v) reset();
   }}
 >
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <SheetTitle>How did it go?</SheetTitle>
     </SheetHeader>

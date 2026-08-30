@@ -83,6 +83,12 @@ describe('Sheet', () => {
       'data-[state=open]:animate-in data-[state=closed]:animate-out duration-slow ' +
       'ease-emphasized motion-reduce:animate-none';
 
+    // The bottom variant's padding, named once so the value lives in exactly one
+    // place. #930 Phase 3 changes THIS LINE and the home-bar assertion that
+    // reads it, and nothing else in the file — which is what makes the delta
+    // provably confined rather than merely claimed to be.
+    const BOTTOM_PADDING = 'p-4 pb-8';
+
     const SIDE = {
       right:
         'inset-y-0 right-0 h-full w-3/4 max-w-sm ' +
@@ -92,11 +98,13 @@ describe('Sheet', () => {
         'data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
       top: 'inset-x-0 top-0 w-full data-[state=open]:slide-in-from-top data-[state=closed]:slide-out-to-top',
       bottom:
-        'inset-x-0 bottom-0 w-full ' +
+        `inset-x-0 bottom-0 w-full max-h-[85vh] ${BOTTOM_PADDING} ` +
         'data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
     } as const;
 
     const sides = ['right', 'left', 'top', 'bottom'] as const;
+    /** The three sides no call site in the app uses; `bottom` is asserted alone. */
+    const unusedSides = ['right', 'left', 'top'] as const;
 
     it.each(sides)('side=%s resolves to exactly base + its own side classes', (side) => {
       expect(sheetContentVariants({ side })).toBe(`${BASE} ${SIDE[side]}`);
@@ -110,26 +118,72 @@ describe('Sheet', () => {
       expect(sheetContentVariants({})).toBe(sheetContentVariants({ side: 'right' }));
     });
 
-    // ── Padding: what #930 Phase 2 relocates and Phase 3 then changes ───────
-    it.each(sides)('side=%s takes its padding from the base string alone', (side) => {
-      // `p-6` unqualified, from the base — no side supplies its own today,
-      // which is why all eleven bottom-sheet call sites override it with `p-4`.
+    // ── Padding ────────────────────────────────────────────────────────────
+    it.each(unusedSides)('side=%s takes its padding from the base string alone', (side) => {
       expect(cn(sheetContentVariants({ side }))).toContain('p-6');
     });
 
-    it('no side variant carries a bottom padding of its own', () => {
-      for (const side of sides) {
-        expect(SIDE[side]).not.toMatch(/\bpb-/);
-      }
+    it('side=bottom overrides the base padding, so no call site has to', () => {
+      // Order matters and `cn` is what enforces it: the variant's `p-4` has to
+      // come after the base `p-6` for tailwind-merge to evict it, and `pb-8`
+      // after `p-4` to survive. Asserting the MERGED string is the only way to
+      // see that; the raw concatenation would contain all three and say nothing.
+      const merged = cn(sheetContentVariants({ side: 'bottom' }));
+      expect(merged).not.toContain('p-6');
+      for (const token of BOTTOM_PADDING.split(' ')) expect(merged).toContain(token);
     });
 
-    // ── Height ceiling: what #930 Phase 2 relocates ─────────────────────────
-    it.each(sides)('side=%s states no max-height, so a tall sheet runs off-screen', (side) => {
+    // ── Height ceiling ─────────────────────────────────────────────────────
+    it.each(unusedSides)('side=%s states no max-height', (side) => {
       expect(cn(sheetContentVariants({ side }))).not.toMatch(/\bmax-h-/);
     });
 
+    it('side=bottom caps at 85vh, so a long sheet keeps its footer on screen', () => {
+      expect(cn(sheetContentVariants({ side: 'bottom' }))).toContain('max-h-[85vh]');
+    });
+
+    it('a caller can still opt out of the ceiling, with the arbitrary form', () => {
+      // ShoppingListPage does exactly this — it is the one bottom sheet with no
+      // height cap, and it must stay that way after #930 moved the cap here.
+      expect(cn(sheetContentVariants({ side: 'bottom' }), 'max-h-[none]')).not.toContain(
+        'max-h-[85vh]',
+      );
+    });
+
+    it('the PLAIN max-h-none does NOT opt out — which is why no call site uses it', () => {
+      // Not a preference: tailwind-merge v3 omits `none` from the max-height
+      // group (it has it for max-width), so `max-h-none` arrives alongside the
+      // variant's ceiling instead of replacing it and stylesheet order decides.
+      // Recorded here so that if a future tailwind-merge fixes it, this goes red
+      // and the call-site comment explaining the workaround can go with it.
+      expect(cn(sheetContentVariants({ side: 'bottom' }), 'max-h-none')).toContain('max-h-[85vh]');
+    });
+
+    it('MealDayEditor’s three documented overrides all still win', () => {
+      // The one call site that differs from the common shape on every axis the
+      // variant now supplies. Asserted here rather than in the page's own test
+      // because what is at stake is the MERGE, which is this file's subject.
+      const merged = cn(
+        sheetContentVariants({ side: 'bottom' }),
+        'max-h-[85dvh] gap-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
+      );
+      expect(merged).toContain('max-h-[85dvh]');
+      expect(merged).not.toContain('max-h-[85vh]');
+      expect(merged).toContain('gap-3');
+      expect(merged).not.toContain('gap-4');
+      expect(merged).toContain('pb-[calc(1.5rem+env(safe-area-inset-bottom))]');
+      expect(merged).not.toContain('pb-8');
+      // What it does NOT override still arrives from the variant.
+      expect(merged).toContain('p-4');
+    });
+
     // ── Safe area: what #930 Phase 3 introduces ─────────────────────────────
-    it('no side variant makes any allowance for the iPhone home bar', () => {
+    it('no side makes any allowance for the iPhone home bar yet', () => {
+      // Phase 3 changes BOTTOM_PADDING above and this assertion with it. They
+      // are two statements of one value, not two independent facts — the claim
+      // "exactly one thing moves in Phase 3" is true of the value, not of the
+      // assertion count.
+      expect(BOTTOM_PADDING).not.toContain('safe-area-inset');
       for (const side of sides) {
         expect(cn(sheetContentVariants({ side }))).not.toContain('safe-area-inset');
       }

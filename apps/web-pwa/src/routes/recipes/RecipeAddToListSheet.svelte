@@ -186,7 +186,7 @@
     if (!v) busy = false;
   }}
 >
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <!-- Alone, the sheet names the ACTION — it is one thing you asked for and
            the recipe is already on screen behind it. In a sequence it names the

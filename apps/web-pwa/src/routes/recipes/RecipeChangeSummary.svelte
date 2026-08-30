@@ -363,7 +363,7 @@
 {/snippet}
 
 <Sheet bind:open side="bottom">
-  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4">
     <SheetHeader>
       <SheetTitle>Review changes</SheetTitle>
       <SheetDescription>

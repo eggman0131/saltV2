@@ -429,7 +429,11 @@
        scroll lock, Escape and outside-click dismissal all come from the Dialog
        underneath; there is no drag-to-dismiss. -->
   <Sheet bind:open side="bottom">
-    <SheetContent class="max-h-[85dvh] gap-3 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <!-- Two documented overrides of the bottom variant (#930): `dvh` rather than
+         the primitive's `vh`, because this sheet is tall enough for a mobile URL
+         bar to matter; and a tighter `gap-3`. The bespoke home-bar padding is
+         this file's own until #930 Phase 3 moves it into the primitive. -->
+    <SheetContent class="max-h-[85dvh] gap-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <SheetHeader>
         <SheetTitle>{heading}</SheetTitle>
       </SheetHeader>
