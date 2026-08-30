@@ -24,11 +24,14 @@
 
   let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 
+  // Indexed, not scanned (issue #939) — see the note on ShoppingListPage's copy.
+  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+
   // Case-insensitive substring match on name and synonyms
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
     const q = input.trim().toLowerCase();
     if (!q) return true;
-    const canon = $canonItems.find((c) => c.id === comboItem.value);
+    const canon = canonById.get(comboItem.value);
     return (
       comboItem.label.toLowerCase().includes(q) ||
       (canon?.synonyms.some((s) => s.toLowerCase().includes(q)) ?? false)
