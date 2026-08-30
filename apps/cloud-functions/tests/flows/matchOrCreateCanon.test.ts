@@ -311,6 +311,71 @@ describe('matchOrCreateCanon flow — derived names never become synonyms', () =
   });
 });
 
+// The OTHER `resolveMatch` call site behind the guard, and the one the issue
+// lists first: the AI answers `kind: 'match'` and names a shortlist candidate
+// outright (`matchOrCreate.ts` → `decision.kind === 'match'`). The three tests
+// above all reach the guard through the `kind: 'new'` snapshot-name failsafe
+// instead, because "garlic cloves" clears no deterministic stage against a lone
+// "Garlic Bulbs" and so arbitrates against an EMPTY shortlist. Removing the
+// predicate from this branch alone would leave every one of them green.
+//
+// A non-empty shortlist needs two near-tie candidates, so the fixture holds the
+// two garlic-clove products a real catalog accumulates. Neither is named by the
+// raw text, which is what leaves a synonym to append — and therefore a guard to
+// refuse it.
+function seedTwoGarlicCloveProducts(): void {
+  seedCanonItem(makeItem({ id: 'garlic-clove-paste', name: 'Garlic Clove Paste' }));
+  seedCanonItem(makeItem({ id: 'garlic-clove-puree', name: 'Garlic Clove Puree' }));
+}
+
+describe('matchOrCreateCanon flow — the guard holds on the AI `match` branch too', () => {
+  it('binds an AI-named candidate without recording the derived name as its synonym', async () => {
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    seedTwoGarlicCloveProducts();
+    seedGarlicCloveForm();
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'match',
+      itemId: 'garlic-clove-paste',
+      confidence: 0.9,
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    const result = await (matchOrCreateCanonFlow as Function)({ rawName: 'garlic cloves' });
+
+    expect(result.kind).toBe('ok');
+    expect(result.value.decision).toBe('ai_arbitrated');
+    // The AI's own choice, not a snapshot-name failsafe landing on it: only the
+    // `match` branch can bind an id the arbiter named.
+    expect(result.value.item.id).toBe('garlic-clove-paste');
+    expect(result.value.item.synonyms).toEqual([]);
+    expect(readCanonStorage().find((i) => i.id === 'garlic-clove-paste')!.synonyms).toEqual([]);
+  });
+
+  it('records the synonym on the same branch when no product form claims the name', async () => {
+    // The control, exactly as above but with no form seeded: same route, same
+    // arbitration verdict, and the synonym IS written. Without it the assertion
+    // above passes just as well on a branch that never appends anything.
+    seedAisles([{ id: 'produce', name: 'Produce', order: 0 }]);
+    seedTwoGarlicCloveProducts();
+    mockArbitrate.mockResolvedValueOnce({
+      kind: 'match',
+      itemId: 'garlic-clove-paste',
+      confidence: 0.9,
+      shoppingBehavior: 'needed',
+      prompt: '',
+      rawResponse: '',
+    });
+
+    const result = await (matchOrCreateCanonFlow as Function)({ rawName: 'garlic cloves' });
+
+    expect(result.kind).toBe('ok');
+    expect(result.value.item.id).toBe('garlic-clove-paste');
+    expect(result.value.item.synonyms).toEqual(['garlic clove']);
+  });
+});
+
 describe('buildMatchOrCreatePorts', () => {
   // The shopping-list trigger calls the builder with no extras, so this is the
   // predicate the trigger now matches with.
