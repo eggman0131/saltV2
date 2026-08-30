@@ -157,19 +157,30 @@ export function initShoppingDaySync(): () => void {
     subscriptionErrorHandler(),
   );
 
-  return () => {
-    startDateUnsub?.();
-    extensionStartUnsub?.();
-    upcomingUnsub?.();
-    startDateUnsub = extensionStartUnsub = upcomingUnsub = null;
-    for (const unsub of weekUnsubs.values()) unsub();
-    weekUnsubs.clear();
-    _shopDayByWeek.set({});
-    _weekStart.set('');
-    _extensionWeekStart.set('');
-    // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
-    _upcomingShopDay.set(undefined);
-  };
+  return teardown;
+}
+
+/**
+ * Drop every subscription and put every store back to its pre-sign-in value.
+ *
+ * Hoisted so `initShoppingDaySync`'s return value and
+ * `__resetShoppingDayServiceForTest` are the SAME ten statements rather than two
+ * hand-kept copies of them (issue #1055). A store added to one and not the other
+ * bleeds state between tests and surfaces as an unrelated flake somewhere else
+ * entirely — which is the failure this collapse removes rather than documents.
+ */
+function teardown(): void {
+  startDateUnsub?.();
+  extensionStartUnsub?.();
+  upcomingUnsub?.();
+  startDateUnsub = extensionStartUnsub = upcomingUnsub = null;
+  for (const unsub of weekUnsubs.values()) unsub();
+  weekUnsubs.clear();
+  _shopDayByWeek.set({});
+  _weekStart.set('');
+  _extensionWeekStart.set('');
+  // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
+  _upcomingShopDay.set(undefined);
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
@@ -218,16 +229,7 @@ export function clearShopDay(date: string): Promise<ReadResult<void, DomainError
 // ─── Test / e2e helpers ──────────────────────────────────────────────────────
 
 export function __resetShoppingDayServiceForTest(): void {
-  startDateUnsub?.();
-  extensionStartUnsub?.();
-  upcomingUnsub?.();
-  startDateUnsub = extensionStartUnsub = upcomingUnsub = null;
-  for (const unsub of weekUnsubs.values()) unsub();
-  weekUnsubs.clear();
-  _shopDayByWeek.set({});
-  _weekStart.set('');
-  _extensionWeekStart.set('');
-  _upcomingShopDay.set(undefined);
+  teardown();
 }
 
 /** Seed a shop marker for an arbitrary week (used by tests / e2e). */
