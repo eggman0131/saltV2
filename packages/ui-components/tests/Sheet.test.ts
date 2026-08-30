@@ -84,10 +84,10 @@ describe('Sheet', () => {
       'ease-emphasized motion-reduce:animate-none';
 
     // The bottom variant's padding, named once so the value lives in exactly one
-    // place. #930 Phase 3 changes THIS LINE and the home-bar assertion that
-    // reads it, and nothing else in the file — which is what makes the delta
+    // place. #930 Phase 3 changed THIS LINE and the home-bar assertion that
+    // reads it, and nothing else in the file — which is what makes that delta
     // provably confined rather than merely claimed to be.
-    const BOTTOM_PADDING = 'p-4 pb-8';
+    const BOTTOM_PADDING = 'p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]';
 
     const SIDE = {
       right:
@@ -159,32 +159,31 @@ describe('Sheet', () => {
       expect(cn(sheetContentVariants({ side: 'bottom' }), 'max-h-none')).toContain('max-h-[85vh]');
     });
 
-    it('MealDayEditor’s three documented overrides all still win', () => {
-      // The one call site that differs from the common shape on every axis the
-      // variant now supplies. Asserted here rather than in the page's own test
-      // because what is at stake is the MERGE, which is this file's subject.
-      const merged = cn(
-        sheetContentVariants({ side: 'bottom' }),
-        'max-h-[85dvh] gap-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
-      );
+    it('MealDayEditor’s two remaining overrides still win', () => {
+      // The one call site that differs from the common shape. It had three
+      // overrides until #930 Phase 3 moved the home-bar padding into the
+      // variant; the two left are `dvh` over `vh` and a tighter gap. Asserted
+      // here rather than in the page's own test because what is at stake is the
+      // MERGE, which is this file's subject.
+      const merged = cn(sheetContentVariants({ side: 'bottom' }), 'max-h-[85dvh] gap-3');
       expect(merged).toContain('max-h-[85dvh]');
       expect(merged).not.toContain('max-h-[85vh]');
       expect(merged).toContain('gap-3');
       expect(merged).not.toContain('gap-4');
-      expect(merged).toContain('pb-[calc(1.5rem+env(safe-area-inset-bottom))]');
-      expect(merged).not.toContain('pb-8');
-      // What it does NOT override still arrives from the variant.
+      // What it no longer writes now arrives from the variant, unchanged.
       expect(merged).toContain('p-4');
+      expect(merged).toContain('pb-[calc(1.5rem+env(safe-area-inset-bottom))]');
     });
 
-    // ── Safe area: what #930 Phase 3 introduces ─────────────────────────────
-    it('no side makes any allowance for the iPhone home bar yet', () => {
-      // Phase 3 changes BOTTOM_PADDING above and this assertion with it. They
-      // are two statements of one value, not two independent facts — the claim
-      // "exactly one thing moves in Phase 3" is true of the value, not of the
-      // assertion count.
-      expect(BOTTOM_PADDING).not.toContain('safe-area-inset');
-      for (const side of sides) {
+    // ── Safe area (#930 Phase 3) ────────────────────────────────────────────
+    it('side=bottom, and only bottom, clears the iPhone home bar', () => {
+      // The issue's one sanctioned visual delta. A bottom sheet sits on the
+      // edge the home bar occupies; the other three sides do not, and picking
+      // up an inset they cannot use would be padding for nothing.
+      expect(cn(sheetContentVariants({ side: 'bottom' }))).toContain(
+        'pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
+      );
+      for (const side of unusedSides) {
         expect(cn(sheetContentVariants({ side }))).not.toContain('safe-area-inset');
       }
     });

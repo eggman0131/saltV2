@@ -18,8 +18,16 @@ export const sheetContentVariants = cva(
         // ceiling without which a long sheet runs off the bottom of the screen
         // taking its confirm button with it. Per-side rather than on the base
         // string, because `right`/`left`/`top` want neither.
+        //
+        // The bottom padding adds `env(safe-area-inset-bottom)` deliberately: a
+        // sheet flush to the bottom edge puts its last control under the iPhone
+        // home bar, where the system swipe gesture eats the tap. The fixed part
+        // is 1.5rem rather than the 2rem this used to be, so an unnotched screen
+        // loses a little and a notched one gains the inset — the trade #930
+        // Phase 3 was filed to make. Only `bottom` needs it; the other three
+        // sides do not sit on that edge.
         bottom:
-          'inset-x-0 bottom-0 w-full max-h-[85vh] p-4 pb-8 data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
+          'inset-x-0 bottom-0 w-full max-h-[85vh] p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
       },
     },
     defaultVariants: { side: 'right' },
