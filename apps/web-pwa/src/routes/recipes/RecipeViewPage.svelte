@@ -72,6 +72,7 @@
   import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
+  import { canonIndex, matchMarkersReady } from '../../lib/canonIndex.js';
   // The ONE shared kitchen-tool lookup (issue #882). Subscribed app-wide in
   // App.svelte, so there is nothing to initialise here — and it is a store rather
   // than a plain function precisely so the strip fills in the moment the drawn
@@ -606,20 +607,15 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // canonId, so it passed that test and carried no marker at all: the card said
   // three and the recipe showed you nothing (issue #867).
   //
-  // Both stores are app-wide (App.svelte), so this costs no extra read.
-  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+  // Index and gate both come from `lib/canonIndex.ts`, which carries the whole
+  // of the reasoning. It is not merely the same SHAPE as the list card's gate,
+  // it is the same function — which is what stops the card counting three
+  // problems on a recipe whose rows show none (issue #867). The gate covers
+  // BOTH markers here, not only the one #867 added.
+  const canonById = $derived(canonIndex($canonItems));
 
-  // Nothing is judged until both collections have landed, and that gates BOTH
-  // markers rather than only the new one. Canon leads and arrives after first
-  // paint, and an empty canon makes every matched line look dangling — so an
-  // ungated row flashes a ✗ on every cold load and takes it back a moment later,
-  // which is how a marker gets trained out of a person. Mirrors the list card's
-  // gate, length check included: `isLoadingAisles` starts false, so a surface
-  // that never initialises sync would otherwise read "loaded" over an empty
-  // store. Product forms get the flag but NOT a length check — an empty form
-  // table is a legitimate state, and precisely the one these markers exist for.
   const matchMarkersKnown = $derived(
-    !$isLoadingAisles && !$isLoadingProductForms && $canonItems.length > 0,
+    matchMarkersReady($isLoadingAisles, $isLoadingProductForms, $canonItems.length),
   );
 
   // Split on the LIVE match, not on the issue kind. A line whose canon has been

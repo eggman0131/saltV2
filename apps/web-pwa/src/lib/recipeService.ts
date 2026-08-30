@@ -35,7 +35,6 @@ import type {
   Ingredient,
   IngredientGroup,
   SourceRef,
-  CanonItem,
   ProductForm,
   CanonItemUnit,
   FormDemand,
@@ -52,6 +51,7 @@ import { hasLiveCanonMatch } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { currentMember } from './membersService.js';
 import { getCanonItemsSnapshot } from './canonService.js';
+import { canonIndex } from './canonIndex.js';
 import { getProductFormsSnapshot } from './productFormService.js';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -914,7 +914,7 @@ export const PRODUCT_FORM_COUNT_UNIT = 'count';
 export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddRow[] {
   const baseServings = recipe.metadata.servings ?? 1;
   const scale = servings / baseServings;
-  const canonById = new Map<string, CanonItem>(getCanonItemsSnapshot().map((c) => [c.id, c]));
+  const canonById = canonIndex(getCanonItemsSnapshot());
   const liveCanonIds = new Set(canonById.keys());
   // Snapshot the recipe list once so the buy-or-make resolver (Phase 2) is a pure
   // per-row lookup. `findProducingRecipes` is the pure @salt/domain helper; the
