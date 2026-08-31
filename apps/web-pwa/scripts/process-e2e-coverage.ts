@@ -1,6 +1,11 @@
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import V8ToIstanbul from 'v8-to-istanbul';
+// A FACTORY, not a class — `module.exports = function (…) { return new … }`.
+// It was called with `new` until #1132 put this file under the compiler; that
+// happened to work (a constructor returning an object yields that object) but
+// typed as `any`. Lower-cased to match the package's own declaration, so the
+// `new` does not come back.
+import v8ToIstanbul from 'v8-to-istanbul';
 import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import reports from 'istanbul-reports';
@@ -63,7 +68,7 @@ async function main(): Promise<void> {
       if (!entry.source) continue;
 
       try {
-        const converter = new V8ToIstanbul(entry.url, 0, { source: entry.source });
+        const converter = v8ToIstanbul(entry.url, 0, { source: entry.source });
         await converter.load();
         converter.applyCoverage(entry.functions);
         coverageMap.merge(converter.toIstanbul());

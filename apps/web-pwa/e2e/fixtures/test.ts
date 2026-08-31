@@ -40,6 +40,20 @@ const E2E_RAW_DIR = join(
 // in front of any `playwright test` collects on demand. Wiring a report into CI
 // stays available if e2e coverage ever gains a consumer — flip the default and
 // add the upload/merge; the collection code is untouched and still here.
+//
+// That last sentence used to be a hope (#1132). `apps/web-pwa/scripts/**` was in
+// no typecheck program and CI sets `E2E_COVERAGE` nowhere, so a `v8-to-istanbul`
+// major or a Vite port move could have rotted the report months before anyone
+// reached for it. Two mechanisms now hold it, and both run under `pnpm test` /
+// `pnpm typecheck` from any worktree — neither needs Playwright, which
+// `e2e:coverage` being host-guarded rules out:
+//   • `tests/e2eCoverageReport.test.ts` runs `process-e2e-coverage.ts` for real
+//     over a raw V8 dump and asserts the per-function hit counts that come out.
+//   • `tsconfig.test.json` now includes `scripts/**` — which found four type
+//     errors in that script on the day it was switched on.
+// Note the seam neither covers: the BRANCH BELOW needs a browser, so all that
+// couples it to the guard is the dump shape. Change what is written here, or
+// have Playwright change it, and that test keeps passing on the old shape.
 const COLLECT_COVERAGE = process.env.E2E_COVERAGE === '1';
 
 interface AutoFixtures {
