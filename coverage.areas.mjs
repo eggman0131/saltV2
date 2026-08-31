@@ -106,6 +106,34 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // to the last decimal. A measurement repair that moved a floor would have been
 // the bug, not the fix.
 //
+// BULK RE-PIN, 2026-08-31 (issue #1133): all eight areas, both metrics, moved
+// to a measurement taken on that branch. Everything above this line is a single
+// area re-measured for a single reason; this is the first time all sixteen
+// numbers moved at once, and the reason is that they never had. The ratchet's
+// regression half has been mechanical since #943 — vitest enforces it on every
+// PR. Its RATCHETING half was remembered, and remembering had failed.
+//
+// `packages/adapters/firebase-sync/src` is where it failed worst. Pinned
+// 57.82/63.02 the day #966 set it and untouched since, while #984 (the
+// #928/#931/#939 sprint) and #1084 rewrote that suite to 92/85.65 — so a pull
+// request could have deleted every test those two issues wrote and landed
+// green, the area having to fall 34 line-points before the floor noticed. That
+// is the area #941 singled out as the sharpest risk in the repo. Across all
+// eight, ~50 line-points and ~32 branch-points of earned protection were
+// sitting unbanked.
+//
+// Banked, NOT relaxed: no pin here moved down, and the header rule above is
+// unchanged — these remain floors, not targets. Like every pin in this file
+// they are exact measurements carrying no margin, and that was checked rather
+// than assumed: each of the sixteen was first pinned one hundredth HIGHER, and
+// vitest reported all sixteen red naming the value one hundredth below. So
+// `pnpm test:coverage` is green at these numbers and red at any of them +0.01.
+//
+// Deriving a pin by hand: the figure is istanbul's, FLOORED to two decimals
+// (`Math.floor((covered / total) * 10000) / 100`) and not rounded. Six of these
+// eight areas read a hundredth higher if you round, and a pin a hundredth high
+// is a red build — so take the number vitest prints, never one you computed.
+//
 // Areas deliberately unfloored: `packages/shared-types/src` (4 covered
 // lines in total — a pin there is noise, not a signal) and `apps/storybook`,
 // which is excluded from measurement outright (see `coverageExclude`).
@@ -117,7 +145,7 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // much of this component is tested". The DELTA is still exact and still a
 // valid ratchet — the same compiler runs on both sides of a change.
 export const coverageThresholds = {
-  'packages/domain/src/**': { lines: 98.74, branches: 91.64 },
+  'packages/domain/src/**': { lines: 98.84, branches: 91.78 },
   // Branches CORRECTED DOWN 74.74 → 74.47 in #929, and like observability's
   // lines below this is NOT a ratchet release. #929 deleted duplicated code —
   // three byte-identical field-state headless modules became one, four Sheet
@@ -147,9 +175,13 @@ export const coverageThresholds = {
   // above says never, and it means it. The test that separates the two cases is
   // the uncovered count — if it had risen by even one branch, this would be a
   // regression wearing a dedup's clothes, and the fix would have been a test.
-  // Lines are UNMOVED at 88.03: the same deletions left that metric above its
+  // Lines were UNMOVED at 88.03: the same deletions left that metric above its
   // floor, and a pin that does not need to move does not move.
-  'packages/ui-components/src/**': { lines: 88.03, branches: 74.47 },
+  //
+  // The two figures on the line below are #1133's, not #929's — kept as history
+  // because they are the worked example of the one operation the ratio cannot
+  // see, and #1133's Phase 2 turns that worked example into a test.
+  'packages/ui-components/src/**': { lines: 89.14, branches: 74.53 },
   // Lines CORRECTED DOWN 83.56 → 82.58 in #977, and this is the one case
   // where that is not a ratchet release. 83.56 was never measured: it was
   // the output of a corrupted v8 merge. `browserTracer.ts` loads its OTel
@@ -163,14 +195,16 @@ export const coverageThresholds = {
   // green. Draining the load (observability's tests/setup.ts) makes the
   // measurement identical cold and warm; 82.58% is what it has always
   // honestly been. Branches gained the same way (77.78 → a true 78.59) and
-  // the pin is left at 77.77 rather than swept up in the correction —
-  // raising a pin stays a deliberate, separate act.
-  'packages/adapters/observability/src/**': { lines: 82.58, branches: 77.77 },
-  'packages/adapters/firebase-sync/src/**': { lines: 57.82, branches: 63.02 },
-  'apps/cloud-functions/src/**': { lines: 79.75, branches: 73.73 },
-  'apps/web-pwa/src/routes/**': { lines: 76.08, branches: 64.12 },
-  'apps/web-pwa/src/lib/**': { lines: 73.37, branches: 65.6 },
-  'apps/web-pwa/src/components/**': { lines: 50.86, branches: 37.67 },
+  // the pin was left at 77.77 rather than swept up in the correction —
+  // raising a pin stays a deliberate, separate act, and #1133 is that act.
+  // The two figures below are #1133's; #977's correction is the reason the
+  // lines pin can be read as honest at all.
+  'packages/adapters/observability/src/**': { lines: 82.77, branches: 77.88 },
+  'packages/adapters/firebase-sync/src/**': { lines: 92, branches: 85.65 },
+  'apps/cloud-functions/src/**': { lines: 85.97, branches: 77.96 },
+  'apps/web-pwa/src/routes/**': { lines: 77.46, branches: 65.86 },
+  'apps/web-pwa/src/lib/**': { lines: 75.95, branches: 67.82 },
+  'apps/web-pwa/src/components/**': { lines: 54.58, branches: 38.81 },
 };
 
 /** The area globs, in the order the ratchet declares them. */
