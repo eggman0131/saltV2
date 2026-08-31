@@ -6,11 +6,16 @@
  * checked that promise. CI never sets `E2E_COVERAGE`, `e2e:coverage` is
  * host-guarded so it cannot be part of any gate, and until this issue
  * `apps/web-pwa/scripts/**` was named by no program in the root `typecheck`
- * script. A `v8-to-istanbul` major, a Vite port move away from the hard-coded
- * `http://127.0.0.1:5174`, or a Playwright coverage-API change would all have
- * broken it silently, and the discovery moment would have been whenever someone
- * next reached for the report — most likely mid-#913, wanting exactly the
- * `.svelte` measurement this is the only instrument for.
+ * script. A `v8-to-istanbul` major or a Playwright coverage-API change would
+ * still break it silently, and the discovery moment would have been whenever
+ * someone next reached for the report — most likely mid-#913, wanting exactly
+ * the `.svelte` measurement this is the only instrument for. The app-origin
+ * literal itself is no longer one of these risks (#1142 review, finding 1):
+ * `e2e/e2eAppOrigin.ts` is its single source, imported by `globalSetup.ts`
+ * (spawns Vite there), `globalTeardown.ts` (kills it there — a fifth copy the
+ * review missed, closed in the immediate follow-up, #1132), `playwright.config.ts`
+ * (`baseURL`), the script under test, and this test's fixture below — so a port
+ * move is one edit, not five independently-drifting copies.
  *
  * So this test runs the real converter, end to end, over a raw V8 dump shaped
  * like the one the fixture writes: a real `node --experimental-strip-types`
@@ -38,12 +43,13 @@
  * `stopJSCoverage()` returns; if Playwright ever changes it, this test keeps
  * passing on the old shape. That gap is the price of being runnable anywhere.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { E2E_APP_ORIGIN } from '../e2e/e2eAppOrigin';
 
 // `fileURLToPath(import.meta.url)` on the STRING, not `new URL('..', …)`: this
 // suite runs under jsdom, whose global `URL` is whatwg-url rather than Node's,
@@ -52,13 +58,28 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(APP_DIR, 'scripts', 'process-e2e-coverage.ts');
 
-/** The origin `process-e2e-coverage.ts` filters on — the e2e Vite server. */
-const APP_ORIGIN = 'http://127.0.0.1:5174';
+/**
+ * The origin `process-e2e-coverage.ts` filters on — the e2e Vite server.
+ * Imported from `../e2e/e2eAppOrigin.ts`, the single source of truth every
+ * consumer shares (#1142 review, finding 1), not repeated as a literal here.
+ */
+const APP_ORIGIN = E2E_APP_ORIGIN;
 
 /**
  * One `used` function called three times and one `unused` never called, so the
- * report has a non-trivial number to get wrong in both directions. Offsets are
- * byte ranges into `source`, which is what `stopJSCoverage()` hands back.
+ * report has a non-trivial number to get wrong in both directions.
+ *
+ * The `functions`/`ranges` below are not invented — they are the actual
+ * `Profiler.takePreciseCoverage()` output (the same V8 Profiler domain
+ * `page.coverage.startJSCoverage()` wraps) for exactly this source string,
+ * captured via `node:inspector` with `used` called 3 times and `unused` never
+ * called, then confirmed to convert to the `FNDA`/`FNF`/`FNH` lines asserted
+ * below. Offsets are byte ranges into `source`: the whole-script range spans
+ * `[0, source.length)`; each function range starts at its own `function`
+ * keyword (not the `export` before it) and ends one past its closing `}`
+ * (#1142 review, finding 5 — the previous ranges ran 5-19 bytes past EOF and
+ * one started mid-identifier, so `v8-to-istanbul`'s clamping — not the offset
+ * mapping — was what made the old assertions pass).
  */
 const MEASURED_SOURCE =
   'export function used(a) {\n  return a + 1;\n}\n\nexport function unused(b) {\n  return b - 1;\n}\n';
@@ -71,17 +92,19 @@ const rawDump = [
       {
         functionName: '',
         isBlockCoverage: true,
-        ranges: [{ startOffset: 0, endOffset: 110, count: 1 }],
+        ranges: [{ startOffset: 0, endOffset: 91, count: 1 }],
       },
       {
         functionName: 'used',
         isBlockCoverage: true,
-        ranges: [{ startOffset: 7, endOffset: 45, count: 3 }],
+        ranges: [{ startOffset: 7, endOffset: 43, count: 3 }],
       },
       {
+        // Real V8 output marks a never-invoked function's range as NOT
+        // block coverage — block-level instrumentation never ran for it.
         functionName: 'unused',
-        isBlockCoverage: true,
-        ranges: [{ startOffset: 54, endOffset: 96, count: 0 }],
+        isBlockCoverage: false,
+        ranges: [{ startOffset: 52, endOffset: 90, count: 0 }],
       },
     ],
   },
@@ -121,6 +144,11 @@ describe('process-e2e-coverage.ts', () => {
       mkdirSync(rawDir, { recursive: true });
       writeFileSync(join(rawDir, 'some-test-abc123.json'), JSON.stringify(rawDump));
       run = runScript(workDir);
+      // Assert the exit status BEFORE reading lcov.info: reading first meant a
+      // broken script surfaced as an opaque ENOENT from the read below, with
+      // the child's actual stderr — the real cause — never printed (#1142
+      // review, finding 3).
+      expect(run.status, `process-e2e-coverage.ts failed:\nstderr: ${run.stderr}`).toBe(0);
       lcov = readFileSync(join(workDir, 'coverage', 'e2e', 'lcov.info'), 'utf8');
     });
 
@@ -128,8 +156,7 @@ describe('process-e2e-coverage.ts', () => {
       rmSync(workDir, { recursive: true, force: true });
     });
 
-    it('exits 0 and writes both reporters into coverage/e2e/', () => {
-      expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+    it('writes both reporters into coverage/e2e/', () => {
       expect(run.stdout).toContain('Processing 1 raw coverage file(s)');
       // The lcov read in beforeAll would have thrown had that reporter not run;
       // html is the other one the script creates, and nothing else asserts it.
@@ -169,20 +196,79 @@ describe('process-e2e-coverage.ts', () => {
   it('is the same invocation `pnpm e2e:coverage:report` runs', () => {
     // Without this the test could keep passing while the command a developer
     // actually types had moved on — a different runner, a renamed script, a
-    // flag the file no longer survives.
+    // flag the file no longer survives. Whether the runner still ACCEPTS the
+    // file is proven by the real spawn in `runScript` above, not here: `node
+    // --experimental-strip-types --check` is not a stricter grammar check —
+    // measured on node v22.22.3, it exits 0 for a `.ts` file containing an
+    // `enum`, a parameter property, or outright unparseable syntax, because
+    // `--check` never strips types and a `.ts` file detected as ESM does
+    // nothing under it (#1142 review, finding 2).
     const pkg = JSON.parse(readFileSync(join(APP_DIR, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts['e2e:coverage:report']).toBe(
       'node --experimental-strip-types scripts/process-e2e-coverage.ts',
     );
-    // And that the runner still accepts the file at all, which is what
-    // `tsc` cannot tell you: type STRIPPING is a stricter grammar than
-    // type CHECKING (no enums, no parameter properties).
-    expect(() =>
-      execFileSync(process.execPath, ['--experimental-strip-types', '--check', SCRIPT], {
-        stdio: 'pipe',
-      }),
-    ).not.toThrow();
+  });
+
+  describe('single source of truth for the app origin (#1142 review, finding 1)', () => {
+    // Before `e2eAppOrigin.ts`, `http://127.0.0.1:5174` lived as independent
+    // literal copies — this script, this test, `globalSetup.ts` and
+    // `playwright.config.ts` (the four the #1142 review named), plus
+    // `globalTeardown.ts`'s own `E2E_APP_PORT`, a fifth the review missed and
+    // the immediate follow-up (#1132) closed — that could disagree silently:
+    // change the port in some but not all and `pnpm test` / `pnpm typecheck`
+    // stayed green while `e2e:coverage` quietly filtered out every real entry.
+    // A wiring guard is the only way to make that regression go red WITHOUT a
+    // browser: it can't run the actual Playwright/Vite pairing (host-guarded),
+    // so instead it asserts, from source text, that every consumer still
+    // imports the shared constant rather than a reintroduced literal.
+    const CONSUMERS: ReadonlyArray<{ label: string; file: string; importSpecifier: string }> = [
+      {
+        label: 'playwright.config.ts',
+        file: join(APP_DIR, 'playwright.config.ts'),
+        importSpecifier: './e2e/e2eAppOrigin',
+      },
+      {
+        label: 'e2e/globalSetup.ts',
+        file: join(APP_DIR, 'e2e', 'globalSetup.ts'),
+        importSpecifier: './e2eAppOrigin',
+      },
+      {
+        label: 'e2e/globalTeardown.ts',
+        file: join(APP_DIR, 'e2e', 'globalTeardown.ts'),
+        importSpecifier: './e2eAppOrigin',
+      },
+      {
+        label: 'scripts/process-e2e-coverage.ts',
+        file: SCRIPT,
+        importSpecifier: '../e2e/e2eAppOrigin.ts',
+      },
+    ];
+
+    // Built from the imported constant, not a hard-coded `5174`, so a genuine
+    // future port change doesn't need this guard edited too — only a literal
+    // reintroduced *alongside* the import would ever trip it. These files also
+    // legitimately mention OTHER 127.0.0.1 ports (globalSetup.ts's emulator
+    // clear URLs), so the pattern targets this app's origin specifically.
+    // Escapes every regex metacharacter, not just `.` — a dot-only escape
+    // (flagged by CodeQL js/incomplete-sanitization) would silently under-match
+    // if `E2E_APP_HOST`/`E2E_APP_ORIGIN` ever gained another metacharacter (e.g.
+    // an IPv6 loopback's brackets), defeating the guard this test exists to be.
+    const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${escapeRegExp(E2E_APP_ORIGIN)}`);
+
+    it.each(CONSUMERS)(
+      '$label derives the origin from e2eAppOrigin.ts',
+      ({ file, importSpecifier }) => {
+        const src = readFileSync(file, 'utf8');
+        expect(src).toContain(importSpecifier);
+        // A stray literal origin here — even alongside the import — is the
+        // drift finding 1 flagged: a second, independently-editable copy of the
+        // port that the import no longer prevents. `e2eAppOrigin.ts` itself is
+        // exempt (it IS the literal).
+        expect(src).not.toMatch(STRAY_LITERAL_ORIGIN);
+      },
+    );
   });
 });

@@ -191,7 +191,8 @@ coverage ever gains a consumer, is in the comment at `e2e/fixtures/test.ts`.
 
 **The opt-in path is a gate, not a promise (#1132).** Because none of the three commands above runs
 in CI — and `e2e:coverage` is host-guarded, so none of them ever can — the retained tooling was
-exercised by nothing for the four weeks after #945. It is now:
+exercised by nothing for the seven days between #981 (merged 2026-08-24, the PR that closed #945
+and made collection opt-in) and this issue. It is now:
 `apps/web-pwa/tests/e2eCoverageReport.test.ts` runs `process-e2e-coverage.ts` as a real child
 process over a raw V8 dump and asserts the per-function hit counts in the resulting `lcov.info`, and
 `apps/web-pwa/tsconfig.test.json` includes `scripts/**` so the root `typecheck` compiles it. Both

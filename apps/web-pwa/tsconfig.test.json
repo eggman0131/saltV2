@@ -28,11 +28,18 @@
   // scripts). What proves the stripper still runs `process-e2e-coverage.ts` is
   // `tests/e2eCoverageReport.test.ts`, which spawns the real interpreter.
   // `generate-icons.ts` has no such test and is only type-checked.
+  //
+  // `allowImportingTsExtensions`: `process-e2e-coverage.ts` imports
+  // `../e2e/e2eAppOrigin.ts` with the literal extension, because Node's
+  // `--experimental-strip-types` loader (which actually runs this file, no
+  // bundler) requires it on relative specifiers. Valid only alongside
+  // `noEmit`, which this config already sets (#1142 review, finding 1).
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
     "composite": false,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["src/**/*", "tests/**/*", "scripts/**/*"]

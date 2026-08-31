@@ -9,6 +9,14 @@ import v8ToIstanbul from 'v8-to-istanbul';
 import libCoverage from 'istanbul-lib-coverage';
 import libReport from 'istanbul-lib-report';
 import reports from 'istanbul-reports';
+// The explicit `.ts` extension is required, not stylistic: this file runs as
+// `node --experimental-strip-types` directly (no bundler), and the ESM
+// resolver under that loader needs the real extension on relative specifiers
+// (`allowImportingTsExtensions` in tsconfig.test.json is what lets `tsc`
+// accept it too). Single source of truth for the app origin — see
+// e2eAppOrigin.ts (#1142 review, finding 1): globalSetup.ts, playwright.config.ts
+// and this file's test import the same constant.
+import { E2E_APP_ORIGIN } from '../e2e/e2eAppOrigin.ts';
 
 interface FunctionRange {
   startOffset: number;
@@ -37,7 +45,7 @@ const HOW_TO_COLLECT =
 
 const RAW_DIR = resolve('coverage', 'e2e-raw');
 const OUT_DIR = resolve('coverage', 'e2e');
-const APP_ORIGIN = 'http://127.0.0.1:5174';
+const APP_ORIGIN = E2E_APP_ORIGIN;
 
 async function main(): Promise<void> {
   let files: string[];

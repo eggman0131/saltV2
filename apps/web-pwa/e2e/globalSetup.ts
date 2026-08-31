@@ -13,6 +13,7 @@ import {
   waitForPortFree,
   writeSentinel,
 } from './e2eServerRegistry';
+import { E2E_APP_HOST, E2E_APP_PORT, E2E_APP_ORIGIN } from './e2eAppOrigin';
 import { FIRESTORE_EMULATOR_CLEAR_URL, FIRESTORE_EMULATOR_PORT_STRING } from './helpers/emulator';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -39,9 +40,10 @@ const POLL_MS = 500;
 // bound explicitly to the test emulator ports so the e2e app never falls
 // back to the dev emulators.
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const E2E_APP_HOST = '127.0.0.1';
-const E2E_APP_PORT = 5174;
-const E2E_APP_URL = `http://${E2E_APP_HOST}:${E2E_APP_PORT}`;
+// Host/port/origin come from ./e2eAppOrigin — the single source of truth
+// (#1142 review, finding 1). `scripts/process-e2e-coverage.ts` and its test
+// import the same constants.
+const E2E_APP_URL = E2E_APP_ORIGIN;
 
 // Emulator Firestore transport arm (issue #734, Phase 2). Defaults to #122's
 // forced long-polling, so an ordinary run is unchanged. Validated HERE, at the

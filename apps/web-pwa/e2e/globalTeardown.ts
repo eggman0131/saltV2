@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { E2E_APP_PORT } from './e2eAppOrigin';
 import { deleteSentinel, killPort, readSentinel } from './e2eServerRegistry';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -18,12 +19,13 @@ const EMULATOR_LOG_PATH = path.join(APP_DIR, 'e2e-emulator.log');
 // against its directory, so cwd is REPO_ROOT.
 const COMPOSE_FILE = 'docker/test-emulators/docker-compose.test.yml';
 
-// Must mirror E2E_APP_PORT in globalSetup.ts. The e2e Vite server stays
-// host-spawned (the container boundary is emulators-only, issue #84). It is now
-// tracked via a host-global sentinel (e2eServerRegistry.ts) written at spawn, so
-// teardown can kill it precisely (tracked pid) and portably here, under the same
-// gate as the emulator stack.
-const E2E_APP_PORT = 5174;
+// Host/port come from ./e2eAppOrigin — the single source of truth (#1142
+// review, finding 1), same as globalSetup.ts, playwright.config.ts and
+// scripts/process-e2e-coverage.ts. The e2e Vite server stays host-spawned (the
+// container boundary is emulators-only, issue #84). It is now tracked via a
+// host-global sentinel (e2eServerRegistry.ts) written at spawn, so teardown
+// can kill it precisely (tracked pid) and portably here, under the same gate
+// as the emulator stack.
 
 // Best-effort kill of the host-spawned e2e Vite server. Cross-platform (macOS +
 // Linux) via lsof + process.kill — replaces the `fuser -k` that was a silent
