@@ -251,7 +251,12 @@ describe('process-e2e-coverage.ts', () => {
     // reintroduced *alongside* the import would ever trip it. These files also
     // legitimately mention OTHER 127.0.0.1 ports (globalSetup.ts's emulator
     // clear URLs), so the pattern targets this app's origin specifically.
-    const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${E2E_APP_ORIGIN.replace(/[.]/g, '\\.')}`);
+    // Escapes every regex metacharacter, not just `.` — a dot-only escape
+    // (flagged by CodeQL js/incomplete-sanitization) would silently under-match
+    // if `E2E_APP_HOST`/`E2E_APP_ORIGIN` ever gained another metacharacter (e.g.
+    // an IPv6 loopback's brackets), defeating the guard this test exists to be.
+    const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${escapeRegExp(E2E_APP_ORIGIN)}`);
 
     it.each(CONSUMERS)(
       '$label derives the origin from e2eAppOrigin.ts',
