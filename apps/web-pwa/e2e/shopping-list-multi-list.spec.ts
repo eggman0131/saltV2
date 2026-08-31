@@ -215,8 +215,21 @@ test.describe('shopping list — multi-list', () => {
     // Add an item
     await page.getByTestId('shopping-item-input').fill('soy sauce');
     await page.getByTestId('shopping-item-add-btn').click();
+    // `.first()` because this gate asserts the add LANDED, not which bucket the
+    // row is in — and the #571 match reveal legitimately renders it in two. When
+    // the trigger's match arrives, `out:collapseOut` keeps the outgoing OTHER
+    // copy mounted for `REVEAL_OUT_MS` (300ms, ShoppingItemRow.svelte:130) while
+    // the aisle copy mounts immediately, so the same `data-item-id` is under
+    // both `shopping-other` and `shopping-aisle-group` for that window — and
+    // e2e runs with motion on (playwright.config.ts `reducedMotion:
+    // 'no-preference'`), so CI sees it. A strict-mode violation is a hard error
+    // that aborts the poll rather than retrying, which is why this read flaked
+    // (issue #1149, Signature B). Same treatment and same reason as the vinegar
+    // row in the next test. The assertions carrying this test's meaning read the
+    // store, not the DOM (`waitForMatched`, `expectMatchPreserved`, NF-E2), and
+    // this one stays web-first retrying (NF-A3).
     await expect(
-      page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }),
+      page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }).first(),
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     // Let the trigger identify it before moving — otherwise the move would be
