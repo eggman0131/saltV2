@@ -1,7 +1,7 @@
 // The mechanically-checkable half of docs/unit-test-spec.md, as matchers.
 //
-// The spec states 34 `UT-*` rules. Nine of them are countable off the source of
-// a test file or a test project's config; the other twenty-five need a reader.
+// The spec states 30 `UT-*` rules. Nine of them are countable off the source of
+// a test file or a test project's config; the other twenty-one need a reader.
 // This module is the nine, and `unit-test-spec.areas.mjs` at the repo root is
 // the per-area ceiling each one is currently frozen at. The test that drives
 // both is `scripts/tests/unitTestSpecGuard.test.mjs`.
@@ -239,6 +239,9 @@ export const FILE_RULES = [
       "import { emptyRecipe } from '@salt/domain';",
       "import { load } from '../../src/lib/recipeService.js';",
       "join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages');",
+      // A mention is not an instance — the exact shape this guard's own header
+      // and two sibling guard files use to explain UT-E4 in prose.
+      '// see ../../../../packages/domain/src/index.js',
     ],
   },
 ];
@@ -318,6 +321,15 @@ export const AREA_RULES = [
         'pkg/thing/vitest.config.ts':
           "export default { test: { typecheck: { enabled: true, tsconfig: './tsconfig.typetest.json' } } };",
       },
+      // A commented-out `enabled: true` must not read as wired — this is #932
+      // verbatim: every `expectTypeOf` silently unrun, with the config that
+      // would have wired it in sitting right there, disabled.
+      {
+        'pkg/thing/tests/x.types.test-d.ts': 'expectTypeOf(1).toEqualTypeOf<number>();',
+        'pkg/thing/tsconfig.typetest.json': '{}',
+        'pkg/thing/vitest.config.ts':
+          "// typecheck: { enabled: true, tsconfig: './tsconfig.typetest.json' },\nexport default {};",
+      },
     ],
     misses: [
       {
@@ -336,7 +348,7 @@ export const AREA_RULES = [
       const wired =
         existsSync(join(root, area, 'tsconfig.typetest.json')) &&
         existsSync(config) &&
-        /typecheck:\s*\{[^}]*enabled:\s*true/s.test(readFileSync(config, 'utf8'));
+        /typecheck:\s*\{[^}]*enabled:\s*true/s.test(stripComments(readFileSync(config, 'utf8')));
       return wired ? [] : [`${area}/vitest.config.ts`];
     },
   },

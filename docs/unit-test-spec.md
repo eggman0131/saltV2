@@ -187,8 +187,12 @@ makes a refactor's noise indistinguishable from its breakage.
   _Verify:_ `grep -rn 'function makeStore\|const makeStore' <area>` — in `apps/web-pwa` the only
   legal hit is the kit itself. (`packages/domain`'s three `makeStore` functions are a different
   thing entirely: in-memory `CanonLocalStorePort` fakes, not Svelte stores. Not a violation.)
-  _Guard:_ a declaration named `makeStore` anywhere in `apps/web-pwa/tests`. A local stand-in under
-  another name is review-only.
+  _Guard:_ a declaration named `makeStore` in a `*.test.ts` file under `apps/web-pwa/tests` — the
+  guard walks only `*.test.ts`/`*.test.mjs`, deliberately: widening it would flag
+  `tests/support/testStore.ts` itself, the kit this rule points at, along with the other nine
+  non-test files under a `tests/` tree (`setup.ts`, fixtures, type-shims). A local stand-in under
+  another name, or one moved into a non-test helper file such as `tests/support/`, is invisible to
+  the guard and review-only.
 
 - **UT-C2 (MUST · guarded) — Build domain objects with the real builders.** `emptyRecipe`,
   `duplicateRecipe`, `emptyIngredientGroup`, `newIngredient` and `newStep` are exported from
@@ -196,16 +200,21 @@ makes a refactor's noise indistinguishable from its breakage.
   A hand-rolled literal drifts from the schema silently and produces the #838 failure mode below.
   **Evidence:** **34** test files still declare a hand-rolled `makeRecipe` while the real builders
   sit unused — up from the 30 #941 counted, which is drift continuing in the absence of this rule.
-  _Guard:_ a declaration named `makeRecipe`, in every area. A hand-rolled recipe literal under
-  another name is review-only.
+  _Guard:_ a declaration named `makeRecipe` in a `*.test.ts`/`*.test.mjs` file, in every area — the
+  guard walks only files with those suffixes under `<area>/tests`, so a hand-rolled `makeRecipe`
+  moved into a non-test helper file (`tests/support/`, a fixture module) before being imported is
+  invisible to it, the same as one declared under another name. Both are review-only.
 
 - **UT-C3 (MUST NOT · guarded) — Do not repeat what shared setup already does.**
   `document.body.style.pointerEvents = ''` appears in **34** files while
   [`tests/setup.ts`](../apps/web-pwa/tests/setup.ts) already does it globally in an `afterEach`.
   Before adding any file-level `beforeEach`/`afterEach`, read that file.
-  _Guard:_ an assignment to `document.body.style.pointerEvents` in `apps/web-pwa/tests`. That one
-  duplication is the guarded case; the rule's wider claim — do not repeat ANYTHING `setup.ts` does —
-  is review-only.
+  _Guard:_ an assignment to `document.body.style.pointerEvents` in a `*.test.ts` file under
+  `apps/web-pwa/tests` — the guard walks only `*.test.ts`/`*.test.mjs`, so `tests/setup.ts` itself,
+  where the real assignment lives, is not scanned; widening the walk would flag the very file this
+  rule points at. That one duplication, repeated in a test file, is the guarded case; the rule's
+  wider claim — do not repeat ANYTHING `setup.ts` does, including from a non-test helper file — is
+  review-only.
 
 - **UT-C4 (SHOULD · review-only) — A new helper used by a third file moves to `tests/support/`.**
   Two copies is a coincidence; three is a shared helper that has not been extracted yet. Put it
@@ -384,8 +393,10 @@ is a block.
 
 **`[ci]` is already ticked for you** — those nine reds `pnpm test` on a new breach, so a reviewer's
 job on them is only to check the guard's stated boundary above hasn't been walked around (a
-hand-rolled recipe called something other than `makeRecipe`, an all-mock-call `it(` in a file that
-has behavioural ones elsewhere). Every `[ ]` line is yours alone; nothing else checks it.
+hand-rolled recipe called something other than `makeRecipe`, a hand-rolled recipe or store moved
+into a non-test helper file under `tests/` — the guard sees only `*.test.ts`/`*.test.mjs` — an
+all-mock-call `it(` in a file that has behavioural ones elsewhere). Every `[ ]` line is yours alone;
+nothing else checks it.
 
 ```
 Behaviour over implementation
@@ -425,7 +436,8 @@ Async & harness
 [ ] UT-F5  A production timer is driven with fake timers, never waited out
 
 Tooling (only if a test directory or config is added)
-[ci] UT-G1  New TS tests/ dir has a tsconfig.test.json wired into root `typecheck`
+[ ] UT-G1  New TS tests/ dir has a tsconfig.test.json (guard can't see one that's simply missing)
+[ci] UT-G1  An existing tsconfig.test.json is wired into root `typecheck`
            (n/a to scripts/tests/ — untyped ESM by design)
 [ ] UT-G2  Svelte props still unchecked by tsc — pnpm check is the prop gate
 [ci] UT-G3  No retries added

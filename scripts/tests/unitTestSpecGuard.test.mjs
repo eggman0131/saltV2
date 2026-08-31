@@ -1,7 +1,7 @@
 /**
  * Source guard: the unit-test spec's countable rules are counted (issue #1134).
  *
- * `docs/unit-test-spec.md` states 34 `UT-*` rules, 24 of them `MUST`, and until
+ * `docs/unit-test-spec.md` states 30 `UT-*` rules, 26 of them `MUST`, and until
  * this file nothing checked any of them. #1134 measured what that produced: in
  * the seven days after the spec was written the repo gained 76 test files, and
  * the two rules the spec supplies its own grep for got worse in ABSOLUTE terms —
@@ -16,7 +16,7 @@
  * direction. The matchers live in `scripts/lib/unitTestSpec.mjs`; its header
  * carries the anti-vacuity argument and the honest limits of each one.
  *
- * The other twenty-five rules need a reader, and Phase 2 of #1134 marks them in
+ * The other twenty-one rules need a reader, and Phase 2 of #1134 marks them in
  * the spec as review-only rather than leaving them stated as absolutes that
  * nothing enforces.
  *
