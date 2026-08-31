@@ -46,10 +46,21 @@ export default defineConfig({
     // Dropped because a retry here is not free insurance, it is a blindfold. The
     // e2e suite's NF-G3 (docs/e2e-test-spec.md) already binds the other half of
     // this repo: "a test that only passes on the retry is a bug to fix, not a
-    // passing test." More concretely, #928 triples this suite — 8 of the 28
-    // exported subscriptions are covered today, and the plan is all 28 — and a
-    // genuine collision among the new cases would be indistinguishable from a
-    // green run while retries absorbed it.
+    // passing test." More concretely, #928 tripled this suite — all 28 exported
+    // subscriptions now carry a row, kept honest by a guard derived from the
+    // barrel rather than hand-kept (subscriptionContract.emulator.test.ts,
+    // "covers every exported subscribe*") — and a genuine collision among those
+    // cases would be indistinguishable from a green run while retries absorbed
+    // it.
+    //
+    // Measured since, which is what makes the absence of `retry` a finding
+    // rather than a hope (#1136): 0 failures in 270 executed cold CI runs
+    // between 2026-08-26 — the day #1003 fixed the last known row — and
+    // 2026-08-31; 3 in 347 going back to the day this retry was removed, all
+    // three of them the two already-diagnosed, already-fixed defects and none
+    // of them #122 transport flake. That is a reading of a window, not a
+    // permanent property: `pnpm flake:emulator` re-derives it from the GitHub
+    // Actions API whenever the question comes up again.
     //
     // What this does NOT mean: the flake, if any returns, is not stale Firestore
     // data. Both suites that need it already clear the whole database and
