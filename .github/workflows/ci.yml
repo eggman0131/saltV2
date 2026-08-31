@@ -303,6 +303,25 @@ jobs:
         if: always()
         run: pnpm coverage:files:check
 
+      # The half of the ratchet vitest cannot enforce (issue #1133): per-area
+      # uncovered-count CEILINGS, which catch a dedup that lowers a ratio
+      # without lowering coverage, and a STALENESS red when an area has drifted
+      # more than a point above its floor without anyone banking it.
+      #
+      # A step in this job rather than a job of its own, for the reason in the
+      # header above: it reads the report `pnpm test:coverage` just wrote, and a
+      # separate job would re-pay checkout + setup to re-run 7,281 tests to
+      # produce it again. The job id stays `unit`, so no required status context
+      # changes and the `ci` aggregator's `needs` list is untouched.
+      #
+      # `always()` for the same reason as the guard above: a threshold failure
+      # and a ceiling breach are usually the same PR, and knowing both on the
+      # first red run is the whole point. It stands down quietly with exit 0
+      # when the suite never got far enough to write a report.
+      - name: Coverage ratchet guard
+        if: always()
+        run: pnpm coverage:ratchet:check
+
       # `always()` so a THRESHOLD failure still ships the report — the whole point
       # of the artifact is diagnosing which files lost coverage, and that is
       # needed precisely on the runs that go red.
