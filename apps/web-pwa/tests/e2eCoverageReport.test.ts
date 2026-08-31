@@ -12,9 +12,10 @@
  * the `.svelte` measurement this is the only instrument for. The app-origin
  * literal itself is no longer one of these risks (#1142 review, finding 1):
  * `e2e/e2eAppOrigin.ts` is its single source, imported by `globalSetup.ts`
- * (spawns Vite there), `playwright.config.ts` (`baseURL`), the script under
- * test, and this test's fixture below — so a port move is one edit, not four
- * independently-drifting copies.
+ * (spawns Vite there), `globalTeardown.ts` (kills it there — a fifth copy the
+ * review missed, closed in the immediate follow-up, #1132), `playwright.config.ts`
+ * (`baseURL`), the script under test, and this test's fixture below — so a port
+ * move is one edit, not five independently-drifting copies.
  *
  * So this test runs the real converter, end to end, over a raw V8 dump shaped
  * like the one the fixture writes: a real `node --experimental-strip-types`
@@ -211,12 +212,14 @@ describe('process-e2e-coverage.ts', () => {
   });
 
   describe('single source of truth for the app origin (#1142 review, finding 1)', () => {
-    // Before `e2eAppOrigin.ts`, `http://127.0.0.1:5174` lived as four
-    // independent literal copies — this script, this test, `globalSetup.ts`
-    // and `playwright.config.ts` — that could disagree silently: change the
-    // port in three of the four and `pnpm test` / `pnpm typecheck` stayed
-    // green while `e2e:coverage` quietly filtered out every real entry. A
-    // wiring guard is the only way to make that regression go red WITHOUT a
+    // Before `e2eAppOrigin.ts`, `http://127.0.0.1:5174` lived as independent
+    // literal copies — this script, this test, `globalSetup.ts` and
+    // `playwright.config.ts` (the four the #1142 review named), plus
+    // `globalTeardown.ts`'s own `E2E_APP_PORT`, a fifth the review missed and
+    // the immediate follow-up (#1132) closed — that could disagree silently:
+    // change the port in some but not all and `pnpm test` / `pnpm typecheck`
+    // stayed green while `e2e:coverage` quietly filtered out every real entry.
+    // A wiring guard is the only way to make that regression go red WITHOUT a
     // browser: it can't run the actual Playwright/Vite pairing (host-guarded),
     // so instead it asserts, from source text, that every consumer still
     // imports the shared constant rather than a reintroduced literal.
@@ -229,6 +232,11 @@ describe('process-e2e-coverage.ts', () => {
       {
         label: 'e2e/globalSetup.ts',
         file: join(APP_DIR, 'e2e', 'globalSetup.ts'),
+        importSpecifier: './e2eAppOrigin',
+      },
+      {
+        label: 'e2e/globalTeardown.ts',
+        file: join(APP_DIR, 'e2e', 'globalTeardown.ts'),
         importSpecifier: './e2eAppOrigin',
       },
       {
