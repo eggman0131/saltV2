@@ -324,10 +324,18 @@ has. It is also the easiest to render vacuously green.
   build `tsconfig.json` (`rootDir: "src"`, `composite`, emits to `dist`), so it is invisible to
   `tsc` unless a `tsconfig.test.json` is added **and wired into the root `typecheck` script**.
   **Evidence:** #942 wired `apps/web-pwa/tsconfig.test.json` in and 174 fixture defects fell out of a
-  suite that had been green for 41k lines. Every other package's `tests/` is still unchecked —
-  `packages/ui-components/tsconfig.test.json` exists and **nothing runs it**, which is the same
-  latent state web-pwa was in before #942.
-  _Verify:_ `grep typecheck package.json` — the config must appear there, not merely exist.
+  suite that had been green for 41k lines. #1135 then did the remaining five packages at once and
+  **526** more fell out, including a type import #923 had left dangling and two `expectTypeOf`
+  assertions that were simply false. `packages/ui-components/tsconfig.test.json` was the sharpest
+  case: added in `84270a98`, correct, and invoked by nothing until #1135 named it.
+  **Enforced, not merely written down** (CLAUDE.md rule 12).
+  [`scripts/tests/testsAreTypechecked.test.mjs`](../scripts/tests/testsAreTypechecked.test.mjs)
+  fails when a `tests/` directory under `packages/**` or `apps/**` holding TypeScript is covered by
+  no tsconfig the root `typecheck` script runs, and when that script names a config that does not
+  exist. Both directions matter: this rule was broken for months by a config that existed and was
+  never run.
+  _Verify:_ `pnpm test` — the guard runs in the `scripts` project. `grep typecheck package.json`
+  still shows the pairing by hand.
   **Limit — TypeScript test directories only.** `scripts/tests/` is untyped ESM by design, and
   [`scripts/vitest.config.ts`](../scripts/vitest.config.ts) states why next to the `include` that
   makes it so. The obligation there is that the config keeps saying so, not that a
