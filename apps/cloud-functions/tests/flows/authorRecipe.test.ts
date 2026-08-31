@@ -931,7 +931,7 @@ describe('authorRecipe — parsed threading', () => {
       {
         id: 'parse-group-1',
         name: null,
-        items: [parseResult()[0].items[0]],
+        items: [parseResult()[0]!.items[0]!],
       },
     ]);
 

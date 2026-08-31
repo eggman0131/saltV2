@@ -6,9 +6,9 @@
  * Each stands it in for the real SDK class via
  * `vi.mock('firebase-admin/firestore', () => ({ …, Timestamp: FakeTimestamp }))`,
  * and then asserts `expect.any(FakeTimestamp)` — a real TYPE assertion, which a
- * regression to a number or a string fails. Keep it this small: the explicit
- * annotations are the only types this file gets, since `apps/cloud-functions/tests`
- * is outside the root `typecheck` (#942).
+ * regression to a number or a string fails. Keep it this small: this file is now
+ * inside the root `typecheck` via `tsconfig.test.json` (#1135), so the explicit
+ * annotations below are checked rather than merely written down.
  */
 export class FakeTimestamp {
   private readonly ms: number;

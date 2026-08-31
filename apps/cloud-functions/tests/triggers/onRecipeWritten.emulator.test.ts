@@ -34,7 +34,13 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockGenerateImage = vi.fn(async () => ({ imageBase64: 'QUJD', contentType: 'image/png' }));
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockGenerateImage = vi.fn<
+  (input: Record<string, unknown>) => Promise<{ imageBase64: string; contentType: string }>
+>(async () => ({ imageBase64: 'QUJD', contentType: 'image/png' }));
 vi.mock('../../src/flows/generateRecipeImage.js', () => ({
   generateRecipeImageFlow: mockGenerateImage,
 }));
@@ -82,6 +88,11 @@ function makeRecipe(id: string, overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     },
     source: null,
     notes: null,
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     image: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

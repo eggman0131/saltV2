@@ -19,12 +19,20 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockGenerateImage = vi.fn(async () => ({ imageBase64: 'QUJD', contentType: 'image/png' }));
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockGenerateImage = vi.fn<
+  (input: Record<string, unknown>) => Promise<{ imageBase64: string; contentType: string }>
+>(async () => ({ imageBase64: 'QUJD', contentType: 'image/png' }));
 vi.mock('../../src/flows/generateRecipeImage.js', () => ({
   generateRecipeImageFlow: mockGenerateImage,
 }));
 
-const mockDescribeScene = vi.fn(async () => ({ brief: 'A blistered, golden-topped bake.' }));
+const mockDescribeScene = vi.fn<
+  (input: { components?: readonly string[] }) => Promise<{ brief: string }>
+>(async () => ({ brief: 'A blistered, golden-topped bake.' }));
 vi.mock('../../src/flows/describeRecipeScene.js', () => ({
   describeRecipeSceneFlow: mockDescribeScene,
 }));
@@ -44,7 +52,17 @@ vi.mock('../../src/flows/componentContext.js', () => ({
 }));
 
 // Firestore admin: capture the write-back and answer the devSettings read.
-const mockUpdate = vi.fn().mockResolvedValue(undefined);
+// The partial the trigger patches onto the recipe doc — only the fields these
+// assertions read. A whole `RecipeDoc` would be wrong: this is an update, not a
+// write, and the trigger deliberately sends nothing else.
+type RecipePatch = {
+  image?: { source?: string; url?: string };
+  imageHint?: unknown;
+  imageBrief?: unknown;
+  kit?: unknown;
+  kitInferredAt?: unknown;
+};
+const mockUpdate = vi.fn<(patch: RecipePatch) => Promise<undefined>>().mockResolvedValue(undefined);
 const mockGet = vi.fn().mockResolvedValue({ exists: false }); // devSettings missing → enabled
 const DELETE_SENTINEL = Symbol('FieldValue.delete');
 vi.mock('firebase-admin/firestore', () => ({
@@ -93,6 +111,11 @@ function makeRecipe(id: string, overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     },
     source: null,
     notes: null,
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     image: null,
     createdAt: '2026-07-10T00:00:00.000Z',
     updatedAt: '2026-07-10T00:00:00.000Z',
@@ -142,8 +165,8 @@ describe('onRecipeWritten — hero-image branch', () => {
     expect(mockSave).toHaveBeenCalledOnce();
 
     const writeArg = mockUpdate.mock.calls[0]![0];
-    expect(writeArg.image.source).toBe('ai');
-    expect(writeArg.image.url).toContain('recipe-images%2Fr1.webp');
+    expect(writeArg.image!.source).toBe('ai');
+    expect(writeArg.image!.url).toContain('recipe-images%2Fr1.webp');
     expect(writeArg.imageHint).toBe(DELETE_SENTINEL);
     // The brief is persisted in the SAME write as the image it produced.
     expect(writeArg.imageBrief).toBe('A blistered, golden-topped bake.');
@@ -366,7 +389,7 @@ describe('onRecipeWritten — scene brief', () => {
     expect(mockGenerateImage).toHaveBeenCalledOnce();
     expect(mockGenerateImage.mock.calls[0]![0]).not.toHaveProperty('sceneBrief');
     const writeArg = mockUpdate.mock.calls[0]![0];
-    expect(writeArg.image.source).toBe('ai');
+    expect(writeArg.image!.source).toBe('ai');
     expect(writeArg).not.toHaveProperty('imageBrief');
   });
 
@@ -432,7 +455,7 @@ describe('onRecipeWritten — entry kinds', () => {
 
     expect(mockGenerateImage).toHaveBeenCalledOnce();
     const writeArg = mockUpdate.mock.calls[0]![0];
-    expect(writeArg.image.source).toBe('ai');
+    expect(writeArg.image!.source).toBe('ai');
     // The brief is persisted, which is what the regenerate dialog's textarea reads.
     expect(writeArg.imageBrief).toBe('A blistered, golden-topped bake.');
   });
@@ -491,7 +514,7 @@ describe('onRecipeWritten — meal components', () => {
         components: componentDisplayLines([CHICKEN, POTATOES]),
       }),
     );
-    expect(mockDescribeScene.mock.calls[0]![0].components).toEqual([
+    expect(mockDescribeScene.mock.calls[0]![0]!.components).toEqual([
       'Roast chicken — Lemon and thyme, skin crisp and burnished.',
       'Roast potatoes',
     ]);
@@ -528,7 +551,7 @@ describe('onRecipeWritten — meal components', () => {
     );
 
     expect(mockDescribeScene).toHaveBeenCalledOnce();
-    expect(mockDescribeScene.mock.calls[0]![0].components).toEqual([]);
+    expect(mockDescribeScene.mock.calls[0]![0]!.components).toEqual([]);
     expect(mockGenerateImage).toHaveBeenCalledOnce();
   });
 

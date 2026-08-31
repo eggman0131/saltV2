@@ -5,7 +5,9 @@ import { hashEmail, hashCode } from '../../src/auth/otpStore.js';
 // allowlist doc. A single shared doc would cross the two reads.
 const otpRef = {
   get: vi.fn(),
-  set: vi.fn(async () => undefined),
+  // Typed, not inferred: an inferred zero-argument mock records every call as
+  // an empty tuple, and this suite reads back the document it stored (#1135).
+  set: vi.fn<(doc: Record<string, unknown>) => Promise<undefined>>(async () => undefined),
   update: vi.fn(async () => undefined),
   delete: vi.fn(async () => undefined),
 };
@@ -35,7 +37,13 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockSendOtpEmail = vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: unknown });
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockSendOtpEmail = vi.fn<(...args: unknown[]) => Promise<{ ok: boolean; error?: unknown }>>(
+  async () => ({ ok: true }),
+);
 vi.mock('../../src/adapters/sendOtpEmail.js', () => ({ sendOtpEmail: mockSendOtpEmail }));
 const mockReportFlowError = vi.fn(async () => undefined);
 vi.mock('../../src/observability/reportServerError.js', () => ({

@@ -100,7 +100,7 @@ function importedPlatformFactories(): Set<string> {
   const IMPORT = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'(firebase-functions[^']*)'/g;
   for (const code of sources.values()) {
     for (const [, clause] of code.matchAll(IMPORT)) {
-      for (const specifier of clause.split(',')) {
+      for (const specifier of (clause ?? '').split(',')) {
         // `onCall as callable` binds the local name; `type Foo` is not a value.
         const parts = specifier.trim().split(/\s+as\s+/);
         const local = (parts[1] ?? parts[0] ?? '').trim();

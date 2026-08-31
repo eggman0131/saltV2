@@ -55,8 +55,16 @@ function rawOutput(overrides: Record<string, unknown> = {}) {
       {
         name: null,
         ingredients: [
-          { rawText: '200g pasta', isOptional: false, firstUsedInStepOrdinal: 0 },
-          { rawText: '2 cloves garlic, crushed', isOptional: true, firstUsedInStepOrdinal: 1 },
+          // Annotated, not inferred: the flow's input allows a NULL ordinal (an
+          // ingredient no step names), and a test below writes one. Inferred from
+          // these literals the field would be `number` and that assignment a
+          // compile error (#1135).
+          { rawText: '200g pasta', isOptional: false, firstUsedInStepOrdinal: 0 as number | null },
+          {
+            rawText: '2 cloves garlic, crushed',
+            isOptional: true,
+            firstUsedInStepOrdinal: 1 as number | null,
+          },
         ],
       },
     ],
@@ -463,6 +471,7 @@ describe('assembleRecipeDraft — edit mode', () => {
       id: 'r1',
       schemaVersion: 1,
       kind: 'cocktail',
+      kit: [],
       title: 'Old Fashioned',
       description: null,
       ingredients: [

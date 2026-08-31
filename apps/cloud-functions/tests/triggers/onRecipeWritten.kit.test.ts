@@ -21,7 +21,13 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockIdentifyKit = vi.fn(async () => ({ kit: [{ label: 'potato masher', stepIds: ['s1'] }] }));
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockIdentifyKit = vi.fn<
+  (...args: unknown[]) => Promise<{ kit: { label: string; stepIds: string[] }[] }>
+>(async () => ({ kit: [{ label: 'potato masher', stepIds: ['s1'] }] }));
 vi.mock('../../src/flows/identifyRecipeKit.js', () => ({
   identifyRecipeKitFlow: mockIdentifyKit,
 }));
@@ -41,7 +47,7 @@ vi.mock('../../src/flows/componentContext.js', () => ({
   readComponentContext: vi.fn(async () => []),
 }));
 
-const mockUpdate = vi.fn().mockResolvedValue(undefined);
+const mockUpdate = vi.fn<(...args: unknown[]) => Promise<undefined>>().mockResolvedValue(undefined);
 // Collection-aware, because this branch reads TWO documents through the same
 // `getFirestore()`: the devSettings kill-switch and the equipment manifest.
 let manifestSnap: unknown = { exists: false };

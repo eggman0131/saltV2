@@ -12,7 +12,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // handler, a fake HttpsError carrying `.code`, Storage down to `file().save()`,
 // the sharp seam stubbed, dynamic import after mocks).
 
-const mockUpdate = vi.fn(async () => undefined);
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockUpdate = vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined);
 const mockDoc = vi.fn(() => ({ update: mockUpdate, get: mockGet }));
 const mockGet = vi.fn(async () => ({ exists: true }));
 const mockCollection = vi.fn(() => ({ doc: mockDoc }));

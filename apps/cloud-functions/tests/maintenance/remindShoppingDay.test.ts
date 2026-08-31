@@ -19,7 +19,13 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockSendWebPush = vi.fn(async () => 'sent' as const);
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockSendWebPush = vi.fn<typeof import('../../src/adapters/sendWebPush.js').sendWebPush>(
+  async () => 'sent' as const,
+);
 vi.mock('../../src/adapters/sendWebPush.js', () => ({
   sendWebPush: mockSendWebPush,
 }));

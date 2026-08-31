@@ -11,7 +11,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // callables/), so this exercises the real composition — the real wire schema
 // through the real factory — with the flow mocked at the seam.
 
-const mockFlow = vi.fn(async () => ({ brief: 'A blistered, golden-topped bake.' }));
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockFlow = vi.fn<(...args: unknown[]) => Promise<{ brief: string }>>(async () => ({
+  brief: 'A blistered, golden-topped bake.',
+}));
 
 // Firestore is mocked purely so a stray write would be VISIBLE. Nothing in this
 // path should touch it; the assertions below are what hold that line.

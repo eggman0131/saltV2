@@ -31,7 +31,13 @@ vi.mock('firebase-functions', () => ({
 // Only the TRANSPORT is faked. `isApplePushEndpoint` is kept real, because the
 // routing assertions below are meaningless against a stubbed one — the whole
 // point is which endpoint lands in which channel.
-const mockSendWebPush = vi.fn(async () => 'sent' as const);
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockSendWebPush = vi.fn<typeof import('../../src/adapters/sendWebPush.js').sendWebPush>(
+  async () => 'sent' as const,
+);
 vi.mock('../../src/adapters/sendWebPush.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/sendWebPush.js')>()),
   sendWebPush: mockSendWebPush,
@@ -40,7 +46,9 @@ vi.mock('../../src/adapters/sendWebPush.js', async (importOriginal) => ({
 // Pushover is the second, independent sink (issue #680). The transport and the
 // uid→member→devices resolution are covered by their own suites; here we care
 // only that the handler reacts correctly to each resolution outcome.
-const mockSendPushover = vi.fn(async () => 'sent' as const);
+const mockSendPushover = vi.fn<typeof import('../../src/adapters/sendPushover.js').sendPushover>(
+  async () => 'sent' as const,
+);
 vi.mock('../../src/adapters/sendPushover.js', () => ({
   sendPushover: mockSendPushover,
 }));
@@ -141,7 +149,9 @@ function makeSession(overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
     ownerUid: 'uid-1',
     recipeId: 'recipe-1',
     recipeUpdatedAtAtStart: '2026-07-24T09:00:00.000Z',
+    serveAt: null,
     checkedIngredientIds: [],
+    checkedPrepIds: [],
     completedStepIds: [],
     activeTimers: [makeTimer()],
     createdAt: '2026-07-24T09:00:00.000Z',
@@ -200,6 +210,10 @@ function makeRecipe(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     source: null,
     notes: null,
     producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     image: null,
     createdAt: '2026-07-24T09:00:00.000Z',
     updatedAt: '2026-07-24T09:00:00.000Z',
