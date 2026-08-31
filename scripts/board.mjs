@@ -109,7 +109,7 @@ function loadItems(project) {
       items(first:100, after:${after}){
         pageInfo{ hasNextPage endCursor }
         nodes{ id
-          content{ ... on Issue { number title state } }
+          content{ ... on Issue { number title state subIssues(first:1){ totalCount } } }
           queue:fieldValueByName(name:"Queue"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           status:fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           blockedBy:fieldValueByName(name:"Blocked by"){ ... on ProjectV2ItemFieldTextValue { text } } } } } } }`)
@@ -121,6 +121,7 @@ function loadItems(project) {
         number: n.content.number,
         title: n.content.title,
         state: n.content.state,
+        children: n.content.subIssues?.totalCount ?? 0,
         queue: n.queue?.name ?? null,
         status: n.status?.name ?? null,
         blockedBy: n.blockedBy?.text ?? '',
@@ -320,6 +321,19 @@ function cmdCheck(project) {
         `#${item.number} is closed at Status="${item.status ?? 'unset'}" — it never reached Merged, so either it was closed without shipping (remove it) or its PR had no "Closes #${item.number}"`,
       );
     }
+  }
+
+  // An epic is a container, not a work unit: it sits in the `Epic` band so it
+  // never competes for sequence with the work it holds, and never carries a
+  // priority its children already carry. Left as prose that is the unguarded
+  // invariant CLAUDE.md rule 12 is about — the failure mode being `board.mjs
+  // add <epic> --queue Medium`, which reads as ordinary work forever after.
+  // One direction only: having sub-issues proves a container, but NOT every
+  // epic uses them (#894, #913 and #941 predate GitHub's sub-issues and hold
+  // their children as body links), so `Epic` without sub-issues is legal.
+  for (const item of items) {
+    if (item.state !== 'OPEN' || item.children === 0 || item.queue === 'Epic') continue;
+    failures.push(`#${item.number} has ${item.children} sub-issue(s) but sits in Queue="${item.queue ?? 'unset'}" — an epic belongs in the Epic band, not among the work units`);
   }
 
   // TWO OPTIONS CANNOT SHARE A NAME. Everything here resolves options by name
