@@ -325,7 +325,7 @@ has. It is also the easiest to render vacuously green.
   `tsc` unless a `tsconfig.test.json` is added **and wired into the root `typecheck` script**.
   **Evidence:** #942 wired `apps/web-pwa/tsconfig.test.json` in and 174 fixture defects fell out of a
   suite that had been green for 41k lines. #1135 then did the remaining five packages at once and
-  **526** more fell out, including a type import #923 had left dangling and two `expectTypeOf`
+  **507** more fell out, including a type import #923 had left dangling and two `expectTypeOf`
   assertions that were simply false. `packages/ui-components/tsconfig.test.json` was the sharpest
   case: added in `84270a98`, correct, and invoked by nothing until #1135 named it.
   **Enforced, not merely written down** (CLAUDE.md rule 12).
