@@ -264,9 +264,13 @@ function shoppingRecipe(): Recipe {
 // than the old bet on a post-attach update the emulator transport could drop
 // for good. The default id is what the hold's add resolves against, and it
 // arrives on the config listener rather than with any navigation (NF-A3).
+// `SYNC_TIMEOUT` names that path — a single-tab store settle — instead of
+// silently inheriting playwright.config.ts's 10s `expect` default (NF-A5).
 async function awaitDefaultList(page: Page): Promise<void> {
   await expect
-    .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
+    .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null), {
+      timeout: SYNC_TIMEOUT,
+    })
     .not.toBeNull();
 }
 

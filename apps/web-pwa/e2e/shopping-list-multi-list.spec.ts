@@ -149,7 +149,23 @@ test.describe('shopping list — multi-list', () => {
   });
 
   test('move item to second list removes it from source', async ({ page }, testInfo) => {
-    test.setTimeout(120_000);
+    // Trigger tier, not the two-tab + AI ceiling (NF-F2): one tab, one CF
+    // round-trip (`waitForMatched`, TRIGGER_TIMEOUT), and the canon seeded
+    // below resolves by exact name, so the expected match path is the
+    // deterministic stage-1 hit with no AI leg (NF-E3). Was 90_000 before
+    // #743, which raised it to 120_000 in the same hunk that added this
+    // trigger leg and its seeding (`git show a328e5d7`) — the +30s was spent
+    // on that leg, not idle padding. The sibling test ('edit sheet moves a
+    // single item, carrying the edits made in the same visit') was raised by
+    // that same hunk and still sits at 120_000; unchanged here, out of scope.
+    // Returning to 90_000 is sized from the NF-F2 trigger tier, not from the
+    // measured percentiles below — the budget floor is this test's scoped
+    // critical-path waits, never the observed p99 (issue #1005). Measured
+    // post-#1001 on 275 CI runs, 267 passing, bad-rate 2.91% (residual flake
+    // tracked in #1149, not a timeout symptom), p99 6.17s, max 6.51s on the
+    // passing runs — recorded as evidence the tier is not tight, not as what
+    // the number is derived from.
+    test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
 
     // The first list is SETUP here, not the subject — creating one through the
@@ -176,9 +192,13 @@ test.describe('shopping list — multi-list', () => {
     });
 
     // Settle gate on the config listener's first snapshot — a wait that always
-    // terminates, because the doc predates the listener (NF-A3).
+    // terminates, because the doc predates the listener (NF-A3). `SYNC_TIMEOUT`
+    // names that path — a single-tab store settle — instead of silently
+    // inheriting playwright.config.ts's 10s `expect` default (NF-A5).
     await expect
-      .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
+      .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null), {
+        timeout: SYNC_TIMEOUT,
+      })
       .not.toBeNull();
 
     await page.goto(firstListUrl);
