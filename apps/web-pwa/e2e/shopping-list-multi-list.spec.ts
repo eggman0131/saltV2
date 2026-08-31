@@ -9,7 +9,7 @@ import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
 import {
   getShoppingListItems,
-  seedAisles,
+  seedAislesBeforeBoot,
   seedCanonItem,
   seedShoppingListBeforeBoot,
 } from './helpers/seed';
@@ -177,15 +177,21 @@ test.describe('shopping list — multi-list', () => {
     const firstList = await seedShoppingListBeforeBoot('Weekly shop');
     const firstListUrl = `/#/shopping/${firstList.id}`;
 
+    // The aisle the canon below is filed under. Seeded before boot for the same
+    // reason as the list above — see `seedAislesBeforeBoot` for the measured
+    // drop hazard a post-attach bridge write carries here (NF-C4). This call
+    // WAS the bridge `seedAisles`, and losing it left the item matched to a
+    // canon whose aisle the page did not hold: issue #1149's Signature A.
+    const [condiments] = await seedAislesBeforeBoot(['Condiments']);
+
     await gotoAndSignIn(page, email);
 
-    // Seed an aisle + a canon item the entry will match by exact name, so the
-    // item is identified before the move and the move has an identity to keep
+    // Seed a canon item the entry will match by exact name, so the item is
+    // identified before the move and the move has an identity to keep
     // (issue #699). "Soy Sauce" and the entry "soy sauce" share a normalised
     // form → stage-1 direct hit, no AI (NF-E3).
     await page.goto('/');
     await waitForBridge(page);
-    const [condiments] = await seedAisles(page, ['Condiments']);
     const soyCanon = await seedCanonItem(page, {
       name: 'Soy Sauce',
       aisleId: condiments!.id,
@@ -262,6 +268,11 @@ test.describe('shopping list — multi-list', () => {
   }, testInfo) => {
     test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // Before boot — same hazard as the sibling test above, and not currently
+    // implicated by telemetry here, only armed with it (issue #1149).
+    const [condiments] = await seedAislesBeforeBoot(['Condiments']);
+
     await gotoAndSignIn(page, email);
 
     // Canon for the unchanged-text move at the end of this test (issue #699),
@@ -270,7 +281,6 @@ test.describe('shopping list — multi-list', () => {
     // flow below behaves exactly as it did before.
     await page.goto('/');
     await waitForBridge(page);
-    const [condiments] = await seedAisles(page, ['Condiments']);
     const vinegarCanon = await seedCanonItem(page, {
       name: 'Rice Vinegar',
       aisleId: condiments!.id,
