@@ -178,14 +178,12 @@ describe('nextStepLookahead', () => {
       // A parsed document always reads back `string | null`. A note arriving from
       // anywhere else — a hand-edited doc, a draft, a fixture — can be missing the
       // keys outright, and `undefined === null` is false.
-      const legacy = {
+      const legacy: Omit<GuidedStepNoteDoc, 'lookahead' | 'getAhead'> = {
         stepId: 's1',
         container: null,
         setup: null,
         cue: null,
         checkIns: [],
-        lookahead: null,
-        getAhead: null,
       };
       expect(nextStepLookahead(THREE, [legacy as GuidedStepNoteDoc], 's1')).toBeNull();
     });

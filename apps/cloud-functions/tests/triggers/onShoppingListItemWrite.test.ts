@@ -19,7 +19,19 @@ vi.mock('firebase-functions', () => ({
 
 // ─── Mock firebase-admin/firestore ───────────────────────────────────────────
 
-const mockUpdate = vi.fn<(...args: unknown[]) => Promise<undefined>>().mockResolvedValue(undefined);
+// The partial this trigger writes back — only the fields these assertions read
+// (mirrors onRecipeWritten.test.ts's local `RecipePatch`).
+type ShoppingListItemPatch = {
+  canonId?: unknown;
+  matchState?: unknown;
+  rawText?: unknown;
+  notes?: unknown;
+  amount?: unknown;
+  unit?: unknown;
+};
+const mockUpdate = vi
+  .fn<(patch: ShoppingListItemPatch) => Promise<undefined>>()
+  .mockResolvedValue(undefined);
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({

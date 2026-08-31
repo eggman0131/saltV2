@@ -94,15 +94,37 @@ function configsInTypecheckScript() {
 /**
  * The directories a config's `include` patterns reach. Only the literal prefix
  * before the first wildcard is used: `tests/**\/*` covers `<configDir>/tests`
- * and everything beneath it. Deliberately conservative — an exotic glob reads
- * as covering less than it does, so this guard errs towards a false RED, never
- * a false green.
+ * and everything beneath it. Deliberately conservative on `include` — an
+ * exotic glob reads as covering less than it does, so an `include`-side
+ * surprise errs towards a false RED, never a false green.
+ *
+ * NOT conservative on `exclude`: this function reads only `config.include` and
+ * never looks at `config.exclude`, so it cannot see a config excluding part of
+ * what its `include` names — every one of these ten configs already inherits
+ * `"exclude": ["**\/__boundary_tests__/**"]` from `tsconfig.base.json`, unseen
+ * by this guard. That is a real, if currently harmless, false-green direction:
+ * a `tests/` subtree dropped by `exclude` reads here as covered when the
+ * compiler does not actually see it. Stated rather than fixed (CLAUDE.md rule
+ * 12) — subtracting `exclude` prefixes is more matching logic for a case that
+ * does not fire on this repo today.
  */
 function coveredPrefixes(configPath) {
-  // `tsconfig.json` allows comments; `JSON.parse` does not. Strip line comments
-  // that start a line (the only form these configs use) rather than reaching for
-  // a JSON5 dependency.
-  const raw = read(configPath).replace(/^\s*\/\/.*$/gm, '');
+  // A config named in `typecheck` that does not exist on disk must NOT throw
+  // here: this runs eagerly in the `describe` body (see below), and an
+  // unguarded throw fails collection for the whole file — silently skipping
+  // 'names a config for each of them' AND making 'runs every config it names'
+  // (which asserts exactly this case) unreachable. Return no coverage instead,
+  // so the first test still passes or fails on its own evidence and the
+  // config's existence is asserted once, explicitly, by the second test.
+  let raw;
+  try {
+    // `tsconfig.json` allows comments; `JSON.parse` does not. Strip line
+    // comments that start a line (the only form these configs use) rather
+    // than reaching for a JSON5 dependency.
+    raw = read(configPath).replace(/^\s*\/\/.*$/gm, '');
+  } catch {
+    return [];
+  }
   const config = JSON.parse(raw);
   const configDir = path.posix.dirname(configPath.split(path.sep).join('/'));
   return (config.include ?? []).map((pattern) => {

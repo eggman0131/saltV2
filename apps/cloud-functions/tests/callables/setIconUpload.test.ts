@@ -16,7 +16,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ZERO-argument mock, so every recorded call is an empty tuple and reading
 // `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
 // `mockResolvedValue` is pinned to the one literal used here (#1135).
-const mockUpdate = vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined);
+//
+// The partial the callable writes back — only the fields these assertions read
+// (mirrors onRecipeWritten.test.ts's local `RecipePatch`).
+type IconUploadPatch = { thumbnail: string; iconRequestedAt: number };
+const mockUpdate = vi.fn<(patch: IconUploadPatch) => Promise<undefined>>(async () => undefined);
 const mockDoc = vi.fn(() => ({ update: mockUpdate, get: mockGet }));
 const mockGet = vi.fn(async () => ({ exists: true }));
 const mockCollection = vi.fn(() => ({ doc: mockDoc }));

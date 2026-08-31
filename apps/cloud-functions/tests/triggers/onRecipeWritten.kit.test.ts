@@ -47,7 +47,10 @@ vi.mock('../../src/flows/componentContext.js', () => ({
   readComponentContext: vi.fn(async () => []),
 }));
 
-const mockUpdate = vi.fn<(...args: unknown[]) => Promise<undefined>>().mockResolvedValue(undefined);
+// The partial this branch writes back — only the field these assertions read
+// (mirrors onRecipeWritten.test.ts's local `RecipePatch`).
+type KitPatch = { kit: unknown };
+const mockUpdate = vi.fn<(patch: KitPatch) => Promise<undefined>>().mockResolvedValue(undefined);
 // Collection-aware, because this branch reads TWO documents through the same
 // `getFirestore()`: the devSettings kill-switch and the equipment manifest.
 let manifestSnap: unknown = { exists: false };

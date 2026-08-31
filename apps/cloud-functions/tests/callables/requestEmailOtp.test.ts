@@ -41,7 +41,7 @@ vi.mock('firebase-functions', () => ({
 // ZERO-argument mock, so every recorded call is an empty tuple and reading
 // `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
 // `mockResolvedValue` is pinned to the one literal used here (#1135).
-const mockSendOtpEmail = vi.fn<(...args: unknown[]) => Promise<{ ok: boolean; error?: unknown }>>(
+const mockSendOtpEmail = vi.fn<typeof import('../../src/adapters/sendOtpEmail.js').sendOtpEmail>(
   async () => ({ ok: true }),
 );
 vi.mock('../../src/adapters/sendOtpEmail.js', () => ({ sendOtpEmail: mockSendOtpEmail }));

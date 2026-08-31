@@ -12,10 +12,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // below then pins that `initFirebase` really does hand production nothing.
 
 const { mockInitializeFirestore, mockGetFirestore, mockPersistentLocalCache } = vi.hoisted(() => ({
-  // Typed, not inferred: an inferred zero-argument mock records every call as
-  // an empty tuple, so reading `mock.calls[0][1]` — the settings object this
-  // whole suite is about — is a compile error (#1135).
-  mockInitializeFirestore: vi.fn<(...args: unknown[]) => string>(() => 'mock-db'),
+  // Typed to the real function's PARAMETERS, not inferred: an inferred
+  // zero-argument mock records every call as an empty tuple, so reading
+  // `mock.calls[0][1]` — the settings object this whole suite is about — is a
+  // compile error (#1135). The return type stays `string`, matching what this
+  // mock actually stands in for ('mock-db'), never a real `Firestore`.
+  mockInitializeFirestore: vi.fn<
+    (...args: Parameters<typeof import('firebase/firestore').initializeFirestore>) => string
+  >(() => 'mock-db'),
   mockGetFirestore: vi.fn(() => 'mock-db'),
   mockPersistentLocalCache: vi.fn(() => 'mock-cache'),
 }));

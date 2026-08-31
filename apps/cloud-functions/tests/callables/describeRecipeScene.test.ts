@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from '@salt/domain/schemas';
 
 // The describeRecipeScene callable (issue #522, Phase 3): read the recipe → return
 // the art-direction brief. Its defining property is what it does NOT do — it
@@ -11,13 +12,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // callables/), so this exercises the real composition — the real wire schema
 // through the real factory — with the flow mocked at the seam.
 
-// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
-// ZERO-argument mock, so every recorded call is an empty tuple and reading
-// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
-// `mockResolvedValue` is pinned to the one literal used here (#1135).
-const mockFlow = vi.fn<(...args: unknown[]) => Promise<{ brief: string }>>(async () => ({
-  brief: 'A blistered, golden-topped bake.',
-}));
+// Typed as the flow's own input/output — `DescribeRecipeSceneInputSchema` and
+// `DescribeRecipeSceneOutputSchema` are exactly what `describeRecipeSceneFlow`
+// declares in src/flows/describeRecipeScene.ts — rather than `(...args:
+// unknown[])`, which would compile but restore the blindness to call-site
+// drift that typing these mocks was supposed to remove (#1135).
+const mockFlow = vi.fn<(input: DescribeRecipeSceneInput) => Promise<DescribeRecipeSceneOutput>>(
+  async () => ({
+    brief: 'A blistered, golden-topped bake.',
+  }),
+);
 
 // Firestore is mocked purely so a stray write would be VISIBLE. Nothing in this
 // path should touch it; the assertions below are what hold that line.

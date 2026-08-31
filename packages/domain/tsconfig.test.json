@@ -13,9 +13,21 @@
   // reaches only the test program. `packages/domain/tsconfig.json` keeps
   // `lib: ["ES2022"]` and gains nothing, so `src` still cannot see a DOM global.
   //
-  // `.test-d.ts` files are deliberately NOT covered here: they belong to
-  // `tsconfig.typetest.json` + the `typecheck` block in `vitest.config.ts`
-  // (UT-G4, issue #932), which runs them under `vitest run` instead.
+  // `.test-d.ts` files are ALSO covered here — `include: ["tests/**/*"]` matches
+  // `canonItem.types.test-d.ts`, `mealPlanTemplate.types.test-d.ts` and
+  // `shoppingListItem.types.test-d.ts` too, same as everything else under
+  // `tests/`. `tsconfig.typetest.json` + the `typecheck` block in
+  // `vitest.config.ts` (UT-G4, issue #932) is the config that OWNS them and
+  // runs them under `vitest run`, but this config compiles the same three
+  // files a second time under different options (this one inherits the
+  // package's `lib`; that one sets `types: []` and its own `lib`), so the two
+  // programs can disagree about the same file. Narrowing this `include` to
+  // drop them was considered and rejected: TypeScript overrides — does not
+  // merge — `exclude` across `extends`, so a hand-written `exclude` here would
+  // silently drop the `**/__boundary_tests__/**` this config inherits from
+  // `tsconfig.base.json`, and `packages/domain/src/**/__boundary_tests__/`
+  // (which this config's `include` also reaches via `src/**/*`) is real. A
+  // disclosed double-compile beats that risk.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
