@@ -69,12 +69,20 @@ export function countByArea(files, areas) {
 //     end (`CoverageSummary.merge`) — never an average of per-file percentages.
 
 /**
- * Istanbul's percentage, which FLOORS to two decimals rather than rounding
- * (`percent()` in istanbul-lib-coverage). Rounding reads a hundredth high on
+ * Istanbul's percentage, reproduced arithmetic-for-arithmetic — not merely a
+ * same-answer float path. `percent()` in istanbul-lib-coverage 3.2.2
+ * (`lib/percent.js`) is `Math.floor(((1000 * 100 * covered) / total) / 10) /
+ * 100`, and `Math.floor((covered / total) * 10000) / 100` — the obvious
+ * rewrite, and what this used to be — is a DIFFERENT float path that reads a
+ * hundredth low on 4,218 of the `(covered, total)` pairs with `total <= 12000`
+ * (e.g. `57/100`: istanbul 57, the rewrite 56.99), never high. None of this
+ * repo's committed pins land on one of those pairs, so the divergence was
+ * dormant, not absent — a future re-measure could still hit one. FLOORS to two
+ * decimals rather than rounding either way: rounding reads a hundredth high on
  * six of this repo's eight areas, and a pin a hundredth high is a red build.
  */
 export function coveragePercent(covered, total) {
-  return total > 0 ? Math.floor((covered / total) * 10000) / 100 : 100;
+  return total > 0 ? Math.floor((1000 * 100 * covered) / total / 10) / 100 : 100;
 }
 
 /** Hits per source line: the max over the statements starting on that line. */
@@ -195,6 +203,34 @@ export function ratchetFindings(areaTotals, thresholds, { staleAbove }) {
   }
 
   return findings;
+}
+
+/**
+ * Which of a list of areas are safe to hand back as a `pinEntry` paste block —
+ * i.e. banking today's measurement would not lower either metric's ratio floor.
+ *
+ * Scoped to BOTH metrics on the area, never just the one a finding named:
+ * `pinEntry` always emits `lines` and `branches` together, so an area that
+ * regressed on one metric cannot be split into a safe partial paste. This is
+ * "no pin here may go DOWN to make a build green" (the script's own words)
+ * made mechanical rather than trusted to the surrounding prose: a `ceiling`
+ * finding whose ratio also fell (`ratioHeld: false` — a plain regression)
+ * computes a LOWER pct in `pinEntry` too, and nothing before this filtered on
+ * that, so the block was offered even there (issue #1133 review, finding 1).
+ *
+ * An area with no pin at all is excluded rather than treated as vacuously
+ * bankable — `ratchetFindings` never emits a finding for one, so it should
+ * never reach here, but this stays defensive rather than assuming that.
+ */
+export function bankableAreas(areaTotals, thresholds) {
+  return areaTotals.filter((area) => {
+    const pin = thresholds[area.glob];
+    if (!pin) return false;
+    return ['lines', 'branches'].every((name) => {
+      const floor = pin[name];
+      return typeof floor !== 'number' || hundredths(area[name].pct) >= hundredths(floor);
+    });
+  });
 }
 
 /**

@@ -48,7 +48,7 @@ import { fileURLToPath } from 'node:url';
 // the paragraph that explains why it is a staleness allowance and NOT margin on
 // the floor — one declaration, as that file's header requires.
 import { coverageAreas, coverageThresholds, staleAbovePoints } from '../coverage.areas.mjs';
-import { pinEntry, ratchetFindings, totalsByArea } from './lib/coverageFileSet.mjs';
+import { bankableAreas, pinEntry, ratchetFindings, totalsByArea } from './lib/coverageFileSet.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportFile = path.join(repoRoot, 'coverage/unit/coverage-final.json');
@@ -124,15 +124,32 @@ for (const finding of findings) {
   }
 }
 
-console.error(
-  '\nBank it by replacing these lines in coverage.areas.mjs with today’s measurement:\n\n' +
-    totals
-      .filter((area) => affected.includes(area.glob))
-      .map((area) => pinEntry(area))
-      .join('\n') +
-    '\n\nThese are exact, floored, vitest-identical figures — paste them, do not retype them. ' +
-    'Say in the commit message why each moved; a pin change is a deliberate act, and no pin here ' +
-    'may go DOWN to make a build green.',
-);
+// Never hand over a paste block that would lower a ratio floor: a `ceiling`
+// finding whose ratio also fell (a plain regression) measures a LOWER pct
+// than the current pin, and `pinEntry` emits `lines`/`branches` together, so
+// an area is only offered if BOTH metrics clear their current pin.
+const affectedAreas = totals.filter((area) => affected.includes(area.glob));
+const bankable = bankableAreas(affectedAreas, coverageThresholds);
+const withheld = affectedAreas.filter((area) => !bankable.includes(area));
+
+if (bankable.length > 0) {
+  console.error(
+    '\nBank it by replacing these lines in coverage.areas.mjs with today’s measurement:\n\n' +
+      bankable.map((area) => pinEntry(area)).join('\n') +
+      '\n\nThese are exact, floored, vitest-identical figures — paste them, do not retype them. ' +
+      'Say in the commit message why each moved; a pin change is a deliberate act, and no pin here ' +
+      'may go DOWN to make a build green.',
+  );
+}
+
+if (withheld.length > 0) {
+  console.error(
+    '\nNo paste block for ' +
+      withheld.map((area) => `'${area.glob}'`).join(', ') +
+      ": today's measurement is below the current pin on at least one metric there, and no pin " +
+      'here may go down to make a build green. The fix is a test, never a lower floor — re-run ' +
+      'this check once the regression is fixed and the block will reappear.',
+  );
+}
 
 process.exit(1);

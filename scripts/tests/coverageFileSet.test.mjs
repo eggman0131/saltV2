@@ -11,6 +11,7 @@ import {
   coverageThresholds,
 } from '../../coverage.areas.mjs';
 import {
+  bankableAreas,
   countByArea,
   coveragePercent,
   diffCoverageFiles,
@@ -149,6 +150,19 @@ describe('coveragePercent', () => {
     expect(coveragePercent(649, 866)).toBe(74.94);
     // 2 / 3 is 66.666…: floored 66.66, rounded 66.67.
     expect(coveragePercent(2, 3)).toBe(66.66);
+  });
+
+  // PR #1139 review, finding 2: `Math.floor((covered / total) * 10000) / 100`
+  // — the obvious rewrite of istanbul's formula, and what this function used
+  // to be — is a DIFFERENT float path that reads a hundredth LOW on 4,218 of
+  // the `(covered, total)` pairs with `total <= 12000`. None of the three
+  // values above happen to be one of them, which is exactly how the bug
+  // shipped undetected; this one is. istanbul-lib-coverage 3.2.2's actual
+  // `percent()` (`lib/percent.js`) says 57, and the rewrite said 56.99.
+  it('agrees with istanbul on a pair the obvious float rewrite gets wrong', () => {
+    expect(coveragePercent(57, 100)).toBe(57);
+    expect(coveragePercent(43, 125)).toBe(34.4);
+    expect(coveragePercent(113, 200)).toBe(56.5);
   });
 
   it('calls an empty area 100%, as istanbul does, rather than dividing by zero', () => {
@@ -337,6 +351,74 @@ describe('ratchetFindings', () => {
         ratioHeld: true,
       },
     ]);
+  });
+});
+
+describe('bankableAreas', () => {
+  // The PR #1139 review's blocking finding: deleting a firebase-sync test file
+  // drops the ratio AND breaches the ceiling in the same direction — a plain
+  // regression, `ratioHeld: false` — and the script printed the paste block for
+  // it anyway, handing over a pin that is LOWER than the one committed. This is
+  // that exact shape, reproduced without touching the real repo's coverage
+  // report: a pin at 92.00%/54 uncovered, a measurement at 89.62%/70 uncovered.
+  const FS_AREA = 'packages/adapters/firebase-sync/src/**';
+  const regressedPin = {
+    [FS_AREA]: { lines: 92.0, branches: 85.65, uncoveredLines: 54, uncoveredBranches: 91 },
+  };
+  const regressedMeasurement = {
+    glob: FS_AREA,
+    lines: { pct: 89.62, uncovered: 70 },
+    branches: { pct: 85.65, uncovered: 91 },
+  };
+
+  it('withholds an area whose measured lines pct fell below its current pin', () => {
+    expect(bankableAreas([regressedMeasurement], regressedPin)).toEqual([]);
+  });
+
+  it('still withholds it even though the OTHER metric (branches) is unchanged', () => {
+    // Guards against a fix that only checks the metric a finding named: the
+    // area must be withheld as a whole, because `pinEntry` pastes both metrics
+    // together and a partial paste is not what either script prints.
+    const partiallyRegressed = {
+      ...regressedMeasurement,
+      branches: { pct: 90, uncovered: 40 }, // improved and would be bankable alone
+    };
+    expect(bankableAreas([partiallyRegressed], regressedPin)).toEqual([]);
+  });
+
+  it('offers an area whose measurement clears its pin on both metrics', () => {
+    const grown = {
+      glob: FS_AREA,
+      lines: { pct: 92.5, uncovered: 50 },
+      branches: { pct: 86, uncovered: 88 },
+    };
+    expect(bankableAreas([grown], regressedPin)).toEqual([grown]);
+  });
+
+  it('offers an area sitting exactly at its current pin (no change, nothing lowered)', () => {
+    const unchanged = {
+      glob: FS_AREA,
+      lines: { pct: 92.0, uncovered: 54 },
+      branches: { pct: 85.65, uncovered: 91 },
+    };
+    expect(bankableAreas([unchanged], regressedPin)).toEqual([unchanged]);
+  });
+
+  it('withholds an area with no pin at all rather than treating it as bankable', () => {
+    expect(bankableAreas([regressedMeasurement], {})).toEqual([]);
+  });
+
+  it('picks the bankable areas out of a mixed list, preserving the rest untouched', () => {
+    const grown = {
+      glob: 'packages/domain/src/**',
+      lines: { pct: 99, uncovered: 10 },
+      branches: { pct: 92, uncovered: 20 },
+    };
+    const pins = {
+      ...regressedPin,
+      [grown.glob]: { lines: 98, branches: 91, uncoveredLines: 12, uncoveredBranches: 22 },
+    };
+    expect(bankableAreas([regressedMeasurement, grown], pins)).toEqual([grown]);
   });
 });
 

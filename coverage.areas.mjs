@@ -131,10 +131,15 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // vitest reported all sixteen red naming the value one hundredth below. So
 // `pnpm test:coverage` is green at these numbers and red at any of them +0.01.
 //
-// Deriving a pin by hand: the figure is istanbul's, FLOORED to two decimals
-// (`Math.floor((covered / total) * 10000) / 100`) and not rounded. Six of these
-// eight areas read a hundredth higher if you round, and a pin a hundredth high
-// is a red build — so take the number vitest prints, never one you computed.
+// Deriving a pin by hand: the figure is istanbul's `percent()`
+// (`Math.floor(((1000 * 100 * covered) / total) / 10) / 100`), FLOORED to two
+// decimals and not rounded. Six of these eight areas read a hundredth higher if
+// you round, and a pin a hundredth high is a red build — so take the number
+// vitest prints, never one you computed. The obvious-looking rewrite
+// `Math.floor((covered / total) * 10000) / 100` is NOT this formula: it is a
+// different float path that reads a hundredth low on thousands of
+// `(covered, total)` pairs (`scripts/lib/coverageFileSet.mjs`'s
+// `coveragePercent` learned this the hard way — see its docstring).
 //
 // ---------------------------------------------------------------------------
 // The uncovered-count CEILINGS, and the staleness tolerance (issue #1133)
