@@ -76,6 +76,55 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.other.contributors).toHaveLength(1);
   });
+
+  // Issue #1149. Canon and `canonData/aisles` reach the page from two separate
+  // listeners, so a canon pointing at an aisle the page does not (yet) hold is
+  // reachable — and before this the item was returned in NO bucket at all, so
+  // the row rendered nowhere.
+  it('routes matched items whose aisleId is absent from `aisles` to Other', () => {
+    const items = [makeItem('i1', { matchState: 'matched', canonId: 'c1' })];
+    const canonMap = makeCanonMap([{ id: 'c1', name: 'Soy Sauce', aisleId: 'aisle-unknown' }]);
+    const result = groupItemsByAisle(items, canonMap, AISLES);
+    expect(result.other.contributors.map((c) => c.item.id)).toEqual(['i1']);
+    expect(result.other.contributors[0]!.isPending).toBe(false);
+    expect(result.aisles).toHaveLength(0);
+  });
+
+  it('routes every matched item to Other when `aisles` is empty (aisles not yet loaded)', () => {
+    const items = [makeItem('i1', { matchState: 'matched', canonId: 'c1' })];
+    const canonMap = makeCanonMap([{ id: 'c1', name: 'Soy Sauce', aisleId: 'aisle-1' }]);
+    const result = groupItemsByAisle(items, canonMap, []);
+    expect(result.other.contributors.map((c) => c.item.id)).toEqual(['i1']);
+    expect(result.aisles).toHaveLength(0);
+  });
+
+  // The accounting pin for the bug above. Bounded to this input, not a proof for
+  // all inputs: it asserts that across one list mixing every routing case —
+  // pending, stale canon, null aisle, unknown aisle, known aisle and checked —
+  // each item lands in exactly one of the three returned buckets.
+  it('accounts for every item exactly once across other/aisles/checked', () => {
+    const items = [
+      makeItem('pending'),
+      makeItem('stale', { matchState: 'matched', canonId: 'gone' }),
+      makeItem('null-aisle', { matchState: 'matched', canonId: 'c-null' }),
+      makeItem('unknown-aisle', { matchState: 'matched', canonId: 'c-unknown' }),
+      makeItem('known-aisle', { matchState: 'matched', canonId: 'c-known' }),
+      makeItem('done', { matchState: 'matched', canonId: 'c-known', checked: true }),
+    ];
+    const canonMap = makeCanonMap([
+      { id: 'c-null', name: 'Beans', aisleId: null },
+      { id: 'c-unknown', name: 'Soy Sauce', aisleId: 'aisle-unknown' },
+      { id: 'c-known', name: 'Milk', aisleId: 'aisle-2' },
+    ]);
+    const result = groupItemsByAisle(items, canonMap, AISLES);
+
+    const placed = [
+      ...result.other.contributors.map((c) => c.item.id),
+      ...result.aisles.flatMap((g) => g.rows.flatMap((r) => r.contributors.map((i) => i.id))),
+      ...result.checked.contributors.map((i) => i.id),
+    ];
+    expect([...placed].sort()).toEqual([...items.map((i) => i.id)].sort());
+  });
 });
 
 describe('groupItemsByAisle — aisle ordering', () => {
