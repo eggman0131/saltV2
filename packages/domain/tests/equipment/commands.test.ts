@@ -62,16 +62,16 @@ describe('addEquipment', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value.items).toHaveLength(1);
-    expect(result.value.items[0].name).toBe('KitchenAid');
-    expect(result.value.items[0].schemaVersion).toBe(1);
-    expect(result.value.items[0].updatedAt).toBe(NOW);
-    expect(result.value.items[0].accessories).toEqual([]);
-    expect(result.value.items[0].rules).toEqual([]);
+    expect(result.value.items[0]!.name).toBe('KitchenAid');
+    expect(result.value.items[0]!.schemaVersion).toBe(1);
+    expect(result.value.items[0]!.updatedAt).toBe(NOW);
+    expect(result.value.items[0]!.accessories).toEqual([]);
+    expect(result.value.items[0]!.rules).toEqual([]);
   });
 
   it('trims whitespace from name', () => {
     const result = addEquipment(emptyManifest(), { name: '  KitchenAid  ', now: NOW }, makeIds());
-    expect(result.kind === 'ok' && result.value.items[0].name).toBe('KitchenAid');
+    expect(result.kind === 'ok' && result.value.items[0]!.name).toBe('KitchenAid');
   });
 
   it('returns INVALID_EQUIPMENT_NAME for blank name', () => {
@@ -100,7 +100,7 @@ describe('removeEquipment', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value.items).toHaveLength(1);
-    expect(result.value.items[0].id).toBe('eq-2');
+    expect(result.value.items[0]!.id).toBe('eq-2');
   });
 
   it('returns NotFound for unknown id', () => {
@@ -119,14 +119,14 @@ describe('renameEquipment', () => {
     const result = renameEquipment(manifest, { id: 'eq-1', name: 'New Name', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].name).toBe('New Name');
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.name).toBe('New Name');
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims whitespace from name', () => {
     const manifest = manifestWith([makeItem('eq-1')]);
     const result = renameEquipment(manifest, { id: 'eq-1', name: '  Trimmed  ', now: NOW });
-    expect(result.kind === 'ok' && result.value.items[0].name).toBe('Trimmed');
+    expect(result.kind === 'ok' && result.value.items[0]!.name).toBe('Trimmed');
   });
 
   it('returns INVALID_EQUIPMENT_NAME for blank name', () => {
@@ -160,11 +160,11 @@ describe('addAccessory', () => {
     );
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    const item = result.value.items[0];
+    const item = result.value.items[0]!;
     expect(item.accessories).toHaveLength(1);
-    expect(item.accessories[0].name).toBe('Dough Hook');
-    expect(item.accessories[0].owned).toBe(true);
-    expect(item.accessories[0].included).toBe(true);
+    expect(item.accessories[0]!.name).toBe('Dough Hook');
+    expect(item.accessories[0]!.owned).toBe(true);
+    expect(item.accessories[0]!.included).toBe(true);
     expect(item.updatedAt).toBe(NOW2);
   });
 
@@ -175,7 +175,7 @@ describe('addAccessory', () => {
       { equipmentId: 'eq-1', name: '  Hook  ', owned: false, included: false, now: NOW },
       makeIds(),
     );
-    expect(result.kind === 'ok' && result.value.items[0].accessories[0].name).toBe('Hook');
+    expect(result.kind === 'ok' && result.value.items[0]!.accessories[0]!.name).toBe('Hook');
   });
 
   it('returns INVALID_ACCESSORY_NAME for blank name', () => {
@@ -219,9 +219,9 @@ describe('removeAccessory', () => {
     });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].accessories).toHaveLength(1);
-    expect(result.value.items[0].accessories[0].id).toBe('acc-2');
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.accessories).toHaveLength(1);
+    expect(result.value.items[0]!.accessories[0]!.id).toBe('acc-2');
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('returns NotFound when equipmentId does not exist', () => {
@@ -266,8 +266,8 @@ describe('setAccessoryOwned', () => {
     });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].accessories[0].owned).toBe(false);
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.accessories[0]!.owned).toBe(false);
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('toggles owned to true', () => {
@@ -280,7 +280,7 @@ describe('setAccessoryOwned', () => {
       owned: true,
       now: NOW,
     });
-    expect(result.kind === 'ok' && result.value.items[0].accessories[0].owned).toBe(true);
+    expect(result.kind === 'ok' && result.value.items[0]!.accessories[0]!.owned).toBe(true);
   });
 
   it('returns NotFound when equipmentId does not exist', () => {
@@ -324,14 +324,14 @@ describe('addRule', () => {
     });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].rules).toEqual(['Use on speed 4 only']);
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.rules).toEqual(['Use on speed 4 only']);
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims whitespace from rule', () => {
     const manifest = manifestWith([makeItem('eq-1')]);
     const result = addRule(manifest, { equipmentId: 'eq-1', rule: '  rule  ', now: NOW });
-    expect(result.kind === 'ok' && result.value.items[0].rules[0]).toBe('rule');
+    expect(result.kind === 'ok' && result.value.items[0]!.rules[0]).toBe('rule');
   });
 
   it('returns INVALID_RULE for blank rule', () => {
@@ -358,8 +358,8 @@ describe('removeRule', () => {
     const result = removeRule(manifest, { equipmentId: 'eq-1', ruleIndex: 1, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].rules).toEqual(['rule A', 'rule C']);
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.rules).toEqual(['rule A', 'rule C']);
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('returns NotFound when equipmentId does not exist', () => {
@@ -399,8 +399,8 @@ describe('editRule', () => {
     });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value.items[0].rules).toEqual(['new rule']);
-    expect(result.value.items[0].updatedAt).toBe(NOW2);
+    expect(result.value.items[0]!.rules).toEqual(['new rule']);
+    expect(result.value.items[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims whitespace from the new rule text', () => {
@@ -411,7 +411,7 @@ describe('editRule', () => {
       rule: '  trimmed  ',
       now: NOW,
     });
-    expect(result.kind === 'ok' && result.value.items[0].rules[0]).toBe('trimmed');
+    expect(result.kind === 'ok' && result.value.items[0]!.rules[0]).toBe('trimmed');
   });
 
   it('returns INVALID_RULE for blank rule text', () => {

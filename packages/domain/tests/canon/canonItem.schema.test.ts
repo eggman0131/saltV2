@@ -2,6 +2,7 @@ import { describe, it, expect, expectTypeOf } from 'vitest';
 import { createCanonItem } from '@salt/domain';
 import type { CanonItem } from '@salt/domain';
 import { CanonItemSchema } from '@salt/domain/schemas';
+import type { CanonItemDoc } from '@salt/domain/schemas';
 import type { IdGenerator, PendingCanonChange } from '../../src/canon/index.js';
 
 function counterIds(): IdGenerator {
@@ -190,16 +191,22 @@ describe('CanonItem schema', () => {
       const result = CanonItemSchema.safeParse(created.value);
       expect(result.success).toBe(true);
       if (!result.success) return;
-      const roundTripped: CanonItem = result.data;
+      // A `CanonItemDoc`, not a `CanonItem`: the entity NARROWS the schema type
+      // (drops `traceContext`, makes `embedding` required — see CanonItem.ts), so
+      // the parser's own output is the document shape. Calling it a `CanonItem`
+      // was a claim nothing checked until #1135.
+      const roundTripped: CanonItemDoc = result.data;
       expect(roundTripped.pendingChanges).toEqual([
         { kind: 'created', rawInput: '2 tins chopped toms' },
       ]);
     });
 
-    it('type-level: pendingChanges is an optional readonly array', () => {
-      expectTypeOf<CanonItem['pendingChanges']>().toEqualTypeOf<
-        readonly PendingCanonChange[] | undefined
-      >();
+    it('type-level: pendingChanges is an optional array', () => {
+      // MUTABLE, not `readonly`: `PendingCanonChangeSchema` is wrapped in a plain
+      // `z.array(...).optional()`, so that is what `z.infer` yields. The
+      // `readonly` this assertion used to claim was never true — the file was in
+      // no compiler program, so `expectTypeOf` had nothing to fail (#1135).
+      expectTypeOf<CanonItem['pendingChanges']>().toEqualTypeOf<PendingCanonChange[] | undefined>();
     });
   });
 

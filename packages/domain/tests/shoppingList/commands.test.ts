@@ -92,14 +92,14 @@ describe('renameList', () => {
     const result = renameList(lists, { id: 'list-1', name: 'New Name', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].name).toBe('New Name');
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.name).toBe('New Name');
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims whitespace from name', () => {
     const lists = [makeList('list-1')];
     const result = renameList(lists, { id: 'list-1', name: '  Trimmed  ', now: NOW });
-    expect(result.kind === 'ok' && result.value[0].name).toBe('Trimmed');
+    expect(result.kind === 'ok' && result.value[0]!.name).toBe('Trimmed');
   });
 
   it('returns INVALID_LIST_NAME for blank name', () => {
@@ -127,7 +127,7 @@ describe('deleteList', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value).toHaveLength(1);
-    expect(result.value[0].id).toBe('list-1');
+    expect(result.value[0]!.id).toBe('list-1');
   });
 
   it('blocks deletion of the default list', () => {
@@ -179,7 +179,7 @@ describe('addItem', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value).toHaveLength(1);
-    const item = result.value[0];
+    const item = result.value[0]!;
     expect(item.rawText).toBe('heinz beans 4 tins');
     expect(item.matchState).toBe('pending');
     expect(item.canonId).toBeNull();
@@ -195,7 +195,7 @@ describe('addItem', () => {
       { rawText: 'flour', source: { kind: 'manual' }, now: NOW, needsCheck: true },
       makeIds(),
     );
-    expect(result.kind === 'ok' && result.value[0].needsCheck).toBe(true);
+    expect(result.kind === 'ok' && result.value[0]!.needsCheck).toBe(true);
   });
 
   it('trims whitespace from rawText', () => {
@@ -204,7 +204,7 @@ describe('addItem', () => {
       { rawText: '  milk 2L  ', source: { kind: 'manual' }, now: NOW },
       makeIds(),
     );
-    expect(result.kind === 'ok' && result.value[0].rawText).toBe('milk 2L');
+    expect(result.kind === 'ok' && result.value[0]!.rawText).toBe('milk 2L');
   });
 
   it('returns INVALID_ITEM_RAW_TEXT for blank rawText', () => {
@@ -232,16 +232,16 @@ describe('editItemRawText', () => {
     const result = editItemRawText(items, { id: 'item-1', rawText: 'oat milk 1L', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].rawText).toBe('oat milk 1L');
-    expect(result.value[0].canonId).toBeNull();
-    expect(result.value[0].matchState).toBe('pending');
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.rawText).toBe('oat milk 1L');
+    expect(result.value[0]!.canonId).toBeNull();
+    expect(result.value[0]!.matchState).toBe('pending');
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims whitespace', () => {
     const items = [makeItem('item-1')];
     const result = editItemRawText(items, { id: 'item-1', rawText: '  trimmed  ', now: NOW });
-    expect(result.kind === 'ok' && result.value[0].rawText).toBe('trimmed');
+    expect(result.kind === 'ok' && result.value[0]!.rawText).toBe('trimmed');
   });
 
   it('keeps the canon match when the text is unchanged', () => {
@@ -256,7 +256,7 @@ describe('editItemRawText', () => {
     if (result.kind !== 'ok') return;
     expect(result.value[0]).toMatchObject({ canonId: 'c1', matchState: 'matched' });
     // Still an edit: updatedAt is stamped either way.
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('keeps the canon match when only surrounding whitespace changed', () => {
@@ -300,21 +300,21 @@ describe('editItemNotes', () => {
     const result = editItemNotes(items, { id: 'item-1', notes: 'organic only', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].notes).toBe('organic only');
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.notes).toBe('organic only');
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('trims notes', () => {
     const items = [makeItem('item-1')];
     const result = editItemNotes(items, { id: 'item-1', notes: '  organic  ', now: NOW });
-    expect(result.kind === 'ok' && result.value[0].notes).toBe('organic');
+    expect(result.kind === 'ok' && result.value[0]!.notes).toBe('organic');
   });
 
   it('does not reset canonId or matchState', () => {
     const items = [makeItem('item-1', { canonId: 'c1', matchState: 'matched' })];
     const result = editItemNotes(items, { id: 'item-1', notes: 'note', now: NOW2 });
-    expect(result.kind === 'ok' && result.value[0].canonId).toBe('c1');
-    expect(result.kind === 'ok' && result.value[0].matchState).toBe('matched');
+    expect(result.kind === 'ok' && result.value[0]!.canonId).toBe('c1');
+    expect(result.kind === 'ok' && result.value[0]!.matchState).toBe('matched');
   });
 
   it('returns NotFound for unknown id', () => {
@@ -333,8 +333,8 @@ describe('setItemChecked', () => {
     const result = setItemChecked(items, { id: 'item-1', checked: true, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].checked).toBe(true);
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.checked).toBe(true);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('sets checked to false', () => {
@@ -342,8 +342,8 @@ describe('setItemChecked', () => {
     const result = setItemChecked(items, { id: 'item-1', checked: false, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].checked).toBe(false);
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.checked).toBe(false);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('leaves the other items alone', () => {
@@ -370,8 +370,8 @@ describe('confirmItemNeeded', () => {
     const result = confirmItemNeeded(items, { id: 'item-1', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].needsCheck).toBe(false);
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.needsCheck).toBe(false);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('returns NotFound for unknown id', () => {
@@ -390,8 +390,8 @@ describe('setItemNeedsCheck', () => {
     const result = setItemNeedsCheck(items, { id: 'item-1', needsCheck: true, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].needsCheck).toBe(true);
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.needsCheck).toBe(true);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('clears the flag and stamps updatedAt', () => {
@@ -399,8 +399,8 @@ describe('setItemNeedsCheck', () => {
     const result = setItemNeedsCheck(items, { id: 'item-1', needsCheck: false, now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].needsCheck).toBe(false);
-    expect(result.value[0].updatedAt).toBe(NOW2);
+    expect(result.value[0]!.needsCheck).toBe(false);
+    expect(result.value[0]!.updatedAt).toBe(NOW2);
   });
 
   it('leaves other items and the other axes untouched', () => {
@@ -444,7 +444,7 @@ describe('deleteItem', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value).toHaveLength(1);
-    expect(result.value[0].id).toBe('item-2');
+    expect(result.value[0]!.id).toBe('item-2');
   });
 
   it('returns NotFound for unknown id', () => {
@@ -468,7 +468,7 @@ describe('clearCheckedItems', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value).toHaveLength(1);
-    expect(result.value[0].id).toBe('item-2');
+    expect(result.value[0]!.id).toBe('item-2');
   });
 
   it('returns all items unchanged when none are checked', () => {
@@ -491,7 +491,7 @@ describe('moveItems', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value.sourceItems).toHaveLength(1);
-    expect(result.value.sourceItems[0].id).toBe('item-2');
+    expect(result.value.sourceItems[0]!.id).toBe('item-2');
     expect(result.value.targetItems).toHaveLength(2);
     const moved = result.value.targetItems.find((i) => i.id === 'item-1')!;
     // Issue #699: the item arrives already identified, so the trigger's
@@ -551,7 +551,7 @@ describe('moveItems', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value.sourceItems).toHaveLength(1);
-    expect(result.value.sourceItems[0].id).toBe('item-2');
+    expect(result.value.sourceItems[0]!.id).toBe('item-2');
     expect(result.value.targetItems).toHaveLength(2);
   });
 });
@@ -573,7 +573,7 @@ describe('addItem — originalText', () => {
     );
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].originalText).toEqual(originalText);
+    expect(result.value[0]!.originalText).toEqual(originalText);
   });
 
   it('omits the field entirely when not supplied', () => {
@@ -585,7 +585,7 @@ describe('addItem — originalText', () => {
     );
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect('originalText' in result.value[0]).toBe(false);
+    expect('originalText' in result.value[0]!).toBe(false);
   });
 });
 
@@ -597,7 +597,7 @@ describe('edit commands — originalText survives', () => {
     const result = editItemRawText(items, { id: 'item-1', rawText: 'limes', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].originalText).toEqual(originalText);
+    expect(result.value[0]!.originalText).toEqual(originalText);
   });
 
   it('editItemNotes keeps the wording', () => {
@@ -605,6 +605,6 @@ describe('edit commands — originalText survives', () => {
     const result = editItemNotes(items, { id: 'item-1', notes: 'ripe ones', now: NOW2 });
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
-    expect(result.value[0].originalText).toEqual(originalText);
+    expect(result.value[0]!.originalText).toEqual(originalText);
   });
 });

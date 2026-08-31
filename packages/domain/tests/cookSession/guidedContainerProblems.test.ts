@@ -11,7 +11,15 @@ function prep(id: string, container: string | null): GuidedPrepEntryDoc {
 }
 
 function note(stepId: string, container: string | null): GuidedStepNoteDoc {
-  return { stepId, container, setup: null, cue: null, checkIns: [] };
+  return {
+    stepId,
+    container,
+    setup: null,
+    cue: null,
+    checkIns: [],
+    lookahead: null,
+    getAhead: null,
+  };
 }
 
 describe('guidedContainerProblems — duplicate names', () => {

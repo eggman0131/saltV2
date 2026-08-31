@@ -163,7 +163,16 @@ function makePipeline(
     ...(opts.isDerivedName !== undefined ? { isDerivedName: opts.isDerivedName } : {}),
   };
   const run = (rawName: string, selectedAisleId?: string | null, forceCreate?: boolean) =>
-    matchOrCreate({ rawName, selectedAisleId, forceCreate }, ports);
+    matchOrCreate(
+      {
+        rawName,
+        // `exactOptionalPropertyTypes` is on, so an omitted argument must leave
+        // the key ABSENT rather than present-and-undefined.
+        ...(selectedAisleId === undefined ? {} : { selectedAisleId }),
+        ...(forceCreate === undefined ? {} : { forceCreate }),
+      },
+      ports,
+    );
   return { run, store };
 }
 

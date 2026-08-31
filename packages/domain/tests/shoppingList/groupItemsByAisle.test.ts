@@ -37,7 +37,7 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const items = [makeItem('i1', { matchState: 'pending' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
     expect(result.other.contributors).toHaveLength(1);
-    expect(result.other.contributors[0].isPending).toBe(true);
+    expect(result.other.contributors[0]!.isPending).toBe(true);
     expect(result.aisles).toHaveLength(0);
   });
 
@@ -45,7 +45,7 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const items = [makeItem('i1', { matchState: 'failed' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
     expect(result.other.contributors).toHaveLength(1);
-    expect(result.other.contributors[0].isPending).toBe(false);
+    expect(result.other.contributors[0]!.isPending).toBe(false);
   });
 
   it('routes needs_approval items with a valid aisle to the aisle (treated as matched)', () => {
@@ -53,7 +53,7 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Beans', aisleId: 'aisle-1' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.other.contributors).toHaveLength(0);
-    expect(result.aisles[0].rows).toHaveLength(1);
+    expect(result.aisles[0]!.rows).toHaveLength(1);
   });
 
   it('routes needs_approval items with null aisleId to Other', () => {
@@ -67,7 +67,7 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const items = [makeItem('i1', { matchState: 'matched', canonId: 'deleted-canon' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
     expect(result.other.contributors).toHaveLength(1);
-    expect(result.other.contributors[0].isPending).toBe(false);
+    expect(result.other.contributors[0]!.isPending).toBe(false);
   });
 
   it('routes matched items with null aisleId to Other', () => {
@@ -90,8 +90,8 @@ describe('groupItemsByAisle — aisle ordering', () => {
     ]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.aisles).toHaveLength(2);
-    expect(result.aisles[0].aisleId).toBe('aisle-1');
-    expect(result.aisles[1].aisleId).toBe('aisle-2');
+    expect(result.aisles[0]!.aisleId).toBe('aisle-1');
+    expect(result.aisles[1]!.aisleId).toBe('aisle-2');
   });
 
   it('omits aisles with no matching items', () => {
@@ -99,7 +99,7 @@ describe('groupItemsByAisle — aisle ordering', () => {
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.aisles).toHaveLength(1);
-    expect(result.aisles[0].aisleId).toBe('aisle-2');
+    expect(result.aisles[0]!.aisleId).toBe('aisle-2');
   });
 });
 
@@ -111,9 +111,9 @@ describe('groupItemsByAisle — items within an aisle', () => {
     ];
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Baked Beans', aisleId: 'aisle-1' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows).toHaveLength(2);
-    expect(result.aisles[0].rows.every((r) => !r.combined)).toBe(true);
-    expect(result.aisles[0].rows.map((r) => r.key)).toEqual(['i1', 'i2']);
+    expect(result.aisles[0]!.rows).toHaveLength(2);
+    expect(result.aisles[0]!.rows.every((r) => !r.combined)).toBe(true);
+    expect(result.aisles[0]!.rows.map((r) => r.key)).toEqual(['i1', 'i2']);
   });
 
   it('sorts rows within an aisle alphabetically by matched canon name', () => {
@@ -128,7 +128,7 @@ describe('groupItemsByAisle — items within an aisle', () => {
       { id: 'c-carrots', name: 'Carrots', aisleId: 'aisle-1' },
     ]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows.map((r) => r.key)).toEqual(['i2', 'i1', 'i3']);
+    expect(result.aisles[0]!.rows.map((r) => r.key)).toEqual(['i2', 'i1', 'i3']);
   });
 
   it('clusters rows matched to the same canon together, breaking ties by createdAt', () => {
@@ -158,7 +158,7 @@ describe('groupItemsByAisle — items within an aisle', () => {
     ]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     // Apples first (A < O); the two (manual) Onions rows cluster, oldest (i3) before i1.
-    expect(result.aisles[0].rows.map((r) => r.key)).toEqual(['i2', 'i3', 'i1']);
+    expect(result.aisles[0]!.rows.map((r) => r.key)).toEqual(['i2', 'i3', 'i1']);
   });
 });
 
@@ -189,8 +189,8 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows).toHaveLength(1);
-    const row = result.aisles[0].rows[0];
+    expect(result.aisles[0]!.rows).toHaveLength(1);
+    const row = result.aisles[0]!.rows[0]!;
     expect(row.combined).toBe(true);
     expect(row.key).toBe('canon:c-onion');
     expect(row.contributors).toHaveLength(2);
@@ -203,8 +203,8 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       makeItem('m2', { matchState: 'matched', canonId: 'c-onion' }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows).toHaveLength(2);
-    expect(result.aisles[0].rows.every((r) => !r.combined)).toBe(true);
+    expect(result.aisles[0]!.rows).toHaveLength(2);
+    expect(result.aisles[0]!.rows.every((r) => !r.combined)).toBe(true);
   });
 
   it('keeps a manual item separate from a combined recipe row of the same canon', () => {
@@ -214,9 +214,9 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       makeItem('r2', { matchState: 'matched', canonId: 'c-onion', sources: [recipeSource('b')] }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows).toHaveLength(2);
-    const combined = result.aisles[0].rows.find((r) => r.combined);
-    const single = result.aisles[0].rows.find((r) => !r.combined);
+    expect(result.aisles[0]!.rows).toHaveLength(2);
+    const combined = result.aisles[0]!.rows.find((r) => r.combined);
+    const single = result.aisles[0]!.rows.find((r) => !r.combined);
     expect(combined?.contributors.map((c) => c.id).sort()).toEqual(['r1', 'r2']);
     expect(single?.key).toBe('m1');
   });
@@ -226,8 +226,8 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       makeItem('r1', { matchState: 'matched', canonId: 'c-onion', sources: [recipeSource('a')] }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows[0].combined).toBe(false);
-    expect(result.aisles[0].rows[0].key).toBe('r1');
+    expect(result.aisles[0]!.rows[0]!.combined).toBe(false);
+    expect(result.aisles[0]!.rows[0]!.key).toBe('r1');
   });
 
   it('aggregates recipe-sourced metric (g) contributions of the same canon into one summed row', () => {
@@ -252,8 +252,8 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       }),
     ];
     const result = groupItemsByAisle(items, canonCarrots, AISLES);
-    expect(result.aisles[0].rows).toHaveLength(1);
-    const row = result.aisles[0].rows[0];
+    expect(result.aisles[0]!.rows).toHaveLength(1);
+    const row = result.aisles[0]!.rows[0]!;
     expect(row.combined).toBe(true);
     expect(row.contributors).toHaveLength(2);
     expect(row.subtotals).toEqual([{ unit: 'g', amount: 450 }]);
@@ -276,7 +276,7 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows[0].subtotals).toEqual([
+    expect(result.aisles[0]!.rows[0]!.subtotals).toEqual([
       { unit: 'g', amount: 200 },
       { unit: null, amount: 2 },
     ]);
@@ -293,7 +293,7 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].rows[0].needsCheck).toBe(true);
+    expect(result.aisles[0]!.rows[0]!.needsCheck).toBe(true);
   });
 
   it('does not combine when combine:false (selection mode)', () => {
@@ -302,8 +302,8 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
       makeItem('r2', { matchState: 'matched', canonId: 'c-onion', sources: [recipeSource('b')] }),
     ];
     const result = groupItemsByAisle(items, canonMap, AISLES, { combine: false });
-    expect(result.aisles[0].rows).toHaveLength(2);
-    expect(result.aisles[0].rows.every((r) => !r.combined)).toBe(true);
+    expect(result.aisles[0]!.rows).toHaveLength(2);
+    expect(result.aisles[0]!.rows.every((r) => !r.combined)).toBe(true);
   });
 });
 
@@ -344,7 +344,7 @@ describe('groupItemsByAisle — product-form parent aggregation (#501, #518)', (
     canonId: string,
     count: number,
     rawText: string,
-    demand: readonly FormDemand[],
+    demand: FormDemand[],
   ) =>
     makeItem(id, {
       matchState: 'matched',
@@ -371,7 +371,7 @@ describe('groupItemsByAisle — product-form parent aggregation (#501, #518)', (
   ]);
 
   const onlyRow = (items: ShoppingListItem[]) =>
-    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0]!.rows[0]!;
 
   it('Lime headline: Σwhole(2) + MAX(juice 1, zest 1) = 3', () => {
     // Two recipes, but DISTINCT forms (juice vs zest) → they max to 1, and the two
@@ -437,7 +437,7 @@ describe('groupItemsByAisle — #518 headline cases (same form sums, distinct fo
     canonId: string,
     count: number,
     rawText: string,
-    demand: readonly FormDemand[],
+    demand: FormDemand[],
   ) =>
     makeItem(id, {
       matchState: 'matched',
@@ -462,7 +462,7 @@ describe('groupItemsByAisle — #518 headline cases (same form sums, distinct fo
     { id: 'c-egg', name: 'Free Range Egg', aisleId: 'aisle-1' },
   ]);
   const onlyRow = (items: ShoppingListItem[]) =>
-    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0]!.rows[0]!;
 
   it('Lime ×5 — zest 10 g + 15 g is the SAME form in two recipes, so it SUMS', () => {
     // Recipe A wants 10 g of zest (2 limes at 5 g/lime), recipe B wants 15 g
@@ -567,7 +567,7 @@ describe('groupItemsByAisle — legacy degrade path (items written before #518)'
     canonId: string,
     count: number,
     rawText: string,
-    demand: readonly FormDemand[],
+    demand: FormDemand[],
   ) =>
     makeItem(id, {
       matchState: 'matched',
@@ -583,7 +583,7 @@ describe('groupItemsByAisle — legacy degrade path (items written before #518)'
     { id: 'c-chicken', name: 'Whole Chicken', aisleId: 'aisle-1' },
   ]);
   const onlyRow = (items: ShoppingListItem[]) =>
-    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0]!.rows[0]!;
 
   it('legacy zest 10 g + 15 g keeps the OLD ×3, not the new ×5', () => {
     // The exact #518 headline case, but written pre-#518. These two ARE the same
@@ -688,7 +688,7 @@ describe('groupItemsByAisle — checked bucket', () => {
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.checked.contributors).toHaveLength(2);
-    expect(result.aisles[0].rows).toHaveLength(1);
+    expect(result.aisles[0]!.rows).toHaveLength(1);
     expect(result.other.contributors).toHaveLength(0);
   });
 

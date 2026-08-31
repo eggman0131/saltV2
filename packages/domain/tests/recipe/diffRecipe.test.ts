@@ -249,7 +249,7 @@ describe('diffRecipe', () => {
         },
       },
     ]);
-    expect(diff.steps.changed[0].text).toBeUndefined();
+    expect(diff.steps.changed[0]!.text).toBeUndefined();
   });
 
   it('detects an added step (e.g. a resting step) with its position', () => {

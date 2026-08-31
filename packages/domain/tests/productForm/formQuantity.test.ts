@@ -6,6 +6,7 @@ const juice: ProductForm = {
   id: 'pf-juice',
   schemaVersion: 1,
   matchers: ['lime juice'],
+  thumbnail: null,
   parentCanonId: 'canon-lime',
   label: 'freshly squeezed lime juice',
   yield: { formUnit: 'ml', amountPerParent: 30 },

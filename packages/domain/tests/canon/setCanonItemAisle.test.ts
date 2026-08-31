@@ -5,7 +5,9 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 function item(overrides: Partial<CanonItem> = {}): CanonItem {
   return {
     id: 'c1',
-    schemaVersion: 2,
+    schemaVersion: 5,
+    shoppingBehavior: 'needed',
+    unit: 'count',
     name: 'Olive Oil',
     synonyms: [],
     aisleId: null,

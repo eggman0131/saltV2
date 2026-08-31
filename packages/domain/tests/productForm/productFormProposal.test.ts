@@ -6,6 +6,7 @@ const pendingForm: ProductForm = {
   id: 'pf-pending',
   schemaVersion: 1,
   matchers: ['grated nutmeg'],
+  thumbnail: null,
   parentCanonId: 'canon-nutmeg',
   label: 'Grated nutmeg',
   yield: { formUnit: 'g', amountPerParent: 12 },

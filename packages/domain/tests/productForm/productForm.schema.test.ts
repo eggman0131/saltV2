@@ -19,6 +19,7 @@ function counterIds(): ProductFormIdGenerator {
 const baseDoc = {
   id: 'pf1',
   schemaVersion: 1 as const,
+  thumbnail: null,
   matchers: ['lime juice'],
   parentCanonId: 'canon-lime',
   label: 'freshly squeezed lime juice',

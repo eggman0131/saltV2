@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { summarizeMatchLog } from '@salt/domain';
-import type { ArbitrationLog, MatchLogEntry } from '@salt/domain';
-import type { StageLog } from '../../src/canon/index.js';
+import type { MatchLogEntry } from '@salt/domain';
+// `ArbitrationLog` and `StageLog` are re-exported by the canon module index but
+// not by the package barrel — #923 stopped the barrel exporting what nothing
+// imported, and rerouted `StageLog` on the next line while leaving this one
+// pointing at a member that had just gone. Type-only, so it erased at runtime
+// and no test noticed until this tree entered a compiler program (#1135).
+import type { ArbitrationLog, StageLog } from '../../src/canon/index.js';
 
 function makeStage(overrides: Partial<StageLog> = {}): StageLog {
   return {
@@ -365,11 +370,11 @@ describe('summarizeMatchLog — all-stages-fail (created)', () => {
     const stages = [1, 2, 3, 4, 5].map((n, i) =>
       makeStage({
         stage: n,
-        stageName: ['exact_name', 'token_overlap', 'synonym', 'string_similarity', 'embedding'][i],
-        threshold: [1.0, 0.8, 1.0, 0.85, 0.75][i],
+        stageName: ['exact_name', 'token_overlap', 'synonym', 'string_similarity', 'embedding'][i]!,
+        threshold: [1.0, 0.8, 1.0, 0.85, 0.75][i]!,
         passed: false,
-        bestScore: [0.9, 0.7, null, 0.8, 0.7][i],
-        gap: [0.9 - 1.0, 0.7 - 0.8, null, 0.8 - 0.85, 0.7 - 0.75][i],
+        bestScore: [0.9, 0.7, null, 0.8, 0.7][i]!,
+        gap: [0.9 - 1.0, 0.7 - 0.8, null, 0.8 - 0.85, 0.7 - 0.75][i]!,
         consideredCount: 5,
       }),
     );

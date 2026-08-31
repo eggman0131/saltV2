@@ -35,8 +35,10 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort & { item
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 2,
+    schemaVersion: 5,
     synonyms: [],
+    shoppingBehavior: 'needed',
+    unit: 'count',
     aisleId: null,
     thumbnail: null,
     embedding: null,

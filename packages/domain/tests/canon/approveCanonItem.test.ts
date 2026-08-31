@@ -4,7 +4,7 @@ import type { CanonItem } from '@salt/domain';
 
 const base: CanonItem = {
   id: 'item-1',
-  schemaVersion: 3,
+  schemaVersion: 5,
   name: 'Flour',
   synonyms: [],
   aisleId: null,

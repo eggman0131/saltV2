@@ -321,7 +321,9 @@ describe('RecipeSchema', () => {
   });
 
   it('type-level: Recipe kind is the closed union', () => {
-    expectTypeOf<Recipe['kind']>().toEqualTypeOf<'recipe' | 'outing' | 'cocktail'>();
+    expectTypeOf<Recipe['kind']>().toEqualTypeOf<
+      'recipe' | 'outing' | 'cocktail' | 'placeholder'
+    >();
   });
 
   // --- Attribution (issue #845) ---

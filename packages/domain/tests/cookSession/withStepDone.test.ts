@@ -11,6 +11,7 @@ function session(completedStepIds: string[]): CookSessionDoc {
     schemaVersion: 1,
     ownerUid: 'u1',
     recipeId: 'r1',
+    serveAt: null,
     recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
     checkedIngredientIds: ['ing-1'],
     checkedPrepIds: [],
