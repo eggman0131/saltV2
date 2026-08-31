@@ -34,6 +34,40 @@
  *  match would blend the two suites' rates into one meaningless number. */
 export const EMULATOR_JOB_NAME = 'Vitest integration (emulator)';
 
+/** #948 removed `retry: 2` at this exact INSTANT (merge commit `aae54b49`,
+ *  2026-08-23T12:21:56Z) — not "on that day". Two runs created earlier the same
+ *  day still executed with `retry: 2` live: `32611277973` (01:49:05Z, `push`/
+ *  `main`) and `32638736969` (12:12:35Z, `fix/recipe-range-timers`). A
+ *  day-granularity default (`'2026-08-23'`) would leave both inside the window
+ *  this constant's name claims is retry-free, in the flattering direction — a
+ *  flake `retry: 2` absorbed reports as `success` right here. This is the
+ *  earliest instant at which the number means what it says; the pin against
+ *  those two run timestamps is in scripts/tests/emulatorFlakeRate.test.mjs. */
+export const DEFAULT_SINCE = '2026-08-23T12:21:56Z';
+
+/** Builds the `created` qualifier for the workflow-runs list endpoint. GitHub
+ *  accepts both the open-ended `>=DATE` form and the `A..B` range form on the
+ *  same query parameter (verified live against the Actions API during
+ *  #1136's review). Without `until`, the window has no upper bound, so the
+ *  same `--since` returns a growing number every day — this is what makes
+ *  `pnpm flake:emulator --since=X --until=Y` reproduce a fixed, dated figure. */
+export function createdFilter(since, until) {
+  return until ? `${since}..${until}` : `>=${since}`;
+}
+
+/** True when NOT ONE run in the window ever contained a job named `jobName` —
+ *  e.g. `ci.yml` renamed the job, or `--job` was mistyped. This is a
+ *  MEASUREMENT FAILURE: the instrument never found what it was pointed at, so
+ *  it has nothing to say, distinct from a genuine zero-failure rate (`rate ===
+ *  null` because every matched run was skipped/cancelled — the instrument DID
+ *  find the job, and truthfully has nothing executed to report on). The CLI
+ *  exits non-zero on this and zero on that, on purpose: a non-zero *flake
+ *  rate* must still exit 0 (the harvester is not a gate), but the harvester
+ *  failing to measure anything at all must not look like a clean run. */
+export function matchedNothing(summary) {
+  return summary.runs.total === 0;
+}
+
 /** Conclusions that mean the job actually ran the suite. `timed_out` is a real
  *  execution that went red — ci.yml bounds this job at 25 minutes precisely so
  *  a wedged stack surfaces, and reading that as "not a run" would hide it. */

@@ -35,9 +35,9 @@
 // make or break the number: `filter=all`, and excluding skips from the
 // denominator.
 //
-//   pnpm flake:emulator                       # since #948 merged
-//   pnpm flake:emulator --since=2026-08-26    # any ISO date
-//   pnpm flake:emulator --json                # machine-readable
+//   pnpm flake:emulator                                       # since #948 merged
+//   pnpm flake:emulator --since=2026-08-26 --until=2026-08-31 # a reproducible, dated window
+//   pnpm flake:emulator --json                                # machine-readable
 //   pnpm flake:emulator --help
 //
 // Requires `gh` authenticated against the repo. Read-only: it issues GETs and
@@ -46,34 +46,40 @@
 import { spawn } from 'node:child_process';
 
 import {
+  createdFilter,
+  DEFAULT_SINCE,
   EMULATOR_JOB_NAME,
   formatRate,
+  matchedNothing,
   summariseFlakeRate,
 } from './lib/emulatorFlakeRate.mjs';
 
 const REPO = 'eggmanorg/salt';
 const WORKFLOW = 'ci.yml';
 
-// #948 removed `retry: 2`. Every run before it was insured against exactly the
-// flake being measured, so it is the earliest date at which the number means
-// what it says. Overridable, but this is the default for a reason.
-const DEFAULT_SINCE = '2026-08-23';
-
 // How many job listings to have in flight. The API is the whole cost here (one
 // call per workflow run, several hundred of them); serial takes minutes.
 const CONCURRENCY = 8;
 
-const HELP = `Usage: pnpm flake:emulator [--since=YYYY-MM-DD] [--job="<name>"] [--json]
+const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$/;
+
+const HELP = `Usage: pnpm flake:emulator [--since=DATE] [--until=DATE] [--job="<name>"] [--json]
 
   --since=DATE  Only CI runs created on or after DATE. Default ${DEFAULT_SINCE}
-                (the day #948 removed \`retry: 2\`).
+                (the instant #948 removed \`retry: 2\`).
+  --until=DATE  Only CI runs created before DATE. Unbounded (through "now") if
+                omitted — which means the same --since returns a growing number
+                every day. Pass this whenever the figure needs to be quoted
+                somewhere and reproduced later.
   --job=NAME    The ci.yml job to measure. Default "${EMULATOR_JOB_NAME}".
   --json        Emit the summary as JSON instead of prose.
   --help        This.
+
+  DATE is an ISO date (YYYY-MM-DD) or date-time (YYYY-MM-DDTHH:MM:SSZ).
 `;
 
 function parseArgs(argv) {
-  const opts = { since: DEFAULT_SINCE, job: EMULATOR_JOB_NAME, json: false, help: false };
+  const opts = { since: DEFAULT_SINCE, until: undefined, job: EMULATOR_JOB_NAME, json: false, help: false };
   for (const arg of argv) {
     const match = /^--([a-z]+)(?:=(.*))?$/.exec(arg);
     if (!match) throw new Error(`Unrecognised argument: ${arg}`);
@@ -81,11 +87,15 @@ function parseArgs(argv) {
     if (key === 'help') opts.help = true;
     else if (key === 'json') opts.json = true;
     else if (key === 'since') opts.since = value;
+    else if (key === 'until') opts.until = value;
     else if (key === 'job') opts.job = value;
     else throw new Error(`Unrecognised argument: ${arg}`);
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.since)) {
-    throw new Error(`--since must be an ISO date (YYYY-MM-DD), got "${opts.since}"`);
+  if (!ISO_PATTERN.test(opts.since)) {
+    throw new Error(`--since must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.since}"`);
+  }
+  if (opts.until !== undefined && !ISO_PATTERN.test(opts.until)) {
+    throw new Error(`--until must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.until}"`);
   }
   return opts;
 }
@@ -133,10 +143,10 @@ async function ghApi(path, options) {
   }
 }
 
-async function listRunIds(since) {
+async function listRunIds(since, until) {
   const path =
     `repos/${REPO}/actions/workflows/${WORKFLOW}/runs` +
-    `?created=${encodeURIComponent(`>=${since}`)}&per_page=100`;
+    `?created=${encodeURIComponent(createdFilter(since, until))}&per_page=100`;
   const pages = await ghApi(path, { paginate: true });
   return pages.flatMap((page) => page.workflow_runs ?? []).map((run) => run.id);
 }
@@ -171,11 +181,12 @@ async function mapPool(items, size, worker) {
   return results;
 }
 
-function report(summary, { since, runsScanned }) {
+function report(summary, { since, until, runsScanned }) {
   const { records, runs } = summary;
+  const windowLabel = until ? `${since} .. ${until}` : `since ${since} (open-ended — through "now")`;
   const lines = [
     `Residual flake rate — ${summary.jobName}`,
-    `  window        since ${since} (${runsScanned} CI runs scanned, ${runs.total} contained the job)`,
+    `  window        ${windowLabel} (${runsScanned} CI runs scanned, ${runs.total} contained the job)`,
     '',
     `  RATE          ${formatRate(summary)}`,
     '',
@@ -211,9 +222,9 @@ async function main() {
     return;
   }
 
-  const runIds = await listRunIds(opts.since);
+  const runIds = await listRunIds(opts.since, opts.until);
   if (runIds.length === 0) {
-    console.error(`No CI runs found since ${opts.since}.`);
+    console.error(`No CI runs found since ${opts.since}${opts.until ? ` and before ${opts.until}` : ''}.`);
     process.exitCode = 1;
     return;
   }
@@ -221,11 +232,29 @@ async function main() {
   const jobs = (await mapPool(runIds, CONCURRENCY, jobsForRun)).flat();
   const summary = summariseFlakeRate(jobs, { jobName: opts.job });
 
-  if (opts.json) {
-    process.stdout.write(`${JSON.stringify({ since: opts.since, runsScanned: runIds.length, ...summary }, null, 2)}\n`);
+  // Distinct from a genuine zero-failure rate (which prints happily and exits
+  // 0, same as any other rate — this harvester is not a gate): here the job
+  // named `opts.job` never showed up in a single one of the runIds.length runs
+  // above, which means the instrument failed to measure anything at all — most
+  // likely `ci.yml` renamed the job out from under `EMULATOR_JOB_NAME`. Silence
+  // on that is exactly the failure mode a caller cannot tell apart from "it
+  // measured and found nothing wrong".
+  if (matchedNothing(summary)) {
+    console.error(
+      `${runIds.length} CI run(s) found in window, but none contained a job named "${opts.job}". ` +
+        'Check --job, or that ci.yml still names the job this way.',
+    );
+    process.exitCode = 1;
     return;
   }
-  process.stdout.write(`${report(summary, { since: opts.since, runsScanned: runIds.length })}\n`);
+
+  if (opts.json) {
+    process.stdout.write(
+      `${JSON.stringify({ since: opts.since, until: opts.until ?? null, runsScanned: runIds.length, ...summary }, null, 2)}\n`,
+    );
+    return;
+  }
+  process.stdout.write(`${report(summary, { since: opts.since, until: opts.until, runsScanned: runIds.length })}\n`);
 }
 
 main().catch((error) => {

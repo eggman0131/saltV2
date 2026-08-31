@@ -54,13 +54,18 @@ export default defineConfig({
     // it.
     //
     // Measured since, which is what makes the absence of `retry` a finding
-    // rather than a hope (#1136): 0 failures in 270 executed cold CI runs
+    // rather than a hope (#1136): 0 failures in 274 executed cold CI runs
     // between 2026-08-26 — the day #1003 fixed the last known row — and
-    // 2026-08-31; 3 in 347 going back to the day this retry was removed, all
-    // three of them the two already-diagnosed, already-fixed defects and none
-    // of them #122 transport flake. That is a reading of a window, not a
-    // permanent property: `pnpm flake:emulator` re-derives it from the GitHub
-    // Actions API whenever the question comes up again.
+    // 2026-08-31 (`pnpm flake:emulator --since=2026-08-26
+    // --until=2026-08-31T15:40:00Z`); 3 in 348 going back to the instant this
+    // retry was removed (`--since=2026-08-23T12:21:56Z`, #948's merge time —
+    // not merely that calendar day, which would still count two runs insured
+    // by the very `retry: 2` being measured), all three of them the two
+    // already-diagnosed, already-fixed defects and none of them #122 transport
+    // flake. That is a reading of a window, not a permanent property:
+    // `pnpm flake:emulator` re-derives it from the GitHub Actions API whenever
+    // the question comes up again — `--until` pins the upper bound so the
+    // figure is reproducible instead of growing on every re-run.
     //
     // What this does NOT mean: the flake, if any returns, is not stale Firestore
     // data. Both suites that need it already clear the whole database and
