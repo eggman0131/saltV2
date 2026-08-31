@@ -224,10 +224,9 @@ test.describe('shopping list — multi-list', () => {
     // e2e runs with motion on (playwright.config.ts `reducedMotion:
     // 'no-preference'`), so CI sees it. A strict-mode violation is a hard error
     // that aborts the poll rather than retrying, which is why this read flaked
-    // (issue #1149, Signature B). Same treatment and same reason as the vinegar
-    // row in the next test. The assertions carrying this test's meaning read the
-    // store, not the DOM (`waitForMatched`, `expectMatchPreserved`, NF-E2), and
-    // this one stays web-first retrying (NF-A3).
+    // (issue #1149, Signature B). The assertions carrying this test's meaning
+    // read the store, not the DOM (`waitForMatched`, `expectMatchPreserved`,
+    // NF-E2), and this one stays web-first retrying (NF-A3).
     await expect(
       page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }).first(),
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
