@@ -152,12 +152,17 @@ test.describe('shopping list — multi-list', () => {
     // Trigger tier, not the two-tab + AI ceiling (NF-F2): one tab, one CF
     // round-trip (`waitForMatched`, TRIGGER_TIMEOUT), and the canon seeded
     // below resolves by exact name, so the expected match path is the
-    // deterministic stage-1 hit with no AI leg (NF-E3). Was 120_000, set in
-    // #743 and not re-derived since; the only thing the extra 30s bought was a
-    // slower red on a hang, twice over with the CI retry. Measured post-#1001
-    // on 267 passing CI runs: p50 5.76s, p99 6.17s, max 6.51s (issue #1005).
-    // The budget is NOT sized from those — it is the tier, so a slow-but-real
-    // run that actually spends its scoped waits still fits.
+    // deterministic stage-1 hit with no AI leg (NF-E3). Was 90_000 before
+    // #743, which raised it to 120_000 in the same hunk that added this
+    // trigger leg and its seeding (`git show a328e5d7`) — the +30s was spent
+    // on that leg, not idle padding. The sibling test at :256 was raised by
+    // that same hunk and still sits at 120_000; unchanged here, out of scope.
+    // Returning to 90_000 is an empirical call, not a historical one: measured
+    // post-#1001 on 275 CI runs (issue #1005), 267 passing, bad-rate 2.91%
+    // (residual flake tracked in #1149, not a timeout symptom), p99 6.17s,
+    // max 6.51s on the passing runs. This test's scoped critical-path waits
+    // are ceilings a passing run does not spend, not a floor the budget must
+    // clear — 90s is sized from the NF-F2 tier plus that measured evidence.
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
 
