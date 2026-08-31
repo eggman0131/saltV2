@@ -80,10 +80,12 @@ function loadProject() {
     .organization?.projectV2;
   if (!p) die(`project #${PROJECT_NUMBER} not found under ${OWNER} — is the token missing the project scope?`);
 
-  const fields = new Map(p.fields.nodes.filter((f) => f?.name).map((f) => [f.name, f]));
+  const nodes = p.fields.nodes.filter((f) => f?.name);
+  const fields = new Map(nodes.map((f) => [f.name, f]));
   return {
     id: p.id,
     title: p.title,
+    allFields: nodes,
     field(name) {
       const f = fields.get(name);
       if (!f) die(`no field named "${name}" — have: ${[...fields.keys()].join(', ')}`);
@@ -317,6 +319,28 @@ function cmdCheck(project) {
       failures.push(
         `#${item.number} is closed at Status="${item.status ?? 'unset'}" — it never reached Merged, so either it was closed without shipping (remove it) or its PR had no "Closes #${item.number}"`,
       );
+    }
+  }
+
+  // TWO OPTIONS CANNOT SHARE A NAME. Everything here resolves options by name
+  // (see `option()`), so a field carrying the same name twice makes every write
+  // pick the first match while a human drag may land on the second — the board
+  // then shows two identical columns and the items silently split between them.
+  // Status held two "Todo" options for exactly this reason. The comparison is
+  // case-insensitive because `option()` is: "Todo" and "todo" resolve alike, so
+  // a check that told them apart would pass on a board that is already broken.
+  for (const f of project.allFields) {
+    const seen = new Map();
+    for (const o of f.options ?? []) {
+      const key = o.name.toLowerCase();
+      seen.set(key, [...(seen.get(key) ?? []), o.name]);
+    }
+    for (const names of seen.values()) {
+      if (names.length > 1) {
+        failures.push(
+          `field "${f.name}" has ${names.length} options named ${names.map((n) => `"${n}"`).join(', ')} — writes resolve by name and take the first, so delete the duplicate with updateProjectV2Field`,
+        );
+      }
     }
   }
 
