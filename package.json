@@ -39,7 +39,8 @@
     "test:emulator": "node scripts/host-guard.mjs test:emulator && node scripts/test-emulator.mjs",
     "deploy:dev": "bash scripts/deploy-dev.sh",
     "probe": "pnpm --filter @salt/cloud-functions probe",
-    "soak": "node scripts/soak-unit-tests.mjs"
+    "soak": "node scripts/soak-unit-tests.mjs",
+    "flake:emulator": "node scripts/emulator-flake-rate.mjs"
   },
   "lint-staged": {
     "*.{ts,js,svelte}": [
