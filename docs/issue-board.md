@@ -70,6 +70,7 @@ issue. See the header of [`scripts/lib/specIssueShape.mjs`](../scripts/lib/specI
 | **Medium** | Real work, ordered by impact. |
 | **Low** | Theoretical, never triggered, or drift that has not bitten. Safe to ignore; fold into a related issue, or pick up when bored. |
 | **Deferred** | Parked, with the reason in `Blocked by`. |
+| **Epic** | Not a work unit at all — a container tracked here and never sequenced against work. |
 
 **"Proven" is the whole discriminator.** A defect that is real, confirmed and
 alarming but that has never once occurred is `Low`, not `Recommended` — #1056 is
@@ -95,6 +96,35 @@ when a Recommended item's blocker is absent from Recommended or ordered below it
   issue that never reached `Merged` — either it was closed without shipping and
   belongs off the board, or a PR closed it without the `Closes #N` that moves it,
   and the automation is silently missing work.
+
+---
+
+## `Epic` — a container, not a band
+
+An epic is the one thing on the board that is not work. It holds work, so it
+cannot be *done*, cannot be sized honestly against its neighbours, and cannot
+carry a priority — its children carry that. Until August 2026 the live epics sat
+in `Medium` anyway, which put five permanently "In progress" cards in the middle
+of the queue and made the Medium band read as bigger than the work in it.
+
+`Epic` is a `Queue` value rather than a `Class` for one reason: **Queue is what
+the queue view groups by**, so an epic lands in its own column with no filter
+written anywhere. As a `Class` it would still hold a band, still sit inside
+`Medium`, and every view would need `-class:Epic` typed into it by hand.
+
+The consequence to accept: an epic has no priority. If that ever feels wrong,
+the thing that wants a band is a child issue, not the epic.
+
+**One view needs the exclusion typed in by hand** — the `Workflow` board groups
+by `Status`, so epics would otherwise appear there as cards among the work; its
+filter carries `-queue:Epic`. `The queue` needs nothing, because grouping by
+`Queue` already separates them. `Product` is a judgement call: an epic like #778
+is genuinely product work, so it is left visible there.
+
+`board.mjs check` enforces the half of this that is mechanical: **an open issue
+with sub-issues must be in the `Epic` band.** Only one direction is checkable —
+#894, #913 and #941 predate GitHub's sub-issues and hold their children as body
+links, so an `Epic` with no sub-issues is legal and stays unflagged.
 
 ---
 
@@ -228,7 +258,7 @@ item.
 | The queue | table | `is:open -queue:Deferred` | Queue |
 | Deferred | table | `queue:Deferred` | Class |
 | Product | table | `is:open class:"New feature","Feature update"` | Class |
-| Workflow | board | `is:open` | Status |
+| Workflow | board | `is:open -queue:Epic` | Status |
 
 **Grouping cannot be _set_ through the API, but it can be _read_.**
 `ProjectV2ViewConfigurationInput` exposes only `visibleFieldIds`, so a rebuilt
@@ -255,6 +285,18 @@ its column field to `Status`, so the Workflow view needed nothing.
   under the *same* owner, and `eggmanorg/salt` is org-owned. A user-owned project
   can hold the issues but can never appear on the repo, which is what the old
   "Saltv2" board did.
+- **`updateProjectV2Field` DELETES every item's value for any option you pass
+  without its `id`.** Adding one option means re-sending the whole option list,
+  and an entry with no `id` is a *new* option — GitHub silently re-issues ids for
+  the lot and clears the field on every item on the board. Adding the `Epic`
+  option this way wiped `Queue` on all 52 items, and restoring the old ids did
+  not bring the values back. Always send the existing options with their ids
+  (read them from `field(name:"Queue"){ ... on ProjectV2SingleSelectField { options{ id name description color } } }`),
+  and add the new one id-less at the end. If it happens anyway, the recovery is
+  the **issue timeline**: a `LabeledEvent` survives the deletion of the label
+  itself, so the retired `priority: *` labels still record what each band was —
+  ignoring the retirement sweep's `UnlabeledEvent`s of 2026-08-29 — and the
+  `board-dispatch.yml` run logs carry every `Queue=` written since.
 - **Adding an epic pulls in its sub-issues**, closed ones included — adding #778
   silently brought five closed children onto the board. `board.mjs check` fails
   on any closed item, so this surfaces rather than rots.
