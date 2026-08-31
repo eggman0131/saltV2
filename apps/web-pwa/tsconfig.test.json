@@ -13,6 +13,21 @@
   // Note the limit of that shim — it types every component as a bare
   // `Component`, so what a test passes as PROPS is not checked here. Prop
   // checking needs `svelte-check`, which is a separate (larger) job.
+  //
+  // `scripts/**` joined in #1132, the same hole one directory along: the build
+  // config is `rootDir: "src"` and `e2e/tsconfig.json` covers `e2e/**`, so this
+  // app's two `node --experimental-strip-types` scripts were named by NO program
+  // in the root `typecheck` script. ESLint parsed them syntactically and nothing
+  // else looked — which is how `process-e2e-coverage.ts` came to be the
+  // unexercised half of #945's "the collection code is untouched and still
+  // here". They belong in a test program rather than the build one for the
+  // reason `tests/**` does: they never emit and `src` never imports them.
+  // Note the limit — `tsc` checks types, not whether Node's type STRIPPER can
+  // run the file (`erasableSyntaxOnly` is deliberately not set here; it would
+  // bind `src` and `tests` too, which is a wider question than this app's two
+  // scripts). What proves the stripper still runs `process-e2e-coverage.ts` is
+  // `tests/e2eCoverageReport.test.ts`, which spawns the real interpreter.
+  // `generate-icons.ts` has no such test and is only type-checked.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
@@ -20,5 +35,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*"]
 }

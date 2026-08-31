@@ -189,6 +189,17 @@ pnpm --filter @salt/web-pwa e2e:coverage:report   # convert whatever is in cover
 Reports land in `apps/web-pwa/coverage/e2e/` (gitignored). Reasoning, and what to change if e2e
 coverage ever gains a consumer, is in the comment at `e2e/fixtures/test.ts`.
 
+**The opt-in path is a gate, not a promise (#1132).** Because none of the three commands above runs
+in CI — and `e2e:coverage` is host-guarded, so none of them ever can — the retained tooling was
+exercised by nothing for the four weeks after #945. It is now:
+`apps/web-pwa/tests/e2eCoverageReport.test.ts` runs `process-e2e-coverage.ts` as a real child
+process over a raw V8 dump and asserts the per-function hit counts in the resulting `lcov.info`, and
+`apps/web-pwa/tsconfig.test.json` includes `scripts/**` so the root `typecheck` compiles it. Both
+run under plain `pnpm test` / `pnpm typecheck` in any worktree; neither needs a browser. Break the
+conversion or the `APP_ORIGIN` filter and they go red. What they do **not** cover is the Playwright
+fixture that writes the dump — that half needs a browser, so the two are coupled only by the dump's
+shape.
+
 ## Vitest emulator integration suites
 
 `pnpm test:emulator` runs `scripts/test-emulator.mjs`, which owns the full lifecycle of the
