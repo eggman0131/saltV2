@@ -87,8 +87,14 @@ is the one thing the band is for. This is an invariant, so per CLAUDE.md rule 12
 it is mechanical rather than remembered — `node scripts/board.mjs check` goes red
 when a Recommended item's blocker is absent from Recommended or ordered below it.
 
-`check` covers two more things:
+`check` covers three more things — plus the `Epic` rule below:
 
+- **No two options of a field share a name.** Everything in `board.mjs` resolves
+  options by name at call time and takes the first match, so a field carrying the
+  same name twice writes to one option while a human drag may land on the other —
+  the board grows two identical columns and the items split silently between
+  them. `Status` held two `Todo` options until 2026-08-31, and nothing noticed.
+  The comparison is case-insensitive, because name resolution is.
 - **No view carries a sort** — the other half of having no rank field.
 - **A closed issue is at a shipping status.** Closed is not by itself stale: an
   issue closes the moment its PR merges and must *stay* on the board at `Merged`,
