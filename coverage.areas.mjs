@@ -1,7 +1,9 @@
 // The coverage AREAS: which files the unit-test coverage report measures, and
-// what floor each group of them carries. Consumed by `vitest.config.ts` (which
-// measures) and by `scripts/check-coverage-files.mjs` (which proves the
-// measurement reached every file named here).
+// what floor and ceiling each group of them carries. Three consumers:
+// `vitest.config.ts` measures and enforces the RATIO floors;
+// `scripts/check-coverage-files.mjs` proves the measurement reached every file
+// named here; `scripts/check-coverage-ratchet.mjs` enforces the uncovered-count
+// CEILINGS and reds a pin that has gone stale.
 //
 // Declared once, in plain ESM, because two copies would drift — and a drifted
 // copy is worse than no check at all: it would report "stable" while the floors
@@ -134,6 +136,45 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // eight areas read a hundredth higher if you round, and a pin a hundredth high
 // is a red build — so take the number vitest prints, never one you computed.
 //
+// ---------------------------------------------------------------------------
+// The uncovered-count CEILINGS, and the staleness tolerance (issue #1133)
+// ---------------------------------------------------------------------------
+// Each entry carries FOUR numbers, not two. `lines` and `branches` are the
+// ratio floors vitest enforces natively and everything above is about them.
+// `uncoveredLines` and `uncoveredBranches` are ceilings — the most this area
+// may leave untested — enforced by `scripts/check-coverage-ratchet.mjs`, which
+// vitest ignores. (It reads only `lines`, `branches`, `functions` and
+// `statements` off a per-glob entry and drops the rest, so the extra keys are
+// safe on the same object; one declaration, as the top of this file requires.)
+//
+// BOTH, because neither subsumes the other. A ratio catches untested code
+// added to a growing area, where the count would rise but so would the
+// denominator. A count catches the one operation a ratio structurally cannot
+// see — deleting a well-covered duplicate, which removes covered lines from the
+// denominator and drags the percentage down without anything becoming less
+// tested. That is the #929/#1113 case written up at the `ui-components` entry
+// below, whose 217 uncovered branches were the invariant it turned on; the
+// number is unchanged today and is now pinned rather than asserted, which is
+// what CLAUDE.md Rule 12 asks for. `scripts/tests/coverageFileSet.test.mjs`
+// reproduces that exact shape and the one-more-branch version that must fail.
+//
+// The counts are measurements on the same run as the ratios beside them, and
+// they inherit the `.svelte` caveat below in full: v8 counts the compiled
+// output, so an absolute count over a Svelte-bearing area is approximate in the
+// same way its percentage is. The DELTA is exact, which is all a ceiling needs.
+//
+// STALENESS TOLERANCE — `staleAbovePoints` below, one coverage point. It
+// reds an area sitting more than a point ABOVE its floor, so coverage that was
+// earned can no longer go unbanked the way firebase-sync's 34 points did. Read
+// it as what it is: this is NOT margin on the floor. The floors carry none,
+// deliberately, and the paragraph above saying so is unchanged and still true.
+// The two numbers point in opposite directions — the floor tolerates nothing
+// below it, the tolerance permits a little above it — and conflating them turns
+// a staleness allowance into exactly the hiding room the no-margin rule exists
+// to deny. Zero tolerance was rejected because it reds every PR that improves
+// coverage at all, which trains reflexive re-pinning and destroys the
+// deliberateness "never lower a pin" depends on.
+//
 // Areas deliberately unfloored: `packages/shared-types/src` (4 covered
 // lines in total — a pin there is noise, not a signal) and `apps/storybook`,
 // which is excluded from measurement outright (see `coverageExclude`).
@@ -145,7 +186,12 @@ export const coverageExclude = ['apps/storybook/src/**'];
 // much of this component is tested". The DELTA is still exact and still a
 // valid ratchet — the same compiler runs on both sides of a change.
 export const coverageThresholds = {
-  'packages/domain/src/**': { lines: 98.84, branches: 91.78 },
+  'packages/domain/src/**': {
+    lines: 98.84,
+    branches: 91.78,
+    uncoveredLines: 25,
+    uncoveredBranches: 143,
+  },
   // Branches CORRECTED DOWN 74.74 → 74.47 in #929, and like observability's
   // lines below this is NOT a ratchet release. #929 deleted duplicated code —
   // three byte-identical field-state headless modules became one, four Sheet
@@ -181,7 +227,12 @@ export const coverageThresholds = {
   // The two figures on the line below are #1133's, not #929's — kept as history
   // because they are the worked example of the one operation the ratio cannot
   // see, and #1133's Phase 2 turns that worked example into a test.
-  'packages/ui-components/src/**': { lines: 89.14, branches: 74.53 },
+  'packages/ui-components/src/**': {
+    lines: 89.14,
+    branches: 74.53,
+    uncoveredLines: 191,
+    uncoveredBranches: 217,
+  },
   // Lines CORRECTED DOWN 83.56 → 82.58 in #977, and this is the one case
   // where that is not a ratchet release. 83.56 was never measured: it was
   // the output of a corrupted v8 merge. `browserTracer.ts` loads its OTel
@@ -199,13 +250,54 @@ export const coverageThresholds = {
   // raising a pin stays a deliberate, separate act, and #1133 is that act.
   // The two figures below are #1133's; #977's correction is the reason the
   // lines pin can be read as honest at all.
-  'packages/adapters/observability/src/**': { lines: 82.77, branches: 77.88 },
-  'packages/adapters/firebase-sync/src/**': { lines: 92, branches: 85.65 },
-  'apps/cloud-functions/src/**': { lines: 85.97, branches: 77.96 },
-  'apps/web-pwa/src/routes/**': { lines: 77.46, branches: 65.86 },
-  'apps/web-pwa/src/lib/**': { lines: 75.95, branches: 67.82 },
-  'apps/web-pwa/src/components/**': { lines: 54.58, branches: 38.81 },
+  'packages/adapters/observability/src/**': {
+    lines: 82.77,
+    branches: 77.88,
+    uncoveredLines: 87,
+    uncoveredBranches: 90,
+  },
+  'packages/adapters/firebase-sync/src/**': {
+    lines: 92,
+    branches: 85.65,
+    uncoveredLines: 54,
+    uncoveredBranches: 34,
+  },
+  'apps/cloud-functions/src/**': {
+    lines: 85.97,
+    branches: 77.96,
+    uncoveredLines: 390,
+    uncoveredBranches: 368,
+  },
+  'apps/web-pwa/src/routes/**': {
+    lines: 77.46,
+    branches: 65.86,
+    uncoveredLines: 2080,
+    uncoveredBranches: 1859,
+  },
+  'apps/web-pwa/src/lib/**': {
+    lines: 75.95,
+    branches: 67.82,
+    uncoveredLines: 798,
+    uncoveredBranches: 604,
+  },
+  'apps/web-pwa/src/components/**': {
+    lines: 54.58,
+    branches: 38.81,
+    uncoveredLines: 114,
+    uncoveredBranches: 93,
+  },
 };
 
 /** The area globs, in the order the ratchet declares them. */
 export const coverageAreas = Object.keys(coverageThresholds);
+
+/**
+ * How far above its floor an area may drift before `check-coverage-ratchet.mjs`
+ * reds the build and prints the block to paste. Declared here, beside the
+ * paragraph that explains it and the floors it is measured against, for the
+ * reason at the top of this file — a second copy would drift, and this one
+ * would drift silently, since nothing enforces it but the script that reads it.
+ *
+ * It is a STALENESS allowance, not margin on the floor. See above.
+ */
+export const staleAbovePoints = 1.0;
