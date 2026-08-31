@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_APP_ORIGIN } from './e2e/e2eAppOrigin';
 
 const CI = !!process.env.CI;
 
@@ -25,7 +26,8 @@ export default defineConfig({
   globalTeardown: './e2e/globalTeardown.ts',
 
   use: {
-    baseURL: 'http://127.0.0.1:5174',
+    // Single source of truth in ./e2e/e2eAppOrigin.ts (#1142 review, finding 1).
+    baseURL: E2E_APP_ORIGIN,
     // retain-on-failure, NOT on-first-retry: for a "passes on retry" flake,
     // on-first-retry keeps the trace of the *retry* (which passed) — useless for
     // diagnosis. retain-on-failure keeps the trace + video of whichever attempt
