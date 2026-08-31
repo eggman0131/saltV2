@@ -72,14 +72,14 @@ describe('subscribeFormula', () => {
   it('emits the parsed formula', () => {
     const onFormula = vi.fn();
     subscribeFormula('recipe-1', onFormula, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap(FORMULA));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(snap(FORMULA));
     expect(onFormula).toHaveBeenCalledWith(FORMULA);
   });
 
   it('emits null when nothing has been mapped yet', () => {
     const onFormula = vi.fn();
     subscribeFormula('recipe-1', onFormula, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap(undefined, false));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(snap(undefined, false));
     expect(onFormula).toHaveBeenCalledWith(null);
   });
 
@@ -92,7 +92,9 @@ describe('subscribeFormula', () => {
     const onFormula = vi.fn();
     const onError = vi.fn();
     subscribeFormula('recipe-1', onFormula, onError);
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap({ recipeId: 'recipe-1', components: 7 }));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(
+      snap({ recipeId: 'recipe-1', components: 7 }),
+    );
     expect(onFormula).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith({ kind: 'StorageError', reason: 'corruption' });
     expect(console.error).toHaveBeenCalled();
@@ -102,7 +104,7 @@ describe('subscribeFormula', () => {
     const onError = vi.fn();
     subscribeFormula('recipe-1', () => {}, onError);
     const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
     expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });

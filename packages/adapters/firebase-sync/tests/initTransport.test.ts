@@ -12,7 +12,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // below then pins that `initFirebase` really does hand production nothing.
 
 const { mockInitializeFirestore, mockGetFirestore, mockPersistentLocalCache } = vi.hoisted(() => ({
-  mockInitializeFirestore: vi.fn(() => 'mock-db'),
+  // Typed, not inferred: an inferred zero-argument mock records every call as
+  // an empty tuple, so reading `mock.calls[0][1]` — the settings object this
+  // whole suite is about — is a compile error (#1135).
+  mockInitializeFirestore: vi.fn<(...args: unknown[]) => string>(() => 'mock-db'),
   mockGetFirestore: vi.fn(() => 'mock-db'),
   mockPersistentLocalCache: vi.fn(() => 'mock-cache'),
 }));

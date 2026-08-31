@@ -93,12 +93,17 @@ describe.skipIf(!reachable)('storage.rules — canon-icons', () => {
 
   it('denies client writes to canon-icons (even when authenticated)', async () => {
     const ref = testEnv.authenticatedContext('user-1').storage().ref('canon-icons/blocked.webp');
-    await assertFails(ref.put(new Uint8Array([4, 5, 6]), { contentType: 'image/webp' }));
+    // `put` returns an `UploadTask` — thenable, but not a `Promise`, which is
+    // what `assertFails` takes. `Promise.resolve` adopts it: same settlement,
+    // same rejection, nothing about the assertion changes (#1135).
+    await assertFails(
+      Promise.resolve(ref.put(new Uint8Array([4, 5, 6]), { contentType: 'image/webp' })),
+    );
   });
 
   it('denies reads and writes outside canon-icons', async () => {
     const ref = testEnv.authenticatedContext('user-1').storage().ref('other/secret.txt');
-    await assertFails(ref.put(new Uint8Array([7]), { contentType: 'text/plain' }));
+    await assertFails(Promise.resolve(ref.put(new Uint8Array([7]), { contentType: 'text/plain' })));
     await assertFails(ref.getDownloadURL());
   });
 });
@@ -149,6 +154,8 @@ describe.skipIf(!reachable)('storage.rules — batch-images', () => {
   // does not change that — the bytes go through the callable.
   it('denies client writes to batch-images even when authenticated', async () => {
     const ref = testEnv.authenticatedContext('user-1').storage().ref(OBJECT);
-    await assertFails(ref.put(new Uint8Array([4, 5, 6]), { contentType: 'image/webp' }));
+    await assertFails(
+      Promise.resolve(ref.put(new Uint8Array([4, 5, 6]), { contentType: 'image/webp' })),
+    );
   });
 });

@@ -136,7 +136,7 @@ describe('subscribeRecipes', () => {
     const onRecipes = vi.fn();
     subscribeRecipes(onRecipes, () => {});
 
-    (mockOnSnapshot.mock.calls[0][1] as CollectionCallback)(
+    (mockOnSnapshot.mock.calls[0]![1] as CollectionCallback)(
       firstSnapshot([{ id: 'recipe-1', data: () => RECIPE }]),
     );
 
@@ -154,7 +154,7 @@ describe('subscribeRecipes', () => {
     );
 
     const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
 
     // TWO arguments — the classified kind for the caller to branch on, and the
     // original error so a reporting call site can send the real stack. Asserted

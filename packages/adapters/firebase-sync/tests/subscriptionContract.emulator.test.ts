@@ -1335,9 +1335,10 @@ describe('subscription contract — table coverage', () => {
    * The #939 counterpart of the rule above, and the one the exact-set assertion
    * rests on. A row that seeds only what its query ADMITS pins nothing about the
    * query: whatever narrowing arrives, the delivered set is unchanged and the row
-   * stays green. `tests/` is not in the root `typecheck` yet (UT-G1), so the
-   * required field on the interface is not on its own enough to notice a row
-   * arriving without one.
+   * stays green. Since #1135 this tree IS in the root `typecheck` (UT-G1), so a
+   * row missing a required field is now a compile error — but that only catches
+   * an ABSENT field, never one seeded with a set the query would have admitted
+   * anyway. This assertion is still the only thing checking that.
    */
   it('every row seeds at least one document its subscription must exclude', () => {
     for (const c of collectionCases) {

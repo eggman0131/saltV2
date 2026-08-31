@@ -106,7 +106,7 @@ describe('subscribeShoppingLists', () => {
       () => {},
     );
 
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
       firstSnapshot([{ id: LIST_1.id, data: () => ({ ...LIST_1 }) }]),
     );
 
@@ -120,7 +120,7 @@ describe('subscribeShoppingLists', () => {
       () => {},
     );
 
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
       firstSnapshot([{ id: 'legacy', data: () => ({}) }]),
     );
 
@@ -140,7 +140,7 @@ describe('subscribeShoppingLists', () => {
     );
 
     const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
 
     // TWO arguments — see the header (#928 finding B2-009).
     expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);

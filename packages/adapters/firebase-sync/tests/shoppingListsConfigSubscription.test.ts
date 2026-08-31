@@ -66,7 +66,7 @@ describe('subscribeShoppingListsConfig', () => {
     const onConfig = vi.fn();
     subscribeShoppingListsConfig(onConfig, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({ exists: () => false, data: () => undefined });
 
     expect(onConfig).toHaveBeenCalledWith(null);
@@ -76,7 +76,7 @@ describe('subscribeShoppingListsConfig', () => {
     const onConfig = vi.fn();
     subscribeShoppingListsConfig(onConfig, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({
       exists: () => true,
       data: () => ({ defaultListId: 'list-1', schemaVersion: 1 }),
@@ -89,7 +89,7 @@ describe('subscribeShoppingListsConfig', () => {
     const onConfig = vi.fn();
     subscribeShoppingListsConfig(onConfig, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({ exists: () => true, data: () => ({}) });
 
     const [cfg] = onConfig.mock.calls[0] as [ShoppingListsConfig];
@@ -100,7 +100,7 @@ describe('subscribeShoppingListsConfig', () => {
     const onError = vi.fn();
     subscribeShoppingListsConfig(() => {}, onError);
 
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
+    const errCb = mockOnSnapshot.mock.calls[0]![2] as ErrorCallback;
     const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
     errCb(raw);
 
@@ -113,7 +113,7 @@ describe('subscribeShoppingListsConfig', () => {
     const onError = vi.fn();
     subscribeShoppingListsConfig(() => {}, onError);
 
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
+    const errCb = mockOnSnapshot.mock.calls[0]![2] as ErrorCallback;
     const raw = Object.assign(new Error('err'), { code: 'unauthenticated' });
     errCb(raw);
 

@@ -99,14 +99,14 @@ describe('subscribeGuidedPlan', () => {
   it('emits the parsed plan', () => {
     const onPlan = vi.fn();
     subscribeGuidedPlan('recipe-1', onPlan, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap(PLAN));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(snap(PLAN));
     expect(onPlan).toHaveBeenCalledWith(PLAN);
   });
 
   it('emits null when no plan has been written yet', () => {
     const onPlan = vi.fn();
     subscribeGuidedPlan('recipe-1', onPlan, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap(undefined, false));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(snap(undefined, false));
     expect(onPlan).toHaveBeenCalledWith(null);
   });
 
@@ -119,7 +119,7 @@ describe('subscribeGuidedPlan', () => {
     const onPlan = vi.fn();
     const onError = vi.fn();
     subscribeGuidedPlan('recipe-1', onPlan, onError);
-    (mockOnSnapshot.mock.calls[0][1] as DocCallback)(snap({ id: 'recipe-1', schemaVersion: 2 }));
+    (mockOnSnapshot.mock.calls[0]![1] as DocCallback)(snap({ id: 'recipe-1', schemaVersion: 2 }));
     expect(onPlan).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith({ kind: 'StorageError', reason: 'corruption' });
     expect(console.error).toHaveBeenCalled();
@@ -129,7 +129,7 @@ describe('subscribeGuidedPlan', () => {
     const onError = vi.fn();
     subscribeGuidedPlan('recipe-1', () => {}, onError);
     const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
     expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });

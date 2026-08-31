@@ -9,8 +9,13 @@ import type { ErrorReportingPort } from '@salt/domain';
 // to NetworkError, and the user was told to "check your connection" while the
 // report was silently suppressed (NetworkError is a suppressed category).
 
-const requestOtp = vi.fn(async () => undefined);
-const verifyOtp = vi.fn(async () => 'custom-token');
+// Typed, not inferred: `vi.fn(async () => …)` infers a ZERO-argument mock, and
+// the two `vi.mock` factories below call these with the email and code — which
+// the compiler only notices once this tree is in a program (issue #1135).
+const requestOtp = vi.fn<(email: string) => Promise<undefined>>(async () => undefined);
+const verifyOtp = vi.fn<(email: string, code: string) => Promise<string>>(
+  async () => 'custom-token',
+);
 vi.mock('../src/emailOtpCallables.js', () => ({
   callRequestEmailOtp: (email: string) => requestOtp(email),
   callVerifyEmailOtp: (email: string, code: string) => verifyOtp(email, code),

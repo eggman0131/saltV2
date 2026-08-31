@@ -6,7 +6,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // call failed" is to leave the stages the user already has exactly where they are
 // and say so — which it cannot do if the promise rejects.
 
-const callableMock = vi.fn(async () => ({ data: { stages: [] } }));
+// Typed as the callable `httpsCallable` really returns, not inferred: an
+// inferred mock pins `data.stages` to `never[]` from the empty literal here, so
+// every `mockResolvedValueOnce` carrying a real stage is rejected (#1135).
+const callableMock = vi.fn<(payload?: unknown) => Promise<{ data: unknown }>>(async () => ({
+  data: { stages: [] },
+}));
 const httpsCallable = vi.fn(() => callableMock);
 const getFunctions = vi.fn(() => ({}));
 

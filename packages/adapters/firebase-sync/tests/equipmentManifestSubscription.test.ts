@@ -57,7 +57,7 @@ describe('subscribeEquipmentManifest', () => {
     const onManifest = vi.fn();
     subscribeEquipmentManifest(onManifest, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({ exists: () => false, data: () => undefined });
 
     expect(onManifest).toHaveBeenCalledWith(null);
@@ -67,7 +67,7 @@ describe('subscribeEquipmentManifest', () => {
     const onManifest = vi.fn();
     subscribeEquipmentManifest(onManifest, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({
       exists: () => true,
       data: () => ({
@@ -106,7 +106,7 @@ describe('subscribeEquipmentManifest', () => {
     const onManifest = vi.fn();
     subscribeEquipmentManifest(onManifest, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({ exists: () => true, data: () => ({ schemaVersion: 1, updatedAt: '' }) });
 
     expect(onManifest).toHaveBeenCalledWith({ schemaVersion: 1, updatedAt: '', items: [] });
@@ -116,7 +116,7 @@ describe('subscribeEquipmentManifest', () => {
     const onManifest = vi.fn();
     subscribeEquipmentManifest(onManifest, () => {});
 
-    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    const snapCb = mockOnSnapshot.mock.calls[0]![1] as SnapCallback;
     snapCb({
       exists: () => true,
       data: () => ({
@@ -128,7 +128,7 @@ describe('subscribeEquipmentManifest', () => {
       }),
     });
 
-    const manifest = onManifest.mock.calls[0][0];
+    const manifest = onManifest.mock.calls[0]![0];
     expect(manifest.items[0].accessories).toEqual([]);
     expect(manifest.items[0].rules).toEqual([]);
   });
@@ -142,7 +142,7 @@ describe('subscribeEquipmentManifest', () => {
     subscribeEquipmentManifest(() => {}, onError);
 
     const raw = Object.assign(new Error('Firestore error'), { code: 'permission-denied' });
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
+    const errCb = mockOnSnapshot.mock.calls[0]![2] as ErrorCallback;
     errCb(raw);
 
     expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
@@ -153,7 +153,7 @@ describe('subscribeEquipmentManifest', () => {
     subscribeEquipmentManifest(() => {}, onError);
 
     const raw = Object.assign(new Error('Firestore error'), { code: 'unauthenticated' });
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
+    const errCb = mockOnSnapshot.mock.calls[0]![2] as ErrorCallback;
     errCb(raw);
 
     expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'unauthenticated' }, raw);
@@ -168,7 +168,7 @@ describe('saveEquipmentManifest', () => {
 
   it('writes schemaVersion 1', async () => {
     await saveEquipmentManifest({ schemaVersion: 1, updatedAt: '', items: [] });
-    const written = mockSetDoc.mock.calls[0][1] as { schemaVersion: number };
+    const written = mockSetDoc.mock.calls[0]![1] as { schemaVersion: number };
     expect(written.schemaVersion).toBe(1);
   });
 
@@ -181,7 +181,7 @@ describe('saveEquipmentManifest', () => {
     });
     const after = Date.now();
 
-    const written = mockSetDoc.mock.calls[0][1] as { updatedAt: string };
+    const written = mockSetDoc.mock.calls[0]![1] as { updatedAt: string };
     const ts = new Date(written.updatedAt).getTime();
     expect(ts).toBeGreaterThanOrEqual(before);
     expect(ts).toBeLessThanOrEqual(after);
@@ -198,14 +198,14 @@ describe('saveEquipmentManifest', () => {
     };
     await saveEquipmentManifest({ schemaVersion: 1, updatedAt: '', items: [item] });
 
-    const written = mockSetDoc.mock.calls[0][1] as { items: unknown[] };
+    const written = mockSetDoc.mock.calls[0]![1] as { items: unknown[] };
     expect(written.items).toHaveLength(1);
     expect(written.items[0]).toEqual(item);
   });
 
   it('writes an empty items array when manifest has no items', async () => {
     await saveEquipmentManifest({ schemaVersion: 1, updatedAt: '', items: [] });
-    const written = mockSetDoc.mock.calls[0][1] as { items: unknown[] };
+    const written = mockSetDoc.mock.calls[0]![1] as { items: unknown[] };
     expect(written.items).toEqual([]);
   });
 });

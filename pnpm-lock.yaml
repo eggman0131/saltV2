@@ -290,6 +290,9 @@ importers:
       '@firebase/rules-unit-testing':
         specifier: ^5.0.1
         version: 5.0.1(firebase@12.17.1)
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
 
   packages/adapters/observability:
     dependencies:

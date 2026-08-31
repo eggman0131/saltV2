@@ -61,7 +61,7 @@ describe('subscribeMealPlanConfig', () => {
   it('calls onConfig(null) when the doc does not exist', () => {
     const onConfig = vi.fn();
     subscribeMealPlanConfig(onConfig, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => false,
       data: () => undefined,
     });
@@ -71,7 +71,7 @@ describe('subscribeMealPlanConfig', () => {
   it('maps a valid config doc', () => {
     const onConfig = vi.fn();
     subscribeMealPlanConfig(onConfig, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ firstDayOfWeek: 'mon', schemaVersion: 1 }),
     });
@@ -81,7 +81,7 @@ describe('subscribeMealPlanConfig', () => {
   it('surfaces corruption on an invalid config doc (single-doc read)', () => {
     const onError = vi.fn();
     subscribeMealPlanConfig(() => {}, onError);
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ firstDayOfWeek: 'notaday', schemaVersion: 1 }),
     });
@@ -97,7 +97,7 @@ describe('subscribeMealPlanConfig', () => {
     const onError = vi.fn();
     subscribeMealPlanConfig(() => {}, onError);
     const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
     expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });
@@ -114,7 +114,7 @@ describe('subscribeMealPlanTemplate', () => {
   it('maps a valid template doc', () => {
     const onTemplate = vi.fn();
     subscribeMealPlanTemplate(onTemplate, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ schemaVersion: 1, days: TEMPLATE.days }),
     });
@@ -124,7 +124,7 @@ describe('subscribeMealPlanTemplate', () => {
   it('surfaces corruption on an invalid template doc', () => {
     const onError = vi.fn();
     subscribeMealPlanTemplate(() => {}, onError);
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ schemaVersion: 2, days: {} }),
     });
@@ -145,7 +145,7 @@ describe('subscribeMealPlanWeek', () => {
   it('calls onWeek(null) when the week does not exist yet', () => {
     const onWeek = vi.fn();
     subscribeMealPlanWeek('2026-06-08', onWeek, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => false,
       data: () => undefined,
     });
@@ -165,7 +165,7 @@ describe('subscribeMealPlanWeek', () => {
       },
     };
     subscribeMealPlanWeek('2026-06-08', onWeek, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => week,
     });
@@ -176,7 +176,7 @@ describe('subscribeMealPlanWeek', () => {
   it('surfaces corruption on an invalid week doc', () => {
     const onError = vi.fn();
     subscribeMealPlanWeek('2026-06-08', () => {}, onError);
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ id: '2026-06-08', schemaVersion: 1 }),
     });

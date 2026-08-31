@@ -91,7 +91,7 @@ describe('subscribeMembers — the stream-error path', () => {
     );
 
     const raw = Object.assign(new Error('denied'), { code: 'permission-denied' });
-    const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
+    const errCb = mockOnSnapshot.mock.calls[0]![2] as ErrorCallback;
     errCb(raw);
 
     // Exactly two arguments, and the second is the error the SDK raised — the
