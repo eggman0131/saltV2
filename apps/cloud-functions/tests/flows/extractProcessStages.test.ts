@@ -155,13 +155,13 @@ describe('extractProcessStages', () => {
     expect(mockFlowModel).toHaveBeenCalledWith('lite', 'extractProcessStages');
     // Temperature 0 for the same reason: there is one correct reading of a method,
     // and every degree of creativity is a degree of invented proof.
-    expect(mockGenerate.mock.calls[0][0].config).toEqual({ temperature: 0 });
+    expect(mockGenerate.mock.calls[0]![0].config).toEqual({ temperature: 0 });
   });
 
   it('shows the model each step id and the timer already parsed onto it', async () => {
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    const prompt = String(mockGenerate.mock.calls[0][0].prompt);
+    const prompt = String(mockGenerate.mock.calls[0]![0].prompt);
     expect(prompt).toContain('[step-2]');
     expect(prompt).toContain('timer: 240 minutes');
   });
@@ -216,7 +216,7 @@ describe('extractProcessStages — which side the oven falls on', () => {
   it('states the rule in the prompt, verbatim, with the bake pinned', async () => {
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain(STAGE_KIND_RULES);
     expect(system).toContain('THE BAKE IS `active`. THE PREHEAT IS `wait`.');
   });
@@ -281,7 +281,7 @@ describe('extractProcessStages — a recipe with nothing to wait for', () => {
   it('tells the model so as well', async () => {
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain('NEVER invent a proof');
   });
 });

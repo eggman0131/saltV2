@@ -100,7 +100,13 @@ function importedPlatformFactories(): Set<string> {
   const IMPORT = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'(firebase-functions[^']*)'/g;
   for (const code of sources.values()) {
     for (const [, clause] of code.matchAll(IMPORT)) {
-      for (const specifier of clause.split(',')) {
+      // `?? ''` is a type-only concession to `noUncheckedIndexedAccess` in the
+      // new test typecheck config (#1135): a mandatory capturing group like
+      // `([^}]*)` is never actually `undefined` when the overall pattern
+      // matches, so this never changes what the scan finds. #919 owns this
+      // scanner's actual logic — that logic is unchanged; this is the one
+      // line #1135 touched here, and it is inert.
+      for (const specifier of (clause ?? '').split(',')) {
         // `onCall as callable` binds the local name; `type Foo` is not a value.
         const parts = specifier.trim().split(/\s+as\s+/);
         const local = (parts[1] ?? parts[0] ?? '').trim();

@@ -33,11 +33,17 @@ function fakeSpan(opts: {
     attributes: opts.attributes ?? {},
     startTime: opts.startTime ?? [1_700_000_000, 0],
     endTime: opts.endTime ?? [1_700_000_001, 500_000_000],
-    parentSpanId: opts.parentSpanId,
-    parentSpanContext: opts.parentSpanContext,
-    kind: opts.kind,
-    instrumentationScope: opts.scope === undefined ? undefined : { name: opts.scope },
-    instrumentationLibrary: opts.legacyScope === undefined ? undefined : { name: opts.legacyScope },
+    // Spread rather than assign: `exactOptionalPropertyTypes` is on, so an
+    // optional property may be absent or hold a value but never an explicit
+    // `undefined` — and an absent key is what a real span looks like when the
+    // SDK never set one.
+    ...(opts.parentSpanId === undefined ? {} : { parentSpanId: opts.parentSpanId }),
+    ...(opts.parentSpanContext === undefined ? {} : { parentSpanContext: opts.parentSpanContext }),
+    ...(opts.kind === undefined ? {} : { kind: opts.kind }),
+    ...(opts.scope === undefined ? {} : { instrumentationScope: { name: opts.scope } }),
+    ...(opts.legacyScope === undefined
+      ? {}
+      : { instrumentationLibrary: { name: opts.legacyScope } }),
     spanContext: () => ({ traceId: opts.traceId ?? 'trace-1', spanId: opts.spanId ?? 'span-1' }),
   };
 }
@@ -276,7 +282,10 @@ describe('distributedSpanProcessor', () => {
 
   it('with a key, drops auto-instrumentation noise but ships app spans', async () => {
     process.env['POSTHOG_API_KEY'] = 'phc_test';
-    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    // Typed as `fetch` so `mock.calls[0]` is the real argument tuple: an
+    // inferred zero-arg mock makes every recorded call an empty tuple, and
+    // indexing one is a compile error rather than a runtime surprise.
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
     const prevFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     try {
@@ -325,7 +334,10 @@ describe('distributedSpanProcessor', () => {
   it('stamps the recorded server environment onto the exported span resource', async () => {
     process.env['POSTHOG_API_KEY'] = 'phc_test';
     setServerEnvironment('staging');
-    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    // Typed as `fetch` so `mock.calls[0]` is the real argument tuple: an
+    // inferred zero-arg mock makes every recorded call an empty tuple, and
+    // indexing one is a compile error rather than a runtime surprise.
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
     const prevFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     try {

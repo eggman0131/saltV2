@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import type { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-node';
-import type { Context } from '@opentelemetry/api';
 import type { CanonItem } from '@salt/domain';
 import { startSpan } from '@salt/observability/server';
 import { createFirestoreCanonStore } from '../../src/adapters/firestoreCanonStore.js';
@@ -21,7 +20,10 @@ import { createFirestoreCanonStore } from '../../src/adapters/firestoreCanonStor
 // Capture every finished span by name → its parentSpanId, via a tiny processor.
 const finished = new Map<string, ReadableSpan>();
 const captureProcessor: SpanProcessor = {
-  onStart(_span: ReadableSpan, _ctx: Context): void {},
+  // Parameters are contextually typed by `SpanProcessor` — annotating `_ctx`
+  // would need `@opentelemetry/api`, which is deliberately kept OFF the
+  // cloud-functions path (see canonicaliseRecipeIngredients.trace.test.ts:21).
+  onStart(): void {},
   onEnd(span: ReadableSpan): void {
     finished.set(span.name, span);
   },

@@ -6,7 +6,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // observability import); the field is optional, so old callers omit it entirely
 // (NOT `traceparent: undefined`, which would widen the wire shape).
 
-const callableMock = vi.fn(async () => ({ data: { candidates: [] } }));
+// Typed as the callable `httpsCallable` really returns, not inferred: an
+// inferred mock takes no arguments (so `mock.calls[0][0]` is a compile error)
+// and pins its `data` to the first literal used (so the second suite's
+// `mockResolvedValueOnce` is rejected). Issue #1135.
+const callableMock = vi.fn<(payload?: unknown) => Promise<{ data: unknown }>>(async () => ({
+  data: { candidates: [] },
+}));
 const httpsCallable = vi.fn(() => callableMock);
 
 vi.mock('firebase/functions', () => ({

@@ -39,7 +39,10 @@ function spanWithKind(kind: number | undefined): ReadableSpanLike {
     attributes: {},
     startTime: [1_700_000_000, 0],
     endTime: [1_700_000_001, 500_000_000],
-    kind,
+    // Spread rather than assign: `exactOptionalPropertyTypes` is on, so the
+    // "no kind at all" case must OMIT the key, which is also how a span with no
+    // kind actually reaches a processor.
+    ...(kind === undefined ? {} : { kind }),
     spanContext: () => ({ traceId: 'trace-1', spanId: 'span-1' }),
   };
 }

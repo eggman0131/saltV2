@@ -1,0 +1,26 @@
+{
+  // The unit suite's own typecheck (issue #1135, closing UT-G1 for this
+  // package). `tsconfig.json` is the BUILD config — `rootDir: "src"`,
+  // `composite`, emits to `dist` — so it can never include `tests/**`; a
+  // composite project cannot see files outside its `rootDir`. Wired into the
+  // root `typecheck` script, which is the half that matters: a config that
+  // merely exists is checked by nothing.
+  //
+  // Covers the `*.emulator.test.ts` files in the same tree as well as the unit
+  // tests. Those run only under `pnpm test:emulator`, which is exactly why they
+  // most need a compiler: nothing else looks at them on a normal PR.
+  //
+  // `types: ["node"]` for the `node:*` imports in `callableErrors.test.ts` and
+  // `firestoreRules.emulator.test.ts`. Test-program only — the build config is
+  // untouched and `src` still sees no Node globals.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": false,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}

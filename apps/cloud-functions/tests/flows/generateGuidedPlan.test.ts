@@ -140,7 +140,7 @@ describe('generateGuidedPlan', () => {
     // shown because a check-in must land strictly inside it.
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    const prompt = String(mockGenerate.mock.calls[0][0].prompt);
+    const prompt = String(mockGenerate.mock.calls[0]![0].prompt);
     expect(prompt).toContain('[ing-1] 1 onion');
     expect(prompt).toContain('[step-1]');
     expect(prompt).toContain('timer: 10 minutes');
@@ -152,7 +152,7 @@ describe('generateGuidedPlan', () => {
     // note — have to actually reach the model. They ride the system prompt.
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain('EVERY CONTAINER NAME MUST BE UNIQUE ACROSS THE WHOLE PREP LIST');
     expect(system).toContain('COPIED VERBATIM');
   });

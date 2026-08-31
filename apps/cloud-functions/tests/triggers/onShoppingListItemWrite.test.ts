@@ -19,7 +19,19 @@ vi.mock('firebase-functions', () => ({
 
 // ─── Mock firebase-admin/firestore ───────────────────────────────────────────
 
-const mockUpdate = vi.fn().mockResolvedValue(undefined);
+// The partial this trigger writes back — only the fields these assertions read
+// (mirrors onRecipeWritten.test.ts's local `RecipePatch`).
+type ShoppingListItemPatch = {
+  canonId?: unknown;
+  matchState?: unknown;
+  rawText?: unknown;
+  notes?: unknown;
+  amount?: unknown;
+  unit?: unknown;
+};
+const mockUpdate = vi
+  .fn<(patch: ShoppingListItemPatch) => Promise<undefined>>()
+  .mockResolvedValue(undefined);
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
@@ -467,7 +479,7 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      const updateArg = mockUpdate.mock.calls[0]![0] as Record<string, unknown>;
       expect(updateArg).not.toHaveProperty('rawText');
       expect(updateArg).not.toHaveProperty('notes');
     });
@@ -485,7 +497,7 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      const updateArg = mockUpdate.mock.calls[0]![0] as Record<string, unknown>;
       expect(updateArg).not.toHaveProperty('rawText');
       expect(updateArg).not.toHaveProperty('notes');
     });
@@ -555,7 +567,7 @@ describe('onShoppingListItemWrite', () => {
         { rawName: 'olive oil garlic', rawText: 'olive oil garlic' },
         expect.anything(),
       );
-      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      const updateArg = mockUpdate.mock.calls[0]![0] as Record<string, unknown>;
       expect(updateArg).not.toHaveProperty('rawText');
     });
 

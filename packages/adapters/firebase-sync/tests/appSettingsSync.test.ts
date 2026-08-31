@@ -47,7 +47,7 @@ describe('subscribeAppSettings', () => {
   it('calls onSettings(null) when the doc does not exist', () => {
     const onSettings = vi.fn();
     subscribeAppSettings(onSettings, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => false,
       data: () => undefined,
     });
@@ -57,7 +57,7 @@ describe('subscribeAppSettings', () => {
   it('maps a valid doc, defaulting unset roles', () => {
     const onSettings = vi.fn();
     subscribeAppSettings(onSettings, () => {});
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ fast: 'custom-fast' }),
     });
@@ -76,7 +76,7 @@ describe('subscribeAppSettings', () => {
     const onSettings = vi.fn();
     const onError = vi.fn();
     subscribeAppSettings(onSettings, onError);
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)({
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)({
       exists: () => true,
       data: () => ({ fast: 123 }), // wrong type
     });
@@ -88,7 +88,7 @@ describe('subscribeAppSettings', () => {
     const onError = vi.fn();
     subscribeAppSettings(() => {}, onError);
     const err = Object.assign(new Error('permission denied'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(err);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(err);
     expect(onError).toHaveBeenCalledTimes(1);
   });
 });
@@ -97,6 +97,7 @@ describe('saveAppSettings', () => {
   it('writes the full doc to appSettings/singleton and returns ok', async () => {
     const settings: AppSettings = {
       fast: 'a',
+      lite: 'l',
       pro: 'b',
       embedding: 'c',
       image: 'd',
@@ -112,6 +113,7 @@ describe('saveAppSettings', () => {
     mockSetDoc.mockRejectedValueOnce(Object.assign(new Error('nope'), { code: 'unavailable' }));
     const result = await saveAppSettings({
       fast: 'a',
+      lite: 'l',
       pro: 'b',
       embedding: 'c',
       image: 'd',

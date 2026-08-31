@@ -29,7 +29,10 @@ function fakeSpan(opts: {
     attributes: opts.attributes,
     startTime: opts.startTime ?? [1_700_000_000, 0],
     endTime: opts.endTime ?? [1_700_000_001, 500_000_000],
-    parentSpanId: opts.parentSpanId,
+    // Spread rather than assign: `exactOptionalPropertyTypes` is on, so an
+    // optional property may be absent or hold a value but never an explicit
+    // `undefined` — and an absent key is what a real root span looks like.
+    ...(opts.parentSpanId === undefined ? {} : { parentSpanId: opts.parentSpanId }),
     spanContext: () => ({ traceId: opts.traceId ?? 'trace-1', spanId: opts.spanId ?? 'span-1' }),
   };
 }

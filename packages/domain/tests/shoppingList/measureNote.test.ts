@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { ShoppingListItemSchema } from '../../src/schemas/shoppingListItem.js';
 import { addItem } from '../../src/index.js';
 import type { SourceRef } from '../../src/index.js';
+import type { IdGenerator } from '../../src/shoppingList/ports/IdGenerator.js';
 
 // `measureNote` carries the recipe's original non-metric measure ("6 cloves")
 // onto a shopping row, so a line the parser flattened to grams still says what to
 // reach for. It is additive: the Shopping List collection holds real production
 // data, so every document written before the field must still read.
 
-const ids = { newItemId: () => 'i1' };
+const ids: IdGenerator = { newListId: () => 'l1', newItemId: () => 'i1' };
 const source: SourceRef = { kind: 'recipe', recipeId: 'r1', servings: 4, label: 'Roast' };
 
 function doc(overrides: Record<string, unknown> = {}) {

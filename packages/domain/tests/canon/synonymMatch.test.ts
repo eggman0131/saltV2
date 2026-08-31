@@ -5,7 +5,9 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 const items: readonly CanonItem[] = [
   {
     id: '1',
-    schemaVersion: 2,
+    schemaVersion: 5,
+    shoppingBehavior: 'needed',
+    unit: 'count',
     name: 'Tomato',
     synonyms: ['tom', 'tomate'],
     aisleId: 'produce',
@@ -16,7 +18,9 @@ const items: readonly CanonItem[] = [
   },
   {
     id: '2',
-    schemaVersion: 2,
+    schemaVersion: 5,
+    shoppingBehavior: 'needed',
+    unit: 'count',
     name: 'Olive Oil',
     synonyms: ['EVOO'],
     aisleId: 'oils',
@@ -27,7 +31,9 @@ const items: readonly CanonItem[] = [
   },
   {
     id: '3',
-    schemaVersion: 2,
+    schemaVersion: 5,
+    shoppingBehavior: 'needed',
+    unit: 'count',
     name: 'Butter',
     synonyms: [],
     aisleId: 'dairy',

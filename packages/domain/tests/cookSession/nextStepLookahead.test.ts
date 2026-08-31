@@ -36,6 +36,10 @@ function recipe(steps: StepDoc[]): Recipe {
     source: null,
     notes: null,
     producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     image: null,
     createdAt: '2026-08-01T09:00:00.000Z',
     updatedAt: '2026-08-01T09:00:00.000Z',
@@ -174,7 +178,13 @@ describe('nextStepLookahead', () => {
       // A parsed document always reads back `string | null`. A note arriving from
       // anywhere else — a hand-edited doc, a draft, a fixture — can be missing the
       // keys outright, and `undefined === null` is false.
-      const legacy = { stepId: 's1', container: null, setup: null, cue: null, checkIns: [] };
+      const legacy: Omit<GuidedStepNoteDoc, 'lookahead' | 'getAhead'> = {
+        stepId: 's1',
+        container: null,
+        setup: null,
+        cue: null,
+        checkIns: [],
+      };
       expect(nextStepLookahead(THREE, [legacy as GuidedStepNoteDoc], 's1')).toBeNull();
     });
   });

@@ -1,9 +1,27 @@
 {
+  // The unit suite's own typecheck (issue #1135, closing UT-G1 for this
+  // package). `tsconfig.json` is the BUILD config — `rootDir: "src"`,
+  // `composite`, emits to `dist` — so it can never include `tests/**`.
+  //
+  // This file has existed since `84270a98` and was invoked by nothing until
+  // #1135 wired it into the root `typecheck` script. That is the whole of
+  // UT-G1: a config that merely exists checks no code, and the 70 errors it
+  // produced on the day it was wired in had been latent the entire time.
+  //
+  // Note the limit (UT-G2): the `tests/` tree imports 66 `.svelte` modules,
+  // which resolve through Svelte's ambient `*.svelte` declaration as a bare
+  // `Component`. What a test passes as PROPS is NOT checked here. Prop checking
+  // is `svelte-check` (`pnpm check`), a separate and larger job.
+  //
+  // `types: ["node"]` for the two repo-shape tests that read token files off
+  // disk (`tokens.theme.test.ts`, `navHeightToken.test.ts`). Test-program only —
+  // the build config is untouched and its `src` program is unchanged.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": false,
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": ".",
+    "types": ["node"]
   },
   "include": ["src/**/*", "tests/**/*"]
 }

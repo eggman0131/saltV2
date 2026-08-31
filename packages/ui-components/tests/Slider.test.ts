@@ -275,7 +275,7 @@ describe('Slider', () => {
   describe('range constraints', () => {
     it('thumb 0 cannot exceed thumb 1 value', async () => {
       setup({ isRange: true, defaultValue: [49, 50] });
-      const [t0] = getThumbs();
+      const t0 = getThumbs()[0]!;
       t0.focus();
       // ArrowRight would try to set value[0] = 50, which equals value[1] = 50 (allowed)
       await userEvent.keyboard('{ArrowRight}');
@@ -287,7 +287,7 @@ describe('Slider', () => {
 
     it('thumb 1 cannot go below thumb 0 value', async () => {
       setup({ isRange: true, defaultValue: [50, 51] });
-      const [, t1] = getThumbs();
+      const t1 = getThumbs()[1]!;
       t1.focus();
       // ArrowLeft would try to set value[1] = 50, which equals value[0] = 50 (allowed)
       await userEvent.keyboard('{ArrowLeft}');
@@ -299,7 +299,7 @@ describe('Slider', () => {
 
     it('Home on thumb 1 clamps at value[0], not global min', async () => {
       setup({ isRange: true, defaultValue: [30, 80] });
-      const [, t1] = getThumbs();
+      const t1 = getThumbs()[1]!;
       t1.focus();
       await userEvent.keyboard('{Home}');
       expect(t1).toHaveAttribute('aria-valuenow', '30');
@@ -307,7 +307,7 @@ describe('Slider', () => {
 
     it('End on thumb 0 clamps at value[1], not global max', async () => {
       setup({ isRange: true, defaultValue: [20, 60] });
-      const [t0] = getThumbs();
+      const t0 = getThumbs()[0]!;
       t0.focus();
       await userEvent.keyboard('{End}');
       expect(t0).toHaveAttribute('aria-valuenow', '60');

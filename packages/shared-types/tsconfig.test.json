@@ -1,0 +1,21 @@
+{
+  // The unit suite's own typecheck (issue #1135, closing UT-G1 for this
+  // package). `tsconfig.json` is the BUILD config — `rootDir: "src"`,
+  // `composite`, emits to `dist` — so it can never include `tests/**`; a
+  // composite project cannot see files outside its `rootDir`. Wired into the
+  // root `typecheck` script, which is the half that matters: a config that
+  // merely exists is checked by nothing (see `packages/ui-components`, whose
+  // config sat unreferenced from `84270a98` until this issue).
+  //
+  // `src` is in scope alongside `tests` so the test file is checked against the
+  // real thing under test rather than an emitted `.d.ts`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": false,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}

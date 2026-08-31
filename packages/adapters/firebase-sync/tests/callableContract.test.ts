@@ -674,8 +674,8 @@ describe.each(rows)('$name', (row) => {
 const optionalCases = [
   {
     what: 'callTestModel attaches a role when it has one',
-    call: () => barrel.callTestModel('gemini-x', 'text'),
-    payload: { model: 'gemini-x', role: 'text' },
+    call: () => barrel.callTestModel('gemini-x', 'fast'),
+    payload: { model: 'gemini-x', role: 'fast' },
   },
   {
     what: 'callRegenerateCanonIcon trims a hint',

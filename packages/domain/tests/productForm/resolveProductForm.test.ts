@@ -8,13 +8,14 @@ import type { ProductForm } from '@salt/domain';
 function form(
   id: string,
   label: string,
-  matchers: readonly string[],
+  matchers: string[],
   parentCanonId = `parent-${id}`,
 ): ProductForm {
   return {
     id,
     schemaVersion: 1,
     matchers,
+    thumbnail: null,
     parentCanonId,
     label,
     yield: { formUnit: 'count', amountPerParent: 2 },

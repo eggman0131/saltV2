@@ -27,21 +27,28 @@ vi.mock('firebase-functions', () => ({
 // routing assertions below are meaningless against a stubbed one — the whole
 // point is which endpoint lands in which channel — and because a hand-rolled
 // stub would be a substring check where the real one parses the hostname.
-const mockSendWebPush = vi.fn(async () => 'sent' as const);
+// Typed as the real function, not inferred: `vi.fn(async () => …)` infers a
+// ZERO-argument mock, so every recorded call is an empty tuple and reading
+// `mock.calls[0][n]` — which this suite does throughout — cannot compile, while
+// `mockResolvedValue` is pinned to the one literal used here (#1135).
+const mockSendWebPush = vi.fn<typeof import('../../src/adapters/sendWebPush.js').sendWebPush>(
+  async () => 'sent' as const,
+);
 vi.mock('../../src/adapters/sendWebPush.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/sendWebPush.js')>()),
   sendWebPush: mockSendWebPush,
 }));
 
-const mockSendPushover = vi.fn(async () => 'sent' as const);
+const mockSendPushover = vi.fn<typeof import('../../src/adapters/sendPushover.js').sendPushover>(
+  async () => 'sent' as const,
+);
 vi.mock('../../src/adapters/sendPushover.js', () => ({
   sendPushover: mockSendPushover,
 }));
 
-const mockResolveTargets = vi.fn(async () => ({
-  kind: 'send' as const,
-  devices: ['daniel-phone'],
-}));
+const mockResolveTargets = vi.fn<
+  typeof import('../../src/adapters/pushoverRecipient.js').resolvePushoverTargets
+>(async () => ({ kind: 'send' as const, devices: ['daniel-phone'] }));
 vi.mock('../../src/adapters/pushoverRecipient.js', () => ({
   resolvePushoverTargets: mockResolveTargets,
 }));
@@ -108,6 +115,15 @@ vi.mock('firebase-admin/firestore', () => ({
 }));
 
 const { onKitchenTimerDispatch } = await import('../../src/triggers/onKitchenTimerDispatch.js');
+
+// `onTaskDispatched` returns a `TaskQueueFunction`, which is ALSO an Express
+// request handler and so declares TWO parameters. The `vi.mock` at the top of
+// this file replaces it with the bare handler, which takes one — the task
+// request. Call through this alias so the mismatch is stated once, here, rather
+// than at each of the 28 call sites below (#1135).
+const dispatch = onKitchenTimerDispatch as unknown as (
+  request: ReturnType<typeof req>,
+) => Promise<void>;
 const { TIMER_DELIVERY_RETENTION_MS } =
   await import('../../src/triggers/timerDeliveryRetention.js');
 
@@ -170,7 +186,7 @@ beforeEach(() => {
 
 describe('onKitchenTimerDispatch', () => {
   it('sends the timer’s own name via Pushover', async () => {
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockSendPushover).toHaveBeenCalledTimes(1);
     const message = mockSendPushover.mock.calls[0]?.[2] as { title: string; body: string };
@@ -181,7 +197,7 @@ describe('onKitchenTimerDispatch', () => {
   // after it was armed announces itself by the name the chef will be looking for.
   it('uses the name the timer has NOW, not the one it was armed with', async () => {
     mockTimersSnap = { exists: true, data: () => makeDoc([timer({ label: 'Eggs, soft' })]) };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     const message = mockSendPushover.mock.calls[0]?.[2] as { title: string };
     expect(message.title).toBe('Eggs, soft');
@@ -189,7 +205,7 @@ describe('onKitchenTimerDispatch', () => {
 
   it('falls back to generic copy for a timer with a blank name', async () => {
     mockTimersSnap = { exists: true, data: () => makeDoc([timer({ label: '   ' })]) };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     const message = mockSendPushover.mock.calls[0]?.[2] as { title: string };
     expect(message.title).toBe('Timer finished');
@@ -200,7 +216,7 @@ describe('onKitchenTimerDispatch', () => {
   it('carries its own type and an EXPLICIT url — never an id to reconstruct from', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [androidSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     const payload = mockSendWebPush.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(payload['type']).toBe('kitchen-timer');
@@ -213,7 +229,7 @@ describe('onKitchenTimerDispatch', () => {
   it('tags per timer, so a second timer cannot replace the first one’s notification', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [androidSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     const payload = mockSendWebPush.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(payload['tag']).toBe(`kitchen::${TIMER_ID}`);
@@ -224,14 +240,14 @@ describe('onKitchenTimerDispatch', () => {
 
   it('says nothing when the member has no timers document', async () => {
     mockTimersSnap = { exists: false, data: () => undefined };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendPushover).not.toHaveBeenCalled();
     expect(mockSendWebPush).not.toHaveBeenCalled();
   });
 
   it('says nothing when the timer was dismissed before it fired', async () => {
     mockTimersSnap = { exists: true, data: () => makeDoc([]) };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
@@ -241,25 +257,25 @@ describe('onKitchenTimerDispatch', () => {
       exists: true,
       data: () => makeDoc([timer({ endsAt: '2026-08-16T18:35:00.000Z' })]),
     };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
   it('says nothing for a timer id that is not in the document', async () => {
-    await onKitchenTimerDispatch(req({ timerId: 'gone' }));
+    await dispatch(req({ timerId: 'gone' }));
     expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
   it('skips an invalid document rather than throwing', async () => {
     mockTimersSnap = { exists: true, data: () => ({ ownerUid: UID, timers: [{ id: 'k1' }] }) };
-    await expect(onKitchenTimerDispatch(req())).resolves.toBeUndefined();
+    await expect(dispatch(req())).resolves.toBeUndefined();
     expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
   // ─── The shared exactly-once ledger ─────────────────────────────────────────
 
   it('claims the SHARED timerDeliveries ledger with a kitchen_ prefix', async () => {
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockLedgerCollection).toBe('timerDeliveries');
     // The uid is in the key because a timer id is only unique within one member.
@@ -285,7 +301,7 @@ describe('onKitchenTimerDispatch', () => {
 
   it('sends nothing on a duplicate dispatch — Cloud Tasks is at-least-once', async () => {
     mockLedgerSnap = { exists: true };
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockTxSet).not.toHaveBeenCalled();
     expect(mockSendPushover).not.toHaveBeenCalled();
@@ -297,7 +313,7 @@ describe('onKitchenTimerDispatch', () => {
   it('reads only the OWNER’s subscriptions, filtered on the parsed ownerUid', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [androidSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockSubsWhere).toEqual({ field: 'ownerUid', value: UID });
   });
@@ -307,13 +323,13 @@ describe('onKitchenTimerDispatch', () => {
   it('targets the ownerUid on the document, not the uid on the task', async () => {
     mockTimersSnap = { exists: true, data: () => makeDoc([timer()], 'uid-owner') };
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockSubsWhere).toEqual({ field: 'ownerUid', value: 'uid-owner' });
   });
 
   it('resolves Pushover devices for the member on the task', async () => {
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockResolveTargets).toHaveBeenCalledWith(expect.anything(), UID);
   });
 
@@ -321,7 +337,7 @@ describe('onKitchenTimerDispatch', () => {
 
   it('skips non-Apple web push once Pushover has delivered', async () => {
     mockSubsDocs = [androidSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockSendPushover).toHaveBeenCalled();
     expect(mockSendWebPush).not.toHaveBeenCalled();
@@ -331,14 +347,14 @@ describe('onKitchenTimerDispatch', () => {
   // reached a different device entirely — the two are not duplicates.
   it('always sends to an Apple endpoint, even when Pushover delivered', async () => {
     mockSubsDocs = [appleSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendWebPush).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to every device when Pushover did not deliver', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [androidSub(), appleSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendWebPush).toHaveBeenCalledTimes(2);
   });
 
@@ -347,7 +363,7 @@ describe('onKitchenTimerDispatch', () => {
     const dead = androidSub();
     mockSubsDocs = [dead];
     mockSendWebPush.mockResolvedValue('gone');
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(dead.ref.delete).toHaveBeenCalled();
   });
@@ -358,7 +374,7 @@ describe('onKitchenTimerDispatch', () => {
       { data: () => ({ id: 'bad' }), ref: { delete: vi.fn(async () => undefined) } },
       androidSub(),
     ];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockSendWebPush).toHaveBeenCalledTimes(1);
   });
 
@@ -369,20 +385,20 @@ describe('onKitchenTimerDispatch', () => {
   it('reports a timer that reached nothing at all', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockReport).toHaveBeenCalled();
   });
 
   it('does not report when Pushover alone delivered', async () => {
     mockSubsDocs = [];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockReport).not.toHaveBeenCalled();
   });
 
   it('does not report when web push alone delivered', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
     mockSubsDocs = [androidSub()];
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
     expect(mockReport).not.toHaveBeenCalled();
   });
 
@@ -395,7 +411,7 @@ describe('onKitchenTimerDispatch', () => {
       },
     } as unknown as { exists: boolean; data: () => unknown };
 
-    await expect(onKitchenTimerDispatch(req())).resolves.toBeUndefined();
+    await expect(dispatch(req())).resolves.toBeUndefined();
     expect(mockReport).toHaveBeenCalled();
     expect(mockFlush).toHaveBeenCalled();
   });
@@ -428,17 +444,20 @@ describe('onKitchenTimerDispatch — Pushover fan-out', () => {
   // 'delivered' is the ONLY outcome that suppresses the non-Apple fallback. An
   // Apple endpoint is sent to in every row, because Pushover may well have
   // reached a different device entirely.
+  // `as const` so each row's `kind` stays the LITERAL the adapter's discriminated
+  // union needs — without it every one widens to `string` and the table stops
+  // standing for the five outcomes it names (#1135).
   it.each([
     ['a delivered send', { kind: 'send', devices: ['daniel-phone'] }, 'sent', [APPLE]],
     ['a failed send', { kind: 'send', devices: ['daniel-phone'] }, 'failed', [ANDROID, APPLE]],
     ['no matching device', { kind: 'no-devices', firstName: 'Daniel' }, 'sent', [ANDROID, APPLE]],
     ['an unresolved lookup', { kind: 'unresolved', reason: 'network' }, 'sent', [ANDROID, APPLE]],
     ['suppression outside production', { kind: 'suppressed' }, 'sent', [ANDROID, APPLE]],
-  ])('fans web push out after %s', async (_case, targets, send, endpoints) => {
+  ] as const)('fans web push out after %s', async (_case, targets, send, endpoints) => {
     mockResolveTargets.mockResolvedValue(targets);
     mockSendPushover.mockResolvedValue(send as 'sent' | 'failed');
 
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(pushedTo()).toEqual(endpoints);
   });
@@ -446,14 +465,14 @@ describe('onKitchenTimerDispatch — Pushover fan-out', () => {
   it('fans web push out to every device when Pushover is not provisioned here', async () => {
     mockSecrets['PUSHOVER_APP_TOKEN'] = '';
 
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     expect(mockSendPushover).not.toHaveBeenCalled();
     expect(pushedTo()).toEqual([ANDROID, APPLE]);
   });
 
   it('links Pushover back to the kitchen, absolute and under its own title', async () => {
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     const [, devices, message] = mockSendPushover.mock.calls[0]!;
     expect(devices).toEqual(['daniel-phone']);
@@ -470,7 +489,7 @@ describe('onKitchenTimerDispatch — Pushover fan-out', () => {
   it('never appends an install nudge — the fallback push is unmodified (#988)', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
 
-    await onKitchenTimerDispatch(req());
+    await dispatch(req());
 
     // The 'no-devices' outcome that once nudged a cook timer's fallback (#988).
     const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;

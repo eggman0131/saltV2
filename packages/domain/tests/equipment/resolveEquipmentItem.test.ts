@@ -21,7 +21,7 @@ function accessory(name: string, owned = true): Accessory {
   return { id: `acc-${name}`, name, owned, included: owned };
 }
 
-function item(name: string, accessories: readonly Accessory[] = []): EquipmentItem {
+function item(name: string, accessories: Accessory[] = []): EquipmentItem {
   return {
     id: `eq-${name}`,
     schemaVersion: 1,

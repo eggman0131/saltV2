@@ -272,7 +272,7 @@ describe('subscribeShoppingListItems — the delivered item', () => {
       () => {},
     );
 
-    (mockOnSnapshot.mock.calls[0][1] as SnapCallback)(
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
       firstSnapshot([{ id: docId, data: () => stored }]),
     );
 
@@ -291,7 +291,7 @@ describe('subscribeShoppingListItems — the stream-error path', () => {
     );
 
     const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    (mockOnSnapshot.mock.calls[0]![2] as ErrorCallback)(raw);
 
     // TWO arguments — see the header (#928 finding B2-009).
     expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);

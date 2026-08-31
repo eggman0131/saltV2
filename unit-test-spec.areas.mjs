@@ -94,18 +94,15 @@ export const violationCeilings = {
     'UT-G3': 0,
     'UT-G4': 0,
   },
-  // The UT-G1 is `packages/ui-components/tsconfig.test.json`, which exists and
-  // which the root `typecheck` script does not run — the exact latent state
-  // `apps/web-pwa` was in before #942 wired its own in and 174 fixture defects
-  // fell out. The spec names it in UT-G1's evidence; this is that sentence with
-  // a number behind it. Wiring it in is out of scope here (#1134 edits no test
-  // and no config), and the day someone does, this becomes 0.
+  // UT-G1 was 1 here: `packages/ui-components/tsconfig.test.json` existed but the
+  // root `typecheck` script did not run it. #1135 wired it in, so the breach is
+  // gone — see that issue for the fixture work that came with it.
   'packages/ui-components': {
     'UT-A1': 0,
     'UT-B1': 0,
     'UT-C2': 0,
     'UT-E4': 0,
-    'UT-G1': 1,
+    'UT-G1': 0,
     'UT-G3': 0,
     'UT-G4': 0,
   },

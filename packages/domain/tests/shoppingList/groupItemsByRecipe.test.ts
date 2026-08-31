@@ -76,7 +76,7 @@ describe('groupItemsByRecipe', () => {
   it('falls back to a generic name when a recipe source has no label', () => {
     const items = [makeItem('i1', { sources: [recipeSource('r1')] })];
     const result = groupItemsByRecipe(items);
-    expect(result.recipes[0].recipeName).toBe('Recipe');
+    expect(result.recipes[0]!.recipeName).toBe('Recipe');
   });
 
   it('orders items within a recipe and manual bucket by createdAt', () => {

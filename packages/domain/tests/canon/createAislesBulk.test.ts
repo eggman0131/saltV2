@@ -42,7 +42,7 @@ describe('createAislesBulk', () => {
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
     expect(result.value).toHaveLength(1);
-    expect(result.value[0].name).toBe('Dairy');
+    expect(result.value[0]!.name).toBe('Dairy');
   });
 
   it('filters blank names before processing', async () => {

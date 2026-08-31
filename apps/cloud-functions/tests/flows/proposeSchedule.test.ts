@@ -3,8 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockGenerate, mockGet, mockDoc, mockCollection, mockFlowModel, aiTimeoutOptions } =
   vi.hoisted(() => {
     const mockGet = vi.fn();
-    const mockDoc = vi.fn(() => ({ get: mockGet }));
-    const mockCollection = vi.fn(() => ({ doc: mockDoc }));
+    // Typed, not inferred: the suite asserts on WHICH collection and document
+    // ids the flow asked for, and an inferred zero-argument mock records every
+    // call as an empty tuple (#1135).
+    const mockDoc = vi.fn<(id: string) => { get: typeof mockGet }>(() => ({ get: mockGet }));
+    const mockCollection = vi.fn<(name: string) => { doc: typeof mockDoc }>(() => ({
+      doc: mockDoc,
+    }));
     return {
       mockGenerate: vi.fn(),
       mockGet,
@@ -236,7 +241,7 @@ describe('proposeSchedule', () => {
   it('caps the thinking budget and warms the temperature', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
     // The spike: 65–108 s uncapped against 19–31 s capped, at unchanged quality.
-    expect(mockGenerate.mock.calls[0][0].config).toEqual({
+    expect(mockGenerate.mock.calls[0]![0].config).toEqual({
       temperature: 0.4,
       thinkingConfig: { thinkingBudget: 4096 },
     });
@@ -262,14 +267,14 @@ describe('proposeSchedule — no timestamps, no grams', () => {
     // computes the weights. A model asked for either would only be a second, worse
     // answer to a question already answered exactly.
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain('NO CLOCK TIMES');
     expect(system).toContain('NO WEIGHTS');
   });
 
   it('shows the formula as percentages with labels, and no grams anywhere', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    const prompt = String(mockGenerate.mock.calls[0][0].prompt);
+    const prompt = String(mockGenerate.mock.calls[0]![0].prompt);
     expect(prompt).toContain('[ing-yeast] Instant yeast — 1.2%');
     expect(prompt).not.toMatch(/\d+\s?g\b/);
   });
@@ -284,23 +289,23 @@ describe('proposeSchedule — the four things the prompt must say', () => {
     // Quoted from the ONE definition, by importing the constant its sibling flow
     // publishes rather than by paraphrasing it a second time. The spike's headline
     // defect was the bake being labelled differently on each of three recipes.
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain(STAGE_KIND_RULES);
     expect(system).toContain('THE BAKE IS `active`. THE PREHEAT IS `wait`.');
   });
 
   it('forbids a stage STARTING inside quiet hours', () => {
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain("NO STAGE MAY *START* DURING THE HOUSEHOLD'S QUIET HOURS");
   });
 
   it('sanctions the preheat nesting inside the final proof', () => {
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain('The preheat MAY sit inside the final proof');
   });
 
   it('says that declining to restructure is a real answer', () => {
-    const system = String(mockGenerate.mock.calls[0][0].system);
+    const system = String(mockGenerate.mock.calls[0]![0].system);
     expect(system).toContain('DOING NOTHING IS A REAL ANSWER');
     expect(system).toContain('RETURN IT UNCHANGED');
   });
@@ -313,25 +318,25 @@ describe('proposeSchedule — the household constraint', () => {
       targetEndAtLocal: '2026-08-15T07:30',
       quietHours: { fromHour: 22, toHour: 7 },
     });
-    expect(String(mockGenerate.mock.calls[0][0].prompt)).toContain('22:00 to 07:00');
+    expect(String(mockGenerate.mock.calls[0]![0].prompt)).toContain('22:00 to 07:00');
   });
 
   it('falls back to the household default when none is given', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
     // The spike's own phrasing: nobody is awake between 23:00 and 06:00.
-    expect(String(mockGenerate.mock.calls[0][0].prompt)).toContain('23:00 to 06:00');
+    expect(String(mockGenerate.mock.calls[0]![0].prompt)).toContain('23:00 to 06:00');
   });
 
   it('gives the target as a wall clock with its weekday, never as an instant', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    expect(String(mockGenerate.mock.calls[0][0].prompt)).toContain(
+    expect(String(mockGenerate.mock.calls[0]![0].prompt)).toContain(
       'Finished by: Saturday 2026-08-15 at 07:30',
     );
   });
 
   it('shows the existing process with its stage ids, for the citations', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    const prompt = String(mockGenerate.mock.calls[0][0].prompt);
+    const prompt = String(mockGenerate.mock.calls[0]![0].prompt);
     expect(prompt).toContain(
       '[stage-bulk] · wait · "Bulk ferment" · 90 min · 20 °C · (until doubled) · step step-2',
     );

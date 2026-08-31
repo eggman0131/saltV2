@@ -48,9 +48,9 @@ describe('MatchLogBuilder', () => {
     const entry = builder.complete('log-2', 'ai_arbitrated', 'item-7');
 
     expect(entry.stages).toHaveLength(2);
-    expect(entry.stages[0].stage).toBe(1);
-    expect(entry.stages[1].stage).toBe(2);
-    expect(entry.stages[1].passed).toBe(false);
+    expect(entry.stages[0]!.stage).toBe(1);
+    expect(entry.stages[1]!.stage).toBe(2);
+    expect(entry.stages[1]!.passed).toBe(false);
   });
 
   it('sets schemaVersion to 2', () => {

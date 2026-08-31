@@ -1233,7 +1233,7 @@ describe('saveShoppingListItem — the trace stamp (#362)', () => {
   it('writes no traceContext key at all when none is passed', async () => {
     await barrel.saveShoppingListItem('list-1', LIST_ITEM);
 
-    expect(h.ops[0].data).not.toHaveProperty('traceContext');
+    expect(h.ops[0]!.data).not.toHaveProperty('traceContext');
   });
 });
 

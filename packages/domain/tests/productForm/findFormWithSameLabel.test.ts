@@ -10,6 +10,7 @@ function form(overrides: Partial<ProductForm> & { id: string; label: string }): 
   return {
     schemaVersion: 1,
     matchers: [],
+    thumbnail: null,
     parentCanonId: 'canon-lime',
     yield: { formUnit: 'ml', amountPerParent: 30 },
     needs_approval: false,

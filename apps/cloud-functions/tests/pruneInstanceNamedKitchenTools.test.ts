@@ -13,7 +13,8 @@ import { TOOLS } from '../scripts/kitchen-tool-vocabulary.mjs';
 // neither a test nor a typecheck — `apps/cloud-functions/tsconfig.json`
 // includes only `src/**`, and no test imported the script — so this is also
 // the fix for the coverage gap that let the finding through, not just the
-// finding itself.
+// finding itself. Since #1135 this TEST is typechecked (`tsconfig.test.json`);
+// the `scripts/` tree it imports is still not, and that is issue #1118.
 
 const SEED: readonly SeedTool[] = TOOLS as readonly SeedTool[];
 const SEED_IDS = new Set(SEED.map((tool) => tool.id));

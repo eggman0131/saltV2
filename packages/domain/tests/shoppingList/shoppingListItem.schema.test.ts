@@ -98,7 +98,7 @@ describe('ShoppingListItemSchema formDemand field (back-compat)', () => {
       formDemand: [{ formId: 'pf-lime-zest', parentCount: 1.2 }],
     });
     expect(result.success).toBe(true);
-    expect(result.success && result.data.formDemand?.[0].parentCount).toBe(1.2);
+    expect(result.success && result.data.formDemand?.[0]!.parentCount).toBe(1.2);
   });
 
   it('parses an empty formDemand array (degrades to legacy, not to zero demand)', () => {

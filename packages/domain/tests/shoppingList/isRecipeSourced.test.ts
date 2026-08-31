@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isRecipeSourced } from '../../src/index.js';
 import type { ShoppingListItem, SourceRef } from '../../src/index.js';
 
-function item(sources: readonly SourceRef[]): ShoppingListItem {
+function item(sources: SourceRef[]): ShoppingListItem {
   return {
     id: 'i1',
     rawText: 'whole chicken',

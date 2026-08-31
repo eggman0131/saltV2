@@ -1,0 +1,25 @@
+{
+  // The unit suite's own typecheck (issue #1135, closing UT-G1 for this
+  // package). `tsconfig.json` is the BUILD config — `rootDir: "src"`,
+  // `composite`, emits to `dist` — so it can never include `tests/**`; a
+  // composite project cannot see files outside its `rootDir`. Wired into the
+  // root `typecheck` script, which is the half that matters: a config that
+  // merely exists is checked by nothing.
+  //
+  // `src` is in scope alongside `tests` so tests are checked against the real
+  // modules under test — both runtime subpaths (`src/index.ts` for the browser,
+  // `src/server/` for CF) and the shared schema mapper they use.
+  //
+  // No `types: ["node"]` here, unlike `firebase-sync` and `ui-components`: this
+  // package's tests import no `node:*` builtin, and the ambient `process` its
+  // server subpath uses already resolves through the OTel declaration graph.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": false,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}

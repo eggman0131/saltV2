@@ -35,8 +35,10 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort & { item
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 2,
+    schemaVersion: 5,
     synonyms: [],
+    shoppingBehavior: 'needed',
+    unit: 'count',
     aisleId: null,
     thumbnail: null,
     embedding: null,
@@ -56,7 +58,7 @@ describe('deleteAisles', () => {
     const result = await deleteAisles({ ids: ['a1'] }, aisleStore, canonStore);
     expect(result.kind).toBe('ok');
     expect(aisleStore.items).toHaveLength(1);
-    expect(aisleStore.items[0].id).toBe('a2');
+    expect(aisleStore.items[0]!.id).toBe('a2');
   });
 
   it('sets aisleId=null and needs_approval=true on affected canon items', async () => {

@@ -6,11 +6,15 @@ import { MATCH_THRESHOLDS } from '../../src/canon/queries/matchThresholds.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
+    unit: 'count',
+    updatedAt: '',
     ...overrides,
   };
 }
