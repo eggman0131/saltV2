@@ -100,7 +100,7 @@ describe('Checkbox', () => {
       render(Checkbox, { props: { label: 'x', checked: 'indeterminate', onCheckedChange } });
       screen.getByRole('checkbox').focus();
       await userEvent.keyboard(' ');
-      const calledWith = onCheckedChange.mock.calls[0][0];
+      const calledWith = onCheckedChange.mock.calls[0]![0];
       expect(calledWith).toBe(true);
     });
   });

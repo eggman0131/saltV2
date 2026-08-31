@@ -58,7 +58,9 @@ describe('OTLP wire parity — browser vs server distributed leg', () => {
   // #1011 settled the fallback: a span carrying no numeric kind maps to the OTLP
   // wire's SPAN_KIND_INTERNAL (1) on BOTH legs, via the shared toWireSpanKind.
   it('produces an identical OtlpSpan when kind is absent (both default INTERNAL)', () => {
-    const span = sharedSpan({ kind: undefined });
+    // `kind` ABSENT, not `kind: undefined`: `exactOptionalPropertyTypes` is on,
+    // and an omitted key is what a span carrying no kind really looks like.
+    const { kind: _omitted, ...span } = sharedSpan();
     const browser = toBrowserOtlpSpan(asBrowserSpan(span));
     expect(browser.kind).toBe(1);
     expect(browser).toEqual(toDistributedOtlpSpan(span));

@@ -1,7 +1,20 @@
 import { afterAll, expect } from 'vitest';
 import * as axeMatchers from 'vitest-axe/matchers';
+import type { AxeMatchers } from 'vitest-axe/matchers';
 import '@testing-library/jest-dom/vitest';
 expect.extend(axeMatchers);
+
+// Declare what `expect.extend` above actually registered. Without this the 56
+// `expect(await axe(...)).toHaveNoViolations()` calls in this tree are TS2339s
+// (issue #1135) — the matcher exists at runtime and is unknown to the compiler.
+// vitest-axe ships its own augmentation at `vitest-axe/extend-expect`, but it
+// targets the `namespace Vi` globals Vitest dropped, so importing it types
+// nothing under Vitest 4. The shape below mirrors what
+// `@testing-library/jest-dom/vitest` does for its matchers on this Vitest.
+declare module 'vitest' {
+  interface Assertion extends AxeMatchers {}
+  interface AsymmetricMatchersContaining extends AxeMatchers {}
+}
 
 // No `configure({ asyncUtilTimeout })` here, deliberately (issue #793). The
 // web-pwa project sets one because its waits were measurably dying on the 1000ms

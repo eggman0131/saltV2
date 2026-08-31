@@ -29,8 +29,8 @@ describe('useId', () => {
   it('counter increments monotonically', () => {
     const a = useId('x');
     const b = useId('x');
-    const numA = parseInt(a.split('-')[1], 10);
-    const numB = parseInt(b.split('-')[1], 10);
+    const numA = parseInt(a.split('-')[1]!, 10);
+    const numB = parseInt(b.split('-')[1]!, 10);
     expect(numB).toBe(numA + 1);
   });
 });
