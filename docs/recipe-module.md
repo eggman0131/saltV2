@@ -515,7 +515,8 @@ not chime for them.
 
 ### Schema extensions (kit, issue #882)
 
-Three additive fields carry the "You'll need" strip: `kit: RecipeKitEntry[]`
+Three additive fields carry the recipe page's Equipment tab (a "You'll need" chip
+card above the tab strip until issue #1140): `kit: RecipeKitEntry[]`
 (`.default([])`), and two control-only stamps, `kitInferredAt?: number` and
 `kitRequestedAt?: number`. All three back-compat on read for the usual reason —
 a required field would empty the list of recipes written before this shipped.

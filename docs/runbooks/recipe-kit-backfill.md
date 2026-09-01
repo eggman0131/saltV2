@@ -130,11 +130,19 @@ is exactly what a first attempt at this did.
 front: **may an accessory be named as kit?** The manifest models accessories with an
 `owned` flag, and the evidence recipe's method names blades — _"the straight blade"_,
 _"4 mm slicing disc"_. Naming them would be genuinely useful and needs no schema change;
-it also risks a longer, noisier strip.
+it also risks a longer, noisier list.
 
-Judge it on the `staging --verify` output, before the production run. If it needs a
-change, that is a prompt amendment in `identifyRecipeKit.ts`, deployed, and staging
-re-run — not a change to this script. Record the decision on the issue either way.
+**Answered by the staging sample of 2026-08-31: yes, and by BARE NAME.** `Rice Spoon`,
+`Hand Blender Attachment`, `Oven Sheet Pan` and `Wire Oven Rack` are all live kit labels
+with no maker attached — which `resolveEquipmentItem` refuses by design, so the flow
+needed no change and got none. The noise this risked is answered at display time
+instead: `groupKitByEquipment` (`packages/domain/src/recipe/queries/`, issue #1140)
+folds such a label under its appliance when — and only when — that appliance heads a row
+in the same recipe's kit. Nothing is stored, so this stays reversible.
+
+If a future sample argues for a different answer, that is a prompt amendment in
+`identifyRecipeKit.ts`, deployed, and staging re-run — not a change to this script.
+Record the decision on the issue either way.
 
 The second open item is the **ASSUMPTION** in #954: when a method says only "food
 processor" and several manifest items qualify, the prompt tells the flow to pick the best

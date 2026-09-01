@@ -234,6 +234,7 @@ export {
   expandForPlanner,
   mergePlannerRecipeIds,
   kitByStep,
+  groupKitByEquipment,
   findProducingRecipes,
   diffRecipe,
   diffWords,
@@ -244,6 +245,7 @@ export {
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
 export type { CookShapeSegment } from './recipe/index.js';
+export type { KitEquipmentGroup } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
 export type { NullableStringChange, StepChange, RecipeDiff } from './recipe/index.js';
