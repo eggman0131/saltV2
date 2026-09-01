@@ -98,10 +98,21 @@ export type DomainError =
 // never be derived from its schema and can only drift. Document shapes live in
 // `@salt/domain/schemas`. The two enums below stay because they are shared
 // vocabulary with real importers, not document shapes.
+//
+// SINGLE SOURCE FOR THE VOCABULARY (issue #1145). Each list used to be typed
+// out as a union here, and again — as an inline `z.enum([...])` array literal —
+// at every one of the eleven schema sites in `packages/domain/src/schemas/`
+// that validate it. The `as const` tuple below is now the one place either
+// list is written; `ShoppingBehavior`/`CanonItemUnit` are derived from it here,
+// and the domain schemas derive their `z.enum` from it too (Phase 4). Rule 9 is
+// why the tuple lives here rather than in domain: both types have ~40 real
+// importers across `domain`, `web-pwa` services and `.svelte` admin pages, and
+// this package cannot import `@salt/domain` to read it back out of a schema.
+export const SHOPPING_BEHAVIORS = ['stocked', 'check', 'needed'] as const;
+export type ShoppingBehavior = (typeof SHOPPING_BEHAVIORS)[number];
 
-export type ShoppingBehavior = 'stocked' | 'check' | 'needed';
-
-export type CanonItemUnit = 'g' | 'ml' | 'count';
+export const CANON_ITEM_UNITS = ['g', 'ml', 'count'] as const;
+export type CanonItemUnit = (typeof CANON_ITEM_UNITS)[number];
 
 export const ErrorCode = {
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',

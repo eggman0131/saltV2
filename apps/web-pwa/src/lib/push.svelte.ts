@@ -1,4 +1,5 @@
 import { savePushSubscription, deletePushSubscription } from '@salt/firebase-sync';
+import { pushSubscriptionId } from '@salt/domain';
 import type { PushSubscriptionDoc } from '@salt/domain/schemas';
 
 // Cook-timer push subscription lifecycle (issue #544). Uses the native browser
@@ -105,7 +106,7 @@ class PushStore {
       const deviceHash = await deviceHashFromEndpoint(sub.endpoint);
       const now = new Date().toISOString();
       const doc: PushSubscriptionDoc = {
-        id: `${uid}_${deviceHash}`,
+        id: pushSubscriptionId(uid, deviceHash),
         schemaVersion: 1,
         ownerUid: uid,
         endpoint: sub.endpoint,
@@ -140,7 +141,7 @@ class PushStore {
       if (sub) {
         const deviceHash = await deviceHashFromEndpoint(sub.endpoint);
         await sub.unsubscribe();
-        await deletePushSubscription(`${uid}_${deviceHash}`);
+        await deletePushSubscription(pushSubscriptionId(uid, deviceHash));
       }
       this.enabled = false;
     } catch {

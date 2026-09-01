@@ -122,16 +122,19 @@ test.describe('canon real-time match — onShoppingListItemWrite trigger', () =>
     expect(matched!.notes).toBe('');
 
     // NOTE on the DOM: we deliberately do NOT assert which rendered row/aisle
-    // bucket the matched item lands in. Once matched, the row's grouping and
-    // display label are owned by the page's *local* canon snapshot (canonMap /
-    // liveCanonIds in ShoppingListPage.svelte). Whether the seeded canon has
-    // propagated into that local snapshot at the instant the trigger's write-back
-    // re-renders the list is a cross-context canon-sync race — the item can
-    // momentarily render in no visible bucket. That timing is exactly the flake
-    // source this suite's predecessor specs warn about (#199), and it is NOT the
-    // trigger behaviour under test. The store snapshot above is the deterministic,
-    // observable proof of the trigger's full match + rewrite; we assert that and
-    // its persistence, not the transient grouping.
+    // bucket the matched item lands in. `groupItemsByAisle` (#1149) already
+    // guarantees the item lands in a visible bucket either way — a canon match
+    // whose aisleId isn't yet in the page's local aisle map routes to `other`
+    // rather than vanishing — so there is no "no visible bucket" window to
+    // race against. What's still timing-dependent is *which* bucket: the row's
+    // grouping and display label are owned by the page's *local* canon snapshot
+    // (canonMap / liveCanonIds in ShoppingListPage.svelte), and whether the
+    // seeded canon has propagated into that snapshot by the instant the
+    // trigger's write-back re-renders the list is a cross-context sync race.
+    // That's not the trigger behaviour under test, so we don't assert it. The
+    // store snapshot above is the deterministic, observable proof of the
+    // trigger's full match + rewrite; we assert that and its persistence, not
+    // the transient grouping.
 
     // ── Persistence: the rewritten state survives a reload ───────────────────
     const currentUrl = page.url();

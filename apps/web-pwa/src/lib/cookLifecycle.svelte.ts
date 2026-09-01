@@ -1,7 +1,7 @@
 import { fromStore } from 'svelte/store';
 import { push } from 'svelte-spa-router';
 import { trackUsageEvent } from '@salt/observability';
-import { makeFreshSession as buildFreshSession } from '@salt/domain';
+import { makeFreshSession as buildFreshSession, cookSessionId } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { CookSessionDoc } from '@salt/domain/schemas';
 import { auth } from './auth.svelte.js';
@@ -71,7 +71,7 @@ export function createCookLifecycle(options: CookLifecycleOptions) {
   const uid = $derived(auth.user?.uid ?? null);
   // Deterministic session id — one session per user per recipe, and the SAME one
   // whichever of the two screens is cooking it.
-  const sessionId = $derived(uid ? `${options.recipeId()}_${uid}` : null);
+  const sessionId = $derived(uid ? cookSessionId(options.recipeId(), uid) : null);
 
   // ─── Subscription lifecycle ────────────────────────────────────────────────────
   // Re-subscribe whenever the session id changes (uid resolves, or the route param

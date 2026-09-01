@@ -9,7 +9,7 @@ import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
 import {
   getShoppingListItems,
-  seedAisles,
+  seedAislesBeforeBoot,
   seedCanonItem,
   seedShoppingListBeforeBoot,
 } from './helpers/seed';
@@ -177,15 +177,21 @@ test.describe('shopping list — multi-list', () => {
     const firstList = await seedShoppingListBeforeBoot('Weekly shop');
     const firstListUrl = `/#/shopping/${firstList.id}`;
 
+    // The aisle the canon below is filed under. Seeded before boot for the same
+    // reason as the list above — see `seedAislesBeforeBoot` for the measured
+    // drop hazard a post-attach bridge write carries here (NF-C4). This call
+    // WAS the bridge `seedAisles`, and losing it left the item matched to a
+    // canon whose aisle the page did not hold: issue #1149's Signature A.
+    const [condiments] = await seedAislesBeforeBoot(['Condiments']);
+
     await gotoAndSignIn(page, email);
 
-    // Seed an aisle + a canon item the entry will match by exact name, so the
-    // item is identified before the move and the move has an identity to keep
+    // Seed a canon item the entry will match by exact name, so the item is
+    // identified before the move and the move has an identity to keep
     // (issue #699). "Soy Sauce" and the entry "soy sauce" share a normalised
     // form → stage-1 direct hit, no AI (NF-E3).
     await page.goto('/');
     await waitForBridge(page);
-    const [condiments] = await seedAisles(page, ['Condiments']);
     const soyCanon = await seedCanonItem(page, {
       name: 'Soy Sauce',
       aisleId: condiments!.id,
@@ -209,8 +215,20 @@ test.describe('shopping list — multi-list', () => {
     // Add an item
     await page.getByTestId('shopping-item-input').fill('soy sauce');
     await page.getByTestId('shopping-item-add-btn').click();
+    // `.first()` because this gate asserts the add LANDED, not which bucket the
+    // row is in — and the #571 match reveal legitimately renders it in two. When
+    // the trigger's match arrives, `out:collapseOut` keeps the outgoing OTHER
+    // copy mounted for `REVEAL_OUT_MS` (300ms, ShoppingItemRow.svelte:130) while
+    // the aisle copy mounts immediately, so the same `data-item-id` is under
+    // both `shopping-other` and `shopping-aisle-group` for that window — and
+    // e2e runs with motion on (playwright.config.ts `reducedMotion:
+    // 'no-preference'`), so CI sees it. A strict-mode violation is a hard error
+    // that aborts the poll rather than retrying, which is why this read flaked
+    // (issue #1149, Signature B). The assertions carrying this test's meaning
+    // read the store, not the DOM (`waitForMatched`, `expectMatchPreserved`,
+    // NF-E2), and this one stays web-first retrying (NF-A3).
     await expect(
-      page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }),
+      page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }).first(),
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     // Let the trigger identify it before moving — otherwise the move would be
@@ -262,6 +280,11 @@ test.describe('shopping list — multi-list', () => {
   }, testInfo) => {
     test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // Before boot — same hazard as the sibling test above, and not currently
+    // implicated by telemetry here, only armed with it (issue #1149).
+    const [condiments] = await seedAislesBeforeBoot(['Condiments']);
+
     await gotoAndSignIn(page, email);
 
     // Canon for the unchanged-text move at the end of this test (issue #699),
@@ -270,7 +293,6 @@ test.describe('shopping list — multi-list', () => {
     // flow below behaves exactly as it did before.
     await page.goto('/');
     await waitForBridge(page);
-    const [condiments] = await seedAisles(page, ['Condiments']);
     const vinegarCanon = await seedCanonItem(page, {
       name: 'Rice Vinegar',
       aisleId: condiments!.id,
@@ -333,13 +355,16 @@ test.describe('shopping list — multi-list', () => {
     const vinegarCanonId = await waitForMatched(page, 'rice vinegar');
     expect(vinegarCanonId).toBe(vinegarCanon.id);
 
-    // `.first()` because the store flips to `matched` before the page's local
-    // canon snapshot has regrouped, and in that window the row is rendered under
-    // BOTH its aisle and OTHER — the cross-context canon-sync race
-    // canon-realtime-match.spec.ts documents, which is why that spec refuses to
-    // assert which bucket a matched row lands in. Either instance is the same
-    // item and opens the same sheet, so the edit is unambiguous; the assertion
-    // that matters is made against the store after the move.
+    // `.first()` because the #571 match reveal legitimately renders this row in
+    // two places at once: when the trigger's match arrives, `out:collapseOut`
+    // keeps the outgoing OTHER copy mounted for `REVEAL_OUT_MS` (300ms,
+    // ShoppingItemRow.svelte:130) while the aisle copy mounts immediately, so
+    // the same `data-item-id` is under both `shopping-other` and
+    // `shopping-aisle-group` for that window — and e2e runs with motion on
+    // (playwright.config.ts `reducedMotion: 'no-preference'`), so CI sees it.
+    // Either instance is the same item and opens the same sheet, so the edit is
+    // unambiguous; the assertion that matters is made against the store after
+    // the move.
     await vinegarRow.getByTestId('shopping-item-edit-btn').first().click();
     // The text field is left exactly as it is — only the destination changes.
     await page.getByTestId('shopping-edit-move-select').click();
