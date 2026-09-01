@@ -582,10 +582,10 @@ describe.skipIf(!reachable)('firestore.rules — chatSessions ownerUid (issue #2
 // cook-mode e2e only ever runs as a single user, so it exercises the permit side
 // and never the deny side — that is the gap these cover (issue #558).
 //
-// The deterministic id (`${recipeId}_${uid}`) is a convention, not an
-// enforcement: the rules never parse the id, so every assertion here is about
-// the `ownerUid` FIELD. A doc id that embeds another user's uid buys no access,
-// and one that embeds your own buys none either if the field disagrees.
+// The deterministic id (`cookSessionId`'s `${recipeId}_${uid}`) is a convention,
+// not an enforcement: the rules never parse the id, so every assertion here is
+// about the `ownerUid` FIELD. A doc id that embeds another user's uid buys no
+// access, and one that embeds your own buys none either if the field disagrees.
 describe.skipIf(!reachable)('firestore.rules — cookSessions ownerUid (issue #558)', () => {
   let testEnv: RulesTestEnvironment;
 
