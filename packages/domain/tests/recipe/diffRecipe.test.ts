@@ -481,6 +481,69 @@ describe('diffRecipe', () => {
     ]);
   });
 
+  it('gives one existing item to only one draft item when both want it (#1137)', () => {
+    // Two draft lines both score 0.75 against the single existing line, and there
+    // is no second existing line to rehouse the loser onto. The global assignment
+    // has to give up on one of them rather than double-pair: the first in document
+    // order takes the edit, the other is an honest addition.
+    const before = withIngredients(recipe(), [newIngredient('i-flour', 'plain white flour')]);
+    const after = withIngredients(recipe(), [
+      newIngredient('d-1', 'plain white flour, sifted'),
+      newIngredient('d-2', '200g plain white flour'),
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([
+      { id: 'd-1', from: 'plain white flour', to: 'plain white flour, sifted' },
+    ]);
+    expect(diff.ingredients.added).toEqual([{ id: 'd-2', rawText: '200g plain white flour' }]);
+    expect(diff.ingredients.removed).toEqual([]);
+  });
+
+  it('declines an AMBIGUOUS canon id on the DRAFT side too (#1137)', () => {
+    // The mirror of the case above: one existing line, two draft lines, all three
+    // on the same canon item. Which of the two is "the" edit is unknowable, so the
+    // canon pass declines and the fuzzy scores decide — and neither clears.
+    const canon = { canonId: 'canon-tomato', matchState: 'matched' } as const;
+    const before = withIngredients(recipe(), [
+      { ...newIngredient('i-a', 'plum tomatoes'), ...canon },
+    ]);
+    const after = withIngredients(recipe(), [
+      { ...newIngredient('i-b', 'cherry tomatoes'), ...canon },
+      { ...newIngredient('i-c', 'sun dried tomatoes'), ...canon },
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([]);
+    expect(diff.ingredients.added).toEqual([
+      { id: 'i-b', rawText: 'cherry tomatoes' },
+      { id: 'i-c', rawText: 'sun dried tomatoes' },
+    ]);
+    expect(diff.ingredients.removed).toEqual([{ id: 'i-a', rawText: 'plum tomatoes' }]);
+  });
+
+  it('scores the raw words when normalisation would empty a side (#1137)', () => {
+    // "about 250 g" is nothing BUT quantity words, so dropping them leaves an
+    // empty set that would score 0 against everything and make the line
+    // permanently unpairable. The raw token sets are scored instead (0.667 here),
+    // so normalisation cannot take away a pairing it was never asked about.
+    const before = withIngredients(recipe(), [newIngredient('i-old', 'about 250 g')]);
+    const after = withIngredients(recipe(), [newIngredient('i-new', '250 g')]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([{ id: 'i-new', from: 'about 250 g', to: '250 g' }]);
+    expect(diff.ingredients.added).toEqual([]);
+    expect(diff.ingredients.removed).toEqual([]);
+  });
+
+  it('never pairs an item with no words at all (#1137)', () => {
+    // An all-punctuation line tokenises to nothing. "Clearly the same item" is not
+    // a thing an empty set can be, so it scores 0 and stays an honest remove.
+    const before = withIngredients(recipe(), [newIngredient('i-old', '—')]);
+    const after = withIngredients(recipe(), [newIngredient('i-new', '200g plain flour')]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([]);
+    expect(diff.ingredients.added).toEqual([{ id: 'i-new', rawText: '200g plain flour' }]);
+    expect(diff.ingredients.removed).toEqual([{ id: 'i-old', rawText: '—' }]);
+  });
+
   it('assigns fuzzy pairs globally, not greedily in document order (#1137)', () => {
     // The first draft item scores 0.75 against BOTH existing items, and taking
     // the one it happens to meet first strands the second draft item — which had

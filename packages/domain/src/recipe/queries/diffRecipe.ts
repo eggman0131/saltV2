@@ -217,12 +217,15 @@ function contentSimilarity(a: string, b: string): number {
 // are offered in and the order of each item's candidate list.
 function maximiseMatching(candidates: readonly number[][], existingCount: number): number[] {
   const assignedTo = new Array<number>(existingCount).fill(-1);
+  // Both index reads below are in range by construction — `draftIndex` walks
+  // `candidates`, and every `existingIndex` came out of a candidate list the
+  // caller built from `fuzzyExisting.map((_, index) => …)`.
   const augment = (draftIndex: number, visited: boolean[]): boolean => {
-    for (const existingIndex of candidates[draftIndex] ?? []) {
+    for (const existingIndex of candidates[draftIndex]!) {
       if (visited[existingIndex]) continue;
       visited[existingIndex] = true;
-      const holder = assignedTo[existingIndex];
-      if (holder === undefined || holder === -1 || augment(holder, visited)) {
+      const holder = assignedTo[existingIndex]!;
+      if (holder === -1 || augment(holder, visited)) {
         assignedTo[existingIndex] = draftIndex;
         return true;
       }
