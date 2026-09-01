@@ -28,11 +28,11 @@
     "@salt/domain": "workspace:*",
     "@salt/observability": "workspace:*",
     "@salt/shared-types": "workspace:*",
-    "firebase-admin": "^14.2.0",
+    "firebase-admin": "^14.3.0",
     "firebase-functions": "^7.3.2",
     "genkit": "^1.41.0",
-    "resend": "^6.20.0",
-    "sharp": "^0.35.3",
+    "resend": "^6.25.0",
+    "sharp": "^0.35.4",
     "web-push": "^3.6.7"
   }
 }
