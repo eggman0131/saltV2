@@ -327,6 +327,145 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(canonDocsNamed('Juice')).toHaveLength(0);
   });
 
+  // ── The label dedupe is scoped to the parent the proposal named (issue #1127) ─
+  //
+  // The pair below states one claim and its boundary, and neither half is
+  // decoration: the first is the fix, the second is the part of the reported
+  // symptom the fix does NOT reach. Read them together before widening either.
+
+  it('mints on the NAMED parent instead of binding to a same-labelled form on another one', async () => {
+    // "Zest" is stored on Lemon. A recipe asks for a lime's zest, and the model
+    // proposes `Zest` on `Lime`. Before #1127 the covering check compared labels
+    // across the WHOLE form table, so the proposal was absorbed by the Lemon form
+    // and the ingredient was bound to Lemon — the shopping list said buy lemons.
+    // Zest of a lemon and zest of a lime are two different things.
+    seed('canonItems', 'canon-lemon', canonDoc('canon-lemon', 'Lemon'));
+    seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
+    seed('productForms', 'lemon-zest', {
+      id: 'lemon-zest',
+      schemaVersion: 1,
+      matchers: ['lemon zest'],
+      parentCanonId: 'canon-lemon',
+      label: 'Zest',
+      yield: { formUnit: 'g', amountPerParent: 5 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'grated peel of lime',
+      label: 'Zest',
+      formUnit: 'g',
+      amountPerParent: 5,
+    });
+
+    // The ingredient text deliberately shares no token-run with the stored
+    // form's label or matchers, so it reaches arbitration rather than being
+    // claimed earlier — see the boundary test below for why that matters.
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'grated peel of 1 lime' }],
+    })) as Array<{ kind: string; value?: { decision: string; item: { id: string } } }>;
+
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+
+    // A second Zest form was minted — on Lime, not beside the Lemon one.
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(2);
+    const minted = forms.find((f) => f.id !== 'lemon-zest')!;
+    expect(minted.label).toBe('Zest');
+    expect(minted.parentCanonId).toBe('canon-lime');
+    // The Lemon form is untouched.
+    expect(forms.find((f) => f.id === 'lemon-zest')!.parentCanonId).toBe('canon-lemon');
+
+    // And the ingredient bound to the parent the recipe actually named.
+    expect(result[0]!.kind).toBe('ok');
+    expect(result[0]!.value!.decision).toBe('matched');
+    expect(result[0]!.value!.item.id).toBe('canon-lime');
+    // No duplicate Lime canon minted on the way.
+    expect(canonDocsNamed('Lime')).toHaveLength(1);
+  });
+
+  it('still dedupes by label on a parent minted EARLIER IN THE SAME BATCH', async () => {
+    // The edge the parent scoping could have broken. Scoping the label check to a
+    // parent id means the caller has to know that id without minting one — and
+    // for a brand-new parent there is nothing in the canon list to look it up in.
+    // The in-batch mint cache is the second source, so two ingredients naming the
+    // same component of the same NEW parent still produce one form, not two
+    // (issue #854's dedupe, which #1127 must not cost).
+    mockProposal.mockImplementation((input: { ingredientName: string }) =>
+      Promise.resolve({
+        kind: 'form',
+        parentName: 'Lime',
+        matcher: input.ingredientName.includes('skin')
+          ? 'outer skin of lime'
+          : 'grated peel of lime',
+        label: 'Zest',
+        formUnit: 'g',
+        amountPerParent: 5,
+      }),
+    );
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'grated peel of 1 lime' }, { rawName: 'outer skin of 1 lime' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    expect(mockProposal).toHaveBeenCalledTimes(2);
+    const limes = canonDocsNamed('Lime');
+    expect(limes).toHaveLength(1);
+    const limeId = limes[0]!.id as string;
+
+    // One Zest form on the minted parent — the second proposal was absorbed.
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.label).toBe('Zest');
+    expect(forms[0]!.parentCanonId).toBe(limeId);
+    expect(result[0]!.value!.item.id).toBe(limeId);
+    expect(result[1]!.value!.item.id).toBe(limeId);
+  });
+
+  it('KNOWN LIMIT — a bare-noun label still crosses parents before arbitration runs', async () => {
+    // The boundary of the claim above, pinned rather than asserted away
+    // (CLAUDE.md Hard rule 12). #1127 scopes the PROPOSAL path only. It does not
+    // reach the pre-arbitration bind at `canonicaliseRecipeIngredients.ts:165`,
+    // because `resolveProductForm` matches on `[form.label, ...form.matchers]`
+    // (`resolveProductForm.ts:42`) — so a bare-noun label like `Zest` is itself a
+    // global, parent-blind matching phrase. `normaliseName('zest of 1 lime')` is
+    // `'zest of lime'`, which contains the token `zest`, so the Lemon form claims
+    // the ingredient before any proposal is asked for.
+    //
+    // This is the issue's own headline reproduction, and it is UNCHANGED by
+    // #1127: `arbitrationCalls: 0`, `boundTo: 'canon-lemon'`. A follow-up defect
+    // split from #1127 owns it (measurements in that issue's Phase-1 deviation
+    // comment); fixing it changes how every ingredient in the app resolves to a
+    // form, which is why it is not bolted on here.
+    //
+    // WHEN THIS TEST GOES RED, the follow-up has landed: delete it and widen the
+    // boundary paragraph in `findFormWithSameLabel`'s header, which points here.
+    seed('canonItems', 'canon-lemon', canonDoc('canon-lemon', 'Lemon'));
+    seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
+    seed('productForms', 'lemon-zest', {
+      id: 'lemon-zest',
+      schemaVersion: 1,
+      matchers: ['lemon zest'],
+      parentCanonId: 'canon-lemon',
+      label: 'Zest',
+      yield: { formUnit: 'g', amountPerParent: 5 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'zest of 1 lime' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    // Arbitration never ran, so nothing #1127 changed was consulted at all.
+    expect(mockProposal).not.toHaveBeenCalled();
+    expect(productFormDocs()).toHaveLength(1);
+    expect(result[0]!.value!.item.id).toBe('canon-lemon');
+  });
+
   it('still mints when the proposal names a component no existing form is called', async () => {
     // The dedupe is EQUALITY on the label, not a blanket "already have a form on
     // this parent" — a genuinely different component of the same parent is still

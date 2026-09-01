@@ -1,7 +1,8 @@
 import { normaliseName } from '../../canon/index.js';
 import type { ProductForm } from '../entities/ProductForm.js';
 
-// Pure table lookup: find the product form ALREADY called this (issue #854).
+// Pure table lookup: find the product form ON THIS PARENT already called this
+// (issue #854; scoped to the parent by issue #1127).
 //
 // The companion to `resolveProductForm`, asking a deliberately different
 // question. `resolveProductForm` asks "does this ingredient text name a form" —
@@ -24,17 +25,46 @@ import type { ProductForm } from '../entities/ProductForm.js';
 // about case, plurals or punctuation ("Lime Juice" / "lime juices" / "Lime
 // juice" are one name).
 //
-// Deliberately NOT keyed on `parentCanonId`: at the only call site the proposal's
-// parent is still unresolved, and resolving it early mints a canon item as a side
-// effect that would then be thrown away.
+// KEYED ON THE PARENT. An earlier version of this header called parent keying
+// impossible: the call site's proposal has no resolved parent id, and resolving
+// one mints a canon item as a side effect. The premise was right and the
+// conclusion wrong — the caller need not resolve anything, because the proposal
+// carries the parent's NAME and the caller already holds a name-to-id table in
+// memory. So the id arrives as an argument, nothing is minted, and this stays a
+// pure lookup. Without it a bare-noun label ("Zest", "Juice", "Stock") matched
+// across the whole table, and a lime's zest was filed under lemons.
+//
+// A `null` parent means the caller could not name the parent — one about to be
+// minted, or a canon list it failed to read. Nothing stored can sit on a parent
+// that does not exist yet, so that answers null rather than falling back to a
+// table-wide search: an unknown parent must never degrade to "any parent".
+//
+// THE BOUNDARY OF THAT CLAIM, stated because it is not what a reader assumes.
+// Parent scoping here makes the PROPOSAL path parent-safe, and only that path.
+// It does not make product-form binding parent-safe in general:
+// `resolveProductForm` matches on `[form.label, ...form.matchers]`
+// (`resolveProductForm.ts:42`), so a stored form's own label is itself a global,
+// parent-blind matching phrase — and both `resolveProductForm` calls in
+// `canonicaliseRecipeIngredients.ts` still cross parents on a bare-noun label:
+// `:165`, the pre-arbitration bind, which fires first and owns the reported
+// symptom, and `:296`, the sibling of this call. A follow-up defect split from
+// #1127 owns them; the measurement is in #1127's Phase-1 deviation comment, and
+// the limit is pinned by the `KNOWN LIMIT` case in
+// `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`.
 //
 // Match-time only: nothing here is written back. Stored labels stay exactly as
 // they were typed.
 export function findFormWithSameLabel(
   label: string,
+  parentCanonId: string | null,
   forms: readonly ProductForm[],
 ): ProductForm | null {
+  if (parentCanonId === null) return null;
   const target = normaliseName(label);
   if (!target) return null;
-  return forms.find((form) => normaliseName(form.label) === target) ?? null;
+  return (
+    forms.find(
+      (form) => form.parentCanonId === parentCanonId && normaliseName(form.label) === target,
+    ) ?? null
+  );
 }

@@ -22,33 +22,33 @@ function form(overrides: Partial<ProductForm> & { id: string; label: string }): 
 describe('findFormWithSameLabel', () => {
   it('finds a form whose label matches exactly', () => {
     const forms = [form({ id: 'a', label: 'Lime juice' })];
-    expect(findFormWithSameLabel('Lime juice', forms)?.id).toBe('a');
+    expect(findFormWithSameLabel('Lime juice', 'canon-lime', forms)?.id).toBe('a');
   });
 
   it('folds case, plurals and punctuation through normaliseName', () => {
     const forms = [form({ id: 'a', label: 'Lime juice' })];
     // Same name, differently typed — one form, not four.
-    expect(findFormWithSameLabel('lime juice', forms)?.id).toBe('a');
-    expect(findFormWithSameLabel('  LIME JUICE  ', forms)?.id).toBe('a');
-    expect(findFormWithSameLabel('Lime juices', forms)?.id).toBe('a');
-    expect(findFormWithSameLabel('Lime-juice', forms)?.id).toBe('a');
+    expect(findFormWithSameLabel('lime juice', 'canon-lime', forms)?.id).toBe('a');
+    expect(findFormWithSameLabel('  LIME JUICE  ', 'canon-lime', forms)?.id).toBe('a');
+    expect(findFormWithSameLabel('Lime juices', 'canon-lime', forms)?.id).toBe('a');
+    expect(findFormWithSameLabel('Lime-juice', 'canon-lime', forms)?.id).toBe('a');
   });
 
   it('returns null when no form carries that label', () => {
     const forms = [form({ id: 'a', label: 'Lime juice' })];
-    expect(findFormWithSameLabel('Lemon zest', forms)).toBeNull();
+    expect(findFormWithSameLabel('Lemon zest', 'canon-lime', forms)).toBeNull();
   });
 
   it('returns null for an empty or normalisation-empty label', () => {
     const forms = [form({ id: 'a', label: 'Lime juice' })];
-    expect(findFormWithSameLabel('', forms)).toBeNull();
-    expect(findFormWithSameLabel('   ', forms)).toBeNull();
+    expect(findFormWithSameLabel('', 'canon-lime', forms)).toBeNull();
+    expect(findFormWithSameLabel('   ', 'canon-lime', forms)).toBeNull();
     // normaliseName strips pure-digit and word-number tokens, so "2" folds to "".
-    expect(findFormWithSameLabel('2', forms)).toBeNull();
+    expect(findFormWithSameLabel('2', 'canon-lime', forms)).toBeNull();
   });
 
   it('returns null against an empty table', () => {
-    expect(findFormWithSameLabel('Lime juice', [])).toBeNull();
+    expect(findFormWithSameLabel('Lime juice', 'canon-lime', [])).toBeNull();
   });
 
   it('is EQUALITY, not containment — a longer label is not the same form', () => {
@@ -56,8 +56,8 @@ describe('findFormWithSameLabel', () => {
     // not answer for "Fresh lime juice concentrate" merely because the words
     // appear inside it.
     const forms = [form({ id: 'a', label: 'Lime juice' })];
-    expect(findFormWithSameLabel('Fresh lime juice concentrate', forms)).toBeNull();
-    expect(findFormWithSameLabel('Juice', forms)).toBeNull();
+    expect(findFormWithSameLabel('Fresh lime juice concentrate', 'canon-lime', forms)).toBeNull();
+    expect(findFormWithSameLabel('Juice', 'canon-lime', forms)).toBeNull();
   });
 
   it('catches the staging duplicate that matcher containment cannot see', () => {
@@ -75,7 +75,7 @@ describe('findFormWithSameLabel', () => {
     const forms = [existing];
 
     expect(resolveProductForm('juice', forms)).toBeNull();
-    expect(findFormWithSameLabel('Lime juice', forms)?.id).toBe('a5a5cfd2');
+    expect(findFormWithSameLabel('Lime juice', 'canon-lime', forms)?.id).toBe('a5a5cfd2');
   });
 
   it('returns the first match when the table already holds duplicates', () => {
@@ -86,6 +86,41 @@ describe('findFormWithSameLabel', () => {
       form({ id: 'first', label: 'Lime juice', matchers: ['lime juice'] }),
       form({ id: 'second', label: 'Lime juice', matchers: ['juice'] }),
     ];
-    expect(findFormWithSameLabel('Lime juice', forms)?.id).toBe('first');
+    expect(findFormWithSameLabel('Lime juice', 'canon-lime', forms)?.id).toBe('first');
+  });
+
+  // ── Parent scoping, and the edge of it (issue #1127) ────────────────────────
+
+  it('does NOT return a same-labelled form parented on something else', () => {
+    // The defect: "Zest" learned on Lemon answered for a lime's zest, so the
+    // recipe's ingredient was bound to Lemon and the shopping list said buy
+    // lemons. Zest of a lemon and zest of a lime are two different things.
+    const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
+    expect(findFormWithSameLabel('Zest', 'canon-lime', forms)).toBeNull();
+    // Same table, same label, the parent it actually is on.
+    expect(findFormWithSameLabel('Zest', 'canon-lemon', forms)?.id).toBe('lemon-zest');
+  });
+
+  it('returns null for an unknown parent rather than searching the whole table', () => {
+    // `null` is what the caller passes when it cannot name the parent — one
+    // about to be minted, or a canon list it failed to read. Nothing stored can
+    // be on a parent that does not exist yet, so an unknown parent must never
+    // degrade to "any parent".
+    const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
+    expect(findFormWithSameLabel('Zest', null, forms)).toBeNull();
+  });
+
+  it('KNOWN LIMIT — resolveProductForm still crosses parents on a bare-noun label', () => {
+    // The boundary of the claim above, pinned rather than left to a header
+    // sentence (CLAUDE.md Hard rule 12). Scoping THIS query does not make
+    // product-form binding parent-safe in general: `resolveProductForm` matches
+    // on `[form.label, ...form.matchers]`, so a bare-noun label is itself a
+    // global, parent-blind matching phrase — and it is the query the recipe
+    // canonicalisation flow reaches first. A follow-up defect split from #1127
+    // owns that; when it lands this expectation flips, which is the signal to
+    // widen the boundary paragraph in this query's header.
+    const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
+    expect(findFormWithSameLabel('Zest', 'canon-lime', forms)).toBeNull();
+    expect(resolveProductForm('zest of 1 lime', forms)?.parentCanonId).toBe('canon-lemon');
   });
 });

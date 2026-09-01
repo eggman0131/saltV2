@@ -7,6 +7,7 @@ import {
   resolveProductForm,
   findFormWithSameLabel,
   proposalRejectionReason,
+  normaliseName,
 } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreateResult, ProductForm } from '@salt/domain';
 import {
@@ -240,6 +241,28 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         return null;
       };
 
+      // The proposal's parent, resolved WITHOUT minting anything (issue #1127).
+      // The covering check below needs a parent id, and `resolveParentCanonId`
+      // above cannot supply one: it mints a canon item as a side effect, so
+      // calling it before we know whether the proposal is even needed would
+      // create a canon item only to throw it away. Nothing has to be minted,
+      // because the proposal carries the parent's NAME and both places that
+      // already know the name→id mapping are in memory here: the canon list read
+      // above, and the in-batch cache of parents `resolveParentCanonId` has
+      // minted for an earlier item in this same recipe (which is what keeps the
+      // #854 dedupe working for two ingredients sharing a brand-new parent).
+      // Folded through `normaliseName`, exactly like both halves of this
+      // pipeline. `null` — neither source knows the name — means the parent does
+      // not exist yet, so no stored form can be on it.
+      const canonIdByNormalisedName = new Map(candidates.map((c) => [normaliseName(c.name), c.id]));
+      // A canon name that normalises to nothing must not answer for a parent name
+      // that also does — dropped unconditionally rather than guarded per lookup.
+      canonIdByNormalisedName.delete('');
+      const namedParentCanonId = (parentName: string): string | null =>
+        canonIdByNormalisedName.get(normaliseName(parentName)) ??
+        parentIdByName.get(parentName.trim().toLowerCase()) ??
+        null;
+
       // Apply proposals in input order so in-batch idempotency is deterministic.
       for (let u = 0; u < unresolved.length; u++) {
         const i = unresolved[u]!;
@@ -262,10 +285,16 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         //     identically-labelled form on the same parent was minted — which is
         //     why hand-correcting a form's matchers never survived the next
         //     recipe that mentioned juice.
-        // Checked by label rather than by parent because the parent is not known
-        // yet: `resolveParentCanonId` below MINTS canon as a side effect, so
-        // resolving it early to compare would create a canon item only to discard
-        // it.
+        // The label check is SCOPED TO THE PARENT the proposal named (#1127),
+        // via `namedParentCanonId` above — which mints nothing. Unscoped, it
+        // matched a bare-noun label across the whole table, so a `Zest` proposal
+        // on Lime bound the ingredient to a `Zest` form parented on Lemon and the
+        // shopping list said buy lemons. Note the boundary: this scopes the
+        // PROPOSAL path only. The two `resolveProductForm` calls here (`:165` and
+        // the one immediately below) still cross parents on a bare-noun label,
+        // because a form's label is also one of its matching phrases — see
+        // `findFormWithSameLabel`'s header and the follow-up defect split from
+        // #1127.
         if (proposal.kind === 'form') {
           // Two proposals are coherent but must never be minted — a form naming
           // its own parent, and a form for something a recipe already PRODUCES.
@@ -295,7 +324,7 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
 
           const covering =
             resolveProductForm(proposal.matcher, forms) ??
-            findFormWithSameLabel(proposal.label, forms);
+            findFormWithSameLabel(proposal.label, namedParentCanonId(proposal.parentName), forms);
           // Already covered: bind to what exists instead of minting beside it. A
           // parent that no longer loads degrades to normal matching (Rule 10),
           // exactly as every other bind here does.
