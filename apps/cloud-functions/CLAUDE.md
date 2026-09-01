@@ -36,7 +36,7 @@ history: [docs/trace-propagation.md](../../docs/trace-propagation.md).
    custom per-call HTTP header — `HttpsCallableOptions` is only
    `{ timeout?, limitedUseAppCheckTokens? }`, and the `@firebase/functions`
    transport sets its own fixed headers (Content-Type, Authorization, App Check,
-   Instance-ID). The field is therefore the *only* channel that can carry the
+   Instance-ID). The field is therefore the _only_ channel that can carry the
    browser's trace id, and the only one that unifies the browser action with the
    server flow. The inbound header is GCP's fresh request-trace root: preferring it
    would re-root away from the browser trace and could never unify with it. It is
@@ -53,7 +53,7 @@ history: [docs/trace-propagation.md](../../docs/trace-propagation.md).
 3. **`traceContextWire.ts` is the roll-call — never copy it.** Every callable
    declared with `makeTracedCallable` gets this treatment, and the wire envelopes in
    `packages/domain/src/schemas/traceContextWire.ts` (re-exported from the
-   `@salt/domain/schemas` barrel) *are* the list. It is deliberately not restated
+   `@salt/domain/schemas` barrel) _are_ the list. It is deliberately not restated
    here: a hand-maintained roll-call is exactly what went stale, naming six while
    `index.ts` built nine. Note this is not an AI-flow feature —
    `refreshWeatherForecast` carries the field and calls no model. A new callable
@@ -62,7 +62,7 @@ history: [docs/trace-propagation.md](../../docs/trace-propagation.md).
 4. **One browser span may cover several callables.** `identifyEquipment` →
    `populateEquipmentEntry` is the standing case (#361): the add-equipment action
    fires both with human think-time between, so the browser mints one
-   `startUserActionSpan('Add equipment: <name>')` and supplies the *same*
+   `startUserActionSpan('Add equipment: <name>')` and supplies the _same_
    `traceparent` to both calls, nesting both flows under one trace instead of
    re-rooting two. Both were converted `onCallGenkit` → `onCall` for this. **Any
    `onCall` flow must flush AI-OTLP spans in a `finally`** — `onCall` has no

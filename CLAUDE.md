@@ -4,11 +4,11 @@ Authoritative, machine-enforced architecture contract. Violations fail CI. Prose
 
 **Context budget.** This file is auto-loaded into every session and every subagent, so its size is paid before any code is read — `pnpm context:check` caps it. A fact earns a place here only if an agent needs it **before** knowing which directory it is in, or it spans three or more packages.
 
-| The fact is… | It goes… |
-| --- | --- |
-| already stated by the code | a comment at the declaration; link to that |
+| The fact is…                   | It goes…                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| already stated by the code     | a comment at the declaration; link to that                                                    |
 | needed only inside one package | a nested `CLAUDE.md` there ([apps/cloud-functions/CLAUDE.md](apps/cloud-functions/CLAUDE.md)) |
-| looked up once per task | a doc under `docs/`, with a row in [docs-map.md](docs-map.md) |
+| looked up once per task        | a doc under `docs/`, with a row in [docs-map.md](docs-map.md)                                 |
 
 ## How to report to Daniel
 
@@ -56,7 +56,7 @@ Package names are `@salt/<directory basename>` — `packages/adapters/firebase-s
 9. **`shared-types` imports nothing from `@salt/*`.** External packages or nothing.
 10. **Adapters never throw for operational errors.** Failures cross the boundary as `Failure<DomainError>` or `Conflict<T>` ([§7](docs/salt-architecture.md)).
 11. **PostHog SDK only in `observability`.** `posthog-js`/`posthog-node` are imported only in `packages/adapters/observability`, which wraps them behind the `ErrorReporting`/`MatchLogging` ports. Everything else depends on the ports. Enforced by `no-restricted-imports` and depcruise's `no-posthog-outside-observability`.
-12. **An invariant you state, you make mechanical — or you state its limits.** A safety property asserted in a header comment, a doc, a PR body or a test name and guaranteed by nothing is the one defect class every gate below is blind to — campaign #1064 shipped five, and three would have destroyed production data. Pin the claim with a test that goes red when it breaks, **or** state the claim's real boundary; never the unqualified absolute. Convention, not enforcement, unlike rules 1–11: worked example and why no lint rule is possible in [`.claude/commands/run.md`](.claude/commands/run.md) → *Standing rules*.
+12. **An invariant you state, you make mechanical — or you state its limits.** A safety property asserted in a header comment, a doc, a PR body or a test name and guaranteed by nothing is the one defect class every gate below is blind to — campaign #1064 shipped five, and three would have destroyed production data. Pin the claim with a test that goes red when it breaks, **or** state the claim's real boundary; never the unqualified absolute. Convention, not enforcement, unlike rules 1–11: worked example and why no lint rule is possible in [`.claude/commands/run.md`](.claude/commands/run.md) → _Standing rules_.
 
 ## Data model conventions
 
