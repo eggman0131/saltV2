@@ -3,6 +3,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
+import { ShoppingListItemSchema } from '@salt/domain/schemas';
 import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
@@ -51,33 +52,68 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // Delete event — nothing to match.
     if (!after?.exists) return;
 
+    const { listId, itemId } = event.params;
     const afterData = after.data() as Record<string, unknown>;
-    const rawText = typeof afterData['rawText'] === 'string' ? afterData['rawText'] : '';
-    const canonId = typeof afterData['canonId'] === 'string' ? afterData['canonId'] : null;
-    const matchState = typeof afterData['matchState'] === 'string' ? afterData['matchState'] : '';
+
+    // The trigger's trust boundary. This used to be six hand-written `typeof`
+    // narrowings; it is now the same `safeParse` every other trigger in this
+    // directory reaches its document through — directly, or via the shared
+    // `timerWriteTrigger` / `iconWriteTrigger` helpers. Per docs/data-model.md
+    // ("Zod validation failures, per boundary") a Firestore trigger LOGS AND
+    // RETURNS: there is no caller to hand a Failure to, and nothing here may
+    // throw (Rule 10). Note what that changed and what it did not: the schema's
+    // defaults reproduce the old fallbacks exactly for an ABSENT field
+    // (`rawText`/`notes` → `''`, `canonId` → `null`), while a field that is
+    // present and the wrong TYPE now stops the invocation instead of being
+    // silently read as `''` and matched on.
+    const parsed = ShoppingListItemSchema.safeParse(afterData);
+    if (!parsed.success) {
+      logger.error('onShoppingListItemWrite: invalid shoppingList item doc, skipping', {
+        listId,
+        itemId,
+        error: parsed.error.message,
+      });
+      return;
+    }
+    const item = parsed.data;
+    const rawText = item.rawText;
+    const canonId = item.canonId;
     // Distributed-trace correlation (issue #362, Phase 5). The browser stamped its
     // action span's W3C traceparent here at "add to shopping list"; we continue
     // that trace below so the match span nests under the browser action instead of
-    // re-rooting. Plain string read — absent/malformed degrades to a root trace.
-    const traceContext =
-      typeof afterData['traceContext'] === 'string' ? afterData['traceContext'] : undefined;
+    // re-rooting. Absent degrades to a root trace; a malformed (non-string) one
+    // now fails the parse above rather than being dropped silently.
+    const traceContext = item.traceContext;
 
     // CF own write: the trigger wrote back canonId/matchState. matchState is
     // not 'pending' (matched/needs_approval/failed) or canonId is already set.
     // Skip to avoid an infinite loop.
-    if (matchState !== 'pending' || canonId !== null) return;
+    //
+    // Read off the RAW document, and it is the ONE field here that is. The schema
+    // gives `matchState` a `.catch('pending')`, so a document missing the field —
+    // or carrying a fifth state nobody has shipped yet — parses as 'pending', and
+    // this guard would flip from SKIP to MATCH for exactly the documents it
+    // understands least. This guard is the brake on the trigger's own write-back,
+    // so it keeps reading what is actually stored. Pinned by the "no matchState
+    // field at all" case in onShoppingListItemWrite.test.ts.
+    const storedMatchState =
+      typeof afterData['matchState'] === 'string' ? afterData['matchState'] : '';
+    if (storedMatchState !== 'pending' || canonId !== null) return;
 
     // Notes-only edit or check toggle: rawText is unchanged and the item
     // already existed. Only rawText changes (and new items) need re-matching.
     if (before?.exists) {
-      const beforeData = before.data() as Record<string, unknown>;
-      const beforeRawText = typeof beforeData['rawText'] === 'string' ? beforeData['rawText'] : '';
+      const beforeParsed = ShoppingListItemSchema.safeParse(before.data());
+      // A `before` that does not parse cannot prove the text is unchanged. `''` is
+      // what the old field-by-field read produced for it, and the only thing this
+      // guard ever does is SKIP — so the worst case of getting it wrong is a
+      // re-match, never a missed one.
+      const beforeRawText = beforeParsed.success ? beforeParsed.data.rawText : '';
       if (beforeRawText === rawText) return;
     }
 
-    const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
+    const currentNotes = item.notes;
 
-    const { listId, itemId } = event.params;
     const db = getFirestore();
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
