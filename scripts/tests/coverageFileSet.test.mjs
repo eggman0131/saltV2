@@ -20,6 +20,7 @@ import {
   expectedCoverageFiles,
   pinEntry,
   ratchetFindings,
+  RATIO_VERDICTS,
   totalsByArea,
   trackedReportEntries,
 } from '../lib/coverageFileSet.mjs';
@@ -475,6 +476,67 @@ describe('ratchetFindings', () => {
   it('still reads a measurement below the floor as a plain regression', () => {
     const [finding] = ratchetFindings([fsArea(91.5, 61)], fsPin, { staleAbove: 1 });
     expect(finding).toMatchObject({ ratio: 'regressed' });
+  });
+
+  // ISSUE #1168. An area may be pinned with a COUNT ceiling and no ratio floor
+  // — the two keys are independent on the pin object, and `ratchetFindings`
+  // emits a `ceiling` finding off the ceiling alone. Before this split that
+  // landed on `'unknown'`, whose sentence opens "clears its floor but by less
+  // than the staleness tolerance": three claims about a floor that is not
+  // there. The verdict is its own value so the sentence can be true.
+  const UNFLOORED_AREA = 'packages/shared-types/src/**';
+  const unflooredPin = { [UNFLOORED_AREA]: { uncoveredLines: 10, uncoveredBranches: 4 } };
+  const unflooredArea = (uncovered) => ({
+    glob: UNFLOORED_AREA,
+    lines: { pct: 88.5, uncovered },
+    branches: { pct: 71.2, uncovered: 4 },
+  });
+
+  it('says a ceiling breach is unfloored when the pin carries no ratio floor', () => {
+    expect(ratchetFindings([unflooredArea(17)], unflooredPin, { staleAbove: 1 })).toEqual([
+      {
+        kind: 'ceiling',
+        glob: UNFLOORED_AREA,
+        metric: 'lines',
+        uncovered: 17,
+        ceiling: 10,
+        ratio: 'unfloored',
+      },
+    ]);
+  });
+
+  it('withholds the paste block from an unfloored breach, as it did as `unknown`', () => {
+    // The split is a change of WORDS, not of banking. Only `'grew'` unlocks the
+    // block, and `'unfloored'` is not `'grew'` — pinned here because the value
+    // moving out of `'unknown'` is exactly the kind of edit that could have
+    // moved it past that filter unnoticed.
+    const findings = ratchetFindings([unflooredArea(17)], unflooredPin, { staleAbove: 1 });
+    const { bankable, uncertifiedGrowth } = bankingDecision(
+      [unflooredArea(17)],
+      findings,
+      unflooredPin,
+    );
+    expect(bankable).toEqual([]);
+    expect(uncertifiedGrowth.map(({ glob }) => glob)).toEqual([UNFLOORED_AREA]);
+  });
+
+  it('reaches every verdict RATIO_VERDICTS declares, and no others', () => {
+    // The half that DECIDES, pinned against its own declared list. The other
+    // half — that `check-coverage-ratchet.mjs` has a sentence for each of them
+    // — is asserted by that script at run time, because its message table is
+    // module-local to an executable that cannot be imported without running.
+    const reached = new Set(
+      [
+        ratchetFindings([fsArea(93.44, 61)], fsPin, { staleAbove: 1 }),
+        ratchetFindings([fsArea(92.07, 61)], fsPin, { staleAbove: 1 }),
+        ratchetFindings([fsArea(91.5, 61)], fsPin, { staleAbove: 1 }),
+        ratchetFindings([unflooredArea(17)], unflooredPin, { staleAbove: 1 }),
+      ]
+        .flat()
+        .filter(({ kind }) => kind === 'ceiling')
+        .map(({ ratio }) => ratio),
+    );
+    expect([...reached].sort()).toEqual([...RATIO_VERDICTS].sort());
   });
 
   it('reds an area that drifted more than the tolerance above its floor', () => {

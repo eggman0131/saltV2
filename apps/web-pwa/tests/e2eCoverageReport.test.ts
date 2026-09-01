@@ -14,8 +14,11 @@
  * `e2e/e2eAppOrigin.ts` is its single source, imported by `globalSetup.ts`
  * (spawns Vite there), `globalTeardown.ts` (kills it there — a fifth copy the
  * review missed, closed in the immediate follow-up, #1132), `playwright.config.ts`
- * (`baseURL`), the script under test, and this test's fixture below — so a port
- * move is one edit, not five independently-drifting copies.
+ * (`baseURL`), `e2eServerRegistry.ts` (the sentinel filename, a sixth copy
+ * closed by #1162) and the script under test — so a port move is one edit, not
+ * six independently-drifting copies. The consumer set is WALKED rather than
+ * listed (#1168), so this sentence is a summary of what the guard finds, not
+ * the thing the guard reads.
  *
  * So this test runs the real converter, end to end, over a raw V8 dump shaped
  * like the one the fixture writes: a real `node --experimental-strip-types`
@@ -43,13 +46,22 @@
  * `stopJSCoverage()` returns; if Playwright ever changes it, this test keeps
  * passing on the old shape. That gap is the price of being runnable anywhere.
  */
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { E2E_APP_ORIGIN } from '../e2e/e2eAppOrigin';
+import { E2E_APP_ORIGIN, E2E_APP_PORT } from '../e2e/e2eAppOrigin';
 
 // `fileURLToPath(import.meta.url)` on the STRING, not `new URL('..', …)`: this
 // suite runs under jsdom, whose global `URL` is whatwg-url rather than Node's,
@@ -57,6 +69,7 @@ import { E2E_APP_ORIGIN } from '../e2e/e2eAppOrigin';
 // shape as `tests/sharedHelperGuard.test.ts:67`.
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(APP_DIR, 'scripts', 'process-e2e-coverage.ts');
+const REPO_ROOT = join(APP_DIR, '..', '..');
 
 /**
  * The origin `process-e2e-coverage.ts` filters on — the e2e Vite server.
@@ -255,44 +268,42 @@ describe('process-e2e-coverage.ts', () => {
     // log strings rewritten, and is still blind to a copy holding a different
     // number. More work for a weaker net.
     //
-    // What neither catches: a consumer that imports the constant and then
-    // ignores it, and a shadow copy under a DIFFERENT name (`const PORT = 5174`).
-    // Both are visible in review; neither is the shape that has actually
-    // occurred twice.
-    const CONSUMERS: ReadonlyArray<{ label: string; file: string; importSpecifier: string }> = [
-      {
-        label: 'playwright.config.ts',
-        file: join(APP_DIR, 'playwright.config.ts'),
-        importSpecifier: './e2e/e2eAppOrigin',
-      },
-      {
-        label: 'e2e/globalSetup.ts',
-        file: join(APP_DIR, 'e2e', 'globalSetup.ts'),
-        importSpecifier: './e2eAppOrigin',
-      },
-      {
-        label: 'e2e/globalTeardown.ts',
-        file: join(APP_DIR, 'e2e', 'globalTeardown.ts'),
-        importSpecifier: './e2eAppOrigin',
-      },
-      {
-        label: 'scripts/process-e2e-coverage.ts',
-        file: SCRIPT,
-        importSpecifier: '../e2e/e2eAppOrigin.ts',
-      },
-      // Added by #1162. `SENTINEL_PATH` was a sixth copy of the port, written
-      // out as `salt-e2e-5174.json`; both globalSetup and globalTeardown import
-      // that one constant, so a port move misnamed the file CONSISTENTLY rather
-      // than causing a disagreement — a documentation defect, not a correctness
-      // one, which is why it survived #1132. It now derives from `E2E_APP_PORT`,
-      // and the import is clean: `e2eAppOrigin.ts` imports nothing and has no
-      // side effects, so there is no load-order reason to keep it out.
-      {
-        label: 'e2e/e2eServerRegistry.ts',
-        file: join(APP_DIR, 'e2e', 'e2eServerRegistry.ts'),
-        importSpecifier: './e2eAppOrigin',
-      },
+    // What neither catches, stated honestly — the earlier version of this
+    // paragraph listed the two review-visible shapes and omitted the one that
+    // has ACTUALLY recurred (#1168):
+    //   - THE LIST WAS SHORT. Twice. `CONSUMERS` used to be five hand-written
+    //     entries, and a copy in a file nobody had added to it was invisible:
+    //     #1132 found the fifth (`globalTeardown.ts`), #1162 the sixth
+    //     (`SENTINEL_PATH`). That is UT-E1's exact failure — "a hard-coded list
+    //     of files silently stops covering whatever is added next" — and it is
+    //     why the surface below is now WALKED, not typed.
+    //   - a consumer that imports the constant and then ignores it, and a
+    //     shadow copy under a DIFFERENT name (`const PORT = 5174`). Both are
+    //     visible in review, and neither has occurred.
+    //
+    // ── The surface, derived (UT-E1) ────────────────────────────────────────
+    //
+    // Every `.ts` in the e2e wiring: the `e2e/` tree walked in full, plus the
+    // two files outside it that Playwright and the coverage script own. A file
+    // in that scope is a CONSUMER if it imports `e2eAppOrigin`, and consumers
+    // are checked for the two copy shapes. A file in that scope that mentions
+    // the port WITHOUT importing is a failure by construction — that is the
+    // "stopped importing and hard-coded it" regression, which an inclusion list
+    // could never see because such a file simply drops out of it.
+    //
+    // `e2eAppOrigin.ts` is excluded: it IS the declaration.
+    const WIRING_ROOTS = [
+      join(APP_DIR, 'e2e'),
+      join(APP_DIR, 'playwright.config.ts'),
+      join(APP_DIR, 'scripts', 'process-e2e-coverage.ts'),
     ];
+    const DECLARATION = join(APP_DIR, 'e2e', 'e2eAppOrigin.ts');
+
+    const walk = (entry: string): string[] => {
+      if (!statSync(entry).isDirectory()) return entry.endsWith('.ts') ? [entry] : [];
+      return readdirSync(entry).flatMap((name) => walk(join(entry, name)));
+    };
+    const WIRING_FILES = WIRING_ROOTS.flatMap(walk).filter((file) => file !== DECLARATION);
 
     // Built from the imported constant, not a hard-coded `5174`, so a genuine
     // future port change doesn't need this guard edited too — only a literal
@@ -304,49 +315,72 @@ describe('process-e2e-coverage.ts', () => {
     // if `E2E_APP_HOST`/`E2E_APP_ORIGIN` ever gained another metacharacter (e.g.
     // an IPv6 loopback's brackets), defeating the guard this test exists to be.
     const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${escapeRegExp(E2E_APP_ORIGIN)}`);
+    // No leading-quote anchor. It used to require one, which is how
+    // `docker/test-emulators/healthcheck.sh:31` — `-H 'Origin: http://…:5174'`,
+    // a real copy with the quote one field earlier — read as clean (#1168).
+    const STRAY_LITERAL_ORIGIN = new RegExp(escapeRegExp(E2E_APP_ORIGIN));
 
-    /** A real `import … from '<specifier>'`, single- or multi-line. Anchored to
-     *  a line that STARTS with `import` (`m` flag), which is what a `//`
-     *  comment mentioning the specifier cannot do: its line starts `//`. A
-     *  `/* … *\/` block comment CAN open a line with `import` (its body lines
-     *  carry no required prefix), so callers must match against
-     *  `stripBlockComments(src)`, not raw `src` — see the call site below. The
-     *  clause body is `[^;]*?` so a braced multi-line import still matches,
-     *  and stops at the statement's own semicolon so it cannot reach across
-     *  one import into the next. */
-    const importOf = (specifier: string): RegExp =>
-      new RegExp(`^\\s*import\\s[^;]*?from\\s*['"\`]${escapeRegExp(specifier)}['"\`]`, 'm');
+    /** A real `import … from '…e2eAppOrigin'`, single- or multi-line, at
+     *  whatever relative depth the importer spells it — the per-file specifier
+     *  the hand-kept list used to carry was pure bookkeeping. Anchored to a
+     *  line that STARTS with `import` (`m` flag), which is what a `//` comment
+     *  mentioning the module cannot do: its line starts `//`. A `/* … *\/`
+     *  block comment CAN open a line with `import` (its body lines carry no
+     *  required prefix), so this matches against `stripBlockComments(src)`, not
+     *  raw `src`. The clause body is `[^;]*?` so a braced multi-line import
+     *  still matches, and stops at the statement's own semicolon so it cannot
+     *  reach across one import into the next. */
+    const IMPORTS_DECLARATION = /^\s*import\s[^;]*?from\s*['"`][^'"`]*e2eAppOrigin(?:\.ts)?['"`]/m;
 
     /** Strips `/* … *\/` block comments only — `//` line comments are already
-     *  excluded by `importOf`'s line anchor, and stripping them too would just
-     *  as happily hide a real import that follows one on the same line. */
+     *  excluded by `IMPORTS_DECLARATION`'s line anchor, and stripping them too
+     *  would just as happily hide a real import that follows one on the same
+     *  line. */
     const stripBlockComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '');
 
     /** A local binding of one of the three exported names, at any value — the
      *  shape #1132 removed from globalTeardown.ts and the one #1162 reproduced.
      *  Not comment-stripped: a comment containing the literal text
      *  `const E2E_APP_PORT` would be a FALSE POSITIVE, which is the harmless
-     *  direction — and is not the case in the five files CONSUMERS scans today
-     *  (this test file itself carries that exact text, in this comment and in
-     *  the review-history prose above, which is exactly why this file can
-     *  never join CONSUMERS without being reworded). `e2eAppOrigin.ts` is not
-     *  a consumer either, so its own declarations are never scanned. */
+     *  direction — and is not the case in any file the walk reaches. This test
+     *  file carries that exact text, here and in the prose above, and is safe
+     *  only because it sits in `tests/` rather than inside `WIRING_ROOTS`; move
+     *  it under one and it reds itself. `e2eAppOrigin.ts` is filtered out of
+     *  the walk, so its own declarations are never scanned. */
     const SHADOW_DECLARATION =
       /\b(?:const|let|var|function|class)\s+(?:E2E_APP_HOST|E2E_APP_PORT|E2E_APP_ORIGIN)\b/;
 
-    it.each(CONSUMERS)(
+    const MENTIONS_PORT = new RegExp(`\\b${E2E_APP_PORT}\\b`);
+
+    const rel = (file: string): string => relative(APP_DIR, file);
+    const wiring = WIRING_FILES.map((file) => {
+      const src = readFileSync(file, 'utf8');
+      return { file, src, imports: IMPORTS_DECLARATION.test(stripBlockComments(src)) };
+    });
+    const consumers = wiring.filter(({ imports }) => imports);
+
+    // UT-E2: the walk must still FIND something, and specifically the entry
+    // points that cannot stop being consumers without the e2e run breaking.
+    // A re-narrowing of `WIRING_ROOTS` — the way `aiTimeoutGuard` was once
+    // narrowed to `src/flows` — reds here rather than passing on an empty set.
+    it('walks a surface that still contains the wiring entry points', () => {
+      expect(consumers.map(({ file }) => rel(file)).sort()).toEqual(
+        expect.arrayContaining([
+          'e2e/globalSetup.ts',
+          'e2e/globalTeardown.ts',
+          'playwright.config.ts',
+          'scripts/process-e2e-coverage.ts',
+        ]),
+      );
+    });
+
+    it.each(consumers.map(({ file, src }) => ({ label: rel(file), src })))(
       '$label derives the origin from e2eAppOrigin.ts',
-      ({ file, importSpecifier }) => {
-        const src = readFileSync(file, 'utf8');
-        expect(
-          stripBlockComments(src),
-          `no \`import … from '${importSpecifier}'\` statement`,
-        ).toMatch(importOf(importSpecifier));
+      ({ src }) => {
         // A stray literal origin here — even alongside the import — is the
         // drift finding 1 flagged: a second, independently-editable copy of the
         // port that the import no longer prevents. `e2eAppOrigin.ts` itself is
-        // exempt (it IS the literal).
+        // exempt (it IS the literal) and is filtered out of the walk.
         expect(src).not.toMatch(STRAY_LITERAL_ORIGIN);
         // And the other shape of the same copy: a local re-declaration. It reds
         // whatever value it holds, so a shadow that agrees with the shared
@@ -356,5 +390,70 @@ describe('process-e2e-coverage.ts', () => {
         );
       },
     );
+
+    it('leaves no file in the wiring holding the port without importing it', () => {
+      const holdouts = wiring
+        .filter(({ imports, src }) => !imports && MENTIONS_PORT.test(src))
+        .map(({ file }) => rel(file));
+      expect(
+        holdouts,
+        'these spell the e2e port themselves — import E2E_APP_PORT from e2e/e2eAppOrigin instead',
+      ).toEqual([]);
+    });
+  });
+
+  describe('copies of the origin outside the import graph (#1168)', () => {
+    // The wiring guard above only reaches files that CAN import the constant.
+    // Two real copies live where an import is not available, and both were
+    // invisible to every assertion in this file until #1168 — which is the
+    // limit worth writing down rather than the guard worth extending: a shell
+    // script and a `.mjs` cannot import a `.ts`, so no amount of scanning turns
+    // them into consumers. What this does instead is make the SET of them
+    // closed, so a third one has to be added here deliberately.
+    const ACKNOWLEDGED: ReadonlyArray<{ file: string; why: string }> = [
+      {
+        file: 'docker/test-emulators/healthcheck.sh',
+        why: 'shell — sends the origin as a CORS preflight header; cannot import a .ts constant',
+      },
+      {
+        file: 'apps/web-pwa/tests/flakeReporter.test.ts',
+        why: 'a fixture string reproducing a reporter error message, not a live URL',
+      },
+      { file: 'docs/e2e.md', why: 'prose describing the e2e topology' },
+      { file: 'apps/web-pwa/tests/e2eCoverageReport.test.ts', why: 'this file — the guard itself' },
+    ];
+
+    it('has no unacknowledged copy of the app origin anywhere in the tree', () => {
+      const tracked = execFileSync('git', ['ls-tree', '-r', 'HEAD', '--name-only'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      })
+        .split('\n')
+        .filter(Boolean)
+        .filter((file) => !/\.(png|webp|jpg|jpeg|ico|woff2?|pdf|lock)$/.test(file));
+
+      const holders = tracked.filter((file) => {
+        const full = join(REPO_ROOT, file);
+        return (
+          existsSync(full) &&
+          statSync(full).isFile() &&
+          readFileSync(full, 'utf8').includes(E2E_APP_ORIGIN)
+        );
+      });
+
+      expect(
+        holders.filter((file) => !ACKNOWLEDGED.some((entry) => entry.file === file)),
+        'a new copy of the app origin — import it, or acknowledge it above with a reason',
+      ).toEqual([]);
+    });
+
+    it('acknowledges nothing that has stopped holding a copy', () => {
+      // The other direction, so the list cannot rot into a set of stale
+      // exemptions that quietly re-open the hole they document.
+      const stale = ACKNOWLEDGED.filter(
+        ({ file }) => !readFileSync(join(REPO_ROOT, file), 'utf8').includes(E2E_APP_ORIGIN),
+      ).map(({ file }) => file);
+      expect(stale, 'no longer holds the origin — drop the acknowledgement').toEqual([]);
+    });
   });
 });

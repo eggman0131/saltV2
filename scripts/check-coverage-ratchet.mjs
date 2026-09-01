@@ -66,6 +66,7 @@ import {
   bankingDecision,
   pinEntry,
   ratchetFindings,
+  RATIO_VERDICTS,
   totalsByArea,
   trackedReportEntries,
 } from './lib/coverageFileSet.mjs';
@@ -169,10 +170,17 @@ const vitestCaveat = (glob) =>
       'noted above, which this figure does not'
     : '';
 
-// The three verdicts `ratchetFindings` can reach, in its own words. The middle
-// one is the one #1161 added: it states the limit rather than picking a side,
-// because the pin records where the area stood when it was last BANKED and
-// nothing records where it stood on the last green run.
+// The four verdicts `ratchetFindings` can reach, in its own words. `unknown` is
+// the one #1161 added: it states the limit rather than picking a side, because
+// the pin records where the area stood when it was last BANKED and nothing
+// records where it stood on the last green run. `unfloored` is #1168's split of
+// the no-floor case back out of it — one value cannot carry both sentences, and
+// the one it carried opened by naming a floor the area does not have.
+//
+// Kept honest in both directions by the assertion below rather than by care:
+// a verdict with no sentence would otherwise surface as `RATIO_MESSAGE[...] is
+// not a function` on whichever unlucky PR first breaches a ceiling, and a
+// sentence for a verdict nothing returns would sit here looking live.
 const RATIO_MESSAGE = {
   grew: (metric) =>
     `\n  Its ${metric} PERCENTAGE sits a full ${staleAbovePoints.toFixed(2)} points or more above ` +
@@ -191,7 +199,22 @@ const RATIO_MESSAGE = {
     'regression of up to that much would look identical. The fix is a test, never a bigger ' +
     'ceiling — and no paste block is offered for this. To bank growth that is real, measure the ' +
     'merge base yourself and say so in the commit message.',
+  unfloored: (metric) =>
+    `\n  This area is pinned with a ${metric} CEILING but no ${metric} floor, so there is no ` +
+    'ratio here to have risen or fallen and nothing to certify the breach against — the count is ' +
+    'the whole of the evidence. The fix is a test, never a bigger ceiling, and no paste block is ' +
+    'offered for this. Adding a floor to this area in coverage.areas.mjs is a separate, ' +
+    'deliberate act; do it in its own commit, not to get this build green.',
 };
+
+const messaged = Object.keys(RATIO_MESSAGE).sort().join(',');
+const reachable = [...RATIO_VERDICTS].sort().join(',');
+if (messaged !== reachable) {
+  throw new Error(
+    `RATIO_MESSAGE covers [${messaged}] but ratioVerdict returns [${reachable}]. Every verdict ` +
+      'needs a sentence and every sentence needs a verdict — add or delete the one that moved.',
+  );
+}
 
 for (const finding of findings) {
   if (finding.kind === 'ceiling') {

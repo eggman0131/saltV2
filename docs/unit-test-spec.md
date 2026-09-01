@@ -282,8 +282,11 @@ has. It is also the easiest to render vacuously green.
   package specifier. A relative path out of a package breaks on any file move and encodes the
   layout.
   _Guard:_ two or more `../` reaching `packages/` or `apps/`, with comments stripped so a mention of
-  the rule is not an instance. Note that four is not the threshold: the live escape this guard froze
-  climbs three.
+  the rule is not an instance. Note that four is not the threshold: the only escape this guard has
+  ever frozen climbed three, which is why #1134's grep for four read zero violations off a tree that
+  had one. #1163 resolved that one through the `@salt/firebase-sync` specifier and dropped the
+  ceiling in the same commit, so every area in `unit-test-spec.areas.mjs` now pins `UT-E4` at 0 — the
+  rule is pinned, not exempted, and the threshold is what holds it there.
 
 ---
 
