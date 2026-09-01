@@ -153,7 +153,21 @@ async function listRunIds(since, until) {
 
 /** `filter=all` is mandatory, not a nicety — the default `filter=latest` returns
  *  only the newest attempt, so a job that failed twice and was re-run green
- *  reports as a clean `success`. That is the exact case being measured. */
+ *  reports as a clean `success`. That is the exact case being measured. Pinned
+ *  by a source-scan assertion in scripts/tests/emulatorFlakeRate.test.mjs, which
+ *  reads this function body (not this comment) and reds if the parameter goes.
+ *
+ *  ASSUMPTION, un-pinned and stated rather than fixed: this reads ONE page and
+ *  ignores `body.total_count`, unlike `listRunIds` above, which passes
+ *  `{ paginate: true }`. ci.yml declares 9 jobs, one of them a 3-way matrix, so
+ *  a run emits 11 records per attempt and would need roughly ten full re-runs
+ *  before it overflowed `per_page=100`. If one ever did, the overflow is silent
+ *  and it is NOT in a safe direction — a dropped failing attempt reclassifies
+ *  its run as green, and a run whose emulator records all fall past the boundary
+ *  leaves the denominator entirely. Both understate the rate. Not paginated here
+ *  because pagination costs a second API call on every one of several hundred
+ *  runs to defend against a case that has not occurred; revisit if ci.yml grows
+ *  a wide matrix. */
 async function jobsForRun(runId) {
   const body = await ghApi(
     `repos/${REPO}/actions/runs/${runId}/jobs?filter=all&per_page=100`,
@@ -193,7 +207,19 @@ function report(summary, { since, until, runsScanned }) {
     `  executed      ${runs.executed}   (${runs.succeeded} green, ${runs.failed} red)`,
     `  skipped       ${runs.skipped}   — non-app PR or branch behind main; a skip PASSES a required check`,
     `  cancelled     ${runs.cancelled}   — superseded PR run (ci.yml concurrency)`,
+    // "in flight" is the common case and not the only one: `classifyRun` falls
+    // through to `incomplete` for ANY conclusion it does not name, so `neutral`,
+    // `action_required` and `stale` land here alongside a genuinely unfinished
+    // run. All are excluded from the denominator, which is the intent — none of
+    // them executed the suite to a verdict — but the label is narrower than the
+    // bucket. Cross-check `records.other` below before reading a large number
+    // here as "CI is busy".
     `  in flight     ${runs.incomplete}`,
+    // These two count job RECORDS, the rows the API returned, not runs: the
+    // per-run fold happens after them. A run that failed twice and was re-run
+    // green contributes three records, two re-run attempts and exactly one run,
+    // so `job records` is always ≥ the run total above and the two columns are
+    // not comparable. `rate` is folded per-run and none of this reaches it.
     `  re-run jobs   ${summary.rerunAttempts}   job records at attempt ≥ 2`,
     `  job records   ${records.total}   (${records.success} success, ${records.failure} failure, ${records.skipped} skipped, ${records.cancelled} cancelled, ${records.other} other)`,
   ];

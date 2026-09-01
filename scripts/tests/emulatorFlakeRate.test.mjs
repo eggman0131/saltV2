@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -250,5 +254,74 @@ describe('matchedNothing — measurement failure vs. a real zero-failure rate', 
     const summary = summariseFlakeRate([job({ run_id: 22, conclusion: 'success' })]);
 
     expect(matchedNothing(summary)).toBe(false);
+  });
+});
+
+// ── The I/O half, pinned by reading it off disk ─────────────────────────────
+//
+// Everything above operates on hand-built job fixtures, so it can only ever
+// check the pure summariser. The two things that decide whether the harvester
+// measures the right thing at all live outside it — a query parameter in
+// scripts/emulator-flake-rate.mjs, and a job name copied out of ci.yml — and
+// both were, until this block, asserted by nothing but the prose of the header
+// comments that declare them mandatory. Dropping `filter=all` or renaming
+// `EMULATOR_JOB_NAME` left all 20 tests above green (issue #1162).
+//
+// Same shape as scripts/tests/dependabotReviewChecks.test.mjs, which pins the
+// other copied-job-name in this directory; `repoRoot`/`read`/`jobNames` are
+// lifted from there deliberately so the two read alike.
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const read = (relative) => readFileSync(path.join(repoRoot, relative), 'utf8');
+
+/** Job-level `name:` values — exactly four spaces of indent. A step's name is
+ *  written `      - name:` and a workflow's at column 0, so neither collides. */
+const jobNames = (text) => [...text.matchAll(/^ {4}name: (.+)$/gm)].map((match) => match[1].trim());
+
+describe('the harvester CLI, read as source', () => {
+  const script = read('scripts/emulator-flake-rate.mjs');
+
+  /** `jobsForRun`'s body alone, declaration through the closing brace at column
+   *  0, with comments removed. Both narrowings are load-bearing. Anchoring to
+   *  the function keeps the three-line header comment directly above it — which
+   *  spells out `filter=all` in prose — from satisfying the assertion; stripping
+   *  comments keeps a future comment written INSIDE the body from doing the
+   *  same. The stripper is naive (it would also cut a `//` sitting inside a
+   *  string literal), which is safe for six lines that construct one URL and is
+   *  not offered as a general-purpose one. */
+  const jobsForRunBody = script
+    .match(/^async function jobsForRun\([\s\S]*?^}/m)?.[0]
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  it('still has a `jobsForRun` to read', () => {
+    // Renaming or inlining the function would make every assertion below vacuous
+    // rather than red, which is the failure this whole block exists to prevent.
+    expect(jobsForRunBody, 'no `async function jobsForRun(` in scripts/emulator-flake-rate.mjs').toBeDefined();
+  });
+
+  it('asks the jobs endpoint for `filter=all`, not the default latest attempt', () => {
+    // The trap in full is in the lib header: `filter=latest` returns only the
+    // newest attempt, so a job that failed twice and was re-run green reports as
+    // a clean `success` — the exact case being measured, reported as zero.
+    const query = jobsForRunBody.match(/\/jobs\?([^`'"\s]*)/)?.[1];
+    expect(query, 'no `…/jobs?<query>` request in `jobsForRun`').toBeDefined();
+    expect(new URLSearchParams(query).get('filter')).toBe('all');
+  });
+});
+
+describe('EMULATOR_JOB_NAME against ci.yml', () => {
+  const names = jobNames(read('.github/workflows/ci.yml'));
+
+  it('still names a live ci.yml job', () => {
+    // In the fixtures above this constant is the `job()` default, so renaming it
+    // renames every fixture in lockstep and every assertion still holds. Only a
+    // read of ci.yml can tell the two apart. The CLI does soften the landing —
+    // `matchedNothing()` exits non-zero when the job is never found — but only
+    // for whoever runs it, and only after the rename has already shipped.
+    expect(
+      names,
+      `EMULATOR_JOB_NAME names no job in ci.yml. Current job names: ${names.join(', ')}.`,
+    ).toContain(EMULATOR_JOB_NAME);
   });
 });
