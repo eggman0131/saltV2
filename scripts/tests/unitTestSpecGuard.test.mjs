@@ -53,6 +53,7 @@ import { violationCeilings } from '../../unit-test-spec.areas.mjs';
 import {
   AREA_RULES,
   FILE_RULES,
+  RULE_IDS,
   SAMPLE_AREA,
   repoRoot,
   scanViolations,
@@ -213,3 +214,65 @@ function ratchetMessage(row, files) {
 function rawOf(path) {
   return readFileSync(join(repoRoot, path), 'utf8');
 }
+
+// ── The markers in the spec, against the rules this guard actually runs ──────
+//
+// `docs/unit-test-spec.md` gives every rule a `guarded` or `review-only` marker
+// and, until this block, maintained both by hand. Demoting `UT-E4` from
+// `guarded` to `review-only` in the doc left all 92 tests here green — a rule
+// the guard really does enforce, advertised to every reviewer as unenforced, or
+// (the worse direction) a rule the guard never implemented advertised as
+// mechanical. That is the defect class #1134 was opened to kill, sitting inside
+// the artefact built to kill it (issue #1162 §3).
+//
+// The doc named this fix itself and called it one assertion long. It is that,
+// plus one anchor: the equality below is self-anchoring in the `guarded`
+// direction (a regex that stopped matching would compare an empty set against
+// nine ids and red), but not in the `review-only` direction — twenty-one
+// unparsed rules are indistinguishable from twenty-one absent ones, and the
+// two floors below cannot tell either apart from a bullet RULE_HEADER simply
+// failed to recognise (both floors still hold at the old counts). The
+// "recognises every UT-* rule bullet" test below is what covers that half —
+// it compares against a bullet count RULE_HEADER cannot silently undershoot.
+
+describe("the spec's `guarded` markers name the rules this guard implements", () => {
+  /** A rule HEADER, which is a structural form, not the word "guarded": the doc
+   *  uses that word in prose on several other lines (UT-E3 — do not match prose).
+   *  `MUST NOT` before `MUST` because alternation is first-match. */
+  const RULE_HEADER = /^- \*\*(UT-[A-Z0-9]+) \((?:MUST NOT|MUST|SHOULD) · (guarded|review-only)\) — /gm;
+
+  const specDoc = readFileSync(join(repoRoot, 'docs/unit-test-spec.md'), 'utf8');
+  const headers = [...specDoc.matchAll(RULE_HEADER)].map(([, id, marker]) => ({ id, marker }));
+
+  it('still parses the spec, both markers', () => {
+    // Thirty rules today, nine of them guarded. A floor rather than an equality
+    // so that adding a rule is a doc edit, not a two-file one — the point is
+    // that the parse still reaches the review-only half, which the assertion
+    // below cannot tell apart from an empty file.
+    expect(headers.length, 'no UT-* rule headers parsed out of docs/unit-test-spec.md').toBeGreaterThanOrEqual(30);
+    expect(headers.filter((h) => h.marker === 'review-only').length).toBeGreaterThanOrEqual(21);
+  });
+
+  it('recognises every UT-* rule bullet, not just enough of them', () => {
+    // The two floors above are silent if a bullet's form deviates from
+    // RULE_HEADER by as little as one character (an ASCII hyphen for the em
+    // dash, say): the parse just drops it, and both floors can still pass at
+    // the old counts. This compares against a looser scan — any line that
+    // opens a `UT-*` bullet at all — so a header RULE_HEADER fails to
+    // recognise reds here even when the floors above do not move.
+    const bulleted = [...specDoc.matchAll(/^- \*\*UT-[A-Z0-9]+ /gm)].length;
+    expect(headers.length, 'a UT-* rule bullet exists that RULE_HEADER did not recognise').toBe(bulleted);
+  });
+
+  it('marks exactly RULE_IDS as guarded, in both directions', () => {
+    const marked = headers
+      .filter((h) => h.marker === 'guarded')
+      .map((h) => h.id)
+      .sort();
+    expect(
+      marked,
+      'docs/unit-test-spec.md\'s `guarded` markers and RULE_IDS in scripts/lib/unitTestSpec.mjs disagree. ' +
+        'Either the doc marker is wrong, or a rule was added to FILE_RULES/AREA_RULES without one.',
+    ).toEqual([...RULE_IDS].sort());
+  });
+});

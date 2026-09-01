@@ -223,6 +223,42 @@ describe('process-e2e-coverage.ts', () => {
     // browser: it can't run the actual Playwright/Vite pairing (host-guarded),
     // so instead it asserts, from source text, that every consumer still
     // imports the shared constant rather than a reintroduced literal.
+    //
+    // ── The net, stated as what it does and does not catch (#1162 §4) ────────
+    //
+    // Until #1162 the import half was `expect(src).toContain(importSpecifier)`,
+    // a substring test over the whole file — and three of the four consumers
+    // carry the specifier in a HEADER COMMENT as well as in the import
+    // (playwright.config.ts:29, globalSetup.ts:43, globalTeardown.ts:22). So
+    // deleting globalTeardown.ts's real import and re-declaring
+    // `const E2E_APP_PORT = 5174` locally left all 9 tests green: only
+    // process-e2e-coverage.ts was genuinely pinned, and only by the accident
+    // that its comment says `e2eAppOrigin.ts` rather than `../e2e/…`.
+    //
+    // Two assertions replace it, and between them they cover both shapes of the
+    // fifth copy:
+    //   IMPORT_OF     — an actual `import … from '<specifier>'` STATEMENT, which
+    //                   a `//` comment cannot satisfy (its line begins `//`,
+    //                   never `import`) and a `/* … */` block comment is
+    //                   stripped before matching, so an archaeological block
+    //                   quoting a removed import line can't satisfy it either.
+    //   SHADOW_DECL   — a local `const`/`let`/`var`/`function`/`class` binding
+    //                   one of the three exported names, AT ANY VALUE. Value-
+    //                   agnostic on purpose: it reds both on a shadow copy that
+    //                   agrees with the shared constant today (the mutation
+    //                   above) and on one that has already drifted, where a
+    //                   number-based rule would only ever catch the second.
+    //
+    // Rejected: banning a bare `5174` literal. Measured — globalSetup.ts:344,352
+    // print `:5174` inside real template-literal log strings, and seven more
+    // comment lines mention it — so that rule needs comment-stripping AND two
+    // log strings rewritten, and is still blind to a copy holding a different
+    // number. More work for a weaker net.
+    //
+    // What neither catches: a consumer that imports the constant and then
+    // ignores it, and a shadow copy under a DIFFERENT name (`const PORT = 5174`).
+    // Both are visible in review; neither is the shape that has actually
+    // occurred twice.
     const CONSUMERS: ReadonlyArray<{ label: string; file: string; importSpecifier: string }> = [
       {
         label: 'playwright.config.ts',
@@ -244,6 +280,18 @@ describe('process-e2e-coverage.ts', () => {
         file: SCRIPT,
         importSpecifier: '../e2e/e2eAppOrigin.ts',
       },
+      // Added by #1162. `SENTINEL_PATH` was a sixth copy of the port, written
+      // out as `salt-e2e-5174.json`; both globalSetup and globalTeardown import
+      // that one constant, so a port move misnamed the file CONSISTENTLY rather
+      // than causing a disagreement — a documentation defect, not a correctness
+      // one, which is why it survived #1132. It now derives from `E2E_APP_PORT`,
+      // and the import is clean: `e2eAppOrigin.ts` imports nothing and has no
+      // side effects, so there is no load-order reason to keep it out.
+      {
+        label: 'e2e/e2eServerRegistry.ts',
+        file: join(APP_DIR, 'e2e', 'e2eServerRegistry.ts'),
+        importSpecifier: './e2eAppOrigin',
+      },
     ];
 
     // Built from the imported constant, not a hard-coded `5174`, so a genuine
@@ -258,16 +306,54 @@ describe('process-e2e-coverage.ts', () => {
     const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${escapeRegExp(E2E_APP_ORIGIN)}`);
 
+    /** A real `import … from '<specifier>'`, single- or multi-line. Anchored to
+     *  a line that STARTS with `import` (`m` flag), which is what a `//`
+     *  comment mentioning the specifier cannot do: its line starts `//`. A
+     *  `/* … *\/` block comment CAN open a line with `import` (its body lines
+     *  carry no required prefix), so callers must match against
+     *  `stripBlockComments(src)`, not raw `src` — see the call site below. The
+     *  clause body is `[^;]*?` so a braced multi-line import still matches,
+     *  and stops at the statement's own semicolon so it cannot reach across
+     *  one import into the next. */
+    const importOf = (specifier: string): RegExp =>
+      new RegExp(`^\\s*import\\s[^;]*?from\\s*['"\`]${escapeRegExp(specifier)}['"\`]`, 'm');
+
+    /** Strips `/* … *\/` block comments only — `//` line comments are already
+     *  excluded by `importOf`'s line anchor, and stripping them too would just
+     *  as happily hide a real import that follows one on the same line. */
+    const stripBlockComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    /** A local binding of one of the three exported names, at any value — the
+     *  shape #1132 removed from globalTeardown.ts and the one #1162 reproduced.
+     *  Not comment-stripped: a comment containing the literal text
+     *  `const E2E_APP_PORT` would be a FALSE POSITIVE, which is the harmless
+     *  direction — and is not the case in the five files CONSUMERS scans today
+     *  (this test file itself carries that exact text, in this comment and in
+     *  the review-history prose above, which is exactly why this file can
+     *  never join CONSUMERS without being reworded). `e2eAppOrigin.ts` is not
+     *  a consumer either, so its own declarations are never scanned. */
+    const SHADOW_DECLARATION =
+      /\b(?:const|let|var|function|class)\s+(?:E2E_APP_HOST|E2E_APP_PORT|E2E_APP_ORIGIN)\b/;
+
     it.each(CONSUMERS)(
       '$label derives the origin from e2eAppOrigin.ts',
       ({ file, importSpecifier }) => {
         const src = readFileSync(file, 'utf8');
-        expect(src).toContain(importSpecifier);
+        expect(
+          stripBlockComments(src),
+          `no \`import … from '${importSpecifier}'\` statement`,
+        ).toMatch(importOf(importSpecifier));
         // A stray literal origin here — even alongside the import — is the
         // drift finding 1 flagged: a second, independently-editable copy of the
         // port that the import no longer prevents. `e2eAppOrigin.ts` itself is
         // exempt (it IS the literal).
         expect(src).not.toMatch(STRAY_LITERAL_ORIGIN);
+        // And the other shape of the same copy: a local re-declaration. It reds
+        // whatever value it holds, so a shadow that agrees with the shared
+        // constant today is caught as well as one that has already drifted.
+        expect(src, 'a local re-declaration shadows the shared constant').not.toMatch(
+          SHADOW_DECLARATION,
+        );
       },
     );
   });

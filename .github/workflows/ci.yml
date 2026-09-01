@@ -423,8 +423,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
-    # A healthy run is ~8 min. Without a bound a wedged `up --wait` or a stalled
-    # registry fetch sits on GitHub's 6-hour default (issue #580).
+    # A healthy run is ~1.5 min of JOB wall-clock — measured 85–109 s across the
+    # seven successful runs of 2026-09-01 (33484861527, 33485167582, 33486073878,
+    # 33486619970, 33493653360, 33496275457, 33502165236). Job, not step, because
+    # `timeout-minutes` bounds the job: the ~47 s quoted on #1150 is the `Run
+    # Vitest emulator integration suites` step alone. Both are true; only this one
+    # is what the bound is sized against. Nothing re-measures it, so read it as of
+    # that date, not as a live figure. Without a bound a wedged `up --wait` or a
+    # stalled registry fetch sits on GitHub's 6-hour default (issue #580).
     timeout-minutes: 25
     # Job-level permissions REPLACE the workflow-level block, so contents must be
     # restated. packages:read is for pulling the prebuilt emulator image.

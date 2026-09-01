@@ -65,11 +65,18 @@ derived from the tree (files, assertions, `vi.mock` calls) were **re-measured on
 still the reviewer's to apply, and a file can satisfy every matcher and still be the thing UT-A1 is
 about.
 
-**The markers themselves are hand-maintained, and nothing checks them.** Adding a rule to the guard
-without marking it here, or marking one `guarded` that the guard does not implement, would go
-unnoticed — the one drift this document is not protected against. Stated rather than pinned because
-#1134 Phase 2 was scoped not to touch Phase 1's guard; a test asserting this file's `guarded` set
-equals `RULE_IDS` in `scripts/lib/unitTestSpec.mjs` is the fix, and it is one assertion long.
+**The `guarded` markers are pinned; the sentences around them are not.**
+[`scripts/tests/unitTestSpecGuard.test.mjs`](../scripts/tests/unitTestSpecGuard.test.mjs) parses the
+rule headers below and asserts that the set marked `guarded` equals `RULE_IDS` in
+[`scripts/lib/unitTestSpec.mjs`](../scripts/lib/unitTestSpec.mjs) — both directions, so demoting a
+marker to `review-only` reds it and so does adding a rule to `FILE_RULES`/`AREA_RULES` without
+marking it here (#1162, which measured the gap: demoting `UT-E4` left all 92 tests green). It matches
+the header **form**, never the word `guarded`, which also appears in prose on several other lines of
+this file.
+
+What it does **not** check is whether a rule's prose describes what its matcher actually does. Each
+of the nine carries a `_Guard:_` line saying what the matcher really sees — three of them narrower
+than the rule reads — and nothing verifies those sentences either. That half is still the reviewer's.
 
 **Routing is not enforcement, and reading it as such is how the week above happened.**
 [`pr-doc-review.yml`](../.github/workflows/pr-doc-review.yml) routes a PR touching a test file to
