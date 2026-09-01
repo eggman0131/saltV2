@@ -47,7 +47,9 @@ test.use({ viewport: { width: 393, height: 851 } });
 // forward from there, and everything that needs a default list happens later.
 async function awaitDefaultList(page: Page): Promise<void> {
   await expect
-    .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
+    .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null), {
+      timeout: SYNC_TIMEOUT,
+    })
     .not.toBeNull();
 }
 
