@@ -355,13 +355,16 @@ test.describe('shopping list — multi-list', () => {
     const vinegarCanonId = await waitForMatched(page, 'rice vinegar');
     expect(vinegarCanonId).toBe(vinegarCanon.id);
 
-    // `.first()` because the store flips to `matched` before the page's local
-    // canon snapshot has regrouped, and in that window the row is rendered under
-    // BOTH its aisle and OTHER — the cross-context canon-sync race
-    // canon-realtime-match.spec.ts documents, which is why that spec refuses to
-    // assert which bucket a matched row lands in. Either instance is the same
-    // item and opens the same sheet, so the edit is unambiguous; the assertion
-    // that matters is made against the store after the move.
+    // `.first()` because the #571 match reveal legitimately renders this row in
+    // two places at once: when the trigger's match arrives, `out:collapseOut`
+    // keeps the outgoing OTHER copy mounted for `REVEAL_OUT_MS` (300ms,
+    // ShoppingItemRow.svelte:130) while the aisle copy mounts immediately, so
+    // the same `data-item-id` is under both `shopping-other` and
+    // `shopping-aisle-group` for that window — and e2e runs with motion on
+    // (playwright.config.ts `reducedMotion: 'no-preference'`), so CI sees it.
+    // Either instance is the same item and opens the same sheet, so the edit is
+    // unambiguous; the assertion that matters is made against the store after
+    // the move.
     await vinegarRow.getByTestId('shopping-item-edit-btn').first().click();
     // The text field is left exactly as it is — only the destination changes.
     await page.getByTestId('shopping-edit-move-select').click();
