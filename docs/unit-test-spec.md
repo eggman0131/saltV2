@@ -287,8 +287,14 @@ has. It is also the easiest to render vacuously green.
   `asyncUtilTimeout` is 5 s, set globally and reasoned about in `setup.ts`. **A failure whose
   duration moves with the budget is a test bug, not a starved wait** — the predicate does not gate
   what the test then asserts. Fix the predicate.
-  **Evidence:** #793/#804. `pnpm soak` (`scripts/soak-unit-tests.mjs`) is how you measure a suspected
-  flake rather than arguing about it.
+  **Evidence:** #793/#804. Measure a suspected flake rather than arguing about it, by the route that
+  exists for the suite in question. `pnpm soak` (`scripts/soak-unit-tests.mjs`) re-runs `pnpm test`
+  under CPU contention, so it reaches every project in the root `projects` list and nothing else.
+  For the `*.emulator.test.ts` files it reaches nothing at all — neither emulator config is in that
+  list — and the route there is `pnpm flake:emulator` (`scripts/emulator-flake-rate.mjs`), which
+  reports a rate for the `Vitest integration (emulator)` **job** from real cold CI history rather
+  than per file. This rule governs that suite's budgets (`testTimeout`, `hookTimeout`,
+  `CONVERGENCE_MS`, `WARMUP_MS`) exactly as it governs `asyncUtilTimeout`.
 
 - **UT-F2 (MUST · review-only) — Inside a bits-ui focus trap, type with `fireEvent`, not
   `userEvent.type`.** A Sheet or Dialog focus trap eats `userEvent`'s per-keystroke events, so the
@@ -390,7 +396,8 @@ has. It is also the easiest to render vacuously green.
   **Evidence:** #838, closed by #942's typecheck rather than by a defensive helper.
 
 - **UT-H2 (SHOULD · review-only) — Reproduce before claiming a fix.** `pnpm soak` for a suspected
-  unit flake; `--repeat-each` is the e2e equivalent (NF-H2).
+  unit flake; `pnpm flake:emulator` for an `*.emulator.test.ts` one, which `pnpm soak` cannot reach
+  (UT-F1); `--repeat-each` is the e2e equivalent (NF-H2).
 
 ---
 
