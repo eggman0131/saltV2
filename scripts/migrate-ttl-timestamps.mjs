@@ -267,5 +267,7 @@ for (const doc of planned) {
   }
 }
 
-console.log(`\n✔ ${env.project}/${args.collection}: converted ${converted}, failed ${failures.length}.`);
+console.log(
+  `\n✔ ${env.project}/${args.collection}: converted ${converted}, failed ${failures.length}.`,
+);
 process.exit(failures.length > 0 ? 1 : 0);

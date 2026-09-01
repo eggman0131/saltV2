@@ -3,7 +3,7 @@
 What gates a merge, and where that configuration actually lives. Most of it is
 **not in the tree**: the ruleset and code scanning are GitHub settings, and the
 repo's only knowledge of them is this doc plus `scripts/check-merge-queue.mjs`.
-For deploys — what happens *after* a merge — see [releases.md](releases.md).
+For deploys — what happens _after_ a merge — see [releases.md](releases.md).
 
 ## The `Main` ruleset
 
@@ -15,15 +15,15 @@ rather than trusting this table, which is a copy:
 gh api repos/eggmanorg/salt/rulesets/16697241
 ```
 
-| Rule | Configuration |
-| --- | --- |
-| `required_status_checks` | The three contexts below. **Not strict** — see the merge queue. |
-| `merge_queue` | Squash; see settings below. |
-| `pull_request` | 0 required approvals; `allowed_merge_methods: [squash, rebase]`. |
-| `required_linear_history` | On. This is why the queue merges by squash. |
-| `code_scanning` | CodeQL, `high_or_higher` / `errors`. **A rule, not a status check** — see below. |
-| `code_quality` | Severity `errors`. Also a rule, not a status check. |
-| `deletion`, `non_fast_forward` | On. |
+| Rule                           | Configuration                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| `required_status_checks`       | The three contexts below. **Not strict** — see the merge queue.                  |
+| `merge_queue`                  | Squash; see settings below.                                                      |
+| `pull_request`                 | 0 required approvals; `allowed_merge_methods: [squash, rebase]`.                 |
+| `required_linear_history`      | On. This is why the queue merges by squash.                                      |
+| `code_scanning`                | CodeQL, `high_or_higher` / `errors`. **A rule, not a status check** — see below. |
+| `code_quality`                 | Severity `errors`. Also a rule, not a status check.                              |
+| `deletion`, `non_fast_forward` | On.                                                                              |
 
 ### The three required status checks
 
@@ -42,7 +42,7 @@ Two properties are deliberate and easy to misread:
   not proof a suite ran — read job conclusions, not the check summary
   (`.claude/commands/run.md` step 8 has the recipe).
 - **Both aggregators run `if: always()` and assert their dependencies
-  themselves.** A plain `needs:` would *skip* them when a dependency failed, and
+  themselves.** A plain `needs:` would _skip_ them when a dependency failed, and
   a skipped required check passes — the gate would silently stop gating.
 
 ## The merge queue
@@ -75,15 +75,15 @@ only if that combination is green. This is where the semantic collision that
 broken together — is now caught, instead of on a hand-driven "Update branch"
 round-trip, and never on `main` itself.
 
-| Setting | Value | Why |
-| --- | --- | --- |
-| Merge method | Squash | `required_linear_history` is on and `main` is squash-linear (`(#PR)` subjects). A merge commit would violate the rule. |
-| Maximum PRs to build | 5 | Speculation depth — the thing the serial predecessor could never do. |
-| Maximum PRs to merge | 5 | Matches build depth. |
-| Minimum PRs to merge | 1 | The queue never holds a green group back waiting for company. Batching engages only when PRs happen to stack up; a lone PR is not delayed by it. |
-| Wait time to meet minimum group size | 5 min | Moot at a minimum of 1. |
-| Only merge non-failing PRs (`ALLGREEN`) | On | Merge the batch only if every entry is green. |
-| Status check timeout | 60 min | CI's worst case is ~25 min (cold-cache e2e runs of 18 min are on record). |
+| Setting                                 | Value  | Why                                                                                                                                              |
+| --------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Merge method                            | Squash | `required_linear_history` is on and `main` is squash-linear (`(#PR)` subjects). A merge commit would violate the rule.                           |
+| Maximum PRs to build                    | 5      | Speculation depth — the thing the serial predecessor could never do.                                                                             |
+| Maximum PRs to merge                    | 5      | Matches build depth.                                                                                                                             |
+| Minimum PRs to merge                    | 1      | The queue never holds a green group back waiting for company. Batching engages only when PRs happen to stack up; a lone PR is not delayed by it. |
+| Wait time to meet minimum group size    | 5 min  | Moot at a minimum of 1.                                                                                                                          |
+| Only merge non-failing PRs (`ALLGREEN`) | On     | Merge the batch only if every entry is green.                                                                                                    |
+| Status check timeout                    | 60 min | CI's worst case is ~25 min (cold-cache e2e runs of 18 min are on record).                                                                        |
 
 ### Turning it on, in that order
 
@@ -117,12 +117,12 @@ distinction is not cosmetic.
 
 CodeQL runs through GitHub's **default setup**, which lives in repository
 settings, and **default setup does not analyse `merge_group` events**. It is
-enforced by the ruleset's `code_scanning` rule — *merge protection* — and not as
+enforced by the ruleset's `code_scanning` rule — _merge protection_ — and not as
 a required status check. GitHub does not apply merge protection to merge queue
 groups, so it is **skipped** there rather than left pending. The gate still runs
 on every PR before it can be queued, and on every push to `main` after.
 
-Had CodeQL been a required *status* check, every queue entry would have sat
+Had CodeQL been a required _status_ check, every queue entry would have sat
 pending until the 60-minute timeout and then been ejected, and the fix would
 have been a migration to advanced setup — a `.github/workflows/codeql.yml` with
 its own `merge_group:` trigger. It is not, so no such migration exists. **Verify
@@ -166,7 +166,7 @@ until the eggmanorg transfer. Public vs private was never the constraint; the
 account type was.
 
 Retiring it was not optional once the queue landed. A PR with auto-merge enabled
-is now *in* the queue, and pushing `update-branch` to a queued PR invalidates its
+is now _in_ the queue, and pushing `update-branch` to a queued PR invalidates its
 entry.
 
 ## Interactions worth knowing
@@ -174,7 +174,7 @@ entry.
 - **`deploy-staging.yml` chains off `ci.yml`'s completion on `main`**
   (`workflow_run`, `branches: [main]`). Merge-queue runs happen on the readonly
   queue ref and never on `main`, so `ci.yml` must keep its `push: branches:
-  [main]` trigger or staging deploys stop silently. `pnpm mergequeue:check`
+[main]` trigger or staging deploys stop silently. `pnpm mergequeue:check`
   asserts it.
 - **`dependabot-auto-merge.yml`** calls `gh pr merge --auto --squash` for patch
   and minor bumps. Under a queue that enqueues rather than merges; the queue's

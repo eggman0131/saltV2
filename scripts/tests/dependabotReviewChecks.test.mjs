@@ -42,11 +42,14 @@ describe('dependabot-major-review check poll', () => {
     expect(want, "no `want='…'` assignment in dependabot-major-review.yml").toBeDefined();
   });
 
-  it.each((want ?? '').split('|'))('polls for %o, which is a live ci.yml job name', (alternative) => {
-    expect(
-      names.filter((name) => new RegExp(alternative).test(name)),
-      `\`want\` in dependabot-major-review.yml matches no job in ci.yml. ` +
-        `Current job names: ${names.join(', ')}.`,
-    ).not.toHaveLength(0);
-  });
+  it.each((want ?? '').split('|'))(
+    'polls for %o, which is a live ci.yml job name',
+    (alternative) => {
+      expect(
+        names.filter((name) => new RegExp(alternative).test(name)),
+        `\`want\` in dependabot-major-review.yml matches no job in ci.yml. ` +
+          `Current job names: ${names.join(', ')}.`,
+      ).not.toHaveLength(0);
+    },
+  );
 });

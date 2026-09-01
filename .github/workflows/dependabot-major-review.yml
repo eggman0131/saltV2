@@ -109,7 +109,7 @@ jobs:
           # initiated by non-human actor"). This workflow exists ONLY to review
           # Dependabot PRs, and the job-level `if:` already gates on that exact
           # author, so allow just dependabot[bot] (not '*') to clear the gate.
-          allowed_bots: "dependabot[bot]"
+          allowed_bots: 'dependabot[bot]'
           claude_args: >-
             --max-turns 30
             --model opus

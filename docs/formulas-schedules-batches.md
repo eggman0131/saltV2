@@ -56,11 +56,11 @@ Baker's percentage is the general case, not a special one. A formula names a
 **basis** — the set of ingredients whose combined weight is 100% — and every
 other ingredient is a percentage of that total.
 
-| Craft | Basis |
-| --- | --- |
-| Bread | the flours |
-| Sauerkraut, kimchi | the vegetables |
-| Coppa, salami | the green weight of the meat |
+| Craft              | Basis                        |
+| ------------------ | ---------------------------- |
+| Bread              | the flours                   |
+| Sauerkraut, kimchi | the vegetables               |
+| Coppa, salami      | the green weight of the meat |
 
 The basis is itself a small formula (70% strong white / 30% wholemeal;
 80% cabbage / 15% carrot / 5% fennel), and that second tier is what lets one
@@ -172,12 +172,12 @@ pull it in — only kefir does, and it may never be built.
 Scaling and adapting are different in kind, and should not look or behave alike —
 the user's trust in each is correctly different.
 
-| | **Scale** | **Adapt** |
-| --- | --- | --- |
-| Owner | `packages/domain` | Genkit callable |
-| Nature | exact, instant, offline, unit-tested | a proposal you review |
-| Determinism | same answer every time | authored once, then stored as data |
-| Covers | yield solving, basis re-splits, unit shapes, loss, percentages → grams | wait-stage extraction, a schedule that lands at a target time, the yeast consequence of a longer retard, what more wholemeal does to hydration and timing, ferment flavour combinations |
+|             | **Scale**                                                              | **Adapt**                                                                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner       | `packages/domain`                                                      | Genkit callable                                                                                                                                                                         |
+| Nature      | exact, instant, offline, unit-tested                                   | a proposal you review                                                                                                                                                                   |
+| Determinism | same answer every time                                                 | authored once, then stored as data                                                                                                                                                      |
+| Covers      | yield solving, basis re-splits, unit shapes, loss, percentages → grams | wait-stage extraction, a schedule that lands at a target time, the yeast consequence of a longer retard, what more wholemeal does to hydration and timing, ferment flavour combinations |
 
 **The AI authors, the domain runs.** A schedule is proposed once, stored on the
 batch, then executed by pure code and the existing Cloud Tasks path. The model is
@@ -193,7 +193,7 @@ exactly — AI writes, human edits, runtime never calls the model again.
 
 Two flows, two tiers; not one flow doing both.
 
-**Review a diff, store a snapshot.** A proposal can *restructure*: ninety minutes
+**Review a diff, store a snapshot.** A proposal can _restructure_: ninety minutes
 on the counter becomes twenty on the counter and eight in the fridge. So the
 process on the formula is a **reference**, not a template the schedule merely
 re-times. A pure `diffProcess` renders the change for review; what lands on the
@@ -204,12 +204,12 @@ becoming two is a removal and two additions, and renders honestly as that.
 
 ## Documents
 
-| Doc | Firestore path | Scope | Purpose |
-| --- | --- | --- | --- |
-| `Formula` | `formulas/{recipeId}` | family-shared | Basis, percentages, unit shape, reference yield, reference process |
-| `Batch` | `batches/{batchId}` | family-shared | One run: frozen quantities, frozen schedule, current stage, state |
-| `Observation` | `batches/{batchId}/observations/{id}` | family-shared | Append-only log — weight, pH, temperature, note, photo |
-| `Culture` | `cultures/{cultureId}` | family-shared | Deferred. Maintenance formula, rhythm, state, feed log |
+| Doc           | Firestore path                        | Scope         | Purpose                                                            |
+| ------------- | ------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| `Formula`     | `formulas/{recipeId}`                 | family-shared | Basis, percentages, unit shape, reference yield, reference process |
+| `Batch`       | `batches/{batchId}`                   | family-shared | One run: frozen quantities, frozen schedule, current stage, state  |
+| `Observation` | `batches/{batchId}/observations/{id}` | family-shared | Append-only log — weight, pH, temperature, note, photo             |
+| `Culture`     | `cultures/{cultureId}`                | family-shared | Deferred. Maintenance formula, rhythm, state, feed log             |
 
 **Why `formulas` is its own collection, keyed by recipe id**, rather than fields
 on `RecipeSchema` — the same reasoning as `guidedPlans/{recipeId}`:
@@ -236,22 +236,22 @@ reference yield**.
 Do **not** add `bread`, `ferment` and `cure` as kinds and hang behaviour off them.
 `kind` keeps doing exactly what it does today (see CLAUDE.md and
 `recipe/queries/capabilities.ts`): identity, copy, icons, library section, which
-prompt authors it, whether the planner offers it. What a document can *do* comes
-from what it *has*.
+prompt authors it, whether the planner offers it. What a document can _do_ comes
+from what it _has_.
 
-| Entry | `kind` | formula | process | batches | culture |
-| --- | --- | :-: | :-: | :-: | :-: |
-| Weeknight curry | `recipe` | — | — | — | — |
-| Tin loaf | `recipe` | ● | ● | ● | — |
-| Thin pizza bases | `recipe` | ● | ● | ● | — |
-| Fresh sausage | `recipe` | ● | — | — | — |
-| Sauerkraut | `ferment` | ● | ● | ● | — |
-| Kimchi | `ferment` | ● | ● | ● | — |
-| Milk kefir | `ferment` | ● | ● | ● | ● |
-| Coppa | `cure` | ● | ● | ● | — |
-| Salami | `cure` | ● | ● | ● | — |
-| Negroni | `cocktail` | free | — | — | — |
-| Friday takeaway | `outing` | — | — | — | — |
+| Entry            | `kind`     | formula | process | batches | culture |
+| ---------------- | ---------- | :-----: | :-----: | :-----: | :-----: |
+| Weeknight curry  | `recipe`   |    —    |    —    |    —    |    —    |
+| Tin loaf         | `recipe`   |    ●    |    ●    |    ●    |    —    |
+| Thin pizza bases | `recipe`   |    ●    |    ●    |    ●    |    —    |
+| Fresh sausage    | `recipe`   |    ●    |    —    |    —    |    —    |
+| Sauerkraut       | `ferment`  |    ●    |    ●    |    ●    |    —    |
+| Kimchi           | `ferment`  |    ●    |    ●    |    ●    |    —    |
+| Milk kefir       | `ferment`  |    ●    |    ●    |    ●    |    ●    |
+| Coppa            | `cure`     |    ●    |    ●    |    ●    |    —    |
+| Salami           | `cure`     |    ●    |    ●    |    ●    |    —    |
+| Negroni          | `cocktail` |  free   |    —    |    —    |    —    |
+| Friday takeaway  | `outing`   |    —    |    —    |    —    |    —    |
 
 A loaf **is** a recipe: cooked, plannable, wants a hero image, ingredients on the
 shopping list. A `bread` kind would fork all of that for nothing. `ferment` and
@@ -296,22 +296,22 @@ apps/web-pwa/
 
 The **in-flight surface** is the day-to-day home and does not exist in any form
 today: "Coppa — day 12, 22% lost, weigh Friday", "Kraut — day 5 at 19 °C, taste
-it". It is family-shared, so it is not a fit for *Mine* (a per-user projection).
+it". It is family-shared, so it is not a fit for _Mine_ (a per-user projection).
 It holds **two** kinds of card — projects with a finish line, and (if cultures
 ever land) rhythms with a next feed. Same card shape: next action, when.
 
 ## What is reused
 
-| | |
-| --- | --- |
+|                                        |                                                                                                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Cloud Tasks + push + `timerDeliveries` | The cook-timer path is exactly the mechanism a proof reminder or a "day 7, taste it" needs — same shape, longer horizon, exactly-once already solved. The single biggest reuse. |
-| Canon matching | Unaffected. Ratios resolve to grams before anything canonicalises. |
-| Shopping list | Works as-is, with one ordering constraint: extract from the **resolved** quantities, never the formula. |
-| `guidedPlans` | The precedent for a separate family-shared doc keyed by recipe id, and for the AI-authors-once lifecycle. |
-| `recipeDiff` | The precedent for a pure, never-persisted, human-signal diff. |
-| Cook mode | Bread still gets baked. The final stage of a bread process hands off to the existing cook session. |
-| `RecipeKind` | Adding two kinds is a one-file change, and the `Record` forces every consumer to be answered before it compiles. |
-| Genkit callables + `resolveModel` | Both new flows are the existing pattern; the model tiering seam already exists. |
+| Canon matching                         | Unaffected. Ratios resolve to grams before anything canonicalises.                                                                                                              |
+| Shopping list                          | Works as-is, with one ordering constraint: extract from the **resolved** quantities, never the formula.                                                                         |
+| `guidedPlans`                          | The precedent for a separate family-shared doc keyed by recipe id, and for the AI-authors-once lifecycle.                                                                       |
+| `recipeDiff`                           | The precedent for a pure, never-persisted, human-signal diff.                                                                                                                   |
+| Cook mode                              | Bread still gets baked. The final stage of a bread process hands off to the existing cook session.                                                                              |
+| `RecipeKind`                           | Adding two kinds is a one-file change, and the `Record` forces every consumer to be answered before it compiles.                                                                |
+| Genkit callables + `resolveModel`      | Both new flows are the existing pattern; the model tiering seam already exists.                                                                                                 |
 
 Nothing needs to be built externally. The only thing resembling external data is
 a reference table (unit shapes, hydration norms, cure-salt limits) — a checked-in
@@ -319,16 +319,16 @@ constant in `domain`, not a service.
 
 ## What not to build
 
-| | |
-| --- | --- |
-| A separate app | Immediately loses canon, shopping, search and images. |
-| A process/workflow DSL | Stages are a small fixed shape. A mini-language costs more than it saves and is unreviewable. |
-| `{ type: 'percent' }` on `QuantitySchema` | Ratios would leak into every consumer reading `parsed.quantity` — shopping list, canon, chat — each needing a basis it cannot see. Resolve at the formula boundary; downstream keeps seeing grams. |
-| Batches on `cookSessions` | Wrong ownership, wrong lifetime, wrong sharing. |
-| A parallel "Projects" model outside `recipes` | Fragments canon, search, shopping and images for no gain. |
-| A fermentation model | Timing judgement is a one-shot AI proposal the user reviews. A numeric model needs months of the household's own data before it is worth having. |
-| The AI in the hot path | It authors the schedule, then it is gone. Timers, reminders and state transitions are pure code on existing infrastructure. |
-| Daily notifications for a long run | A 90-day cure must not notify 90 times. Reminders attach to stage transitions and scheduled checks, never to elapsed time. |
+|                                               |                                                                                                                                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A separate app                                | Immediately loses canon, shopping, search and images.                                                                                                                                              |
+| A process/workflow DSL                        | Stages are a small fixed shape. A mini-language costs more than it saves and is unreviewable.                                                                                                      |
+| `{ type: 'percent' }` on `QuantitySchema`     | Ratios would leak into every consumer reading `parsed.quantity` — shopping list, canon, chat — each needing a basis it cannot see. Resolve at the formula boundary; downstream keeps seeing grams. |
+| Batches on `cookSessions`                     | Wrong ownership, wrong lifetime, wrong sharing.                                                                                                                                                    |
+| A parallel "Projects" model outside `recipes` | Fragments canon, search, shopping and images for no gain.                                                                                                                                          |
+| A fermentation model                          | Timing judgement is a one-shot AI proposal the user reviews. A numeric model needs months of the household's own data before it is worth having.                                                   |
+| The AI in the hot path                        | It authors the schedule, then it is gone. Timers, reminders and state transitions are pure code on existing infrastructure.                                                                        |
+| Daily notifications for a long run            | A 90-day cure must not notify 90 times. Reminders attach to stage transitions and scheduled checks, never to elapsed time.                                                                         |
 
 ## Phasing
 
@@ -337,14 +337,14 @@ the entire lifecycle — create, plan, schedule, notify, observe, finish — in
 eighteen hours. A kraut takes three weeks; a coppa four months. A batch model
 cannot be debugged on a four-month feedback loop.
 
-| Phase | Scope |
-| --- | --- |
-| **00** | Formula in `domain`, headless. Basis, bidirectional solve, unit shapes, loss. Fully tested before anything renders it. |
+| Phase  | Scope                                                                                                                                                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **00** | Formula in `domain`, headless. Basis, bidirectional solve, unit shapes, loss. Fully tested before anything renders it.                                                                                                                            |
 | **01** | Basis mapping on an existing recipe; `extractProcessStages`; "12 × 120 g rolls". **Ship with 02, not before** — scaling by hand already works, so alone this only replaces arithmetic nobody minds doing. It is the substrate the schedule needs. |
-| **02** | `proposeSchedule`, the `batches` collection, the in-flight surface, reminders on the existing Tasks path. The half with no manual workaround, and the half that justifies the whole thing. |
-| **03** | Ferments. New kind, `authorFerment`, vessel headspace, one long stage. The basis-driven solve earns its keep — you weigh the cabbage, not the output. |
-| **04** | Cures. New kind, the observation log worked hard, weight-loss criteria, revised projections, reminders past the Tasks horizon. Cure-salt bounds are a prerequisite, not a feature. |
-| **05** | Cultures. Only if kefir happens. |
+| **02** | `proposeSchedule`, the `batches` collection, the in-flight surface, reminders on the existing Tasks path. The half with no manual workaround, and the half that justifies the whole thing.                                                        |
+| **03** | Ferments. New kind, `authorFerment`, vessel headspace, one long stage. The basis-driven solve earns its keep — you weigh the cabbage, not the output.                                                                                             |
+| **04** | Cures. New kind, the observation log worked hard, weight-loss criteria, revised projections, reminders past the Tasks horizon. Cure-salt bounds are a prerequisite, not a feature.                                                                |
+| **05** | Cultures. Only if kefir happens.                                                                                                                                                                                                                  |
 
 ### What bread hands on
 

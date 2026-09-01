@@ -76,9 +76,7 @@ function fail(message) {
 }
 
 if (!existsSync(DIST)) {
-  console.error(
-    `✖ No build found at ${DIST}.\n  Run \`pnpm --filter @salt/web-pwa build\` first.`,
-  );
+  console.error(`✖ No build found at ${DIST}.\n  Run \`pnpm --filter @salt/web-pwa build\` first.`);
   process.exit(1);
 }
 

@@ -8,7 +8,7 @@ three environments are done in, and the two ways a run silently does nothing.
 ## What this is remediating
 
 Every recipe authored before #952 phase 1 carries a prep time produced by a prompt that
-never said what a prep time *is*. With only `integers in minutes, or null` to go on, the
+never said what a prep time _is_. With only `integers in minutes, or null` to go on, the
 model fell back on published-recipe convention — the already-weighed counter, and no
 washing up — so Penne all'Arrabbiata claims **5 minutes** to fetch and chop garlic and
 chilli, open tomatoes, boil a pan and grate cheese. A subset are also arithmetically

@@ -30,13 +30,13 @@ v0.4 §15 locked `ImageCropper` to 3:2 because its only consumer was the recipe 
 
 The alternative — no cropper, framing by camera alone — would need its own downscale and WebP encode in the consuming app, i.e. a second implementation of logic this primitive already contains. Per the established practice (a second surface wanting an existing behaviour promotes the primitive rather than writing it twice), the aspect lock becomes a **closed, two-valued mode** instead.
 
-`'free'` does not mean "unconstrained". The crop frame in free mode is locked to **the source image's own aspect ratio**, so the user pans and zooms within the shape the camera produced: no letterboxing, no bars, and no edge lost to a frame the image does not fit. The only thing that changes between the two modes is *which* ratio the frame is locked to.
+`'free'` does not mean "unconstrained". The crop frame in free mode is locked to **the source image's own aspect ratio**, so the user pans and zooms within the shape the camera produced: no letterboxing, no bars, and no edge lost to a frame the image does not fit. The only thing that changes between the two modes is _which_ ratio the frame is locked to.
 
 ## 1.2 What this amends in v0.4 §15
 
 v0.4 §15 stays in force in full, with four clauses amended. A reader arriving at §15 alone would otherwise be left with a stale absolute.
 
-1. **§15.2's note, "Aspect ratio is not a prop."** Superseded. Aspect **is** a prop, but a string union of two named modes (§1.3) — never a number. The hazard §15.2 was guarding against (a caller silently violating the recipe-photo contract by passing an arbitrary ratio) is preserved by the union: `'3:2'` is the default and the only way to get a hero-shaped crop, and no value expresses "some other fixed ratio". Its closing sentence — "add a new primitive rather than parameterising this one" — applies to any *third* behaviour, not to this mode.
+1. **§15.2's note, "Aspect ratio is not a prop."** Superseded. Aspect **is** a prop, but a string union of two named modes (§1.3) — never a number. The hazard §15.2 was guarding against (a caller silently violating the recipe-photo contract by passing an arbitrary ratio) is preserved by the union: `'3:2'` is the default and the only way to get a hero-shaped crop, and no value expresses "some other fixed ratio". Its closing sentence — "add a new primitive rather than parameterising this one" — applies to any _third_ behaviour, not to this mode.
 2. **§15.4's "fixed-3:2 container (`aspect-[3/2]`)".** The stage's ratio is now the **active aspect** (§1.4), applied as an inline `aspect-ratio` style. In `'3:2'` mode the resulting ratio is identical to the class it replaces. This is a **sanctioned exception to v0.2 §2.3** ("no inline `style` attributes except for numeric transforms"): the value is a number known only at runtime, so Tailwind cannot generate a class for it — the same class of exception, and the same justification, as `Progress`'s numeric `transform`. It is limited to this one declaration on this one element; every other style on the stage stays a utility class.
 3. **§15.5 step 3, and §15.3's derived-short-side clause.** Output dimensions derive from the **active aspect**, not the constant `3/2`, and `maxEdge` caps the genuinely longest edge (§1.5). In `'3:2'` mode the arithmetic is unchanged.
 4. **§15.6's first testing requirement**, which names the container class `aspect-[3/2]`. The stage no longer carries that class in either mode (see 2 above); assert the ratio via `data-testid="image-cropper-stage"` as §1.6 sets out. The requirement itself — that the default renders a 3:2 stage — is unchanged and restated in §1.6.
@@ -45,8 +45,8 @@ Everything else in §15 is untouched and binding in both modes: the `getCroppedB
 
 ## 1.3 Props
 
-| Name     | Type              | Default | Notes                                                                                        |
-| -------- | ----------------- | ------- | -------------------------------------------------------------------------------------------- |
+| Name     | Type              | Default | Notes                                                                                                                      |
+| -------- | ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `aspect` | `'3:2' \| 'free'` | `'3:2'` | Which ratio the crop frame is locked to. `'3:2'` is the recipe-hero frame; `'free'` locks to the source image's own ratio. |
 
 ```ts

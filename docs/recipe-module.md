@@ -172,7 +172,7 @@ Two decisions worth keeping:
 Nothing downstream changed. `cookShape` still derives the displayed hands-on figure
 as `total − timer waits` (it is the second source of truth this issue deliberately
 did **not** create), and the cook plan still starts a dish at
-`serve − cookTimeMinutes` — the decisions recorded below at *The cook plan*. That
+`serve − cookTimeMinutes` — the decisions recorded below at _The cook plan_. That
 start clock excludes prep on purpose and is tracked separately as #953.
 
 ### Schema extensions (times, issue #952 phase 2)

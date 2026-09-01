@@ -8,8 +8,9 @@ The architecture contract defines layers.
 This document defines the shape inside the domain layer.
 
 ============================================================
+
 1. Purpose
-============================================================
+   \============================================================
 
 Salt's domain layer is intentionally modular. Each domain area is isolated
 into its own module with:
@@ -22,10 +23,11 @@ into its own module with:
 Modules communicate only through each other's **published** ports — never
 by reaching into another module's internals.
 
-Cross‑module *workflows* (flows that mutate two or more modules) are owned
+Cross‑module _workflows_ (flows that mutate two or more modules) are owned
 by coordinators.
 
 This pattern ensures:
+
 - strict, machine‑enforceable boundaries
 - locality of reasoning (a bug in canon stays in canon)
 - consistent shape across modules (predictable navigation)
@@ -34,20 +36,20 @@ This pattern ensures:
 
 Canon is used as the worked example.
 
-============================================================
-2. Domain Module Structure
+============================================================ 2. Domain Module Structure
 ============================================================
 
 Each domain module follows this structure:
 
 /packages/domain/src/<module>/
-  entities/
-  ports/
-  commands/
-  queries/
-  index.ts          <-- the module's PUBLIC surface
+entities/
+ports/
+commands/
+queries/
+index.ts <-- the module's PUBLIC surface
 
 This is the minimal structure that still provides:
+
 - clear separation of concerns
 - predictable navigation
 - AI‑safe isolation
@@ -56,6 +58,7 @@ This is the minimal structure that still provides:
 
 `index.ts` re‑exports exactly what other modules and coordinators are
 allowed to use:
+
 - published port interfaces
 - entity types (when other modules legitimately need to pass them)
 - nothing else
@@ -68,8 +71,7 @@ There is no dedicated `value-objects/` folder. If a module ever
 accumulates 5+ value objects, revisit and consider splitting then — not
 preemptively.
 
-============================================================
-3. Module Boundaries
+============================================================ 3. Module Boundaries
 ============================================================
 
 The boundary rule is precise:
@@ -82,16 +84,17 @@ The boundary rule is precise:
 - A module **may not** depend on a coordinator.
 
 Allowed example:
-  recipe/commands/parseRecipe.ts
-    imports `findClosestMatch` from `domain/canon` (the index)
+recipe/commands/parseRecipe.ts
+imports `findClosestMatch` from `domain/canon` (the index)
 
 Forbidden examples:
-  recipe importing from `domain/canon/commands/...`
-  recipe importing from `domain/canon/entities/...`
-  recipe importing a coordinator
-  canon importing anything from recipe or shopping
+recipe importing from `domain/canon/commands/...`
+recipe importing from `domain/canon/entities/...`
+recipe importing a coordinator
+canon importing anything from recipe or shopping
 
 Boundaries are enforced by:
+
 - ESLint rules (no-restricted-imports patterns on subpaths)
 - tsconfig project references where applicable
 - commit gateway checks (CI)
@@ -100,27 +103,28 @@ The point of these rules is mechanical, not philosophical: they exist so
 that AI agents and humans cannot drift across boundaries without the
 build catching it.
 
-============================================================
-4. Ports (Interfaces)
+============================================================ 4. Ports (Interfaces)
 ============================================================
 
 Ports are interfaces a module owns and publishes. They describe either
+
 - what the module needs from infrastructure (e.g. `CanonStorePort`), or
 - what the module offers to other modules (e.g. `CanonLocalStorePort`).
 
 Canon example:
 
 CanonStorePort
-  save(canonItem)
-  load(canonId)
-  list()
-  delete(canonId)
+save(canonItem)
+load(canonId)
+list()
+delete(canonId)
 
 CanonLocalStorePort
-  save(canonItem)
-  list()
+save(canonItem)
+list()
 
 Ports:
+
 - live inside the owning module's `ports/` folder
 - are re‑exported from the module's `index.ts`
 - are implemented by adapters (for infrastructure) or by the module's
@@ -145,12 +149,13 @@ and serve system‑wide concerns. These live directly in
 Current cross‑cutting ports:
 
 ErrorReportingPort
-  report(error: unknown, category?: DomainError['kind']): void
+report(error: unknown, category?: DomainError['kind']): void
 
 MatchLoggingPort
-  logMatch(entry: MatchLogEntry): void
+logMatch(entry: MatchLogEntry): void
 
 Cross‑cutting ports:
+
 - are implemented by adapters (e.g. observability
   solutions)
 - are used by multiple modules or by the entire domain layer
@@ -160,9 +165,9 @@ Cross‑cutting ports:
 - follow the same naming and implementation contracts as module ports
 
 Example:
-  Canon module may call `ErrorReportingPort` to report a matching failure.
-  Shopping module may call it separately.
-  The port itself belongs to neither module — it is shared infrastructure.
+Canon module may call `ErrorReportingPort` to report a matching failure.
+Shopping module may call it separately.
+The port itself belongs to neither module — it is shared infrastructure.
 
 Composition note: `@salt/observability` ships two subpath entrypoints. The
 default subpath implements `ErrorReportingPort` and `MatchLoggingPort` using
@@ -173,8 +178,7 @@ to GCP / Firebase Monitoring via `enableFirebaseTelemetry()`.
 `firebase-functions/logger` is used additively on the CF side for top-level
 summary logs to Cloud Logging.
 
-============================================================
-5. Coordinators (Cross‑Module Workflows)
+============================================================ 5. Coordinators (Cross‑Module Workflows)
 ============================================================
 
 Some operations span multiple modules. When a flow mutates two or more
@@ -187,10 +191,11 @@ This touches the shopping module and the canon module. Neither should own
 the orchestration; both should remain focused on their own concerns.
 
 /packages/domain/src/coordinators/
-  addIngredientToList.ts
-  canonicaliseRecipeIngredients.ts
+addIngredientToList.ts
+canonicaliseRecipeIngredients.ts
 
 Coordinators:
+
 - sequence operations across modules
 - own cross‑module **failure semantics** (what happens if canon succeeds
   but shopping fails, retries, compensations, partial‑state handling)
@@ -207,8 +212,7 @@ time a flow actually mutates two modules. If the flow is "look up X from
 canon, then do recipe stuff," recipe should call `findClosestMatch`
 directly — that is exactly what published functions are for.
 
-============================================================
-6. Worked Example: Canon Module
+============================================================ 6. Worked Example: Canon Module
 ============================================================
 
 Canon is the smallest module with the clearest dependencies.
@@ -219,13 +223,16 @@ module (e.g. recipes), copy this pattern verbatim.
 
 6.1 Responsibilities
 --------------------
+
 Canon owns:
+
 - canonical ingredient definitions
 - synonyms
 - aisle classification
 - canonicalisation rules
 
 Canon does not know:
+
 - recipes
 - shopping lists
 - UI
@@ -234,21 +241,22 @@ Canon does not know:
 
 6.2 Ports
 ---------
+
 Canon exposes the following ports via its `index.ts`:
 
 CanonLocalStorePort
-  in-memory cache for canon items — backs live Firestore subscriptions in
-  the web client (web-pwa) and read-through reads in the cloud-functions
-  matcher
+in-memory cache for canon items — backs live Firestore subscriptions in
+the web client (web-pwa) and read-through reads in the cloud-functions
+matcher
 
 CanonSyncTransportPort
-  pull/subscribe for canon items — implemented by @salt/firebase-sync
+pull/subscribe for canon items — implemented by @salt/firebase-sync
 
 AisleLocalStorePort
-  in-memory cache for the aisles document — same pattern as above
+in-memory cache for the aisles document — same pattern as above
 
 AisleSyncTransportPort
-  pull/subscribe for the aisles document — implemented by @salt/firebase-sync
+pull/subscribe for the aisles document — implemented by @salt/firebase-sync
 
 Firestore is the live data layer: clients subscribe directly to the
 canon collections and the aisles document, and offline reads/writes are
@@ -262,29 +270,32 @@ interface.
 
 6.3 How Other Modules Use Canon
 -------------------------------
+
 Recipe module:
-  imports `findClosestMatch` from `domain/canon`
-  calls it directly
+imports `findClosestMatch` from `domain/canon`
+calls it directly
 
 Shopping module:
-  imports `normaliseName` from `domain/canon`
-  calls it directly
+imports `normaliseName` from `domain/canon`
+calls it directly
 
 Neither module reaches into canon's internals. Both import only from
 canon's published `index.ts` surface.
 
 6.4 Coordinator Example
 -----------------------
+
 A coordinator handles a flow that mutates both canon and shopping:
 
 addIngredientToShoppingList(rawName):
-  match = canonLookup.findClosestMatch(rawName)
-  if no match:
-    newCanon = canonCommands.createCanonItem(rawName)
-    match = newCanon
-  shoppingCommands.appendItem({ canonId: match.id, rawName })
+match = canonLookup.findClosestMatch(rawName)
+if no match:
+newCanon = canonCommands.createCanonItem(rawName)
+match = newCanon
+shoppingCommands.appendItem({ canonId: match.id, rawName })
 
 This coordinator:
+
 - creates new canon state (write to canon)
 - adds to the shopping list (write to shopping)
 - owns the failure semantics if either step fails
@@ -292,8 +303,7 @@ This coordinator:
 A simpler "recipe needs canonical name" lookup is **not** a coordinator —
 it is a direct port call from recipe.
 
-============================================================
-7. Rules Derived From This Pattern
+============================================================ 7. Rules Derived From This Pattern
 ============================================================
 
 1. Modules communicate only through published ports.
@@ -324,8 +334,7 @@ it is a direct port call from recipe.
    one). This is a guideline; the boundary rules above are what's
    actually enforced.
 
-============================================================
-8. Summary
+============================================================ 8. Summary
 ============================================================
 
 This document defines the repeatable pattern for domain modules:
@@ -413,7 +422,7 @@ lightweight variant, and its history is the useful lesson here, because
 it has been **deleted and re-created**, and both moves were right.
 
 It began as four projections behind "Mine" (#634); #682 cut the page back to
-*what of mine is running right now, and what needs a look*, and the three that
+_what of mine is running right now, and what needs a look_, and the three that
 were restating the planner and the shopping list (`chefDaysForMember`,
 `unshoppedPlannedRecipes`, `rankPersonalCards`) went with the sections they fed.
 That left one predicate, `needsReview`, which inferred "nobody has saved this"
@@ -423,7 +432,7 @@ expressed through `isCookable`.
 #755 phase 1 deleted `needsReview`, and with it the whole module, because the
 inference was answering a question the data already answered outright.
 `needs_approval` is a stored flag, set by the import flows and read by the recipe
-page's banner and the list's pill; deriving a *second*, disagreeing notion of
+page's banner and the list's pill; deriving a _second_, disagreeing notion of
 "unreviewed" alongside it gave the app two review concepts and gave the derived
 one no clear action short of an editor round-trip. Once `/mine` filters on the
 flag, the policy is a field comparison — `r.needs_approval === true` — and a field
@@ -437,7 +446,7 @@ Phase 3 of the same issue re-created the module, starting with one export,
 `chefs.includes(memberId)`, a restatement of a week the planner already draws, and
 #682 was right to remove it. What `upcomingChefDays` decides is the **window** and
 the **span**: a member's own nights are a run forward from today that does not
-stop at the end of a cycle, so it takes an *array* of weeks and answers across
+stop at the end of a cycle, so it takes an _array_ of weeks and answers across
 them in one date-ordered list. The planner cannot render that — it renders weeks —
 and the caller gets no merge step, no boundary bookkeeping and no second notion of
 "which week is this row from". Two further decisions ride on it: an empty
@@ -470,7 +479,7 @@ one. The feature it serves — the household's standing notes for the chef,
 [ai-kitchen-assistant.md](ai-kitchen-assistant.md) (issue #816).
 
 The general rule this illustrates: a domain module earns its place by holding a
-*decision*. When the decision collapses into reading a field that is already on
+_decision_. When the decision collapses into reading a field that is already on
 the document, the module is indirection, and the honest move is to delete it
 rather than keep an empty barrel warm for a future tenant. Re-creating the
 directory later, for a helper that does hold a decision, costs a single commit —

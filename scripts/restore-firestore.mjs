@@ -124,7 +124,9 @@ if (target.project === source.project) {
 }
 if (!target.expects.test(target.project)) {
   console.error(`✖ Refusing to run: target "${target.project}" is not an obvious ${to} project.`);
-  console.error(`  Expected the project id to match ${target.expects}. Check SALT_*_PROJECT env vars.`);
+  console.error(
+    `  Expected the project id to match ${target.expects}. Check SALT_*_PROJECT env vars.`,
+  );
   process.exit(1);
 }
 
@@ -148,7 +150,9 @@ function ask(question) {
 
 for (const cmd of ['gcloud', 'firebase']) {
   if (!commandExists(cmd)) {
-    console.error(`✖ ${cmd} CLI not found. Install it and authenticate (gcloud auth login / firebase login).`);
+    console.error(
+      `✖ ${cmd} CLI not found. Install it and authenticate (gcloud auth login / firebase login).`,
+    );
     process.exit(1);
   }
 }
@@ -197,7 +201,13 @@ if (answer.trim() !== confirmWord) {
 
 console.log(`\n› Wiping all collections in ${target.project} …`);
 try {
-  run('firebase', ['firestore:delete', '--all-collections', '--project', target.project, '--force']);
+  run('firebase', [
+    'firestore:delete',
+    '--all-collections',
+    '--project',
+    target.project,
+    '--force',
+  ]);
 } catch {
   console.error(`✖ Wipe failed. Check \`firebase login\` and your access to ${to}.`);
   process.exit(1);
@@ -207,19 +217,33 @@ console.log(`\n› Importing ${exportPath} into ${target.project} … (blocks un
 try {
   run('gcloud', ['firestore', 'import', exportPath, `--project=${target.project}`]);
 } catch {
-  console.error(`\n✖ Import failed. If this is a permission error, grant ${to} read on the bucket.`);
+  console.error(
+    `\n✖ Import failed. If this is a permission error, grant ${to} read on the bucket.`,
+  );
   console.error('  Cross-project import needs BOTH storage.buckets.get and storage.objects.get,');
-  console.error('  so grant objectViewer AND legacyBucketReader (objectViewer alone is NOT enough —');
-  console.error('  it lacks storage.buckets.get, which the import checks against the bucket root):');
-  console.error(`    NUM=$(gcloud projects describe ${target.project} --format='value(projectNumber)')`);
+  console.error(
+    '  so grant objectViewer AND legacyBucketReader (objectViewer alone is NOT enough —',
+  );
+  console.error(
+    '  it lacks storage.buckets.get, which the import checks against the bucket root):',
+  );
+  console.error(
+    `    NUM=$(gcloud projects describe ${target.project} --format='value(projectNumber)')`,
+  );
   console.error('    for ROLE in roles/storage.objectViewer roles/storage.legacyBucketReader; do');
   console.error(`      gcloud storage buckets add-iam-policy-binding ${BUCKET} \\`);
-  console.error('        --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \\');
+  console.error(
+    '        --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \\',
+  );
   console.error('        --role="$ROLE"');
   console.error('    done');
   process.exit(1);
 }
 
 console.log(`\n✔ ${target.label} restored from ${exportPath}.`);
-console.log(`  Reminder: appSettings/devSettings now hold ${source.label.toUpperCase()} values, and`);
-console.log('  chatSessions holds that environment\'s user history — re-apply target-specific config if needed.');
+console.log(
+  `  Reminder: appSettings/devSettings now hold ${source.label.toUpperCase()} values, and`,
+);
+console.log(
+  "  chatSessions holds that environment's user history — re-apply target-specific config if needed.",
+);

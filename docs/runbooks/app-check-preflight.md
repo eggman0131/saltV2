@@ -17,7 +17,7 @@ keeps them in agreement:
 On **2026-08-05** production sign-in failed from `salt.eggyman.net` — `403` on
 both `firebaseappcheck …:exchangeRecaptchaEnterpriseToken` and
 `identitytoolkit accounts:sendOobCode`, plus a 24-hour `appCheck/throttled`
-back-off. App Check provisioning was *correct*: the prod reCAPTCHA key already
+back-off. App Check provisioning was _correct_: the prod reCAPTCHA key already
 listed `salt.eggyman.net`. The custom domain had simply been omitted from the
 **browser API key's** referrer list when those restrictions were tightened, so
 every `?key=…` call from the real production domain was refused.
@@ -30,11 +30,11 @@ Firestore is enforced.
 
 ## Serving origins
 
-| Project | Origins that must be in both lists |
-| --- | --- |
-| `s2-dev-eggman` | `s2-dev-eggman.web.app`, `s2-dev-eggman.firebaseapp.com` |
-| `s2-stage-ccb22` | `s2-stage-ccb22.web.app`, `s2-stage-ccb22.firebaseapp.com` |
-| `s2-prod-e46bd` | `s2-prod-e46bd.web.app`, `s2-prod-e46bd.firebaseapp.com`, `salt.eggyman.net` |
+| Project          | Origins that must be in both lists                                           |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `s2-dev-eggman`  | `s2-dev-eggman.web.app`, `s2-dev-eggman.firebaseapp.com`                     |
+| `s2-stage-ccb22` | `s2-stage-ccb22.web.app`, `s2-stage-ccb22.firebaseapp.com`                   |
+| `s2-prod-e46bd`  | `s2-prod-e46bd.web.app`, `s2-prod-e46bd.firebaseapp.com`, `salt.eggyman.net` |
 
 `localhost` is **not** a serving origin. It appears in the non-prod lists for
 local development and is deliberately absent from prod's browser key.
@@ -82,7 +82,7 @@ project. Note the two lists use different formats — the referrer list wants
 
 Reading the lists tells you what is configured; this proves what the key actually
 does. The probe has **no side effects** — an empty body is rejected on its merits
-*after* the referrer check, so the response code isolates the referrer verdict:
+_after_ the referrer check, so the response code isolates the referrer verdict:
 
 - `400` — the key **accepted** the referrer (request then failed validation, as intended)
 - `403` `API_KEY_HTTP_REFERRER_BLOCKED` — the key **refused** the referrer

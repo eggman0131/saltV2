@@ -68,13 +68,21 @@ export const TOOLS = [
   { id: 'roasting-tin', label: 'Roasting tin', matchers: ['roasting dish', 'roasting pan'] },
   { id: 'loaf-tin', label: 'Loaf tin', matchers: ['bread tin', 'loaf pan'] },
   { id: 'cake-tin', label: 'Cake tin', matchers: ['cake pan', 'springform tin', 'sandwich tin'] },
-  { id: 'ovenproof-dish', label: 'Ovenproof dish', matchers: ['baking dish', 'casserole dish', 'gratin dish', 'oven dish', 'pie dish'] },
+  {
+    id: 'ovenproof-dish',
+    label: 'Ovenproof dish',
+    matchers: ['baking dish', 'casserole dish', 'gratin dish', 'oven dish', 'pie dish'],
+  },
   { id: 'colander', label: 'Colander', matchers: ['strainer'] },
   { id: 'sieve', label: 'Sieve', matchers: ['sifter', 'mesh strainer', 'chinois'] },
   { id: 'frying-pan', label: 'Frying pan', matchers: ['skillet', 'non-stick pan', 'sauté pan'] },
   { id: 'saucepan', label: 'Saucepan', matchers: ['pan'] },
   { id: 'stockpot', label: 'Stockpot', matchers: ['pot'] },
-  { id: 'casserole-pot', label: 'Casserole pot', matchers: ['dutch oven', 'casserole', 'heavy-based pot', 'cast iron pot'] },
+  {
+    id: 'casserole-pot',
+    label: 'Casserole pot',
+    matchers: ['dutch oven', 'casserole', 'heavy-based pot', 'cast iron pot'],
+  },
   { id: 'griddle-pan', label: 'Griddle pan', matchers: ['grill pan'] },
   { id: 'wok', label: 'Wok', matchers: ['stir-fry pan'] },
   { id: 'chopping-board', label: 'Chopping board', matchers: ['board'] },
@@ -114,7 +122,11 @@ export const TOOLS = [
   // "immersion circulator" are one appliance under three names. The bare "sous
   // vide" matcher is the backstop; the two longer phrases win over it and land on
   // the same row either way.
-  { id: 'sous-vide-circulator', label: 'Sous vide circulator', matchers: ['immersion circulator', 'precision cooker', 'sous vide'] },
+  {
+    id: 'sous-vide-circulator',
+    label: 'Sous vide circulator',
+    matchers: ['immersion circulator', 'precision cooker', 'sous vide'],
+  },
   { id: 'food-processor', label: 'Food processor', matchers: [] },
   // Bare "blender" is NOT a matcher here, on purpose, and for the same reason the
   // cooker and mixer rows above carry no bare "cooker"/"mixer": a stick blender
@@ -138,7 +150,11 @@ export const TOOLS = [
   // Vessels and small kit. These are the folds that pay: one row absorbs every
   // adjective production has put in front of the noun.
   { id: 'jar', label: 'Jar', matchers: ['kilner'] },
-  { id: 'storage-container', label: 'Storage container', matchers: ['container', 'tub', 'lidded box'] },
+  {
+    id: 'storage-container',
+    label: 'Storage container',
+    matchers: ['container', 'tub', 'lidded box'],
+  },
   { id: 'mug', label: 'Mug', matchers: [] },
   { id: 'baking-stone', label: 'Baking stone', matchers: ['pizza stone', 'baking steel'] },
   { id: 'trivet', label: 'Trivet', matchers: ['pot stand', 'heat mat'] },

@@ -43,15 +43,15 @@ import the same locked `STYLE` constant from `generateCanonIcon.ts` verbatim rat
 than copying its wording. What each family adds is its own subject wording and its
 own prohibitions, never an edit to `STYLE`:
 
-| Family       | Prompt module              | Relationship to `STYLE`                                                                                                                     |
-| ------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| grocery      | `generateCanonIcon.ts`     | owns it; adds the UK-supermarket steer                                                                                                        |
+| Family       | Prompt module              | Relationship to `STYLE`                                                                                                                        |
+| ------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| grocery      | `generateCanonIcon.ts`     | owns it; adds the UK-supermarket steer                                                                                                         |
 | weather      | `weatherIconPrompt.ts`     | removes ONE clause (`A single centered subject…`) — a weather pictogram is a composite scene                                                   |
-| equipment    | `equipmentIconPrompt.ts`   | keeps it WHOLE (an appliance *is* a single centred subject) and **adds** a no-lettering-on-the-object clause                                   |
+| equipment    | `equipmentIconPrompt.ts`   | keeps it WHOLE (an appliance _is_ a single centred subject) and **adds** a no-lettering-on-the-object clause                                   |
 | kitchen tool | `kitchenToolIconPrompt.ts` | keeps it WHOLE, **omits** the UK-supermarket steer (a whisk is not a supermarket product), and **adds** a no-brand-lettering clause of its own |
 
 That addition is worth knowing about before writing a fifth family. `STYLE`
-bans lettering *added* around the subject but explicitly permits text that is part
+bans lettering _added_ around the subject but explicitly permits text that is part
 of the depicted item ("wording printed on a tin or jar") — which is exactly where a
 brand wordmark on an appliance sits. Equipment closes that gap in its own anchors;
 it does not rewrite `STYLE`, because groceries genuinely want the wording on the tin.

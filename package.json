@@ -30,8 +30,8 @@
     "dupes": "npx --yes jscpd@5 apps/web-pwa/src apps/cloud-functions/src packages/domain/src packages/adapters packages/ui-components/src --reporters console",
     "dupes:renamed": "node scripts/check-renamed-clones.mjs",
     "dead": "npx --yes knip@6 --no-progress --no-exit-code",
-    "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
+    "format": "prettier --write \"**/*.{ts,js,mjs,cjs,svelte,css,html,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,mjs,cjs,svelte,css,html,md,yml,yaml}\"",
     "dev": "node scripts/host-guard.mjs dev && node scripts/sync-worktree-env.mjs && node scripts/free-ports.mjs 5173 && exec pnpm --filter @salt/web-pwa dev",
     "dev:genkit": "node scripts/host-guard.mjs dev:genkit && node scripts/sync-worktree-env.mjs && node scripts/free-ports.mjs 4001 4033 3100 && exec pnpm --filter @salt/cloud-functions dev",
     "dev:emulators": "node scripts/host-guard.mjs dev:emulators && node scripts/sync-worktree-env.mjs && node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && (cp apps/cloud-functions/.secret.local apps/cloud-functions/dist/.secret.local 2>/dev/null || true) && (node scripts/seed-emulator-admin.mjs &) && exec env NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --only firestore,auth,functions,storage --import=./.emulator-data --export-on-exit=./.emulator-data",
@@ -47,7 +47,7 @@
       "prettier --write",
       "eslint --no-error-on-unmatched-pattern"
     ],
-    "*.{css,html}": [
+    "*.{mjs,cjs,css,html,md,yml,yaml}": [
       "prettier --write"
     ]
   },

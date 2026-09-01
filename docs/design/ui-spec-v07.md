@@ -28,7 +28,7 @@ Nothing in v0.7 changes the default behaviour of any existing component. `fill` 
 
 By default a `DetailPage` grows with its content and `AppShell`'s `<main>` scrolls it. That is correct for essentially every detail page in the app and remains the default.
 
-A detail page whose body lays out **two panes side by side that must scroll independently** cannot work that way. With one ancestor scroller, moving either pane moves both, and anything docked to the bottom of the shorter pane sits below the scrollport floor until the *other* pane has been scrolled far enough to bring it up. `fill` gives the page a definite height to size those panes against, and stops the ancestor scrolling it.
+A detail page whose body lays out **two panes side by side that must scroll independently** cannot work that way. With one ancestor scroller, moving either pane moves both, and anything docked to the bottom of the shorter pane sits below the scrollport floor until the _other_ pane has been scrolled far enough to bring it up. `fill` gives the page a definite height to size those panes against, and stops the ancestor scrolling it.
 
 Precedent: the recipe view's docked chef chat (issue #737), where the recipe and the conversation share the page at `split:` sizes and the chat's composer must be reachable without scrolling the recipe.
 

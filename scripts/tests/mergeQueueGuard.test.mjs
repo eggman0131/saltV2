@@ -11,7 +11,12 @@ import {
 
 /** A minimal stand-in for ci.yml: the two triggers the guard cares about, and
  *  one aggregator job carrying a required context. */
-const ci = ({ mergeGroup = true, push = true, context = 'E2E (Playwright)', cancel = "${{ github.event_name == 'pull_request' }}" } = {}) =>
+const ci = ({
+  mergeGroup = true,
+  push = true,
+  context = 'E2E (Playwright)',
+  cancel = "${{ github.event_name == 'pull_request' }}",
+} = {}) =>
   [
     'name: CI',
     '',
@@ -70,7 +75,10 @@ describe('triggersMergeGroup', () => {
   });
 
   it('is false when the trigger is only mentioned in a comment', () => {
-    const commentedOut = ci({ mergeGroup: false }).replace('  pull_request:', '  # merge_group:\n  pull_request:');
+    const commentedOut = ci({ mergeGroup: false }).replace(
+      '  pull_request:',
+      '  # merge_group:\n  pull_request:',
+    );
     expect(triggersMergeGroup(commentedOut)).toBe(false);
   });
 });
@@ -89,7 +97,8 @@ describe('triggersPushToMain', () => {
   });
 
   it('does not read pull_request\u2019s branches as push\u2019s', () => {
-    const pushless = 'on:\n  push:\n    tags: [v*]\n  pull_request:\n    branches: [main]\n\njobs: {}\n';
+    const pushless =
+      'on:\n  push:\n    tags: [v*]\n  pull_request:\n    branches: [main]\n\njobs: {}\n';
     expect(triggersPushToMain(pushless)).toBe(false);
   });
 });

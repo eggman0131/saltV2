@@ -210,9 +210,20 @@ const CEILING_KEY = { lines: 'uncoveredLines', branches: 'uncoveredBranches' };
 // point starts firing on an area sitting exactly one point clear.
 const hundredths = (n) => Math.round(n * 100);
 
-/** See `ratchetFindings`' docstring for why this has three values and not two. */
+/**
+ * Every value `ratioVerdict` can return, so the printing half can be checked
+ * against the deciding half instead of trusting that the two were edited
+ * together. `check-coverage-ratchet.mjs` asserts its message table covers
+ * exactly this list; without that, a fifth verdict reaches the printer as
+ * `RATIO_MESSAGE[verdict] is not a function` on somebody else's red build, and
+ * a verdict that stops being reachable leaves its sentence sitting there
+ * looking live.
+ */
+export const RATIO_VERDICTS = ['grew', 'regressed', 'unknown', 'unfloored'];
+
+/** See `ratchetFindings`' docstring for why this has four values and not two. */
 function ratioVerdict(pct, floor, staleAbove) {
-  if (typeof floor !== 'number') return 'unknown';
+  if (typeof floor !== 'number') return 'unfloored';
   if (hundredths(pct) < hundredths(floor)) return 'regressed';
   return hundredths(pct) >= hundredths(floor) + hundredths(staleAbove) ? 'grew' : 'unknown';
 }
@@ -237,26 +248,35 @@ function ratioVerdict(pct, floor, staleAbove) {
  * two areas deliberately unfloored and inventing a ceiling for them here would
  * put a second, silent declaration next to the one that file exists to be.
  *
- * A `ceiling` finding carries `ratio`, THREE-VALUED, so the message can say
+ * A `ceiling` finding carries `ratio`, FOUR-VALUED, so the message can say
  * whether raising the ceiling is legitimate (issue #1161):
  *
  *   - `'grew'` — `pct >= floor + staleAbove`. The only band in which the ratio
  *     can be CERTIFIED not to have fallen, so the only one where a bigger
  *     ceiling may be the honest fix.
  *   - `'regressed'` — `pct < floor`. Vitest is red on this area too.
- *   - `'unknown'` — everything between, and the no-floor case. Nothing records
- *     where the area stood on the last green run: the pin records where it
- *     stood when it was last BANKED, and `staleAbove` deliberately lets the two
- *     differ by up to a full point. Every point of that window is room for a
- *     real loss of coverage to look like growth, so the honest answer is that
- *     the ratchet cannot tell — the predicate this replaced said `'grew'`
- *     across the whole of it, which let a 0.9-point regression print the block
- *     that banks it permanently.
+ *   - `'unknown'` — everything between. Nothing records where the area stood on
+ *     the last green run: the pin records where it stood when it was last
+ *     BANKED, and `staleAbove` deliberately lets the two differ by up to a full
+ *     point. Every point of that window is room for a real loss of coverage to
+ *     look like growth, so the honest answer is that the ratchet cannot tell —
+ *     the predicate this replaced said `'grew'` across the whole of it, which
+ *     let a 0.9-point regression print the block that banks it permanently.
+ *   - `'unfloored'` — the pin carries a `uncoveredLines`/`uncoveredBranches`
+ *     ceiling for this metric but no ratio floor, so there is no comparison to
+ *     make at all. Split out of `'unknown'` by #1168: the two reached the same
+ *     value but not the same sentence, and `'unknown'`'s message opens "clears
+ *     its floor", which on this path names a floor that does not exist.
  *
- * The middle value is why this is three states and not a boolean with a moved
- * threshold: a two-state version's `false` branch would have to keep asserting
- * "vitest is failing it as well", which is untrue across that band — trading
- * one false claim for a quieter one (CLAUDE.md Rule 12).
+ * `'unknown'` is why this is not a boolean with a moved threshold: a two-state
+ * version's `false` branch would have to keep asserting "vitest is failing it
+ * as well", which is untrue across that band — trading one false claim for a
+ * quieter one (CLAUDE.md Rule 12). `'unfloored'` is the same rule applied to
+ * the residue that split left behind.
+ *
+ * Only `'grew'` unlocks the paste block, so splitting the value changes no
+ * banking outcome — `withheldAreas` filters on `!== 'grew'` and both new values
+ * are still `!== 'grew'`. It changes only which sentence prints.
  */
 export function ratchetFindings(areaTotals, thresholds, { staleAbove }) {
   const findings = [];
