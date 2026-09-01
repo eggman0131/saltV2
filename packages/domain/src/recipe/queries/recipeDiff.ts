@@ -6,9 +6,12 @@ import type { StepTimerDoc } from '../../schemas/recipe.js';
 // deterministic section-grouped summary ("Added: 200g crème fraîche", "Cook time
 // 40 → 55 min", "Rewrote step 3"). Machine-derived fields (canonId, matchState,
 // parsed, updatedAt, image, source, ids-as-content, createdAt, schemaVersion,
-// producesCanonId, firstUsedInStepId) are ignored — they are keys or noise, not
-// signal. This type is a render contract, not a Firestore document: it is never
-// persisted, so there is no back-compat surface.
+// producesCanonId, firstUsedInStepId) are never REPORTED — they are keys or
+// noise, not something a reviewer needs a row about. That is a statement about
+// this render contract, not about the matcher: `diffRecipe` reads `canonId` as
+// identity evidence when pairing a reworded ingredient (issue #1137), it just
+// never surfaces it. This type is a render contract, not a Firestore document: it
+// is never persisted, so there is no back-compat surface.
 //
 // PLAIN TYPES, NOT ZOD, AND THAT IS THE RULE RATHER THAN AN EXCEPTION TO IT
 // (issue #973). CLAUDE.md's Zod conventions say validate at trust boundaries only.

@@ -371,6 +371,138 @@ describe('diffRecipe', () => {
     expect(diff.tags).toBeDefined();
   });
 
+  // ── Issue #1137: a reworded item must read as one edit, not remove + add ────
+
+  it('pairs a metricated ingredient reword measured on staging (#1137)', () => {
+    // Verbatim from a ⋮ → Refresh of "Vinaigrette Potato Salad with Herbs and
+    // Capers" on staging. Fresh id on the draft side (the AI flow only reuses an
+    // ingredient id on a byte-identical rawText), so this reaches the fuzzy pass.
+    // On raw tokens it scores 0.455 and split into remove + add; the quantity,
+    // unit and size words that dilute it are dropped before scoring, taking it to
+    // 0.750.
+    const before = withIngredients(recipe(), [
+      newIngredient('i-old', '1 small clove of garlic, grated or minced'),
+    ]);
+    const after = withIngredients(recipe(), [
+      newIngredient('i-new', '3 g garlic (about 1 small clove), grated'),
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([
+      {
+        id: 'i-new',
+        from: '1 small clove of garlic, grated or minced',
+        to: '3 g garlic (about 1 small clove), grated',
+      },
+    ]);
+    expect(diff.ingredients.added).toEqual([]);
+    expect(diff.ingredients.removed).toEqual([]);
+  });
+
+  it('pairs two lines resolved to the same canon item, whatever the wording (#1137)', () => {
+    // The second staging pair. Word-set overlap CANNOT reach it — see the
+    // known-limitation test below — so the pairing has to come from the exact
+    // signal every amendment draft already carries: a resolved canonId. No
+    // threshold is involved.
+    //
+    // The shared canonId is INFERRED for this pair, not proved. Checked against
+    // staging: the stored line `1 small red onion or a couple of shallots`
+    // resolves to canon `712bc680…` "Red Onion" (whose own synonym list records
+    // that phrasing), a distinct "Banana Shallots" item exists but no recipe uses
+    // it, and every "red onion, finely sliced" line across the library matches the
+    // same Red Onion item. The post-refresh text is not stored anywhere on staging
+    // — it was never applied — so it cannot be read back directly.
+    const before = withIngredients(recipe(), [
+      {
+        ...newIngredient('i-old', '1 small red onion or a couple of shallots'),
+        canonId: 'canon-red-onion',
+        matchState: 'matched',
+      },
+    ]);
+    const after = withIngredients(recipe(), [
+      {
+        ...newIngredient('i-new', '150 g red onion, finely sliced'),
+        canonId: 'canon-red-onion',
+        matchState: 'matched',
+      },
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([
+      {
+        id: 'i-new',
+        from: '1 small red onion or a couple of shallots',
+        to: '150 g red onion, finely sliced',
+      },
+    ]);
+    expect(diff.ingredients.added).toEqual([]);
+    expect(diff.ingredients.removed).toEqual([]);
+  });
+
+  it('KNOWN LIMITATION: without a canon signal, that same pair stays add + remove (#1137)', () => {
+    // Stated rather than hidden (CLAUDE.md rule 12). On normalised tokens this
+    // reword scores 0.400 — IDENTICALLY to the paprika/salmon non-pair pinned
+    // above, which must stay split. No threshold and no symmetric word-set metric
+    // can separate the two, so a canonId-less draft leaves this pair honestly
+    // unpaired rather than buying it with a false pairing elsewhere.
+    const before = withIngredients(recipe(), [
+      newIngredient('i-old', '1 small red onion or a couple of shallots'),
+    ]);
+    const after = withIngredients(recipe(), [
+      newIngredient('i-new', '150 g red onion, finely sliced'),
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([]);
+    expect(diff.ingredients.added).toEqual([
+      { id: 'i-new', rawText: '150 g red onion, finely sliced' },
+    ]);
+    expect(diff.ingredients.removed).toEqual([
+      { id: 'i-old', rawText: '1 small red onion or a couple of shallots' },
+    ]);
+  });
+
+  it('leaves an AMBIGUOUS shared canon id to the fuzzy pass (#1137)', () => {
+    // The canon pass fires only when the key identifies exactly one unpaired item
+    // on each side. Two lines sharing a canon item within one recipe carry no
+    // information about which pairs with which, so the pass declines and the
+    // fuzzy scores decide — here neither clears the threshold against the other.
+    const canon = { canonId: 'canon-onion', matchState: 'matched' } as const;
+    const before = withIngredients(recipe(), [
+      { ...newIngredient('i-a', 'spring onion tops'), ...canon },
+      { ...newIngredient('i-b', 'pickled onion halves'), ...canon },
+    ]);
+    const after = withIngredients(recipe(), [
+      { ...newIngredient('i-c', 'burnt onion powder'), ...canon },
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.changed).toEqual([]);
+    expect(diff.ingredients.added).toEqual([{ id: 'i-c', rawText: 'burnt onion powder' }]);
+    expect(diff.ingredients.removed).toEqual([
+      { id: 'i-a', rawText: 'spring onion tops' },
+      { id: 'i-b', rawText: 'pickled onion halves' },
+    ]);
+  });
+
+  it('assigns fuzzy pairs globally, not greedily in document order (#1137)', () => {
+    // The first draft item scores 0.75 against BOTH existing items, and taking
+    // the one it happens to meet first strands the second draft item — which had
+    // its own 0.75 partner — as an addition, and that partner as a removal. The
+    // assignment maximises the number of pairs instead, so both read as edits.
+    const before = withIngredients(recipe(), [
+      newIngredient('i-flour', 'plain white flour'),
+      newIngredient('i-sugar', 'plain white sugar'),
+    ]);
+    const after = withIngredients(recipe(), [
+      newIngredient('d-1', 'plain white flour and sugar'),
+      newIngredient('d-2', '200g plain white flour'),
+    ]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.added).toEqual([]);
+    expect(diff.ingredients.removed).toEqual([]);
+    expect(diff.ingredients.changed).toEqual([
+      { id: 'd-1', from: 'plain white sugar', to: 'plain white flour and sugar' },
+      { id: 'd-2', from: 'plain white flour', to: '200g plain white flour' },
+    ]);
+  });
+
   it('is pure — does not mutate either input recipe', () => {
     const before = withIngredients(recipe({ title: 'A' }), [newIngredient('i-1', 'x')]);
     const after = withIngredients(recipe({ title: 'B' }), [newIngredient('i-2', 'y')]);
