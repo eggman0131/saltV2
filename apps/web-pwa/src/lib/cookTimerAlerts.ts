@@ -47,7 +47,7 @@ function timerKey(sessionId: string, timerId: string, endsAt: string): string {
 // Standalone timers key off the same builder with a reserved prefix in place of
 // a session id, so both kinds share ONE dedupe map and a timer can never be
 // alerted twice by two sets that disagree. `kitchen::` cannot collide with a
-// cook session id, which is always `${recipeId}_${uid}`.
+// cook session id, which is always `cookSessionId`'s `${recipeId}_${uid}`.
 function kitchenTimerKey(timerId: string, endsAt: string): string {
   return timerKey('kitchen', timerId, endsAt);
 }

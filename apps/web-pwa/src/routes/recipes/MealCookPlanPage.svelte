@@ -16,6 +16,7 @@
     DetailPage,
   } from '@salt/ui-components';
   import {
+    cookSessionId,
     formatClock,
     hasComponents,
     isCookable,
@@ -79,7 +80,7 @@
   const recipe = $derived($recipes.find((r) => r.id === mealId) ?? null);
   const uid = $derived(auth.user?.uid ?? null);
   /** The MEAL's own session — deterministic id, exactly as cook mode builds it. */
-  const sessionId = $derived(uid ? `${mealId}_${uid}` : null);
+  const sessionId = $derived(uid ? cookSessionId(mealId, uid) : null);
 
   // ─── Reads: what costs a listener, and what is already paid for ─────────────
   //

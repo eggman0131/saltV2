@@ -272,6 +272,7 @@ export type { WeatherIconId } from './weather/index.js';
 // clause.
 export {
   makeFreshSession,
+  cookSessionId,
   withStepDone,
   withIngredientChecked,
   withPrepChecked,
@@ -307,6 +308,10 @@ export type { TimerHeat, GuidedPrepTickRow } from './cookSession/index.js';
 // nothing here reads a session, and a standalone timer's whole point is that
 // there is no cook to hang it on.
 export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTimer/index.js';
+
+// Push-subscription id (issue #1145) — `${uid}_${deviceHash}`, composed in one
+// place so the enable/disable call sites in web-pwa cannot drift apart.
+export { pushSubscriptionId } from './pushSubscription/index.js';
 
 // Kitchen-tool module (issue #882) — the curated pictogram vocabulary, and the
 // pure lookup that turns a cook's own words ("Magmix bowl", "large frying pan")
