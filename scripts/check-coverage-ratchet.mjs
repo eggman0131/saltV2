@@ -39,11 +39,18 @@
 // Run: pnpm coverage:ratchet:check — AFTER `pnpm test:coverage`, which writes
 // the report this reads. Wired into ci.yml's `unit` job beside the file-set
 // guard, and gives the same answer locally that it gives there OVER THE FILES CI
-// WOULD SEE: it counts only files git tracks, and says how many it dropped when
-// it drops any. That qualification is the whole claim (issue #1161) — vitest's
-// `coverage.include` globs the working tree, so an uncommitted source file
-// reaches the report, and counting one moved all four of an area's numbers and
-// put them in the block below that says "paste them, do not retype them".
+// WOULD SEE: it counts only files COMMITTED at HEAD — not merely staged — and
+// says how many it dropped when it drops any. That qualification is the whole
+// claim (issue #1161) — vitest's `coverage.include` globs the working tree, so
+// a source file that is not yet committed (staged or not) reaches the report,
+// and counting one moved all four of an area's numbers and put them in the
+// block below that says "paste them, do not retype them".
+//
+// PR #1166 review, finding 1: this used to read `git ls-files`, which lists
+// the INDEX, so a `git add`-ed file was already "tracked" by that definition
+// and the bug above survived staging — the routine state between writing a
+// gate-passing commit and actually creating it. `git ls-tree -r HEAD` reads
+// the commit itself, which is exactly the file set CI's checkout produces.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -55,6 +62,7 @@ import { fileURLToPath } from 'node:url';
 // the floor — one declaration, as that file's header requires.
 import { coverageAreas, coverageThresholds, staleAbovePoints } from '../coverage.areas.mjs';
 import {
+  areasAffectedByDroppedFiles,
   bankingDecision,
   pinEntry,
   ratchetFindings,
@@ -86,20 +94,34 @@ const relative = Object.fromEntries(
 );
 
 // CI checks out only committed files; a working tree also holds whatever is
-// part-way through being written, and vitest measures those too. Count them and
-// this guard answers a different question than the one it is here to answer.
-// Same three-line git read `check-coverage-files.mjs` already does.
-const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' })
+// part-way through being written — committed or merely staged — and vitest
+// measures those too. Count them and this guard answers a different question
+// than the one it is here to answer. `git ls-tree -r HEAD` reads the commit
+// itself, which is exactly the file set CI's checkout produces; it is
+// deliberately NOT the three-line `git ls-files` read `check-coverage-files.mjs`
+// still uses for its own different purpose (there, an untracked extra is a
+// note, not a failure it needs to survive one `git add`).
+const trackedFiles = execFileSync(
+  'git',
+  ['ls-tree', '-r', 'HEAD', '--name-only', '-z'],
+  { cwd: repoRoot, encoding: 'utf8' },
+)
   .split('\0')
   .filter(Boolean);
 
 const { tracked, dropped } = trackedReportEntries(relative, trackedFiles);
+const affectedAreas = areasAffectedByDroppedFiles(dropped, coverageAreas);
 
 if (dropped.length > 0) {
+  const scopeNote =
+    affectedAreas.length > 0
+      ? `so the figures below for ${affectedAreas.map((glob) => `'${glob}'`).join(', ')} will ` +
+        'differ from the percentages `pnpm test:coverage` just printed'
+      : 'though none of the eight pinned areas below match any of them, so the figures below are ' +
+        'unaffected';
   console.log(
-    `Note: ${dropped.length} measured file(s) are not tracked by git and were left out of the ` +
-      'figures below, so those figures will differ from the percentages `pnpm test:coverage` just ' +
-      'printed. This is what CI would measure — commit them to have them counted:\n' +
+    `Note: ${dropped.length} measured file(s) are not committed and were left out of the figures ` +
+      `below, ${scopeNote}. This is what CI would measure — commit them to have them counted:\n` +
       dropped.map((file) => `  - ${file}`).join('\n') +
       '\n',
   );
@@ -131,13 +153,19 @@ if (findings.length === 0) {
 }
 
 // `regressed` is the only verdict that says anything about VITEST, and it can
-// only do so honestly on a tree where both are measuring the same files. Once
-// this guard has dropped an untracked file, vitest counted it and this figure
-// did not, so vitest can be green on an area this calls a regression — the
-// second path that makes an otherwise-true sentence false (CLAUDE.md Rule 12).
-// Empty in CI and on any clean tree, which is where the plain claim holds.
-const vitestCaveat =
-  dropped.length > 0
+// only do so honestly on an AREA where both are measuring the same files. Once
+// this guard has dropped an untracked file that lands in that area's own glob,
+// vitest counted it and this figure did not, so vitest can be green on an area
+// this calls a regression — the second path that makes an otherwise-true
+// sentence false (CLAUDE.md Rule 12). Scoped to `affectedAreas`, not
+// `dropped.length > 0` for the whole run: a dropped file outside every pinned
+// area (e.g. under the deliberately-unfloored `packages/shared-types/src`)
+// moves nothing here, and hedging an unrelated area's message anyway is the
+// same false claim in the other direction (PR #1166 review, finding 3). Empty
+// for any area a dropped file does not reach, in CI, and on any clean tree —
+// which is where the plain claim holds.
+const vitestCaveat = (glob) =>
+  affectedAreas.includes(glob)
     ? ' — though vitest itself may still be green here, having counted the untracked file(s) ' +
       'noted above, which this figure does not'
     : '';
@@ -149,13 +177,13 @@ const vitestCaveat =
 const RATIO_MESSAGE = {
   grew: (metric) =>
     `\n  Its ${metric} PERCENTAGE sits a full ${staleAbovePoints.toFixed(2)} points or more above ` +
-    'its floor, which is the only band in which the ratio can be certified as having risen: the ' +
-    'area grew, and this is the case the ratio cannot see. Either the new code is untested — ' +
-    'write the tests — or it is tested, in which case raising the ceiling by the delta is the ' +
-    'honest fix and belongs in the commit message.',
-  regressed: (metric) =>
+    'its floor, which is the only band in which the ratio can be certified not to have fallen: ' +
+    'the area held or grew, and either is the case the ratio cannot see. Either the new code is ' +
+    'untested — write the tests — or it is tested, in which case raising the ceiling by the ' +
+    'delta is the honest fix and belongs in the commit message.',
+  regressed: (metric, glob) =>
     `\n  Its ${metric} percentage fell below its floor too, so this is a plain regression and ` +
-    `vitest is failing it as well${vitestCaveat}. The fix is a test, never a bigger ceiling.`,
+    `vitest is failing it as well${vitestCaveat(glob)}. The fix is a test, never a bigger ceiling.`,
   unknown: (metric) =>
     `\n  Its ${metric} percentage clears its floor but by less than the ` +
     `${staleAbovePoints.toFixed(2)}-point staleness tolerance, so the ratchet CANNOT TELL growth ` +
@@ -172,7 +200,7 @@ for (const finding of findings) {
     console.error(
       `\nERROR: ${finding.glob} left ${delta} more ${finding.metric} untested than it is pinned at ` +
         `(${finding.uncovered} uncovered, ceiling ${finding.ceiling}).` +
-        RATIO_MESSAGE[finding.ratio](finding.metric),
+        RATIO_MESSAGE[finding.ratio](finding.metric, finding.glob),
     );
   } else {
     console.error(

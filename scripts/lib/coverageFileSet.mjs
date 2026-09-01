@@ -148,6 +148,27 @@ export function trackedReportEntries(fileCoverages, trackedFiles) {
 }
 
 /**
+ * Which of `areas` actually lost an entry to `trackedReportEntries` above —
+ * i.e. whose printed totals genuinely differ from what `pnpm test:coverage`
+ * just showed, as opposed to merely "something, somewhere, was dropped".
+ *
+ * `coverageInclude` (`coverage.areas.mjs`) globs beyond the eight pinned
+ * areas: `packages/shared-types/src/**` is measured and deliberately
+ * unfloored, so a dropped file there changes no area's figures at all. Keying
+ * the caller's caveats off `dropped.length > 0` for the whole run said so
+ * anyway — the note claimed the printed figures "will differ" when not one of
+ * them did, and the same blanket check hedged an unrelated area's `regressed`
+ * message with "though vitest may still be green here" when nothing about
+ * that area's own numbers was in question. Scoping to the areas a dropped file
+ * actually reaches is the honest fix (PR #1166 review, finding 3) — the
+ * mechanical one (softening "will" to "may") would still be true everywhere
+ * and useful nowhere.
+ */
+export function areasAffectedByDroppedFiles(droppedFiles, areas) {
+  return areas.filter((glob) => droppedFiles.some((file) => path.matchesGlob(file, glob)));
+}
+
+/**
  * Per-area line and branch totals from an istanbul-shaped report, keyed by
  * REPO-RELATIVE path — the caller converts, because istanbul keys its report
  * absolutely and every glob in `coverage.areas.mjs` is relative.

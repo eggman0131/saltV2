@@ -11,6 +11,7 @@ import {
   coverageThresholds,
 } from '../../coverage.areas.mjs';
 import {
+  areasAffectedByDroppedFiles,
   bankableAreas,
   bankingDecision,
   countByArea,
@@ -276,6 +277,43 @@ describe('trackedReportEntries', () => {
     const { tracked, dropped } = trackedReportEntries(committed, trackedFiles);
     expect(tracked).toEqual(committed);
     expect(dropped).toEqual([]);
+  });
+});
+
+describe('areasAffectedByDroppedFiles', () => {
+  // PR #1166 review, finding 3. The dropped-file note and the `regressed`
+  // message's vitest caveat used to key off `dropped.length > 0` for the WHOLE
+  // run, but `coverageInclude` reaches beyond the eight pinned areas —
+  // `packages/shared-types/src/**` is measured and deliberately unfloored (see
+  // `coverage.areas.mjs`), so a dropped file there moves no area's totals at
+  // all. This is the scoping that separates "something was dropped somewhere"
+  // from "this area's printed figures actually differ", which is the honest
+  // fix the review asked for over merely softening "will" to "may".
+  const AREAS = ['packages/domain/src/**', 'apps/web-pwa/src/components/**'];
+
+  it('names the areas whose glob matches at least one dropped file', () => {
+    expect(
+      areasAffectedByDroppedFiles(['packages/domain/src/scratch.ts'], AREAS),
+    ).toEqual(['packages/domain/src/**']);
+  });
+
+  it('is empty when the dropped file matches no pinned area, e.g. shared-types', () => {
+    expect(
+      areasAffectedByDroppedFiles(['packages/shared-types/src/scratch.ts'], AREAS),
+    ).toEqual([]);
+  });
+
+  it('is empty when nothing was dropped', () => {
+    expect(areasAffectedByDroppedFiles([], AREAS)).toEqual([]);
+  });
+
+  it('names every area a dropped file matches, not just the first', () => {
+    expect(
+      areasAffectedByDroppedFiles(
+        ['packages/domain/src/a.ts', 'apps/web-pwa/src/components/b.svelte'],
+        AREAS,
+      ),
+    ).toEqual(AREAS);
   });
 });
 
