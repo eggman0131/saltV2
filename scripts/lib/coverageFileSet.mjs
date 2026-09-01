@@ -67,6 +67,17 @@ export function countByArea(files, areas) {
 //   - a BRANCH is one arm, counted flat across every entry in `b`;
 //   - an area's figure is the sum of its files' totals, percentaged once at the
 //     end (`CoverageSummary.merge`) — never an average of per-file percentages.
+//
+// ONE DELIBERATE NARROWING of that claim, and it is a narrowing rather than an
+// exception (issue #1161). `trackedReportEntries` below drops report entries git
+// does not track, so on a working tree holding an uncommitted source file this
+// arithmetic disagrees with the percentage vitest itself just printed. That is
+// the point: the ratchet's job is to give the answer CI gives, and CI checks out
+// only committed files. Both figures are correct and they measure different file
+// sets, so the script prints which files it dropped — unexplained, two different
+// percentages on screen read as a bug in the one module that cannot afford one.
+// On a clean tree, and on every CI run, the sets are identical and so are the
+// figures.
 
 /**
  * Istanbul's percentage, reproduced arithmetic-for-arithmetic — not merely a
@@ -103,6 +114,59 @@ const metric = (covered, total) => ({
   uncovered: total - covered,
   pct: coveragePercent(covered, total),
 });
+
+/**
+ * The report, with every entry git does not track removed — and the names of
+ * the ones removed, so the caller can say so out loud.
+ *
+ * Vitest's `coverage.include` globs the WORKING TREE, not the index, so a `.ts`
+ * or `.svelte` file sitting under a measured `src/` reaches the report whether
+ * or not it is committed — which is the normal state of a source file between
+ * writing it and `git add`. CI never sees one; a developer's machine sees them
+ * constantly. Counting them made the ratchet answer a different question
+ * locally than it answers in CI, and — far worse — put numbers no committed
+ * file can reproduce into a paste block whose whole instruction is "paste them,
+ * do not retype them" (issue #1161).
+ *
+ * Kept apart from the git call for the usual reason: this is set arithmetic and
+ * is unit-testable without first spending 40 s producing a report.
+ * `check-coverage-files.mjs` asks git the same question for a different purpose
+ * — "did the report reach every file the globs name" — where an untracked extra
+ * is correctly a note and not a failure, and that stays as it is.
+ */
+export function trackedReportEntries(fileCoverages, trackedFiles) {
+  const tracked = new Set(trackedFiles);
+  const entries = Object.entries(fileCoverages);
+
+  return {
+    tracked: Object.fromEntries(entries.filter(([file]) => tracked.has(file))),
+    dropped: entries
+      .filter(([file]) => !tracked.has(file))
+      .map(([file]) => file)
+      .sort(),
+  };
+}
+
+/**
+ * Which of `areas` actually lost an entry to `trackedReportEntries` above —
+ * i.e. whose printed totals genuinely differ from what `pnpm test:coverage`
+ * just showed, as opposed to merely "something, somewhere, was dropped".
+ *
+ * `coverageInclude` (`coverage.areas.mjs`) globs beyond the eight pinned
+ * areas: `packages/shared-types/src/**` is measured and deliberately
+ * unfloored, so a dropped file there changes no area's figures at all. Keying
+ * the caller's caveats off `dropped.length > 0` for the whole run said so
+ * anyway — the note claimed the printed figures "will differ" when not one of
+ * them did, and the same blanket check hedged an unrelated area's `regressed`
+ * message with "though vitest may still be green here" when nothing about
+ * that area's own numbers was in question. Scoping to the areas a dropped file
+ * actually reaches is the honest fix (PR #1166 review, finding 3) — the
+ * mechanical one (softening "will" to "may") would still be true everywhere
+ * and useful nowhere.
+ */
+export function areasAffectedByDroppedFiles(droppedFiles, areas) {
+  return areas.filter((glob) => droppedFiles.some((file) => path.matchesGlob(file, glob)));
+}
 
 /**
  * Per-area line and branch totals from an istanbul-shaped report, keyed by
@@ -146,6 +210,13 @@ const CEILING_KEY = { lines: 'uncoveredLines', branches: 'uncoveredBranches' };
 // point starts firing on an area sitting exactly one point clear.
 const hundredths = (n) => Math.round(n * 100);
 
+/** See `ratchetFindings`' docstring for why this has three values and not two. */
+function ratioVerdict(pct, floor, staleAbove) {
+  if (typeof floor !== 'number') return 'unknown';
+  if (hundredths(pct) < hundredths(floor)) return 'regressed';
+  return hundredths(pct) >= hundredths(floor) + hundredths(staleAbove) ? 'grew' : 'unknown';
+}
+
 /**
  * Everything wrong with an area, as data — the printing lives in the script.
  *
@@ -165,6 +236,27 @@ const hundredths = (n) => Math.round(n * 100);
  * An area with no pin is skipped, not defaulted: `coverage.areas.mjs` leaves
  * two areas deliberately unfloored and inventing a ceiling for them here would
  * put a second, silent declaration next to the one that file exists to be.
+ *
+ * A `ceiling` finding carries `ratio`, THREE-VALUED, so the message can say
+ * whether raising the ceiling is legitimate (issue #1161):
+ *
+ *   - `'grew'` — `pct >= floor + staleAbove`. The only band in which the ratio
+ *     can be CERTIFIED not to have fallen, so the only one where a bigger
+ *     ceiling may be the honest fix.
+ *   - `'regressed'` — `pct < floor`. Vitest is red on this area too.
+ *   - `'unknown'` — everything between, and the no-floor case. Nothing records
+ *     where the area stood on the last green run: the pin records where it
+ *     stood when it was last BANKED, and `staleAbove` deliberately lets the two
+ *     differ by up to a full point. Every point of that window is room for a
+ *     real loss of coverage to look like growth, so the honest answer is that
+ *     the ratchet cannot tell — the predicate this replaced said `'grew'`
+ *     across the whole of it, which let a 0.9-point regression print the block
+ *     that banks it permanently.
+ *
+ * The middle value is why this is three states and not a boolean with a moved
+ * threshold: a two-state version's `false` branch would have to keep asserting
+ * "vitest is failing it as well", which is untrue across that band — trading
+ * one false claim for a quieter one (CLAUDE.md Rule 12).
  */
 export function ratchetFindings(areaTotals, thresholds, { staleAbove }) {
   const findings = [];
@@ -185,11 +277,7 @@ export function ratchetFindings(areaTotals, thresholds, { staleAbove }) {
           metric: name,
           uncovered,
           ceiling,
-          // Which SHAPE this is, so the message can say whether raising the
-          // ceiling is legitimate. A count that rose while the ratio held or
-          // rose is an area that grew; a count that rose while the ratio fell
-          // is a plain regression, and vitest is failing it too.
-          ratioHeld: typeof floor !== 'number' || hundredths(pct) >= hundredths(floor),
+          ratio: ratioVerdict(pct, floor, staleAbove),
         });
       }
 
@@ -231,6 +319,46 @@ export function bankableAreas(areaTotals, thresholds) {
       return typeof floor !== 'number' || hundredths(area[name].pct) >= hundredths(floor);
     });
   });
+}
+
+/**
+ * Which of the areas a run has findings for get the paste block, and which are
+ * withheld — split by WHY, because the two reasons want different words.
+ *
+ * Two independent bars, and an area must clear both:
+ *
+ *   - `bankableAreas` above: banking today's measurement must not LOWER either
+ *     ratio floor. It stays at `pct >= floor`, deliberately, because it answers
+ *     "would this pin go down" — a different question. Raising ITS bar to
+ *     `floor + staleAbove` would withhold #1133's stale-only banking flow
+ *     whenever the other metric happened to sit exactly on its floor, and that
+ *     flow is the entire point of the staleness red.
+ *   - a `ceiling` finding must be certified as GROWTH (`ratio: 'grew'`). A
+ *     breach the ratchet cannot tell apart from a regression must not be handed
+ *     the block that banks it: without this the script prints "the fix is a
+ *     test, never a bigger ceiling" and then immediately offers the bigger
+ *     ceiling (issue #1161).
+ *
+ * `stale` findings are untouched by the second bar — an area that is only adrift
+ * above its floor has no ceiling breach to certify, and withholding its block
+ * would break the one flow the staleness red exists to drive.
+ */
+export function bankingDecision(areaTotals, findings, thresholds) {
+  const affected = new Set(findings.map(({ glob }) => glob));
+  const uncertified = new Set(
+    findings
+      .filter((finding) => finding.kind === 'ceiling' && finding.ratio !== 'grew')
+      .map(({ glob }) => glob),
+  );
+
+  const areas = areaTotals.filter((area) => affected.has(area.glob));
+  const clearsPin = bankableAreas(areas, thresholds);
+
+  return {
+    bankable: clearsPin.filter((area) => !uncertified.has(area.glob)),
+    belowPin: areas.filter((area) => !clearsPin.includes(area)),
+    uncertifiedGrowth: clearsPin.filter((area) => uncertified.has(area.glob)),
+  };
 }
 
 /**

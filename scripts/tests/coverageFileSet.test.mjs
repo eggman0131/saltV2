@@ -11,7 +11,9 @@ import {
   coverageThresholds,
 } from '../../coverage.areas.mjs';
 import {
+  areasAffectedByDroppedFiles,
   bankableAreas,
+  bankingDecision,
   countByArea,
   coveragePercent,
   diffCoverageFiles,
@@ -19,6 +21,7 @@ import {
   pinEntry,
   ratchetFindings,
   totalsByArea,
+  trackedReportEntries,
 } from '../lib/coverageFileSet.mjs';
 
 const TRACKED = [
@@ -220,6 +223,100 @@ describe('totalsByArea', () => {
   });
 });
 
+describe('trackedReportEntries', () => {
+  // BUG 1 OF ISSUE #1161, in the shape that produced it. Vitest's
+  // `coverage.include` globs the working tree, so a source file that has been
+  // written but not committed reaches the report — the routine state of any
+  // in-progress branch. CI checks out only committed files and never sees one.
+  // Counting it moved all four of an area's numbers and put them in a paste
+  // block whose own instruction is "paste them, do not retype them", pinning
+  // the repository to coverage no committed file can reproduce.
+  const committed = {
+    'packages/ui-components/src/Button.svelte': fileCoverage({
+      lines: [1, 1, 0, 0],
+      branches: [arms(1, 3)],
+    }),
+  };
+  const scratch = {
+    // Untracked, and BETTER covered than the area's average, so it drags the
+    // ratio up as well as the count — the direction that produces a false
+    // paste rather than merely a false red.
+    'packages/ui-components/src/scratchUntracked.ts': fileCoverage({
+      lines: [1, 1, 1, 0],
+      branches: [arms(3, 1)],
+    }),
+  };
+  const trackedFiles = Object.keys(committed);
+
+  it('drops the entries git does not track and names them', () => {
+    const { tracked, dropped } = trackedReportEntries({ ...committed, ...scratch }, trackedFiles);
+
+    expect(Object.keys(tracked)).toEqual(Object.keys(committed));
+    expect(dropped).toEqual(['packages/ui-components/src/scratchUntracked.ts']);
+  });
+
+  it('leaves the area measuring exactly what a clean checkout would measure', () => {
+    const dirty = totalsByArea({ ...committed, ...scratch }, [AREA])[0];
+    const clean = totalsByArea(committed, [AREA])[0];
+
+    // The premise: counting the scratch file really does move every number,
+    // and moves the ratio UPWARD while raising the untested count.
+    expect(dirty.lines).toEqual({ covered: 5, total: 8, uncovered: 3, pct: 62.5 });
+    expect(clean.lines).toEqual({ covered: 2, total: 4, uncovered: 2, pct: 50 });
+    expect(dirty.branches.pct).toBeGreaterThan(clean.branches.pct);
+    expect(dirty.branches.uncovered).toBeGreaterThan(clean.branches.uncovered);
+
+    const filtered = totalsByArea(
+      trackedReportEntries({ ...committed, ...scratch }, trackedFiles).tracked,
+      [AREA],
+    )[0];
+    expect(filtered).toEqual(clean);
+  });
+
+  it('is a no-op on a clean tree, where every measured file is tracked', () => {
+    const { tracked, dropped } = trackedReportEntries(committed, trackedFiles);
+    expect(tracked).toEqual(committed);
+    expect(dropped).toEqual([]);
+  });
+});
+
+describe('areasAffectedByDroppedFiles', () => {
+  // PR #1166 review, finding 3. The dropped-file note and the `regressed`
+  // message's vitest caveat used to key off `dropped.length > 0` for the WHOLE
+  // run, but `coverageInclude` reaches beyond the eight pinned areas —
+  // `packages/shared-types/src/**` is measured and deliberately unfloored (see
+  // `coverage.areas.mjs`), so a dropped file there moves no area's totals at
+  // all. This is the scoping that separates "something was dropped somewhere"
+  // from "this area's printed figures actually differ", which is the honest
+  // fix the review asked for over merely softening "will" to "may".
+  const AREAS = ['packages/domain/src/**', 'apps/web-pwa/src/components/**'];
+
+  it('names the areas whose glob matches at least one dropped file', () => {
+    expect(
+      areasAffectedByDroppedFiles(['packages/domain/src/scratch.ts'], AREAS),
+    ).toEqual(['packages/domain/src/**']);
+  });
+
+  it('is empty when the dropped file matches no pinned area, e.g. shared-types', () => {
+    expect(
+      areasAffectedByDroppedFiles(['packages/shared-types/src/scratch.ts'], AREAS),
+    ).toEqual([]);
+  });
+
+  it('is empty when nothing was dropped', () => {
+    expect(areasAffectedByDroppedFiles([], AREAS)).toEqual([]);
+  });
+
+  it('names every area a dropped file matches, not just the first', () => {
+    expect(
+      areasAffectedByDroppedFiles(
+        ['packages/domain/src/a.ts', 'apps/web-pwa/src/components/b.svelte'],
+        AREAS,
+      ),
+    ).toEqual(AREAS);
+  });
+});
+
 describe('ratchetFindings', () => {
   const pin = (over = {}) => ({
     [AREA]: {
@@ -279,24 +376,98 @@ describe('ratchetFindings', () => {
         metric: 'branches',
         uncovered: 218,
         ceiling: 217,
-        // The ratio fell as well here (74.47 → 74.41), so vitest is red too.
-        ratioHeld: false,
+        // The ratio fell BELOW ITS FLOOR as well here (74.47 → 74.41), so
+        // vitest is red too and the message may say so.
+        ratio: 'regressed',
       },
     ]);
   });
 
-  it('names a ceiling breach that the ratio does not see as one the ratio does not see', () => {
-    // The area GREW: 100 new branches, all covered. The ratio rises, so the
-    // floor is happy; one of them is untested, so the ceiling is not.
+  it('certifies a ceiling breach the ratio does not see, when the ratio clearly rose', () => {
+    // The area GREW: 100 new branches, all covered. The ratio rises well clear
+    // of the floor, so the floor is happy; one of them is untested, so the
+    // ceiling is not.
+    //
+    // REWRITTEN for issue #1161. This used to sit at 74.50 against a floor of
+    // 74.47 — a 0.03-point rise the corrected predicate cannot certify as
+    // growth — and passed `staleAbove: 100` purely to suppress the stale
+    // finding, which made the "grew" bar (`floor + staleAbove`) unreachable by
+    // construction. A realistic tolerance and a rise big enough to mean
+    // something is what the case was always trying to describe.
     const grown = {
       ...dedupAfter,
       'packages/ui-components/src/new.ts': fileCoverage({ branches: [arms(99, 1)] }),
     };
     const after = totalsByArea(grown, [AREA])[0];
-    expect(after.branches.pct).toBeGreaterThan(74.47);
+    expect(after.branches.pct).toBe(77.05); // 732/950, a clear 2.58 above the floor
 
-    const [finding] = ratchetFindings([after], pin(), { staleAbove: 100 });
-    expect(finding).toMatchObject({ kind: 'ceiling', uncovered: 218, ratioHeld: true });
+    const finding = ratchetFindings([after], pin(), { staleAbove: 1 }).find(
+      ({ kind }) => kind === 'ceiling',
+    );
+    expect(finding).toMatchObject({ kind: 'ceiling', uncovered: 218, ratio: 'grew' });
+  });
+
+  // BUG 2 OF ISSUE #1161, at `firebase-sync`'s real pin. The staleness
+  // tolerance lets an area sit up to a full point above its floor without the
+  // ratchet firing, so the pin records where the area stood when it was last
+  // BANKED, not where it stood on the last green run. Everything in that window
+  // is room for a real loss of coverage to read as growth.
+  const FS_AREA = 'packages/adapters/firebase-sync/src/**';
+  const fsPin = {
+    [FS_AREA]: { lines: 92, branches: 85.65, uncoveredLines: 54, uncoveredBranches: 34 },
+  };
+  // Branches sit exactly on both of their pins throughout, so only `lines` can
+  // produce a finding and the assertions below are about one metric.
+  const fsArea = (pct, uncovered) => ({
+    glob: FS_AREA,
+    lines: { pct, uncovered },
+    branches: { pct: 85.65, uncovered: 34 },
+  });
+
+  it('cannot tell growth from a loss inside the staleness tolerance, and says so', () => {
+    // Last green run: 716/770 = 92.98%, 54 uncovered — 0.98 above the floor,
+    // inside the tolerance, so nothing was red and nothing was re-pinned. This
+    // run: 709/770 = 92.07%, 61 uncovered. Seven covered lines became
+    // uncovered, a real loss. It still clears the floor, so `pct >= floor` —
+    // the predicate this replaced — called it growth, and the script offered
+    // the block that banks the loss permanently.
+    expect(ratchetFindings([fsArea(92.07, 61)], fsPin, { staleAbove: 1 })).toEqual([
+      {
+        kind: 'ceiling',
+        glob: FS_AREA,
+        metric: 'lines',
+        uncovered: 61,
+        ceiling: 54,
+        ratio: 'unknown',
+      },
+    ]);
+  });
+
+  it('still certifies growth once the ratio clears floor plus the whole tolerance', () => {
+    const finding = ratchetFindings([fsArea(93.44, 61)], fsPin, { staleAbove: 1 }).find(
+      ({ kind }) => kind === 'ceiling',
+    );
+    expect(finding).toMatchObject({ ratio: 'grew' });
+  });
+
+  // The bar either side of the hundredth. Inclusive at exactly `floor +
+  // staleAbove`, matching the staleness check, which leaves an area sitting
+  // exactly a point clear alone — the two must agree or a band exists that is
+  // neither certifiable nor stale.
+  it('certifies an area sitting exactly floor plus the tolerance', () => {
+    expect(ratchetFindings([fsArea(93, 61)], fsPin, { staleAbove: 1 })).toEqual([
+      { kind: 'ceiling', glob: FS_AREA, metric: 'lines', uncovered: 61, ceiling: 54, ratio: 'grew' },
+    ]);
+  });
+
+  it('cannot tell one hundredth below that bar', () => {
+    const [finding] = ratchetFindings([fsArea(92.99, 61)], fsPin, { staleAbove: 1 });
+    expect(finding).toMatchObject({ ratio: 'unknown' });
+  });
+
+  it('still reads a measurement below the floor as a plain regression', () => {
+    const [finding] = ratchetFindings([fsArea(91.5, 61)], fsPin, { staleAbove: 1 });
+    expect(finding).toMatchObject({ ratio: 'regressed' });
   });
 
   it('reds an area that drifted more than the tolerance above its floor', () => {
@@ -341,6 +512,11 @@ describe('ratchetFindings', () => {
   it('skips a metric whose ceiling is absent, still checking the one that is present', () => {
     const after = totalsByArea(dedupAfter, [AREA])[0];
     const partial = { [AREA]: { branches: 74.47, uncoveredBranches: 216 } };
+    // REWRITTEN for issue #1161. The behaviour under test is unchanged — the
+    // `lines` metric has no ceiling here and is skipped rather than defaulted
+    // — but the verdict is not: at a pct sitting EXACTLY on its floor the old
+    // predicate said the ratio held, which is the whole of bug 2 in one value.
+    // Exactly on the floor is the least certifiable position there is.
     expect(ratchetFindings([after], partial, { staleAbove: 1 })).toEqual([
       {
         kind: 'ceiling',
@@ -348,7 +524,7 @@ describe('ratchetFindings', () => {
         metric: 'branches',
         uncovered: 217,
         ceiling: 216,
-        ratioHeld: true,
+        ratio: 'unknown',
       },
     ]);
   });
@@ -419,6 +595,77 @@ describe('bankableAreas', () => {
       [grown.glob]: { lines: 98, branches: 91, uncoveredLines: 12, uncoveredBranches: 22 },
     };
     expect(bankableAreas([regressedMeasurement, grown], pins)).toEqual([grown]);
+  });
+});
+
+describe('bankingDecision', () => {
+  // ISSUE #1161's withholding rule, made mechanical: the script must never
+  // print "the fix is a test, never a bigger ceiling" and then hand over the
+  // block that makes the ceiling bigger. This is the composition that decides,
+  // so it is the only place that can be pinned without spawning the script.
+  const FS_AREA = 'packages/adapters/firebase-sync/src/**';
+  const pins = {
+    [FS_AREA]: { lines: 92, branches: 85.65, uncoveredLines: 54, uncoveredBranches: 34 },
+  };
+  const measured = (pct, uncovered) => ({
+    glob: FS_AREA,
+    lines: { pct, uncovered },
+    branches: { pct: 85.65, uncovered: 34 },
+  });
+
+  const decide = (area, opts = { staleAbove: 1 }) =>
+    bankingDecision([area], ratchetFindings([area], pins, opts), pins);
+
+  it('withholds a breach it cannot certify, which the pin bar alone would have offered', () => {
+    const area = measured(92.07, 61); // bug 2's real figures
+    // The bar this is ADDITIONAL to would hand the block straight over: the
+    // measurement is at or above both floors, so banking lowers nothing. That
+    // bar is right about its own question and must not be moved — it is what
+    // lets a stale-only area bank while its other metric sits on its floor.
+    expect(bankableAreas([area], pins)).toEqual([area]);
+
+    expect(decide(area)).toEqual({ bankable: [], belowPin: [], uncertifiedGrowth: [area] });
+  });
+
+  it('offers a breach the ratio certifies as growth', () => {
+    const area = measured(93.44, 61);
+    expect(decide(area)).toEqual({ bankable: [area], belowPin: [], uncertifiedGrowth: [] });
+  });
+
+  it('reports a below-floor regression under the pin reason alone, not both', () => {
+    const area = measured(89.62, 70);
+    expect(decide(area)).toEqual({ bankable: [], belowPin: [area], uncertifiedGrowth: [] });
+  });
+
+  // #1133's Gap 1 flow, and the reason the ceiling bar is a second filter
+  // rather than a higher bar inside `bankableAreas`: this area has no ceiling
+  // breach at all, and its OTHER metric sits exactly on its floor — the case
+  // that would have been wrongly withheld had the pin bar been raised.
+  it('still offers the stale-only bank flow, with the other metric on its floor', () => {
+    const area = measured(94, 54);
+    const findings = ratchetFindings([area], pins, { staleAbove: 1 });
+    expect(findings).toEqual([
+      { kind: 'stale', glob: FS_AREA, metric: 'lines', pct: 94, floor: 92 },
+    ]);
+    expect(bankingDecision([area], findings, pins)).toEqual({
+      bankable: [area],
+      belowPin: [],
+      uncertifiedGrowth: [],
+    });
+  });
+
+  it('touches no area the run has no finding for', () => {
+    const clean = measured(92, 54);
+    const breached = { ...measured(92.07, 61), glob: 'packages/domain/src/**' };
+    const domainPins = {
+      ...pins,
+      'packages/domain/src/**': pins[FS_AREA],
+    };
+    const findings = ratchetFindings([breached], domainPins, { staleAbove: 1 });
+    expect(bankingDecision([clean, breached], findings, domainPins).uncertifiedGrowth).toEqual([
+      breached,
+    ]);
+    expect(bankingDecision([clean, breached], findings, domainPins).bankable).toEqual([]);
   });
 });
 

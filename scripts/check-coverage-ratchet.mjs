@@ -38,9 +38,22 @@
 //
 // Run: pnpm coverage:ratchet:check — AFTER `pnpm test:coverage`, which writes
 // the report this reads. Wired into ci.yml's `unit` job beside the file-set
-// guard, and gives the same answer locally that it gives there.
+// guard, and gives the same answer locally that it gives there OVER THE FILES CI
+// WOULD SEE: it counts only files COMMITTED at HEAD — not merely staged — and
+// says how many it dropped when it drops any. That qualification is the whole
+// claim (issue #1161) — vitest's `coverage.include` globs the working tree, so
+// a source file that is not yet committed (staged or not) reaches the report,
+// and counting one moved all four of an area's numbers and put them in the
+// block below that says "paste them, do not retype them".
+//
+// PR #1166 review, finding 1: this used to read `git ls-files`, which lists
+// the INDEX, so a `git add`-ed file was already "tracked" by that definition
+// and the bug above survived staging — the routine state between writing a
+// gate-passing commit and actually creating it. `git ls-tree -r HEAD` reads
+// the commit itself, which is exactly the file set CI's checkout produces.
 
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,7 +61,14 @@ import { fileURLToPath } from 'node:url';
 // the paragraph that explains why it is a staleness allowance and NOT margin on
 // the floor — one declaration, as that file's header requires.
 import { coverageAreas, coverageThresholds, staleAbovePoints } from '../coverage.areas.mjs';
-import { bankableAreas, pinEntry, ratchetFindings, totalsByArea } from './lib/coverageFileSet.mjs';
+import {
+  areasAffectedByDroppedFiles,
+  bankingDecision,
+  pinEntry,
+  ratchetFindings,
+  totalsByArea,
+  trackedReportEntries,
+} from './lib/coverageFileSet.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportFile = path.join(repoRoot, 'coverage/unit/coverage-final.json');
@@ -73,7 +93,41 @@ const relative = Object.fromEntries(
   ]),
 );
 
-const totals = totalsByArea(relative, coverageAreas);
+// CI checks out only committed files; a working tree also holds whatever is
+// part-way through being written — committed or merely staged — and vitest
+// measures those too. Count them and this guard answers a different question
+// than the one it is here to answer. `git ls-tree -r HEAD` reads the commit
+// itself, which is exactly the file set CI's checkout produces; it is
+// deliberately NOT the three-line `git ls-files` read `check-coverage-files.mjs`
+// still uses for its own different purpose (there, an untracked extra is a
+// note, not a failure it needs to survive one `git add`).
+const trackedFiles = execFileSync(
+  'git',
+  ['ls-tree', '-r', 'HEAD', '--name-only', '-z'],
+  { cwd: repoRoot, encoding: 'utf8' },
+)
+  .split('\0')
+  .filter(Boolean);
+
+const { tracked, dropped } = trackedReportEntries(relative, trackedFiles);
+const affectedAreas = areasAffectedByDroppedFiles(dropped, coverageAreas);
+
+if (dropped.length > 0) {
+  const scopeNote =
+    affectedAreas.length > 0
+      ? `so the figures below for ${affectedAreas.map((glob) => `'${glob}'`).join(', ')} will ` +
+        'differ from the percentages `pnpm test:coverage` just printed'
+      : 'though none of the eight pinned areas below match any of them, so the figures below are ' +
+        'unaffected';
+  console.log(
+    `Note: ${dropped.length} measured file(s) are not committed and were left out of the figures ` +
+      `below, ${scopeNote}. This is what CI would measure — commit them to have them counted:\n` +
+      dropped.map((file) => `  - ${file}`).join('\n') +
+      '\n',
+  );
+}
+
+const totals = totalsByArea(tracked, coverageAreas);
 const findings = ratchetFindings(totals, coverageThresholds, { staleAbove: staleAbovePoints });
 
 const pad = (value, width) => String(value).padStart(width);
@@ -98,7 +152,47 @@ if (findings.length === 0) {
   process.exit(0);
 }
 
-const affected = [...new Set(findings.map(({ glob }) => glob))];
+// `regressed` is the only verdict that says anything about VITEST, and it can
+// only do so honestly on an AREA where both are measuring the same files. Once
+// this guard has dropped an untracked file that lands in that area's own glob,
+// vitest counted it and this figure did not, so vitest can be green on an area
+// this calls a regression — the second path that makes an otherwise-true
+// sentence false (CLAUDE.md Rule 12). Scoped to `affectedAreas`, not
+// `dropped.length > 0` for the whole run: a dropped file outside every pinned
+// area (e.g. under the deliberately-unfloored `packages/shared-types/src`)
+// moves nothing here, and hedging an unrelated area's message anyway is the
+// same false claim in the other direction (PR #1166 review, finding 3). Empty
+// for any area a dropped file does not reach, in CI, and on any clean tree —
+// which is where the plain claim holds.
+const vitestCaveat = (glob) =>
+  affectedAreas.includes(glob)
+    ? ' — though vitest itself may still be green here, having counted the untracked file(s) ' +
+      'noted above, which this figure does not'
+    : '';
+
+// The three verdicts `ratchetFindings` can reach, in its own words. The middle
+// one is the one #1161 added: it states the limit rather than picking a side,
+// because the pin records where the area stood when it was last BANKED and
+// nothing records where it stood on the last green run.
+const RATIO_MESSAGE = {
+  grew: (metric) =>
+    `\n  Its ${metric} PERCENTAGE sits a full ${staleAbovePoints.toFixed(2)} points or more above ` +
+    'its floor, which is the only band in which the ratio can be certified not to have fallen: ' +
+    'the area held or grew, and either is the case the ratio cannot see. Either the new code is ' +
+    'untested — write the tests — or it is tested, in which case raising the ceiling by the ' +
+    'delta is the honest fix and belongs in the commit message.',
+  regressed: (metric, glob) =>
+    `\n  Its ${metric} percentage fell below its floor too, so this is a plain regression and ` +
+    `vitest is failing it as well${vitestCaveat(glob)}. The fix is a test, never a bigger ceiling.`,
+  unknown: (metric) =>
+    `\n  Its ${metric} percentage clears its floor but by less than the ` +
+    `${staleAbovePoints.toFixed(2)}-point staleness tolerance, so the ratchet CANNOT TELL growth ` +
+    'from a loss here: the pin records where this area stood when it was last banked, not where ' +
+    'it stood on the last green run, and the tolerance is exactly the width of that ignorance. A ' +
+    'regression of up to that much would look identical. The fix is a test, never a bigger ' +
+    'ceiling — and no paste block is offered for this. To bank growth that is real, measure the ' +
+    'merge base yourself and say so in the commit message.',
+};
 
 for (const finding of findings) {
   if (finding.kind === 'ceiling') {
@@ -106,13 +200,7 @@ for (const finding of findings) {
     console.error(
       `\nERROR: ${finding.glob} left ${delta} more ${finding.metric} untested than it is pinned at ` +
         `(${finding.uncovered} uncovered, ceiling ${finding.ceiling}).` +
-        (finding.ratioHeld
-          ? `\n  Its ${finding.metric} PERCENTAGE still clears its floor, so this is the case the ` +
-            'ratio cannot see. Either the area grew and the new code is untested — write the ' +
-            'tests — or it grew and the new code is tested, in which case raising the ceiling by ' +
-            'the delta is the honest fix and belongs in the commit message.'
-          : `\n  Its ${finding.metric} percentage fell too, so this is a plain regression and ` +
-            'vitest is failing it as well. The fix is a test, never a bigger ceiling.'),
+        RATIO_MESSAGE[finding.ratio](finding.metric, finding.glob),
     );
   } else {
     console.error(
@@ -124,13 +212,14 @@ for (const finding of findings) {
   }
 }
 
-// Never hand over a paste block that would lower a ratio floor: a `ceiling`
-// finding whose ratio also fell (a plain regression) measures a LOWER pct
-// than the current pin, and `pinEntry` emits `lines`/`branches` together, so
-// an area is only offered if BOTH metrics clear their current pin.
-const affectedAreas = totals.filter((area) => affected.includes(area.glob));
-const bankable = bankableAreas(affectedAreas, coverageThresholds);
-const withheld = affectedAreas.filter((area) => !bankable.includes(area));
+// Two bars, both of which an area must clear before it is handed a block: the
+// paste must not lower a ratio floor, and a ceiling breach must be certifiable
+// as growth. `bankingDecision` holds both and says which one withheld an area.
+const { bankable, belowPin, uncertifiedGrowth } = bankingDecision(
+  totals,
+  findings,
+  coverageThresholds,
+);
 
 if (bankable.length > 0) {
   console.error(
@@ -142,13 +231,24 @@ if (bankable.length > 0) {
   );
 }
 
-if (withheld.length > 0) {
+if (belowPin.length > 0) {
   console.error(
     '\nNo paste block for ' +
-      withheld.map((area) => `'${area.glob}'`).join(', ') +
+      belowPin.map((area) => `'${area.glob}'`).join(', ') +
       ": today's measurement is below the current pin on at least one metric there, and no pin " +
       'here may go down to make a build green. The fix is a test, never a lower floor — re-run ' +
       'this check once the regression is fixed and the block will reappear.',
+  );
+}
+
+if (uncertifiedGrowth.length > 0) {
+  console.error(
+    '\nNo paste block for ' +
+      uncertifiedGrowth.map((area) => `'${area.glob}'`).join(', ') +
+      ': the ceiling was breached and the ratio sits inside the ' +
+      `${staleAbovePoints.toFixed(2)}-point staleness tolerance, so the ratchet cannot certify ` +
+      'that the area grew rather than lost coverage. Banking a loss is permanent, so nothing is ' +
+      'offered — write the test, or measure the merge base and re-pin deliberately.',
   );
 }
 
