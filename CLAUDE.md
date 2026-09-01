@@ -7,11 +7,11 @@ subagent, so its size is paid before any code is read — `pnpm context:check` c
 it. Something earns a place here only if an agent needs it **before** knowing which
 directory it is in, or it spans three or more packages. Otherwise:
 
-| The fact is… | It goes… |
-| --- | --- |
-| already stated by the code | in a comment at the declaration; link to that |
+| The fact is…                   | It goes…                                                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| already stated by the code     | in a comment at the declaration; link to that                                                                                            |
 | needed only inside one package | in a nested `CLAUDE.md` there ([apps/cloud-functions/CLAUDE.md](apps/cloud-functions/CLAUDE.md)) — loaded only when working in that tree |
-| looked up once per task | in a doc under `docs/`, with a row in [docs-map.md](docs-map.md) |
+| looked up once per task        | in a doc under `docs/`, with a row in [docs-map.md](docs-map.md)                                                                         |
 
 ## How to report to Daniel
 
@@ -71,7 +71,7 @@ storybook                  →  ui-components                 # dev-only Storybo
 9. **`shared-types` imports nothing from `@salt/*`.** It may only depend on external packages or nothing.
 10. **Adapters never throw for operational errors.** All failures cross the boundary as `Failure<DomainError>` or `Conflict<T>` (see [docs/salt-architecture.md §7](docs/salt-architecture.md)).
 11. **PostHog SDK only in `observability`.** `posthog-js` and `posthog-node` may be imported only in `packages/adapters/observability`, which wraps them behind the `ErrorReporting`/`MatchLogging` ports. Every other package and both apps depend on the `@salt/observability` ports (default subpath in `web-pwa`, `/server` in `cloud-functions`) — never the SDK directly. Enforced by `no-restricted-imports` in every non-observability layer and by depcruise's `no-posthog-outside-observability`.
-12. **An invariant you state, you make mechanical — or you state its limits.** A safety property asserted in a header comment, a doc, a PR body or a test name and guaranteed by nothing is the one defect class every gate below is blind to — campaign #1064 shipped five, and three would have destroyed production data. Pin the claim with a test that goes red when it breaks, or state the claim's real boundary; never the unqualified absolute. Convention, not enforcement, unlike rules 1–11: the worked example, and why no lint rule is possible, are in [`.claude/commands/run.md`](.claude/commands/run.md) → *Standing rules*.
+12. **An invariant you state, you make mechanical — or you state its limits.** A safety property asserted in a header comment, a doc, a PR body or a test name and guaranteed by nothing is the one defect class every gate below is blind to — campaign #1064 shipped five, and three would have destroyed production data. Pin the claim with a test that goes red when it breaks, or state the claim's real boundary; never the unqualified absolute. Convention, not enforcement, unlike rules 1–11: the worked example, and why no lint rule is possible, are in [`.claude/commands/run.md`](.claude/commands/run.md) → _Standing rules_.
 
 ## Data model conventions
 
