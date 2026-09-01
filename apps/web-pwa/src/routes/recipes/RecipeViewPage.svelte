@@ -92,6 +92,7 @@
     isCookable,
     isPlannable,
     kitByStep as groupKitByStep,
+    groupKitByEquipment,
     looksScalable,
     OTHER_WAITS_LABEL,
     resolveComponents,
@@ -1253,6 +1254,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
   $effect(() => {
     if (kit.length === 0 && bodyTab === 'equipment') bodyTab = 'ingredients';
   });
+
+  // The Equipment tab's display order, with an accessory folded under the appliance
+  // it came in the box with (issue #1140). The rule is pure and lives in `domain` —
+  // the page only renders what it returns, and never decides on its own what belongs
+  // to what. Total lines always equal `kit.length`, which is why the tab's count can
+  // stay `kit.length` however the rows are arranged.
+  const kitGroups = $derived(groupKitByEquipment(kit, $equipment?.items ?? []));
 
   // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
   // a nonce, the trigger re-infers, and the new list arrives on the subscription —
@@ -2686,29 +2694,53 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  The picture comes from `$kitIcons` — equipment vocabulary first,
                  then kitchen tools; that file's header explains at length why the
                  order is load-bearing (#954) — so turning the icon kill-switch off
-                 costs the pictures and nothing else. -->
+                 costs the pictures and nothing else.
+
+                 ACCESSORIES SIT UNDER THEIR APPLIANCE, text only. The rice spoon
+                 came in the rice cooker's box, and a flat list saying otherwise is
+                 the defect. `groupKitByEquipment` decides what belongs to what — a
+                 pure query, so the page never guesses — and it never nests an
+                 accessory whose appliance this recipe did not ask for. An accessory
+                 row draws NO tile and no empty gutter: `equipmentIcons` is keyed by
+                 item id, so there is nothing to draw. That is a fact about the data
+                 model, not a styling choice, and the indent is what the row IS.
+
+                 Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
+                 rhythm is unbroken and `last:border-b-0` still means the last line
+                 on screen. -->
             {#if kit.length > 0}
               <TabsContent value="equipment">
                 <Card>
                   <CardContent class="p-4">
                     <ul class="flex flex-col" data-testid="recipe-kit-list">
-                      {#each kit as entry (entry.label)}
+                      {#each kitGroups as group (group.entry.label)}
                         <li
                           class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
                           data-testid="recipe-kit-row"
                         >
                           <div class="flex h-10 w-10 shrink-0 items-center justify-center">
-                            {#if $kitIcons.kitIconFor(entry.label)}
+                            {#if $kitIcons.kitIconFor(group.entry.label)}
                               <CanonIcon
-                                thumbnail={$kitIcons.kitIconFor(entry.label)}
-                                version={$kitIcons.kitIconVersionFor(entry.label)}
-                                name={entry.label}
+                                thumbnail={$kitIcons.kitIconFor(group.entry.label)}
+                                version={$kitIcons.kitIconVersionFor(group.entry.label)}
+                                name={group.entry.label}
                                 size={40}
                               />
                             {/if}
                           </div>
-                          <span class="min-w-0 flex-1">{entry.label}</span>
+                          <span class="min-w-0 flex-1">{group.entry.label}</span>
                         </li>
+                        {#each group.accessories as accessory (accessory.label)}
+                          <!-- `pl-12` is the gutter (40px) plus the row gap (8px), so
+                               an accessory's words start one step in from the names
+                               above it rather than at a number picked by eye. -->
+                          <li
+                            class="flex items-center border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
+                            data-testid="recipe-kit-accessory-row"
+                          >
+                            <span class="min-w-0 flex-1">{accessory.label}</span>
+                          </li>
+                        {/each}
                       {/each}
                     </ul>
                   </CardContent>

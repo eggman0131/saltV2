@@ -73,6 +73,11 @@ export { hasRecipeChanged } from './queries/hasRecipeChanged.js';
 // contiguous-run rule, shared by the method column, the cook deck and the guided
 // step screen so the three cannot disagree about when the pan comes out.
 export { kitByStep } from './queries/kitByStep.js';
+// Which pieces of kit belong UNDER another one (issue #1140) — the Equipment
+// tab's display order, with an accessory folded under the appliance it came in
+// the box with, and never under one this recipe did not ask for.
+export { groupKitByEquipment } from './queries/groupKitByEquipment.js';
+export type { KitEquipmentGroup } from './queries/groupKitByEquipment.js';
 export { findProducingRecipes } from './queries/producers.js';
 export { diffRecipe } from './queries/diffRecipe.js';
 // The diff's own contract, beside the function that produces it since #973 (it

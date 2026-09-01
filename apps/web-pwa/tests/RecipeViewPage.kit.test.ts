@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen, within } from '@testing-library/svelte';
+import { render, cleanup, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 
@@ -214,8 +214,11 @@ function renderPage() {
   return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
 }
 
+/** Every line in the Equipment panel, head rows and accessory rows alike, in order. */
 function kitLabels(): string[] {
-  return screen.queryAllByTestId('recipe-kit-row').map((el) => el.textContent?.trim() ?? '');
+  return screen
+    .queryAllByTestId(/^recipe-kit-(row|accessory-row)$/)
+    .map((el) => el.textContent?.trim() ?? '');
 }
 
 /** The tab strip's labels, with the `count` the trigger appends stripped off. */
@@ -517,6 +520,152 @@ describe('RecipeViewPage — the Equipment tab', () => {
       expect(classes).toContain('w-10');
       expect(classes).toContain('shrink-0');
     }
+  });
+
+  it('falls back to Ingredients when the kit empties while Equipment is selected', async () => {
+    // The trigger and the panel both disappear with the kit, and `bodyTab` is
+    // plain `$state` — so without the reset the strip would be left with nothing
+    // selected and the whole body blank. Rare (an editor save that clears the kit,
+    // a Redo kit that comes back with nothing) and cheap to be right about.
+    mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
+    renderPage();
+
+    await fireEvent.click(screen.getAllByRole('tab')[2]!);
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    mockRecipes._set([makeEntry({ kit: [] })]);
+
+    await waitFor(() => {
+      expect(tabNames()).toEqual(['Ingredients', 'Method']);
+    });
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+// ─── Accessories under their appliance (issue #1140) ───────────────────────────
+// The grouping RULE is proved in `packages/domain`
+// (`tests/recipe/groupKitByEquipment.test.ts`, including the two guards). What this
+// block proves is that the page actually calls it and draws the answer — a rule the
+// page forgets to call is worth nothing — and that an accessory row is what the
+// design says it is: indented, and with no tile.
+
+describe('RecipeViewPage — accessories under their appliance', () => {
+  it('indents an accessory named beside its appliance, with no picture', () => {
+    // Staging's real kit: `['sieve', 'Cosori 5L Rice Cooker', 'Rice Spoon']`.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+      ],
+    });
+    mockEquipmentIcons._set(
+      new Map([['eq-cosori', { thumbnail: 'https://example.com/eq/cosori.webp' }]]),
+    );
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'sieve', stepIds: [] },
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['sieve', 'Cosori 5L Rice Cooker', 'Rice Spoon']);
+
+    const accessory = screen.getByTestId('recipe-kit-accessory-row');
+    expect(accessory.textContent?.trim()).toBe('Rice Spoon');
+    // No tile and no empty gutter — `equipmentIcons` is keyed by item id, so an
+    // accessory has nothing to draw. The indent is what the row IS.
+    expect(within(accessory).queryByTestId('canon-icon')).toBeNull();
+    expect(accessory.className.split(/\s+/)).toContain('pl-12');
+  });
+
+  it('leaves an accessory named without its appliance as an ordinary top-level row', () => {
+    // Staging's Baked Camembert: a sheet pan and an oven rack, no Anova anywhere.
+    // Hauling out a steam oven the recipe never asked for is the wrong answer.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-anova',
+          name: 'Anova Precision Oven',
+          accessories: [
+            { id: 'acc-pan', name: 'Oven Sheet Pan', owned: true, included: true },
+            { id: 'acc-rack', name: 'Wire Oven Rack', owned: true, included: true },
+          ],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'small frying pan', stepIds: [] },
+          { label: 'Oven Sheet Pan', stepIds: [] },
+          { label: 'Wire Oven Rack', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['small frying pan', 'Oven Sheet Pan', 'Wire Oven Rack']);
+    expect(screen.queryByTestId('recipe-kit-accessory-row')).toBeNull();
+    expect(screen.queryByText(/Anova/)).toBeNull();
+  });
+
+  it('stays flat while the manifest has not loaded', () => {
+    // A cold load paints before the manifest lands, and the accessory→appliance link
+    // lives entirely in the manifest. Flat is the correct reading of "nothing is
+    // known to be owned yet" — and the list regroups itself when the store fills,
+    // because it is `$derived` off it.
+    mockEquipment._set(null);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['Cosori 5L Rice Cooker', 'Rice Spoon']);
+    expect(screen.queryByTestId('recipe-kit-accessory-row')).toBeNull();
+  });
+
+  it('keeps the tab count equal to the number of lines once rows are grouped', () => {
+    // `count={kit.length}` is only honest while every entry renders exactly once.
+    // Three entries, one of them nested, is still a count of three.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-ninja',
+          name: 'Ninja Foodi 3-in-1 Hand Blender, Mixer & Chopper CI100UK',
+          accessories: [
+            { id: 'acc-att', name: 'Hand Blender Attachment', owned: true, included: true },
+          ],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'tall glass jar', stepIds: [] },
+          { label: 'Ninja Foodi 3-in-1 Hand Blender, Mixer & Chopper CI100UK', stepIds: [] },
+          { label: 'Hand Blender Attachment', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(screen.getAllByTestId('recipe-kit-accessory-row')).toHaveLength(1);
+    expect(kitLabels()).toHaveLength(3);
+    expect(screen.getAllByRole('tab')[2]!.textContent).toContain('3');
   });
 });
 
