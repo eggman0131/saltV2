@@ -199,10 +199,12 @@ describe('groupKitByEquipment', () => {
     expect(groupKitByEquipment([], [RICE_COOKER])).toEqual([]);
   });
 
-  it('attaches to the FIRST mention when one appliance is named twice', () => {
-    // Not something the flow produces, but nothing forbids it either, and the
-    // alternative — the same accessory drawn under both mentions — would break the
-    // one-line-per-entry property the tab count rests on.
+  it('nests the SECOND mention under the first, rather than duplicating the head', () => {
+    // Not something the flow produces as a literal repeat, but a second entry
+    // resolving to the same item is exactly what a *prefixed accessory* label does
+    // (see the next case) — so both must nest, or the flow-produced case would stay
+    // broken. A second top-level head wearing the same picture is the "two
+    // unrelated things" reading Phase 2 exists to remove (#1179 review finding B2).
     const groups = groupKitByEquipment(
       [entry('Cosori 5L Rice Cooker'), entry('Cosori Rice Cooker'), entry('Rice Spoon')],
       [RICE_COOKER],
@@ -210,9 +212,25 @@ describe('groupKitByEquipment', () => {
 
     expect(lines(groups)).toEqual([
       'Cosori 5L Rice Cooker',
+      '  ↳ Cosori Rice Cooker',
       '  ↳ Rice Spoon',
-      'Cosori Rice Cooker',
     ]);
+  });
+
+  it('nests a PREFIXED accessory label under the appliance it already resolved to in pass one', () => {
+    // "Magimix Cocotte Slow Cook Pot" is not pass two's territory at all — pass one
+    // resolves it straight to the Magimix, the same way "FoodSaver Fresh Container"
+    // does (`resolveEquipmentItem`'s header). Naming both the item and one of its
+    // accessories in prefixed form used to leave the panel with two top-level rows
+    // sharing one picture; this is the regression test for that fix (#1179 review
+    // finding B2, not present in staging today — a latent case, not a live one).
+    const magimix = item('eq-magimix', 'Magimix Cook Expert', ['Cocotte Slow Cook Pot']);
+    const groups = groupKitByEquipment(
+      [entry('Magimix Cook Expert'), entry('Magimix Cocotte Slow Cook Pot')],
+      [magimix],
+    );
+
+    expect(lines(groups)).toEqual(['Magimix Cook Expert', '  ↳ Magimix Cocotte Slow Cook Pot']);
   });
 
   it('leaves a label that normalises to nothing as its own row', () => {

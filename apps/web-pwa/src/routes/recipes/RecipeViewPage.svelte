@@ -2696,14 +2696,27 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  order is load-bearing (#954) — so turning the icon kill-switch off
                  costs the pictures and nothing else.
 
-                 ACCESSORIES SIT UNDER THEIR APPLIANCE, text only. The rice spoon
+                 ACCESSORIES SIT UNDER THEIR APPLIANCE, indented. The rice spoon
                  came in the rice cooker's box, and a flat list saying otherwise is
                  the defect. `groupKitByEquipment` decides what belongs to what — a
                  pure query, so the page never guesses — and it never nests an
-                 accessory whose appliance this recipe did not ask for. An accessory
-                 row draws NO tile and no empty gutter: `equipmentIcons` is keyed by
-                 item id, so there is nothing to draw. That is a fact about the data
-                 model, not a styling choice, and the indent is what the row IS.
+                 accessory whose appliance this recipe did not ask for.
+
+                 AN ACCESSORY ROW STILL ASKS `$kitIcons`, THE SAME LOOKUP THE HEAD
+                 ROW USES. `equipmentIcons` is keyed by item id, so it is true that
+                 there is no OWNED-ITEM picture for an accessory — but `kitIconFor`
+                 is not that lookup alone; per that file's header it asks the
+                 equipment vocabulary FIRST, then falls through to the kitchen-tool
+                 vocabulary. An accessory row is, by construction, exactly a label
+                 `resolveEquipmentItem` refused — so the tool-vocabulary half is
+                 precisely the half that still has something to draw for it (a
+                 rice spoon draws the generic rice-paddle pictogram; a mixing bowl
+                 accessory draws the generic bowl). Calling the same lookup here
+                 means a genuine miss on BOTH vocabularies still renders no tile —
+                 never a placeholder (#882) — but a tool-vocabulary hit is not
+                 suppressed just because the row is nested (#1179 review finding
+                 B1). `RecipeViewPage.kit.test.ts` pins a real hit alongside the
+                 real miss so this claim stays true.
 
                  Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
                  rhythm is unbroken and `last:border-b-0` still means the last line
@@ -2732,12 +2745,23 @@ Finish with a short note on what you changed and why, so I can read the gist her
                         </li>
                         {#each group.accessories as accessory (accessory.label)}
                           <!-- `pl-12` is the gutter (40px) plus the row gap (8px), so
-                               an accessory's words start one step in from the names
-                               above it rather than at a number picked by eye. -->
+                               an accessory's OWN gutter+text starts one step in from
+                               the head row's, keeping the nesting visible even though
+                               this row draws through the same `$kitIcons` lookup. -->
                           <li
-                            class="flex items-center border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
+                            class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
                             data-testid="recipe-kit-accessory-row"
                           >
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center">
+                              {#if $kitIcons.kitIconFor(accessory.label)}
+                                <CanonIcon
+                                  thumbnail={$kitIcons.kitIconFor(accessory.label)}
+                                  version={$kitIcons.kitIconVersionFor(accessory.label)}
+                                  name={accessory.label}
+                                  size={40}
+                                />
+                              {/if}
+                            </div>
                             <span class="min-w-0 flex-1">{accessory.label}</span>
                           </li>
                         {/each}

@@ -581,10 +581,42 @@ describe('RecipeViewPage — accessories under their appliance', () => {
 
     const accessory = screen.getByTestId('recipe-kit-accessory-row');
     expect(accessory.textContent?.trim()).toBe('Rice Spoon');
-    // No tile and no empty gutter — `equipmentIcons` is keyed by item id, so an
-    // accessory has nothing to draw. The indent is what the row IS.
+    // No tool-vocabulary entry is pushed in this case, so `$kitIcons.kitIconFor`
+    // genuinely has nothing to draw — a real miss on both vocabularies, not a
+    // suppression. See the next test for the case where it DOES draw.
     expect(within(accessory).queryByTestId('canon-icon')).toBeNull();
     expect(accessory.className.split(/\s+/)).toContain('pl-12');
+  });
+
+  it('draws the tool-vocabulary picture on an accessory row when it has one', () => {
+    // #1179 review finding B1: an accessory row is exactly a label
+    // `resolveEquipmentItem` refused, so it is precisely the row the tool
+    // vocabulary's fall-through exists for (staging: "Rice Spoon" draws
+    // `rice-paddle`, "Thermo Bowl" / "Chopper Bowl" / "Stainless Steel Bowl" all
+    // draw `bowl`). The row must not suppress a picture the shared `$kitIcons`
+    // lookup would otherwise give it.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+      ],
+    });
+    setTools([tool({ id: 'rice-paddle', label: 'rice spoon' })]);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    const accessory = screen.getByTestId('recipe-kit-accessory-row');
+    expect(within(accessory).queryByTestId('canon-icon')).not.toBeNull();
   });
 
   it('leaves an accessory named without its appliance as an ordinary top-level row', () => {
@@ -762,8 +794,8 @@ describe('RecipeViewPage — kit under a method step', () => {
   });
 
   it('draws NOTHING under a step for a kit entry naming no step', () => {
-    // It still belongs on the "You'll need" strip — the strip lists what the dish
-    // needs, and "used at no particular step" is not an answer the method can give.
+    // It still belongs on the Equipment tab — the tab lists what the dish needs,
+    // and "used at no particular step" is not an answer the method can give.
     mockRecipes._set([
       makeEntry({ steps: steps('Serve.'), kit: [{ label: 'oven glove', stepIds: [] }] }),
     ]);
