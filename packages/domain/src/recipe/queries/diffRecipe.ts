@@ -48,13 +48,16 @@ interface MatchResult<T> {
 // 4 are what stop that (issue #1137).
 //
 // Pass 3 — canon identity. `identityKey` supplies a per-item EXACT signal:
-// `canonId` for ingredients (every ingredient in an amendment draft carries a
-// resolved one), nothing for steps. Two lines resolved to the same canon item are
-// the same ingredient whatever their wording, so they pair outright with no
-// threshold involved. Applied ONLY when the key is unambiguous — exactly one
-// still-unpaired item on each side carries it — because two lines sharing a canon
-// item inside one recipe say nothing about which pairs with which. An ambiguous
-// key falls through to Pass 4.
+// `canonId` for ingredients WHEN canonicalisation resolved one — null on a
+// failed canon batch, an individual non-'ok' match, or the manual-entry path
+// (`assembleRecipeDraft.ts:167,199-200`; `recipeService.ts:763,787,798`), so
+// this pass is a bonus when the signal is present, never a guarantee — nothing
+// for steps. Two lines resolved to the same canon item are the same ingredient
+// whatever their wording, so they pair outright with no threshold involved.
+// Applied ONLY when the key is unambiguous — exactly one still-unpaired item on
+// each side carries it — because two lines sharing a canon item inside one
+// recipe say nothing about which pairs with which. An ambiguous key falls
+// through to Pass 4.
 //
 // Pass 4 — fuzzy content. Word-set Jaccard, chosen over edit distance because
 // recipe rewording is word-level (words inserted/removed/swapped), not character
@@ -63,11 +66,26 @@ interface MatchResult<T> {
 // measurement words and size filler first, so metricating a quantity — the
 // commonest house-rules edit, and the one that produced this defect — stops
 // diluting the score: `1 small clove of garlic, grated or minced` → `3 g garlic
-// (about 1 small clove), grated` goes from 0.455 (split) to 0.750 (paired). When
-// normalisation would empty a side ("1 large"), the raw token sets are scored
-// instead — so an item made entirely of quantity words is still comparable
-// rather than silently unpairable. Normalisation does lower some scores, and is
-// meant to: "200 g flour" vs "200 g sugar" drops 0.5 → 0, which is the point.
+// (about 1 small clove), grated` pairs comfortably once normalised (see the test
+// for the exact figure). When normalisation would empty a side ("1 large"), the
+// raw token sets are scored instead — so an item made entirely of quantity words
+// is still comparable rather than silently unpairable. Normalisation does lower
+// some scores, and is meant to: "200 g flour" vs "200 g sugar" drops 0.5 → 0,
+// which is the point.
+//
+// Normalisation can also SHRINK the identity set enough that plain Jaccard
+// under-scores the commonest reword of all — appending a preparation phrase to a
+// short line. `1 large onion` → `1 large onion, thinly sliced` leaves the
+// existing side's identity set as just {onion}; Jaccard against the 3-word draft
+// set scores 0.333, below threshold — a real regression Jaccard alone cannot
+// avoid, because a short identity set loses proportionally more of itself for
+// every word the other side gains. When one side's identity set is a SUBSET of
+// the other's — a description was added, nothing swapped — the score uses the
+// Sørensen–Dice coefficient instead (2·|A∩B| / (|A|+|B|), which weights the
+// shared words more heavily than Jaccard's union does) and the onion pair clears
+// the threshold. A pair with no containment relationship either way (`hot smoked
+// paprika` vs `hot smoked salmon fillet`) never enters this branch and stays on
+// plain Jaccard, so the existing split is untouched.
 //
 // The assignment is GLOBAL, not greedy in document order: a maximum-cardinality
 // matching over the pairs clearing the threshold, so a draft item arriving first
@@ -82,10 +100,13 @@ interface MatchResult<T> {
 //
 // BOUNDARY — what this does NOT do (CLAUDE.md rule 12), each pinned in
 // diffRecipe.test.ts:
-//   • It maximises the NUMBER of pairs, not their total score. Draft items are
-//     offered in descending best-score order so a strong pair is preferred among
-//     the maximum-cardinality assignments, but the result is not provably optimal
-//     by weight.
+//   • It maximises the NUMBER of pairs, not their total score, and the result is
+//     not provably optimal by weight. What IS guaranteed: an augmenting path may
+//     only take an edge already held by another draft item when its own score is
+//     AT LEAST AS STRONG as the edge it would displace (`maximiseMatching`'s
+//     `assignedScore` gate) — so cardinality-maximising can no longer break apart
+//     a strictly stronger pair to manufacture a second, weaker one. Ties can
+//     still be resolved either way, and the total is not maximised by weight.
 //   • Word-set overlap cannot separate every reword from every coincidence.
 //     `1 small red onion or a couple of shallots` → `150 g red onion, finely
 //     sliced` scores 0.400 on normalised tokens — IDENTICALLY to the
@@ -189,18 +210,45 @@ function isMeasureNoise(token: string): boolean {
   return /^\p{N}+$/u.test(token) || MEASUREMENT_WORDS.has(token) || FILLER_WORDS.has(token);
 }
 
+// Shared intersection count, used by both jaccard and dice below.
+function intersectionSize(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  let count = 0;
+  for (const token of a) {
+    if (b.has(token)) count++;
+  }
+  return count;
+}
+
 // Word-set Jaccard: |A ∩ B| / |A ∪ B|, in [0, 1].
 function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
-  let intersection = 0;
-  for (const token of a) {
-    if (b.has(token)) intersection++;
-  }
+  const intersection = intersectionSize(a, b);
   return intersection / (a.size + b.size - intersection);
+}
+
+// Sørensen–Dice: 2·|A ∩ B| / (|A| + |B|), in [0, 1]. Always >= Jaccard for the
+// same pair — used only for the containment case below, where Jaccard
+// under-scores a short set for no longer having a matching number of words.
+function dice(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  return (2 * intersectionSize(a, b)) / (a.size + b.size);
+}
+
+// True when every token of `small` is present in `big` (small.size may equal
+// big.size — an equal pair is a degenerate containment both ways).
+function isSubsetOf(small: ReadonlySet<string>, big: ReadonlySet<string>): boolean {
+  for (const token of small) {
+    if (!big.has(token)) return false;
+  }
+  return true;
 }
 
 // Similarity over identity words, falling back to the raw word sets when
 // normalisation would empty a side. An empty side scores 0 (never a match — an
 // all-punctuation or empty item can't be "clearly the same" as another).
+//
+// When one side's identity set is a SUBSET of the other's, score by Dice
+// instead of Jaccard (see the Pass 4 header above) — Jaccard punishes a short
+// existing line for every word a genuine addition brings in, which is exactly
+// backwards when none of the existing line's words were removed.
 function contentSimilarity(a: string, b: string): number {
   const aRaw = new Set(tokenize(a));
   const bRaw = new Set(tokenize(b));
@@ -208,25 +256,49 @@ function contentSimilarity(a: string, b: string): number {
   const aIdentity = new Set([...aRaw].filter((token) => !isMeasureNoise(token)));
   const bIdentity = new Set([...bRaw].filter((token) => !isMeasureNoise(token)));
   if (aIdentity.size === 0 || bIdentity.size === 0) return jaccard(aRaw, bRaw);
+  if (isSubsetOf(aIdentity, bIdentity) || isSubsetOf(bIdentity, aIdentity)) {
+    return dice(aIdentity, bIdentity);
+  }
   return jaccard(aIdentity, bIdentity);
 }
 
-// Maximum-cardinality bipartite matching (Kuhn's augmenting-path search) over
-// `candidates[draftIndex] = existingIndex[]`. Returns existingIndex → draftIndex,
-// -1 for unmatched. Deterministic: the caller fixes both the order draft items
-// are offered in and the order of each item's candidate list.
-function maximiseMatching(candidates: readonly number[][], existingCount: number): number[] {
+interface CandidateEdge {
+  index: number;
+  score: number;
+}
+
+// Cardinality-maximising bipartite matching (Kuhn's augmenting-path search)
+// over `candidates[draftIndex] = { index: existingIndex, score }[]`. Returns
+// existingIndex → draftIndex, -1 for unmatched. Deterministic: the caller
+// fixes both the order draft items are offered in and the order of each
+// item's candidate list.
+//
+// An augmenting path may re-route an existing pairing to free up an edge for
+// a new draft item — that is how cardinality gets maximised — but it may only
+// do so when the new edge's score is AT LEAST AS STRONG as the one it would
+// take from the item already holding it (`assignedScore` below). Without this
+// gate the search can strip a draft item of its single strongest edge to
+// manufacture two weaker pairs elsewhere, reporting a confident but wrong
+// attribution — see diffRecipe.test.ts's "does not misattribute a strong pair"
+// case (#1137 review B1). The gate cannot be fooled by chained reassignment:
+// it is re-checked at every recursion depth, against whatever score currently
+// occupies the contested slot at that moment.
+function maximiseMatching(candidates: readonly CandidateEdge[][], existingCount: number): number[] {
   const assignedTo = new Array<number>(existingCount).fill(-1);
+  const assignedScore = new Array<number>(existingCount).fill(-Infinity);
   // Both index reads below are in range by construction — `draftIndex` walks
   // `candidates`, and every `existingIndex` came out of a candidate list the
   // caller built from `fuzzyExisting.map((_, index) => …)`.
   const augment = (draftIndex: number, visited: boolean[]): boolean => {
-    for (const existingIndex of candidates[draftIndex]!) {
+    for (const edge of candidates[draftIndex]!) {
+      const existingIndex = edge.index;
       if (visited[existingIndex]) continue;
       visited[existingIndex] = true;
       const holder = assignedTo[existingIndex]!;
+      if (holder !== -1 && edge.score < assignedScore[existingIndex]!) continue;
       if (holder === -1 || augment(holder, visited)) {
         assignedTo[existingIndex] = draftIndex;
+        assignedScore[existingIndex] = edge.score;
         return true;
       }
     }
@@ -340,7 +412,7 @@ function matchByIdThenContent<T extends { id: string }>(
     .sort((a, b) => b.best - a.best || a.index - b.index)
     .map((entry) => entry.index);
   const assignedTo = maximiseMatching(
-    order.map((draftIndex) => scored[draftIndex]!.map((edge) => edge.index)),
+    order.map((draftIndex) => scored[draftIndex]!),
     fuzzyExisting.length,
   );
 
