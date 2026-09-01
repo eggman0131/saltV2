@@ -12,6 +12,9 @@ vi.mock('@salt/firebase-sync', () => ({
 }));
 
 const ENDPOINT = 'https://push.example.com/abc123';
+// SHA-256(ENDPOINT), truncated to 32 hex chars — exactly what
+// deviceHashFromEndpoint (push.svelte.ts) computes for this fixed endpoint.
+const DEVICE_HASH = '533c94ea8204cebf6f0b7d1bf5468120';
 const SUB = {
   endpoint: ENDPOINT,
   toJSON: () => ({ endpoint: ENDPOINT, expirationTime: null, keys: { p256dh: 'PK', auth: 'AK' } }),
@@ -86,7 +89,7 @@ describe('push store (#544)', () => {
     expect(doc.ownerUid).toBe('user-1');
     expect(doc.endpoint).toBe(ENDPOINT);
     expect(doc.keys).toEqual({ p256dh: 'PK', auth: 'AK' });
-    expect(doc.id.startsWith('user-1_')).toBe(true); // `${uid}_${deviceHash}`
+    expect(doc.id).toBe(`user-1_${DEVICE_HASH}`); // pushSubscriptionId(uid, deviceHash)
     expect(push.enabled).toBe(true);
   });
 
@@ -109,7 +112,7 @@ describe('push store (#544)', () => {
     await push.disable('user-1');
     expect(SUB.unsubscribe).toHaveBeenCalledTimes(1);
     expect(mockDelete).toHaveBeenCalledTimes(1);
-    expect(mockDelete.mock.calls[0]![0]).toMatch(/^user-1_/);
+    expect(mockDelete.mock.calls[0]![0]).toBe(`user-1_${DEVICE_HASH}`);
     expect(push.enabled).toBe(false);
   });
 });

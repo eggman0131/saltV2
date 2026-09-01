@@ -309,6 +309,10 @@ export type { TimerHeat, GuidedPrepTickRow } from './cookSession/index.js';
 // there is no cook to hang it on.
 export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTimer/index.js';
 
+// Push-subscription id (issue #1145) — `${uid}_${deviceHash}`, composed in one
+// place so the enable/disable call sites in web-pwa cannot drift apart.
+export { pushSubscriptionId } from './pushSubscription/index.js';
+
 // Kitchen-tool module (issue #882) — the curated pictogram vocabulary, and the
 // pure lookup that turns a cook's own words ("Magmix bowl", "large frying pan")
 // into a tool at DISPLAY time. Nothing persists that answer, so the commands here
