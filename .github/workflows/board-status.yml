@@ -49,9 +49,19 @@ permissions:
   contents: read
 
 jobs:
+  # BOTH pull_request jobs skip Dependabot's own PRs. A run triggered by
+  # Dependabot reads GitHub's separate Dependabot secrets store, so
+  # `secrets.PROJECT_TOKEN` arrives empty and board.mjs dies on its first API
+  # call. That is a red check on a PR that was never going to move anything: a
+  # dependency bump closes no issue, so it has no board item. The guard is on
+  # the PR's author, not `github.actor` — on `closed` the actor is whoever
+  # merged it, which for an auto-merged bump is not Dependabot.
   in-review:
     name: PR raised → In review
-    if: github.event_name == 'pull_request' && github.event.action != 'closed' && !github.event.pull_request.draft
+    if: >-
+      github.event_name == 'pull_request' && github.event.action != 'closed'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -64,7 +74,10 @@ jobs:
 
   merged:
     name: PR merged → Merged
-    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged
+    if: >-
+      github.event_name == 'pull_request' && github.event.action == 'closed'
+      && github.event.pull_request.merged
+      && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
