@@ -4,7 +4,7 @@ import type { CookSessionDoc } from '../schemas/index.js';
 // from the clock (CLAUDE.md Rule 1 — domain is pure): the caller stamps the same
 // instant on both `createdAt` and `updatedAt`.
 export interface MakeFreshSessionArgs {
-  /** Deterministic session id — `${recipeId}_${uid}`. */
+  /** Deterministic session id — composed by `cookSessionId`. */
   readonly id: string;
   readonly ownerUid: string;
   readonly recipeId: string;

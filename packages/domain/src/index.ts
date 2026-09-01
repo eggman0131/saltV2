@@ -272,6 +272,7 @@ export type { WeatherIconId } from './weather/index.js';
 // clause.
 export {
   makeFreshSession,
+  cookSessionId,
   withStepDone,
   withIngredientChecked,
   withPrepChecked,

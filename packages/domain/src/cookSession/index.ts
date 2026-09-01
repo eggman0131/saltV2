@@ -12,6 +12,9 @@
 // timer logic testable without faking time.
 export { makeFreshSession } from './makeFreshSession.js';
 export type { MakeFreshSessionArgs } from './makeFreshSession.js';
+// The document id itself (issue #1145) — `${recipeId}_${uid}`, composed in one
+// place so the two live call sites and the id scheme cannot drift apart.
+export { cookSessionId } from './cookSessionId.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
 export { withPrepChecked } from './withPrepChecked.js';

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
 // Cook session document schema (cooking mode, Phase 1). One document per user per
-// recipe at `cookSessions/{recipeId}_{uid}` — a DETERMINISTIC id so a session is
-// looked up (not queried) and reopening the same recipe on another device resumes
-// the same session. Per-user scoped like chatSessions (issue #206): `ownerUid`
-// gates every read/write in firestore.rules. Whole-document last-write-wins.
+// recipe, id composed by `cookSessionId` (cookSession/cookSessionId.ts) — a
+// DETERMINISTIC id so a session is looked up (not queried) and reopening the same
+// recipe on another device resumes the same session. Per-user scoped like
+// chatSessions (issue #206): `ownerUid` gates every read/write in
+// firestore.rules. Whole-document last-write-wins.
 //
 // MORE THAN ONE PHASE NUMBERING MEETS IN THIS FILE, and they are not one scheme.
 // "Phase 1/2/3" below are COOK MODE's own phases (issue #556) — the order the
@@ -63,7 +64,7 @@ export const CookActiveTimerSchema = z.preprocess(
 );
 
 export const CookSessionSchema = z.object({
-  // Deterministic: `${recipeId}_${uid}`.
+  // Deterministic — composed by `cookSessionId` (cookSession/cookSessionId.ts).
   id: z.string(),
   schemaVersion: z.literal(1),
   ownerUid: z.string(),
