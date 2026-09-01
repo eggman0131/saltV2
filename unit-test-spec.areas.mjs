@@ -112,10 +112,12 @@ export const violationCeilings = {
   // resolved it through the `@salt/firebase-sync` specifier and dropped the
   // ceiling in the same commit, so the rule is pinned rather than exempted.
   //
-  // Three files match a raw grep and are not counted, correctly: they
-  // spell a `../../packages/` path inside a comment ABOUT the rule
-  // (`sheetCallSites`, `sharedHelperGuard`, `extractProcessStages`). That is the
-  // must-not-match self-test case in the guard.
+  // Four files match a raw grep across the tree and are not counted,
+  // correctly: they spell a `../../packages/` path inside a comment ABOUT
+  // the rule. Three are here (`sharedHelperGuard`, `sheetCallSites`,
+  // `subscriptionReportingGuard`); the fourth, `extractProcessStages`, is in
+  // `apps/cloud-functions`. That is the must-not-match self-test case in the
+  // guard.
   'apps/web-pwa': {
     'UT-A1': 5,
     'UT-B1': 44,
