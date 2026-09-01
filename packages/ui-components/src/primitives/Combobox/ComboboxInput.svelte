@@ -11,13 +11,12 @@
 
   let inputEl: HTMLInputElement | undefined = $state(undefined);
 
-  // Register as the fallback floating anchor when no ComboboxField wraps us.
+  // The input is the fallback anchor; Combobox prefers a ComboboxField's box when
+  // one is present. Nothing here reads the anchor, so this cannot re-enter.
   $effect(() => {
     if (!inputEl) return;
-    if (ctx.anchorEl === null) ctx.setAnchorEl(inputEl);
-    return () => {
-      if (ctx.anchorEl === inputEl) ctx.setAnchorEl(null);
-    };
+    ctx.setInputAnchorEl(inputEl);
+    return () => ctx.setInputAnchorEl(null);
   });
 
   function handleInput(e: Event) {

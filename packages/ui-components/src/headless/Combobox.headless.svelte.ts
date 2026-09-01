@@ -17,7 +17,8 @@ export type ComboboxState = {
   readonly placeholder: string | undefined;
   readonly anchorEl: HTMLElement | null;
 
-  readonly setAnchorEl: (el: HTMLElement | null) => void;
+  readonly setFieldAnchorEl: (el: HTMLElement | null) => void;
+  readonly setInputAnchorEl: (el: HTMLElement | null) => void;
   readonly setInputValue: (v: string) => void;
   readonly openPopup: () => void;
   readonly openWhenTyping: () => void;
@@ -68,7 +69,8 @@ export function createComboboxState(opts: {
   inputId: string;
   getOnCreate: () => ((v: string) => void) | undefined;
   anchorEl: () => HTMLElement | null;
-  setAnchorEl: (el: HTMLElement | null) => void;
+  setFieldAnchorEl: (el: HTMLElement | null) => void;
+  setInputAnchorEl: (el: HTMLElement | null) => void;
 }): ComboboxState {
   function defaultFilter(input: string, item: ComboboxItem): boolean {
     return item.label.toLowerCase().includes(input.trim().toLowerCase());
@@ -289,8 +291,11 @@ export function createComboboxState(opts: {
       return opts.anchorEl();
     },
 
-    setAnchorEl(el: HTMLElement | null) {
-      opts.setAnchorEl(el);
+    setFieldAnchorEl(el: HTMLElement | null) {
+      opts.setFieldAnchorEl(el);
+    },
+    setInputAnchorEl(el: HTMLElement | null) {
+      opts.setInputAnchorEl(el);
     },
     setInputValue(v: string) {
       opts.setInputValue(v);

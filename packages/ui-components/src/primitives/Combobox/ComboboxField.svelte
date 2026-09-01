@@ -12,10 +12,8 @@
 
   $effect(() => {
     if (!fieldEl) return;
-    ctx.setAnchorEl(fieldEl);
-    return () => {
-      if (ctx.anchorEl === fieldEl) ctx.setAnchorEl(null);
-    };
+    ctx.setFieldAnchorEl(fieldEl);
+    return () => ctx.setFieldAnchorEl(null);
   });
 </script>
 
