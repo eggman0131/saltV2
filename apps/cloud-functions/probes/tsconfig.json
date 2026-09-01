@@ -1,9 +1,25 @@
 {
+  // `types` is stated rather than left to TypeScript's automatic @types
+  // discovery, because until #1171 this project's Node globals — `process`,
+  // `fetch`, `setTimeout`, `node:*`, `import.meta.url` — arrived by accident.
+  // Nothing declared `@types/node`; it reached the program through a
+  // `/// <reference types="node" />` inside `@grpc/proto-loader` and
+  // `undici-types`, resolved against whatever pnpm happened to hoist into
+  // `node_modules/.pnpm/node_modules/@types`. A lockfile change that reshaped
+  // that hoisting dropped the reference and turned all 21 files red with no
+  // code change. `@types/node` is now a declared devDependency of this package
+  // and named here, so the dependency is one a human can see and a resolver
+  // cannot lose.
+  //
+  // No `lib` override: `fetch` and `setTimeout` come from `@types/node` itself.
+  // These probes run only under Node, so a DOM lib would type globals that do
+  // not exist at runtime.
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
     "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "moduleResolution": "NodeNext",
+    "types": ["node"]
   },
   "include": ["**/*.ts"]
 }
