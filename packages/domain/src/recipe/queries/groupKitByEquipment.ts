@@ -57,20 +57,6 @@ import type { RecipeKitEntryDoc } from '../../schemas/index.js';
 // produces always equals `kit.length` — which is what lets the tab's count stay
 // `kit.length` however the rows are arranged. `groupKitByEquipment.test.ts` pins
 // that as a property over every case in the file.
-//
-// A SECOND PASS-ONE RESOLUTION TO THE SAME ITEM NESTS, IT NEVER DUPLICATES. Pass
-// one resolves a *prefixed accessory* label straight to its owning item too —
-// that is what `resolveEquipmentItem`'s header means by "accessories resolve to
-// their owning item": "Magimix Cocotte Slow Cook Pot" IS a pass-one resolution to
-// the Magimix Cook Expert, not a pass-two nest. So a kit naming both the item and
-// one of its accessories in prefixed form ("Magimix Cook Expert" and "Magimix
-// Cocotte Slow Cook Pot") would, without this rule, produce two top-level heads
-// both wearing the same item's picture — the exact "two unrelated things"
-// reading this query exists to remove, reproduced with a duplicated tile (#1179
-// review finding B2). The fix is the same first-mention rule pass two already
-// uses for accessories: the first entry that resolves to an item is its head,
-// every later entry that resolves to the SAME item nests under that head
-// instead of heading its own row.
 
 /** One top-level Equipment row, with the accessory rows that belong under it. */
 export interface KitEquipmentGroup {
@@ -97,63 +83,55 @@ export function groupKitByEquipment(
   kit: readonly RecipeKitEntryDoc[],
   items: readonly EquipmentItem[],
 ): KitEquipmentGroup[] {
-  type Head = { entry: RecipeKitEntryDoc; accessories: RecipeKitEntryDoc[] };
-
-  // Pass one. The FIRST entry that resolves to a given item is its head; a later
-  // entry resolving to that SAME item — a literal repeat, or a prefixed accessory
-  // label that resolves straight back to the item it belongs to — nests under
-  // that head immediately, rather than becoming a second head wearing the same
-  // picture (see the header comment).
-  const heads: Head[] = [];
-  const headOfItem = new Map<string, Head>();
-  const unresolved: { head: Head; entry: RecipeKitEntryDoc }[] = [];
+  // Pass one. Every entry is a head for now; `owners` records which item each head
+  // resolved to, so pass two can ask "is this accessory's appliance already here?"
+  // without resolving anything a second time.
+  const heads: { entry: RecipeKitEntryDoc; accessories: RecipeKitEntryDoc[] }[] = [];
+  // itemId → the FIRST head that resolved to it. A kit naming one appliance twice
+  // is not something the flow produces, but if it ever did, the accessories join
+  // the first mention rather than being duplicated under both.
+  const headOfItem = new Map<string, { accessories: RecipeKitEntryDoc[] }>();
+  const unresolved: { index: number; entry: RecipeKitEntryDoc }[] = [];
 
   for (const entry of kit) {
+    const head = { entry, accessories: [] as RecipeKitEntryDoc[] };
+    const index = heads.push(head) - 1;
     const item = resolveEquipmentItem(entry.label, items);
     if (item) {
-      const existingHead = headOfItem.get(item.id);
-      if (existingHead) {
-        existingHead.accessories.push(entry);
-        continue;
-      }
-      const head: Head = { entry, accessories: [] };
-      heads.push(head);
-      headOfItem.set(item.id, head);
+      if (!headOfItem.has(item.id)) headOfItem.set(item.id, head);
     } else {
-      const head: Head = { entry, accessories: [] };
-      heads.push(head);
-      unresolved.push({ head, entry });
+      unresolved.push({ index, entry });
     }
   }
 
   // Pass two, over the unresolved entries only, in stored order.
-  const nested = new Set<Head>();
-  for (const { head, entry } of unresolved) {
+  const nested = new Set<number>();
+  for (const { index, entry } of unresolved) {
     const target = normaliseName(entry.label);
     if (!target) continue;
 
     // Only items that already head a row are candidates — condition 3.
-    let owner: Head | null = null;
+    let owner: { accessories: RecipeKitEntryDoc[] } | null = null;
     let ambiguous = false;
     for (const item of items) {
-      const candidateHead = headOfItem.get(item.id);
-      if (!candidateHead) continue;
+      const head = headOfItem.get(item.id);
+      if (!head) continue;
       const owns = (item.accessories ?? []).some(
         (accessory) => normaliseName(accessory.name) === target,
       );
       if (!owns) continue;
       // A second DISTINCT owning item is a tie; the same head twice is not.
-      if (owner && owner !== candidateHead) {
+      if (owner && owner !== head) {
         ambiguous = true;
         break;
       }
-      owner = candidateHead;
+      owner = head;
     }
     if (ambiguous || !owner) continue;
 
     owner.accessories.push(entry);
-    nested.add(head);
+    nested.add(index);
   }
 
-  return heads.filter((head) => !nested.has(head));
+  return heads.filter((_, i) => !nested.has(i));
 }
