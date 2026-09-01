@@ -123,11 +123,17 @@ self.addEventListener('notificationclick', function (event) {
   var data = event.notification.data || {};
   var sessionId = data.sessionId || null;
   // Two routing sources, in precedence order:
-  //   1. `data.url` — an explicit deep link the server chose (#629's shopping
-  //      reminder opens the DEFAULT list, whose id only the server knows; #812's
-  //      batch reminder opens `/#/batches/{batchId}`; #842's standalone kitchen
-  //      timer opens `/#/mine`, which has no id in it at all).
-  //   2. `sessionId` — the cook-timer path, unchanged. sessionId is
+  //   1. `data.url` — an explicit deep link the server chose. ALL FOUR kinds now
+  //      send one: #629's shopping reminder opens the DEFAULT list, whose id only
+  //      the server knows; #812's batch reminder opens `/#/batches/{batchId}`;
+  //      #842's standalone kitchen timer opens `/#/mine`, which has no id in it at
+  //      all; and since #1127 the cook timer sends `/#/recipes/{recipeId}/cook`,
+  //      built by its sender from `session.recipeId` (onCookTimerDispatch.ts,
+  //      `cookPath`). This is the primary route for every notification.
+  //   2. `sessionId` — the cook-timer FALLBACK, and only that. It is still
+  //      reached, which is why the slice below stays: Cloud Tasks queued before
+  //      #1127 shipped carry the old payload with no `url`, and the cook-timer
+  //      horizon runs to a cook session's lifetime. sessionId is
   //      `${recipeId}_${uid}`; recipe ids are UUIDs (hyphens, no underscore) and
   //      uids are alphanumeric, so the recipe id is everything before the final
   //      underscore. THIS SLICE IS A COOK-TIMER-ONLY LICENCE, granted by that
