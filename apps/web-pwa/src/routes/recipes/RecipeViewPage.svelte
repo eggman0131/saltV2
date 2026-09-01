@@ -19,7 +19,6 @@
     Icon,
     ImageCropper,
     Markdown,
-    PictogramPill,
     Popover,
     PopoverContent,
     PopoverMenuItem,
@@ -76,7 +75,7 @@
   import { canonIndex, matchMarkersReady } from '../../lib/canonIndex.js';
   // The ONE shared kitchen-tool lookup (issue #882). Subscribed app-wide in
   // App.svelte, so there is nothing to initialise here — and it is a store rather
-  // than a plain function precisely so the strip fills in the moment the drawn
+  // than a plain function precisely so the pictures fill in the moment the drawn
   // vocabulary lands, which on a cold load is after first paint.
   import { kitIcons } from '../../lib/kitIcons.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
@@ -1228,7 +1227,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToast('Generating a new image — it will appear shortly.', 'success');
   }
 
-  // ─── "You'll need" (issue #882) ──────────────────────────────────────────────
+  // ─── The Equipment tab (issues #882, #1140) ─────────────────────────────────
   //
   // The kit is inferred server-side and stored as WORDS — `{ label, stepIds }` —
   // never as an id into the drawn vocabulary. The picture is found from the words
@@ -1237,16 +1236,27 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // vocabulary grow later and light up every recipe already written, and it is why
   // nothing below ever substitutes a near match or a generic glyph.
   //
-  // The whole recipe's kit, in the order the flow listed it. This strip answers the
-  // question you ask before you have chosen a tab at all: have I got what this
-  // needs? `stepIds` is unread HERE and read further down the page — `kitByStep`
-  // turns it into the per-step rows on the method — so the two readings are of one
-  // stored list, not two.
+  // The whole recipe's kit, in the order the flow listed it. It is the Equipment
+  // tab's list (issue #1140) — the third alternative view of the body, answering
+  // "have I got what this needs?" beside the ingredients you check the same way.
+  // `stepIds` is unread HERE and read further down the page — `kitByStep` turns it
+  // into the per-step rows on the method — so the two readings are of one stored
+  // list, not two.
   const kit = $derived(recipe?.kit ?? []);
+
+  // The Equipment trigger and panel both disappear when the kit empties, and
+  // `bodyTab` is `$state` — so a kit that goes away while its own tab is selected
+  // would leave the strip with nothing selected and the body blank. Rare (an
+  // editor save, or a Redo kit that comes back with nothing) but not impossible,
+  // and the cost of it is a page that looks broken. Falling back to Ingredients is
+  // where the page starts anyway.
+  $effect(() => {
+    if (kit.length === 0 && bodyTab === 'equipment') bodyTab = 'ingredients';
+  });
 
   // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
   // a nonce, the trigger re-infers, and the new list arrives on the subscription —
-  // so the old strip stays on screen throughout rather than blanking. Mirrors
+  // so the old list stays on screen throughout rather than blanking. Mirrors
   // `runRegenerate` exactly, toast for toast.
   let kitBusy = $state(false);
 
@@ -1704,10 +1714,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  librarian can write one — which is the same predicate the server's
                  kit branch asks before it spends anything.
 
-                 It lives here rather than beside the strip because the strip has no
-                 controls on it at all: the chips are read, and a recipe whose kit
-                 came back empty shows no card, so an action attached to the card
-                 would be unreachable in exactly the case you most want it. -->
+                 It lives here rather than beside the list because the list has no
+                 controls on it at all: the rows are read, and a recipe whose kit
+                 came back empty shows no Equipment tab (#1140), so an action
+                 attached to that tab would be unreachable in exactly the case you
+                 most want it. -->
             <PopoverMenuItem
               icon="CookingPot"
               onclick={() => {
@@ -2258,53 +2269,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
-        <!-- "You'll need" (issue #882) — what to get out of the cupboards, above the
-             tab strip because it answers a question you ask BEFORE choosing between
-             Ingredients and Method: have I got what this dish needs?
-
-             The whole card goes when the kit is empty, in the same idiom the tab
-             strip below uses for a kind with no body: a heading reading "You'll
-             need" over nothing is worse than no card, because it reads as a recipe
-             that failed rather than one nobody has asked yet.
-
-             Each entry is a `PictogramPill` (ui-spec-v12 §8.30) — a span, no
-             `onclick`, not reachable by Tab, because these are read, not pressed.
-             It was a `fact` chip until #955, drawing the pictogram at 18px inside a
-             26px text pill: a frying pan painted 15 × 9 px, which is a smudge
-             rather than a picture. A chip is the wrong container for a drawn
-             object, not merely the wrong number — §8.30.2 has the reasoning.
-
-             The picture is resolved from the LABEL through the shared lookup and
-             handed over already resolved; a label the drawn vocabulary does not
-             know renders its words with no picture and never borrows another
-             tool's, because the pill draws no tile at all on a miss (§8.30.5).
-             Turning the icon kill-switch off therefore costs the pictures and
-             nothing else — the words are the content.
-
-             `shrink-0 max-w-full` is this row's own obligation as the pill's
-             caller (§8.30.3): the pill is `inline-flex`, not `flex`, so it does
-             not stretch on its own, but this row IS a flex row and would still
-             shrink or overflow a long pill without it — the same class the
-             cook-step kit list applies via its `<li>`. -->
-        {#if kit.length > 0}
-          <Card>
-            <CardContent class="flex flex-col gap-2 p-4">
-              <p class="text-sm font-medium">You&rsquo;ll need</p>
-              <div class="flex flex-wrap items-center gap-2" data-testid="recipe-kit-strip">
-                {#each kit as entry (entry.label)}
-                  <PictogramPill
-                    label={entry.label}
-                    thumbnail={$kitIcons.kitIconFor(entry.label)}
-                    version={$kitIcons.kitIconVersionFor(entry.label)}
-                    class="shrink-0 max-w-full"
-                    data-testid="recipe-kit-chip"
-                  />
-                {/each}
-              </div>
-            </CardContent>
-          </Card>
-        {/if}
-
         <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
              left above the chat should hold what the chef is talking about, not the
              hero photograph. It sits immediately above the tab strip rather than above
@@ -2314,18 +2278,22 @@ Finish with a short note on what you changed and why, so I can read the gist her
              a kind with no body still has somewhere to scroll to. -->
         <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
 
-        <!-- The body of the recipe: two alternatives, one at a time (issue #878).
-             They are alternatives on a phone — there is one screen and one thing
-             you are doing — and the count on each tab tells you the size of the
-             side you are not looking at without opening it.
+        <!-- The body of the recipe: alternatives, one at a time (issue #878, third
+             one added by #1140). They are alternatives on a phone — there is one
+             screen and one thing you are doing — and the count on each tab tells you
+             the size of the side you are not looking at without opening it.
 
              The whole STRIP goes when the concept doesn't apply (issue #637), not
              just its contents: a panel headed "Ingredients" saying "No
              ingredients." is worse than no panel, because it reads as an
              unfinished recipe rather than a takeaway. The inner "No ingredients."
              guard stays for the half-written-recipe case it was written for.
+             Equipment carries the same reasoning one step further: its trigger and
+             panel are gated on the kit existing at all, so a recipe nobody has
+             asked the kit question about shows two tabs, not three with an empty
+             one.
 
-             Both panels stay mounted while hidden (ui-spec-v10 §8.28.3), which is
+             Every panel stays mounted while hidden (ui-spec-v10 §8.28.3), which is
              what lets the drawer scroll to either and what keeps every
              `recipe-view-step` countable from a spec. -->
         {#if showBodyTabs}
@@ -2333,6 +2301,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
             <TabsList ariaLabel="Recipe">
               <TabsTrigger value="ingredients" count={ingredientCount}>Ingredients</TabsTrigger>
               <TabsTrigger value="method" count={recipe.steps.length}>Method</TabsTrigger>
+              {#if kit.length > 0}
+                <TabsTrigger value="equipment" count={kit.length}>Equipment</TabsTrigger>
+              {/if}
             </TabsList>
 
             <TabsContent value="ingredients">
@@ -2693,6 +2664,57 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <!-- Equipment (issue #1140). Was a "You'll need" card of `PictogramPill`
+                 chips above the strip; it is a third alternative view of the same
+                 region now, which is what ui-spec-v10 §8.28 is for. Read the same
+                 way the ingredients beside it are read: one thing per line, the
+                 picture in a fixed left gutter, a hairline between rows, so the
+                 names start at one left edge and the column is something you run
+                 your eye down rather than a heap of chips.
+
+                 THE GUTTER IS RESERVED, THE TILE IS NOT DRAWN ON A MISS. The
+                 ingredients list draws `CanonIcon` for every row, matched or not,
+                 because its bare tile is what holds the text column straight. Kit
+                 cannot borrow that: #882's contract is that a label the drawn
+                 vocabulary does not know renders its WORDS with no picture — never
+                 the bare placeholder, which reads as a broken image, and never
+                 another tool's drawing. A fixed-width empty gutter buys the straight
+                 column without the tile, so the two rules do not have to be traded
+                 off against each other.
+
+                 The picture comes from `$kitIcons` — equipment vocabulary first,
+                 then kitchen tools; that file's header explains at length why the
+                 order is load-bearing (#954) — so turning the icon kill-switch off
+                 costs the pictures and nothing else. -->
+            {#if kit.length > 0}
+              <TabsContent value="equipment">
+                <Card>
+                  <CardContent class="p-4">
+                    <ul class="flex flex-col" data-testid="recipe-kit-list">
+                      {#each kit as entry (entry.label)}
+                        <li
+                          class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
+                          data-testid="recipe-kit-row"
+                        >
+                          <div class="flex h-10 w-10 shrink-0 items-center justify-center">
+                            {#if $kitIcons.kitIconFor(entry.label)}
+                              <CanonIcon
+                                thumbnail={$kitIcons.kitIconFor(entry.label)}
+                                version={$kitIcons.kitIconVersionFor(entry.label)}
+                                name={entry.label}
+                                size={40}
+                              />
+                            {/if}
+                          </div>
+                          <span class="min-w-0 flex-1">{entry.label}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            {/if}
           </Tabs>
         {/if}
 

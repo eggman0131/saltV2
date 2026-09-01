@@ -3,12 +3,14 @@ import { render, cleanup, screen, within } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 
-// The "You'll need" strip (issue #882). The property under test is the one the
-// whole design rests on: the recipe stores WORDS, and the picture is looked up
-// from those words at render time. A label the drawn vocabulary does not know
-// renders its words with NO picture — never a near match, never a generic tile —
-// which is what lets the vocabulary grow later without a recipe being rewritten,
-// and what makes the icon kill-switch cost pictures and nothing else.
+// The Equipment tab (issue #882's "You'll need" strip, moved into a third tab by
+// #1140). The property under test is the one the whole design rests on: the recipe
+// stores WORDS, and the picture is looked up from those words at render time. A
+// label the drawn vocabulary does not know renders its words with NO picture —
+// never a near match, never a generic tile — which is what lets the vocabulary grow
+// later without a recipe being rewritten, and what makes the icon kill-switch cost
+// pictures and nothing else. The move changed the container and the test ids
+// (`recipe-kit-list` / `recipe-kit-row`); it changed none of that contract.
 
 const {
   mockRecipes,
@@ -213,17 +215,45 @@ function renderPage() {
 }
 
 function kitLabels(): string[] {
-  return screen.queryAllByTestId('recipe-kit-chip').map((el) => el.textContent?.trim() ?? '');
+  return screen.queryAllByTestId('recipe-kit-row').map((el) => el.textContent?.trim() ?? '');
 }
 
-describe('RecipeViewPage — the "You\'ll need" strip', () => {
-  it('shows no card at all when the recipe has no kit', () => {
-    // An empty "You'll need" heading reads as a recipe that failed rather than one
-    // nobody has asked about yet — the same reasoning the body tab strip uses.
+/** The tab strip's labels, with the `count` the trigger appends stripped off. */
+function tabNames(): string[] {
+  return screen
+    .queryAllByRole('tab')
+    .map((el) => (el.textContent ?? '').replace(/\d+\s*$/, '').trim());
+}
+
+describe('RecipeViewPage — the Equipment tab', () => {
+  it('shows no Equipment tab or panel at all when the recipe has no kit', () => {
+    // A panel headed "Equipment" over nothing reads as a recipe that failed rather
+    // than one nobody has asked about yet — the same reasoning the body tab strip
+    // already uses for a kind with no ingredients.
     mockRecipes._set([makeEntry()]);
     renderPage();
 
-    expect(screen.queryByTestId('recipe-kit-strip')).toBeNull();
+    expect(screen.queryByTestId('recipe-kit-list')).toBeNull();
+    expect(tabNames()).toEqual(['Ingredients', 'Method']);
+  });
+
+  it('offers Equipment as a third tab, counting its rows', () => {
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'large saucepan', stepIds: ['step-1'] },
+          { label: 'colander', stepIds: ['step-1'] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(tabNames()).toEqual(['Ingredients', 'Method', 'Equipment']);
+    // The count is the `TabsTrigger` prop (ui-spec-v10 §8.28.4), rendered inside
+    // the button so it joins the tab's accessible name — not text this page
+    // interpolates into the label itself.
+    const equipmentTab = screen.getAllByRole('tab')[2]!;
+    expect(equipmentTab.textContent).toContain('2');
   });
 
   it('lists every piece of kit, in stored order', () => {
@@ -312,7 +342,8 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     // and the framing normalisation (`contentMax: 108`, ~52% of the box height for
     // a landscape tool) turned that into ~15 × 9 px of frying pan — smaller than
     // the words beside it. 40px is ui-spec-v04 §14.6.1's size for every in-list
-    // pictogram, and ui-spec-v12 §8.30 is the container that can hold one.
+    // pictogram, and the list this became in #1140 is exactly the surface that
+    // size is for — the same tile the ingredients beside it draw.
     setTools([
       tool({
         id: 'frying-pan',
@@ -323,7 +354,7 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     mockRecipes._set([makeEntry({ kit: [{ label: 'large frying pan', stepIds: [] }] })]);
     renderPage();
 
-    const strip = screen.getByTestId('recipe-kit-strip');
+    const strip = screen.getByTestId('recipe-kit-list');
     const tile = within(strip).getByTestId('canon-icon');
     expect(tile.getAttribute('style')).toContain('width: 40px');
     expect(tile.getAttribute('style')).toContain('height: 40px');
@@ -444,30 +475,48 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
-  it('renders each entry as a static pill — read, not pressed', () => {
-    // ui-spec-v12 §8.30.6, carrying ui-spec-v09 §8.23.8's rule across from the
-    // `fact` chip this replaced: the pill is a span, so it is not reachable by Tab
-    // and is not announced as a control. The strip states what the dish needs; it
-    // does not offer anything to do about it.
+  it('renders each entry as a plain list row — read, not pressed', () => {
+    // Carried across from the `PictogramPill` this replaced (ui-spec-v12 §8.30.6,
+    // itself carrying ui-spec-v09 §8.23.8): the row is an `<li>` with no control in
+    // it, so it is not reachable by Tab and is not announced as something to press.
+    // The list states what the dish needs; it does not offer anything to do about it.
     mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
     renderPage();
 
-    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
-    expect(chip.tagName).toBe('SPAN');
+    const row = screen.getAllByTestId('recipe-kit-row')[0]!;
+    expect(row.tagName).toBe('LI');
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(row.querySelector('a, button, input, [tabindex]')).toBeNull();
   });
 
-  it('keeps each pill from stretching or overflowing the flex-wrap strip (§8.30.3)', () => {
-    // The strip's own row is `flex flex-wrap`, so — unlike a plain block
-    // parent — the pill's `inline-flex` alone does not stop it stretching or
-    // shrinking; the caller must add `shrink-0 max-w-full`, the same class the
-    // per-step kit list applies via its `<li>` (issue #1050 finding 1).
-    mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
+  it('reserves the icon gutter on a miss, so every name starts at one left edge', () => {
+    // The list is read the way the ingredients beside it are read — you run your eye
+    // down a straight column of names. The ingredients list buys that with a bare
+    // `CanonIcon` tile on every row; kit cannot, because #882's contract is that an
+    // unknown label draws NO picture rather than a placeholder that reads as a broken
+    // image. So the gutter is a fixed 40px box that is simply empty on a miss: both
+    // rows below start their text at the same x, and only one of them has a tile.
+    setTools([tool({ id: 'saucepan', label: 'large saucepan' })]);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'large saucepan', stepIds: [] },
+          { label: 'tagine', stepIds: [] },
+        ],
+      }),
+    ]);
     renderPage();
 
-    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
-    const classes = chip.className.split(/\s+/);
-    expect(classes).toContain('shrink-0');
-    expect(classes).toContain('max-w-full');
+    const [drawn, undrawn] = screen.getAllByTestId('recipe-kit-row');
+    expect(within(drawn!).queryByTestId('canon-icon')).not.toBeNull();
+    expect(within(undrawn!).queryByTestId('canon-icon')).toBeNull();
+    for (const row of [drawn!, undrawn!]) {
+      const gutter = row.firstElementChild!;
+      const classes = gutter.className.split(/\s+/);
+      expect(classes).toContain('h-10');
+      expect(classes).toContain('w-10');
+      expect(classes).toContain('shrink-0');
+    }
   });
 });
 
