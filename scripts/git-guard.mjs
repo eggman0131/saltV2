@@ -44,26 +44,26 @@ const gitInvocations = (s) =>
     .filter((seg) => /^git\s/.test(seg));
 
 const RULES = [
-    {
-      re: /^git\s+stash\s+pop\b/,
-      why: '`git stash pop` restores and DROPS the top stash entry, and the stash stack is shared across every worktree and session — that entry may be another agent\'s uncommitted work. Find yours by tag in `git stash list`, `git stash apply <sha>`, then drop it explicitly.',
-    },
-    {
-      re: /^git\s+stash\s+clear\b/,
-      why: '`git stash clear` wipes the whole stash stack, which is shared with every other worktree and session. Drop only your own entry, by sha.',
-    },
-    {
-      re: /^git\s+stash\b(?!\s+(?:push|apply|list|show|branch|create|store|drop)\b)/,
-      why: 'A bare `git stash` pushes onto a stack shared with every other worktree and session, where the next `pop` may take it. Use `git stash push -u -m "<unique-tag>"` and `git stash apply <sha>`, or set the work aside with a temporary WIP commit.',
-    },
-    {
-      re: /^git\s+push\b.*?(?:\s|:)main(?:\s|$)/,
-      why: 'Direct push to main. Cut a branch and open a PR — CI is the gate.',
-    },
-    {
-      re: /^git\s+push\b.*--no-verify\b/,
-      why: '`--no-verify` skips husky + lint-staged: pre-commit lint, typecheck and depcruise, which is how the architecture contract in CLAUDE.md is enforced. Fix what the hook reports instead of bypassing it.',
-    },
+  {
+    re: /^git\s+stash\s+pop\b/,
+    why: "`git stash pop` restores and DROPS the top stash entry, and the stash stack is shared across every worktree and session — that entry may be another agent's uncommitted work. Find yours by tag in `git stash list`, `git stash apply <sha>`, then drop it explicitly.",
+  },
+  {
+    re: /^git\s+stash\s+clear\b/,
+    why: '`git stash clear` wipes the whole stash stack, which is shared with every other worktree and session. Drop only your own entry, by sha.',
+  },
+  {
+    re: /^git\s+stash\b(?!\s+(?:push|apply|list|show|branch|create|store|drop)\b)/,
+    why: 'A bare `git stash` pushes onto a stack shared with every other worktree and session, where the next `pop` may take it. Use `git stash push -u -m "<unique-tag>"` and `git stash apply <sha>`, or set the work aside with a temporary WIP commit.',
+  },
+  {
+    re: /^git\s+push\b.*?(?:\s|:)main(?:\s|$)/,
+    why: 'Direct push to main. Cut a branch and open a PR — CI is the gate.',
+  },
+  {
+    re: /^git\s+push\b.*--no-verify\b/,
+    why: '`--no-verify` skips husky + lint-staged: pre-commit lint, typecheck and depcruise, which is how the architecture contract in CLAUDE.md is enforced. Fix what the hook reports instead of bypassing it.',
+  },
 ];
 
 const refuse = (cmd) => {

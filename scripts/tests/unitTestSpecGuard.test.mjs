@@ -239,7 +239,8 @@ describe("the spec's `guarded` markers name the rules this guard implements", ()
   /** A rule HEADER, which is a structural form, not the word "guarded": the doc
    *  uses that word in prose on several other lines (UT-E3 — do not match prose).
    *  `MUST NOT` before `MUST` because alternation is first-match. */
-  const RULE_HEADER = /^- \*\*(UT-[A-Z0-9]+) \((?:MUST NOT|MUST|SHOULD) · (guarded|review-only)\) — /gm;
+  const RULE_HEADER =
+    /^- \*\*(UT-[A-Z0-9]+) \((?:MUST NOT|MUST|SHOULD) · (guarded|review-only)\) — /gm;
 
   const specDoc = readFileSync(join(repoRoot, 'docs/unit-test-spec.md'), 'utf8');
   const headers = [...specDoc.matchAll(RULE_HEADER)].map(([, id, marker]) => ({ id, marker }));
@@ -249,7 +250,10 @@ describe("the spec's `guarded` markers name the rules this guard implements", ()
     // so that adding a rule is a doc edit, not a two-file one — the point is
     // that the parse still reaches the review-only half, which the assertion
     // below cannot tell apart from an empty file.
-    expect(headers.length, 'no UT-* rule headers parsed out of docs/unit-test-spec.md').toBeGreaterThanOrEqual(30);
+    expect(
+      headers.length,
+      'no UT-* rule headers parsed out of docs/unit-test-spec.md',
+    ).toBeGreaterThanOrEqual(30);
     expect(headers.filter((h) => h.marker === 'review-only').length).toBeGreaterThanOrEqual(21);
   });
 
@@ -261,7 +265,9 @@ describe("the spec's `guarded` markers name the rules this guard implements", ()
     // opens a `UT-*` bullet at all — so a header RULE_HEADER fails to
     // recognise reds here even when the floors above do not move.
     const bulleted = [...specDoc.matchAll(/^- \*\*UT-[A-Z0-9]+ /gm)].length;
-    expect(headers.length, 'a UT-* rule bullet exists that RULE_HEADER did not recognise').toBe(bulleted);
+    expect(headers.length, 'a UT-* rule bullet exists that RULE_HEADER did not recognise').toBe(
+      bulleted,
+    );
   });
 
   it('marks exactly RULE_IDS as guarded, in both directions', () => {
@@ -271,7 +277,7 @@ describe("the spec's `guarded` markers name the rules this guard implements", ()
       .sort();
     expect(
       marked,
-      'docs/unit-test-spec.md\'s `guarded` markers and RULE_IDS in scripts/lib/unitTestSpec.mjs disagree. ' +
+      "docs/unit-test-spec.md's `guarded` markers and RULE_IDS in scripts/lib/unitTestSpec.mjs disagree. " +
         'Either the doc marker is wrong, or a rule was added to FILE_RULES/AREA_RULES without one.',
     ).toEqual([...RULE_IDS].sort());
   });

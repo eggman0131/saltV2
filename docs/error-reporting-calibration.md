@@ -85,7 +85,7 @@ Two consequences for the before/after read:
    known. This is a deliberate scope decision for this feature (adding it would
    be a behaviour change); attaching the category server-side is a possible
    future enhancement, intentionally NOT done here. The report/suppress
-   *decision* is identical on both sides — only the attached metadata differs.
+   _decision_ is identical on both sides — only the attached metadata differs.
 
 2. **Some AI-flow failures do not surface as server reports.** Certain
    embed / arbitrate / parse flow failures are reached via adapters that

@@ -101,7 +101,7 @@ ungated, deploy-from-any-branch, agent-reachable environment — from **staging*
 
 **Restore Dev from Prod** imports a **prod** export straight into dev-cloud. The
 staging hop is pure latency when all you want is real-shaped data on dev: staging's
-copy *is* prod's copy, so round-tripping it through a second export/import changes
+copy _is_ prod's copy, so round-tripping it through a second export/import changes
 nothing but the wait. Run **Export Prod Firestore** first, then this.
 
 It needs the same one-time grant as prod→staging, but for dev's service agent.
@@ -119,7 +119,7 @@ done
 ```
 
 Note this is the **exports** bucket only. Neither dev nor staging has any IAM on
-prod's *app* bucket (`gs://s2-prod-e46bd.firebasestorage.app`) — see below.
+prod's _app_ bucket (`gs://s2-prod-e46bd.firebasestorage.app`) — see below.
 
 ## One script, three routes
 
@@ -134,7 +134,7 @@ node scripts/restore-firestore.mjs --from prod    --to dev
 
 Adding a route is a line in its `ROUTES` set. **`prod` is deliberately absent as a
 target** — this script wipes what it touches, so "restore prod" must not be one
-keystroke away. Beyond the route table, it re-checks the *resolved* project ids
+keystroke away. Beyond the route table, it re-checks the _resolved_ project ids
 (which `SALT_*_PROJECT` env vars can change): it refuses a target matching
 `/prod/i`, a target that doesn't look like the environment you named, and a
 source and target that collapse to the same project.
@@ -174,13 +174,13 @@ None of these flows copy **Cloud Storage**, and that is a feature, not a gap.
 Canon icons, recipe hero images, and batch observation photos are served from URLs
 that embed the bucket name of the project that wrote them
 ([storageDownloadUrl.ts](../apps/cloud-functions/src/imaging/storageDownloadUrl.ts)),
-so after a restore the target's *imported* docs point at the **source** project's
+so after a restore the target's _imported_ docs point at the **source** project's
 bucket. The upshot is that staging and dev-cloud get a fully-populated UI —
 hundreds of canon icons and recipe heroes, plus whatever batches came across —
 **for free, with zero AI spend and no blob copying**.
 
 Crucially this does not compromise creation testing. Both image writers call
-`getStorage().bucket()`, which resolves to *the running project's own* default
+`getStorage().bucket()`, which resolves to _the running project's own_ default
 bucket, so anything created in dev or staging after an import writes to that
 environment's own bucket and gets its own URL. Imported assets are borrowed;
 new assets are local.
@@ -190,7 +190,7 @@ new assets are local.
 1. **`storage.rules`** grants `allow read: if true` but **`allow write: if false`**
    on `canon-icons/`, `recipe-images/`, and `batch-images/` (everything else is
    denied outright). The cross-project reads go through the Firebase Storage
-   download endpoint, which *is* governed by these rules. A non-prod client can read prod's images
+   download endpoint, which _is_ governed by these rules. A non-prod client can read prod's images
    and structurally cannot write them. A dev-project auth token is not valid
    against prod's bucket either, so even a future `allow write: if request.auth != null`
    would evaluate `request.auth` as null and deny.

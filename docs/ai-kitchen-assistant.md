@@ -51,7 +51,7 @@ foundation (#179).
   `extractRecipeFromUrl`, `extractRecipeFromPhoto` and `generateGuidedPlan` are
   temperature-0 transcribers; handing one a preference like "we hate coriander"
   licenses it to quietly rewrite an imported recipe. A note shapes what the chef
-  *suggests* in conversation — it must never touch what a recipe *says*. Only
+  _suggests_ in conversation — it must never touch what a recipe _says_. Only
   `chefChat` reads `kitchenMemories` (see Components, below).
 - **Inference about a recipe runs AFTER it, never inside the transcription.** The
   same rule, applied the other way round: because those four are transcribers, no
@@ -84,7 +84,7 @@ authoritative count and the place to argue for a fifth — not this doc.
   owner-scoped rule block and set the pattern the later three follow — note the
   differences CLAUDE.md records: the deterministic-id collections additionally
   permit `resource == null`, and `kitchenTimers` deliberately does not, because
-  its document id *is* the uid.
+  its document id _is_ the uid.
 - Retention via an `expiresAt` stamp that every write bumps: **14 days** for a
   general kitchen chat, **18 months** for a recipe-attached one (`recipeId` set).
   Issue #707 lists a recipe chat on that recipe's "Chef chats" card, so a
@@ -98,13 +98,13 @@ authoritative count and the place to argue for a fifth — not this doc.
 - **The wire type is a `Timestamp`, and it has to be** (#1008). A Firestore TTL
   policy only expires a document whose TTL field holds a **`Timestamp`** — a
   string is skipped silently — and `expiresAt` was an ISO-8601 string from #206
-  until #1008, so the windows above were retention *policy* with no *mechanism*
+  until #1008, so the windows above were retention _policy_ with no _mechanism_
   behind them (measured 2026-08-25: 42 of staging's 76 sessions past their own
   recorded expiry, all still present). `firebase-sync` now converts at the wire in
   both directions: `ChatSessionSchema.expiresAt` stays a string, because
   `packages/domain` imports no Firebase types.
 - **The read path accepts both shapes, permanently.** The realtime subscription
-  *skips* documents that fail validation, so a read that demanded a `Timestamp`
+  _skips_ documents that fail validation, so a read that demanded a `Timestamp`
   would make every unmigrated chat disappear from the list rather than error —
   and a stale client can write a string long after a migration has run. Tolerance
   here is not transitional.
@@ -131,8 +131,7 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 
 - Schema in `@salt/domain/schemas/chatSession.ts`, exported via the schemas index.
 - One doc per session at `chatSessions/{id}`:
-  `{ id, ownerUid, recipeId: string | null, basedOnRecipeId: string | null, title,
-     messages: Message[], createdAt, updatedAt, expiresAt }`.
+  `{ id, ownerUid, recipeId: string | null, basedOnRecipeId: string | null, title, messages: Message[], createdAt, updatedAt, expiresAt }`.
   `Message = { id, role: 'user' | 'assistant', text, createdAt }`.
 - `recipeId` set ⇒ the session is **attached to a recipe** (the "open chat alongside
   a recipe" mode). `null` ⇒ general kitchen-assistant chat.
@@ -182,7 +181,7 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 - Plain text out. **No `output` schema. No tools.** Guard the model call with
   `withAiStreamTimeout`, not `withAiTimeout` — this is the one streaming flow, and
   a promise wrapper cannot bound a stream. `withAiTimeout` around the aggregated
-  response sits *after* the drain loop, so a model that goes quiet mid-answer
+  response sits _after_ the drain loop, so a model that goes quiet mid-answer
   never reaches it and holds the invocation to its 120 s quota (issue #915). The
   stream wrapper races each chunk against an idle timer instead: silence longer
   than the budget fails the turn, and a long answer that keeps arriving is never
@@ -253,7 +252,7 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 - **Phase 2 — the chef reads them.** `apps/cloud-functions/src/flows/kitchenMemoryContext.ts`
   reads `kitchenMemories` server-side (Admin SDK, like the equipment
   manifest) and renders them into `chefChat`'s system prompt, grouped by
-  author. Framed as *preferences, not rules* — the conversation always wins,
+  author. Framed as _preferences, not rules_ — the conversation always wins,
   and the chef may raise a note only once, only when it belongs to someone
   **other** than the person it is talking to. Degrades to no section at all
   on an empty, missing or unreadable collection (Rule 10) and never lists the
@@ -289,13 +288,13 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
     `kind: 'recipe'` — see `isAuthorable` above; that is the pre-existing librarian
     limitation, not something the button introduces.
 - Variation chat (#763) — ⋮ → **Make a variation** on a recipe opens a NEW chat at
-  `/chat/:id` carrying `basedOnRecipeId`, with a *Based on: …* chip and an empty
+  `/chat/:id` carrying `basedOnRecipeId`, with a _Based on: …_ chip and an empty
   transcript. It navigates AWAY from the recipe deliberately: you are leaving that
   dish to make a different one. Nothing is written but the session doc until "Save
   as recipe", which is the same button a general chat already has — there is no
   new exit from the recipe-amend review gate, and Duplicate is untouched. Note the
-  difference from "Save as new recipe" (#798): a variation is *this dish, but
-  different* and carries `basedOnRecipeId`; an accompaniment is *a different dish*
+  difference from "Save as new recipe" (#798): a variation is _this dish, but
+  different_ and carries `basedOnRecipeId`; an accompaniment is _a different dish_
   and carries nothing.
 - My Kitchen (`/mine`) — a "Recent chats" footer linking straight back into the last
   few conversations. Read-only and free: it projects the app-wide subscription
@@ -311,6 +310,6 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   `cloud-functions`, adapter/store in `firebase-sync` + `web-pwa`, UI primitives via
   `@salt/ui-components`.
 - Recipe schema now holds live production data (module shipped to all members
-in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
-migration, like any other production collection. Chat schema is brand-new
-(no back-compat burden yet).
+  in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
+  migration, like any other production collection. Chat schema is brand-new
+  (no back-compat burden yet).

@@ -15,6 +15,7 @@ You are investigating and specifying, not fixing. The deliverable is a GitHub is
 ## When to use this
 
 This is the heavyweight path — Explore agents, a tracked issue, the decision audit trail. It earns its weight only when at least one is true:
+
 - the root cause is non-obvious and needs tracing across files/packages to locate;
 - there is a real scope fork the user should decide (targeted vs broad, hotfix vs full fix);
 - blast radius matters — production data may already be corrupted, or a behavior contract changes;
@@ -26,12 +27,13 @@ If the cause is obvious, the change is contained to a file or two, and there is 
 
 - **CLAUDE.md is binding.** Layer map, hard rules, data-model and Zod conventions. A fix that requires bending one of them is a finding for Step 3, not a detail to settle during implementation.
 - **Fix the mechanism, not the symptom.** No bodges: if the honest fix is larger than the bug looks, say so. Suppressing a symptom to close an issue is worse than leaving the issue open.
-- **Flag the simpler path.** If the defect exists because the surrounding design is wrong, and a different shape would be *simpler and more maintainable* (not merely quicker to patch), raise it with the trade-off — even when that means a second issue rather than this one.
+- **Flag the simpler path.** If the defect exists because the surrounding design is wrong, and a different shape would be _simpler and more maintainable_ (not merely quicker to patch), raise it with the trade-off — even when that means a second issue rather than this one.
 - **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 1 — Reproduce & triage
 
 Confirm the defect is real before theorising. Reproduce it (run the failing test, the command, the flow) and capture concrete evidence — error text, a failing assertion, a log line, a trace. Then state plainly:
+
 - **Is it a real defect, a flake, or intended behavior?** If intermittent, characterize frequency. If the "buggy" behavior turns out to be intended, stop and report that instead of inventing a fix.
 - **First-guess severity / blast radius:** who or what is affected, and is any production data being corrupted while the bug is live?
 
@@ -57,6 +59,7 @@ Verify the root cause empirically where you can (a probe, or a test that pinpoin
 ## Step 3 — Clarify with user
 
 Ask me to decide the forks the investigation surfaced. Use `AskUserQuestion` where the options are discrete. Typical ones:
+
 - **Fix scope** — minimal/targeted vs a broader retune of the surrounding logic.
 - **Existing data** — does live/production data already need remediation, or fix-forward only?
 - **Urgency** — minimal hotfix now vs the full fix.
@@ -68,6 +71,7 @@ Surface the regression risks. Do not propose implementation detail yet. If the f
 Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
+
 - Title: `fix: <concise defect description>` (imperative, no trailing period)
 - Labels: the area and topical labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `flaky-test`, `breaking-change` when the fix changes a behavior contract). **Not** `bug`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class Defect --queue <band> --size <S|M|L>`. `Recommended` means actionable **and proven** — regular user impact, a security risk, or dev friction actually being felt. A defect that is real but has never been triggered is `Low`, however alarming it reads. See [docs/issue-board.md](../../docs/issue-board.md).
@@ -76,42 +80,52 @@ Once we've agreed, post it with `gh issue create`.
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 
 ---
+
 ## Observed vs Expected
+
 **Observed:** [The symptom, concretely, with a real example. Written so a non-coder recognises it.]
 **Expected:** [What should happen instead.]
 
 ## Reproduction
+
 [Smallest reliable steps / command / test that shows the defect. Note frequency if intermittent.]
 
 ## Root Cause
+
 [The mechanism, with `file:line` references and quoted code. If multiple bugs contribute, list each.
 Written for a fresh agent: enough to find and understand the fault without re-investigating.]
 
 ## Blast Radius
+
 [What else the same mechanism affects. Is production data already corrupted — and if so, what would
 remediation require? What is the risk of NOT fixing.]
 
 ## Architecture Notes & Constraints
+
 [Layer map references, packages touched, constraints from CLAUDE.md (purity, schema/back-compat).
 **Behavior that must be preserved**, and the tests that encode it. What must NOT be done.
 Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
+
 [Every fork raised in Step 3, each as:
+
 - **Decision:** what was chosen
 - **Why:** the reasoning
 - **Rejected:** the alternative(s) and why not
-Unresolved items stay listed as open questions, not silently assumed away. This is the audit trail.]
+  Unresolved items stay listed as open questions, not silently assumed away. This is the audit trail.]
 
 ## Phases
+
 [One `### Phase` block per phase.
 
-Every phase must end verifiable — but that is a constraint on where a boundary may *fall*, not a reason
+Every phase must end verifiable — but that is a constraint on where a boundary may _fall_, not a reason
 for one to exist. Phases are not free: each costs a context read, a validation pass, a gate run, a commit
 and a handoff contract. **Most defects are one phase**: the fix plus the regression test that proves it,
 landing together. That is the default, not a compromise.
 
 Split only where there is a reason to:
+
 - **an unresolved fork** — the fix rests on something in Open Questions the user should judge first;
 - **data remediation** — a migration or backfill is its own phase, and only if Step 3 chose to remediate;
 - **a changed behavior contract** — docs or callers needing updating can be their own phase;
@@ -120,16 +134,18 @@ Split only where there is a reason to:
 None of those apply? One phase.]
 
 ### Phase 1: [Name]
+
 **Scope:** [What gets changed — precise, not vague]
 **Verifiable outcome(s):** [What proves it is fixed — ideally a regression test that fails before the change and passes after]
 **Technical deliverables:** [Files, functions, tests]
-**Context pointers:** [What Step 2 already learned about *this* phase, so `/run` reads rather than re-investigates:
+**Context pointers:** [What Step 2 already learned about _this_ phase, so `/run` reads rather than re-investigates:
 `file:line` for the faulty mechanism and the tests around it, and the named rules and `docs/…` sections
 that bound the fix. Written for an agent arriving with no context — thin here buys a fresh Explore sweep
 there, re-tracing a root cause you already found.]
 **Must not touch:** [Explicitly out of scope; the preserved behavior]
 
 ### Phase 2: [Name]
+
 **Scope:** [...]
 **Verifiable outcome(s):** [...]
 **Technical deliverables:** [...]
@@ -139,6 +155,7 @@ there, re-tracing a root cause you already found.]
 [...continue through Phase N...]
 
 ## Definition of Done
+
 [Checkable acceptance criteria: the defect no longer reproduces; a regression test guards it;
 preserved behavior stays green; no schema/data regressions.]
 ---

@@ -58,7 +58,7 @@ services:
       # ONLY — it never reaches any deployed environment, so the real model path
       # ships unchanged. The fake reads its canned answers from the shared
       # emulator Firestore (`_e2e_ai_stubs/{flow}`), written by stubAi().
-      FUNCTIONS_AI_FAKE: "1"
+      FUNCTIONS_AI_FAKE: '1'
       # The @genkit-ai/google-genai plugin validates that an API key is PRESENT
       # at plugin-init time (it does not call the API to check it). Genkit
       # initialises the plugin on the first ai.generate() regardless of which
@@ -69,7 +69,7 @@ services:
       # log ("Assert no live AI calls" in ci.yml, issue #686), because until then
       # a flow that slipped the seam just failed quietly against this key.
       # Emulator-only, obviously not a secret.
-      GEMINI_API_KEY: "fake-emulator-key-not-used"
+      GEMINI_API_KEY: 'fake-emulator-key-not-used'
     volumes:
       # Repo read-only: config + the prebuilt CF bundle + pnpm's relative
       # workspace symlinks (firebase-admin/firebase-functions resolve because
@@ -80,12 +80,12 @@ services:
       # by `down -v`.
       - emulator-work:/work
     ports:
-      - "127.0.0.1:8081:8081" # Firestore
-      - "127.0.0.1:9100:9100" # Auth
-      - "127.0.0.1:5002:5002" # Functions
-      - "127.0.0.1:4402:4402" # Emulator hub
+      - '127.0.0.1:8081:8081' # Firestore
+      - '127.0.0.1:9100:9100' # Auth
+      - '127.0.0.1:5002:5002' # Functions
+      - '127.0.0.1:4402:4402' # Emulator hub
     healthcheck:
-      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      test: ['CMD', '/usr/local/bin/healthcheck.sh']
       interval: 5s
       timeout: 10s
       retries: 60

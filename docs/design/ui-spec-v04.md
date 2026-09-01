@@ -73,21 +73,21 @@ A text input that:
 
 ### 3.1 Root props (`Combobox`)
 
-| Name           | Type                                               | Default        | Notes                             |
-| -------------- | -------------------------------------------------- | -------------- | --------------------------------- |
-| `value`        | string \| undefined (bindable)                     | undefined      | Selected value                    |
-| `defaultValue` | string \| undefined                                | undefined      | Uncontrolled initial value        |
-| `open`         | boolean (bindable)                                 | false          | Popup open state                  |
-| `defaultOpen`  | boolean                                            | false          | Initial open state                |
-| `items`        | Array<{ value: string; label: string }>            | []             | Full option list                  |
-| `allowCustom`  | boolean                                            | false          | Allow values not in `items`       |
-| `restrict`     | boolean                                            | false          | If true, must select from `items` |
-| `name`         | string \| undefined                                | —              | Hidden input name                 |
-| `placeholder`  | string \| undefined                                | —              | Input placeholder                 |
+| Name           | Type                                               | Default        | Notes                                                                                                                                                                          |
+| -------------- | -------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `value`        | string \| undefined (bindable)                     | undefined      | Selected value                                                                                                                                                                 |
+| `defaultValue` | string \| undefined                                | undefined      | Uncontrolled initial value                                                                                                                                                     |
+| `open`         | boolean (bindable)                                 | false          | Popup open state                                                                                                                                                               |
+| `defaultOpen`  | boolean                                            | false          | Initial open state                                                                                                                                                             |
+| `items`        | Array<{ value: string; label: string }>            | []             | Full option list                                                                                                                                                               |
+| `allowCustom`  | boolean                                            | false          | Allow values not in `items`                                                                                                                                                    |
+| `restrict`     | boolean                                            | false          | If true, must select from `items`                                                                                                                                              |
+| `name`         | string \| undefined                                | —              | Hidden input name                                                                                                                                                              |
+| `placeholder`  | string \| undefined                                | —              | Input placeholder                                                                                                                                                              |
 | `openOnClick`  | boolean                                            | true           | If false, clicking/focusing the input does **not** open the popup — it opens only once the user types. Shopping-list add field sets this `false`; canon page keeps the default |
-| `portal`       | HTMLElement \| string \| false                     | unset          | Portal target for content. Unset means the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise (v0.2 §2.5, #674) |
-| `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function   |
-| `class`        | string \| undefined                                | —              | Root class                        |
+| `portal`       | HTMLElement \| string \| false                     | unset          | Portal target for content. Unset means the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise (v0.2 §2.5, #674)                                      |
+| `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function                                                                                                                                                |
+| `class`        | string \| undefined                                | —              | Root class                                                                                                                                                                     |
 
 > `allowCustom` and `restrict` are mutually exclusive.  
 > If both are true → **STOP** and throw in dev.
@@ -106,11 +106,22 @@ A text input that:
 type ComboboxInputProps = Omit<
   HTMLInputAttributes,
   // props ComboboxInput owns and the headless layer controls — callers may NOT override these:
-  | 'class' | 'id' | 'role' | 'type'
-  | 'aria-expanded' | 'aria-controls' | 'aria-autocomplete' | 'aria-activedescendant'
-  | 'value' | 'placeholder' | 'autocomplete'
-  | 'onclick' | 'oninput' | 'onkeydown' | 'onblur'
-> & { class?: string }
+  | 'class'
+  | 'id'
+  | 'role'
+  | 'type'
+  | 'aria-expanded'
+  | 'aria-controls'
+  | 'aria-autocomplete'
+  | 'aria-activedescendant'
+  | 'value'
+  | 'placeholder'
+  | 'autocomplete'
+  | 'onclick'
+  | 'oninput'
+  | 'onkeydown'
+  | 'onblur'
+> & { class?: string };
 ```
 
 Contract:
@@ -439,11 +450,13 @@ Pattern precedent: Android contextual action bar; iOS Reminders/Mail multi-selec
 ## 9.2 Behaviour
 
 ### Default state (selection mode off)
+
 - No per-row select checkboxes are visible.
 - The `selectionBar` (top select-all) snippet is not rendered, and no contextual bottom bar is shown.
 - The header shows a "Select" `outline`, `size="sm"` button (only when a `selectionBar` snippet is provided).
 
 ### Selection mode on
+
 - The `selectionBar` snippet (typically a single select-all `Checkbox`) is rendered in the bar between toolbar and content.
 - Per-row select controls become visible (consuming pages gate them on their page-local `selectionMode` — see §9.4).
 - The "Select" button is replaced by a "Done" `outline`, `size="sm"` button in the header.
@@ -452,6 +465,7 @@ Pattern precedent: Android contextual action bar; iOS Reminders/Mail multi-selec
 > Button variant: the Select/Done toggle uses `variant="outline"` (not `ghost`) so it reads as an affordance against the header background and lines up with the `size="sm"` convention documented on the `actions` prop.
 
 ### Exiting selection mode
+
 - Tapping "Done" sets `selectionMode = false` inside `ListPage`, which propagates back to the consuming page via the binding.
 - The `selectionBar`, per-row controls, and the contextual bottom bar are all hidden again; the `BottomNav` returns.
 - Consuming pages clear their `selected` Set by reacting to `selectionMode` becoming `false` (see §9.5).
@@ -473,25 +487,25 @@ Each bar entry is a `BulkAction`. The template owns the bar chrome (layout, icon
 ```ts
 type BulkAction =
   | {
-      kind?: 'button';            // default
-      id: string;                 // stable key
-      label: string;              // "Check", "Delete"
-      icon: BulkActionIcon;       // "CircleCheck", "Trash2"
+      kind?: 'button'; // default
+      id: string; // stable key
+      label: string; // "Check", "Delete"
+      icon: BulkActionIcon; // "CircleCheck", "Trash2"
       variant?: 'default' | 'destructive';
       disabled?: boolean;
-      testId?: string;            // data-testid override (else "list-page-bulk-action")
+      testId?: string; // data-testid override (else "list-page-bulk-action")
       onSelect: () => void;
     }
   | {
-      kind: 'picker';             // opens a template-owned bottom Sheet of targets
+      kind: 'picker'; // opens a template-owned bottom Sheet of targets
       id: string;
-      label: string;              // "Move"
-      icon: BulkActionIcon;       // "FolderInput"
+      label: string; // "Move"
+      icon: BulkActionIcon; // "FolderInput"
       disabled?: boolean;
       testId?: string;
-      sheetTitle?: string;        // "Move 3 items to…" (defaults to label)
+      sheetTitle?: string; // "Move 3 items to…" (defaults to label)
       targets: { id: string; label: string }[];
-      optionTestId?: string;      // data-testid for each option (else "list-page-bulk-picker-option")
+      optionTestId?: string; // data-testid for each option (else "list-page-bulk-picker-option")
       onPick: (targetId: string) => void;
     };
 ```
@@ -503,14 +517,25 @@ Worked call-site (shopping):
   bind:selectionMode
   selectionCount={selectedCount}
   bulkActions={[
-    { id: 'check',   label: 'Check',   icon: 'CircleCheck', onSelect: handleBulkCheck },
-    { id: 'uncheck', label: 'Uncheck', icon: 'Circle',      onSelect: handleBulkUncheck },
-    { kind: 'picker', id: 'move', label: 'Move', icon: 'FolderInput',
+    { id: 'check', label: 'Check', icon: 'CircleCheck', onSelect: handleBulkCheck },
+    { id: 'uncheck', label: 'Uncheck', icon: 'Circle', onSelect: handleBulkUncheck },
+    {
+      kind: 'picker',
+      id: 'move',
+      label: 'Move',
+      icon: 'FolderInput',
       disabled: otherLists.length === 0,
       sheetTitle: `Move ${selectedCount} item${selectedCount === 1 ? '' : 's'} to…`,
       targets: otherLists.map((l) => ({ id: l.id, label: l.name })),
-      onPick: handleMoveTo },
-    { id: 'delete', label: 'Delete', icon: 'Trash2', variant: 'destructive', onSelect: handleBulkDelete },
+      onPick: handleMoveTo,
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      onSelect: handleBulkDelete,
+    },
   ]}
 >
   {#snippet selectionBar()}<Checkbox … />{/snippet}
@@ -549,7 +574,7 @@ A `Delete` `BulkAction` (`variant: 'destructive'`) simply calls the page's `hand
 
 `titleSlot?: Snippet`. When provided, it **replaces** the default `<h1>{title}</h1>` in the page header. When omitted, the page renders the default `<h1>` from the `title` string.
 
-Use this when a page needs an interactive element in place of a static heading — e.g. a `Combobox` for switching between shopping lists, or an editable title. The `title` string prop is still required (it remains the accessible/programmatic name and the fallback); `titleSlot` only overrides the *rendered* heading.
+Use this when a page needs an interactive element in place of a static heading — e.g. a `Combobox` for switching between shopping lists, or an editable title. The `title` string prop is still required (it remains the accessible/programmatic name and the fallback); `titleSlot` only overrides the _rendered_ heading.
 
 ```svelte
 <ListPage title="Shopping list">
@@ -566,9 +591,10 @@ Contract:
 
 ## 9.4 Consuming-page contract (bindable prop)
 
-Consuming pages use `bind:selectionMode` to observe selection state in their own scripts and templates. This is the correct approach because consuming pages are *parents* of `ListPage` — Svelte context flows downward (parent → child), so `LIST_PAGE_CONTEXT.get()` cannot be called from a consuming page's `<script>` block (it would throw outside the component tree).
+Consuming pages use `bind:selectionMode` to observe selection state in their own scripts and templates. This is the correct approach because consuming pages are _parents_ of `ListPage` — Svelte context flows downward (parent → child), so `LIST_PAGE_CONTEXT.get()` cannot be called from a consuming page's `<script>` block (it would throw outside the component tree).
 
 **Standard pattern for a consuming page:**
+
 ```svelte
 <script lang="ts">
   let selectionMode = $state(false);
@@ -617,9 +643,10 @@ const ctx = LIST_PAGE_CONTEXT.get(); // throws if called outside ListPage's tree
 ```
 
 `ListPageContext` shape:
+
 ```ts
 type ListPageContext = {
-  readonly selectionMode: boolean;        // reactive via getter
+  readonly selectionMode: boolean; // reactive via getter
   readonly exitSelectionMode: () => void; // sets selectionMode = false
 };
 ```
@@ -648,7 +675,7 @@ The pieces:
 - **`SelectAllCheckbox`** — the header/`selectionBar` select-all control (tri-state + "N selected" label), wired entirely from the controller.
 - **`RowSelectCheckbox`** — a single per-row select checkbox wired to the controller by `id`, for pages whose row layout is bespoke (shopping's trolley rows, aisle's drag-drop `SortableList` rows) and so cannot use `SelectableList`'s flat container.
 
-> **Why a controller, not one mega-component.** The four lists are structurally divergent — flat (equipment), grouped + sectioned (canon, shopping), collapsible (shopping), and drag-drop sortable (aisle). Forcing them all through a single list container would couple selection to grouping/sorting. Instead the *selection logic* is unified in the controller; each page keeps its own structure and composes the shared checkboxes. Canon reuses `EditableRow`'s built-in checkbox (driven by the controller via `selected` / `onToggleSelect`).
+> **Why a controller, not one mega-component.** The four lists are structurally divergent — flat (equipment), grouped + sectioned (canon, shopping), collapsible (shopping), and drag-drop sortable (aisle). Forcing them all through a single list container would couple selection to grouping/sorting. Instead the _selection logic_ is unified in the controller; each page keeps its own structure and composes the shared checkboxes. Canon reuses `EditableRow`'s built-in checkbox (driven by the controller via `selected` / `onToggleSelect`).
 
 > **Scope: selection only.** None of these own bulk actions. Bulk actions belong to `ListPage`'s contextual action bar via `bulkActions` (§9.3.1). A page composes the list/checkboxes inside `ListPage`'s `children` / `selectionBar` and declares `bulkActions` on the `ListPage`, passing `selectionCount={selection.count}`.
 
@@ -656,39 +683,39 @@ The pieces:
 
 **Options**
 
-| Name              | Type               | Notes                                                                 |
-| ----------------- | ------------------ | --------------------------------------------------------------------- |
-| `getAllIds`       | `() => string[]`   | All currently-selectable ids in scope; drives `all`/`some`/`count` + `toggleAll` |
-| `isSelectionMode` | `() => boolean`    | Page's selection mode (bound to `ListPage`); selection clears on exit |
+| Name              | Type             | Notes                                                                            |
+| ----------------- | ---------------- | -------------------------------------------------------------------------------- |
+| `getAllIds`       | `() => string[]` | All currently-selectable ids in scope; drives `all`/`some`/`count` + `toggleAll` |
+| `isSelectionMode` | `() => boolean`  | Page's selection mode (bound to `ListPage`); selection clears on exit            |
 
 **Returns `ListSelection`**
 
-| Member         | Type                       | Notes                                                          |
-| -------------- | -------------------------- | -------------------------------------------------------------- |
-| `selectionMode`| `boolean` (readonly)       | Mirror of `isSelectionMode()`                                  |
-| `selected`     | `Set<string>` (readonly)   | Live selected ids (reactive)                                   |
-| `ids`          | `string[]` (readonly)      | Selected ids still in scope (`getAllIds`)                      |
-| `count`        | `number` (readonly)        | `ids.length`                                                   |
-| `allSelected`  | `boolean` (readonly)       | Every in-scope id selected                                     |
-| `someSelected` | `boolean` (readonly)       | Some, but not all, in-scope ids selected                       |
-| `isSelected(id)`| `(id) => boolean`         | Membership test                                                |
-| `toggle(id)`   | `(id) => void`             | Add/remove one id (immutable Set swap)                         |
-| `toggleAll()`  | `() => void`               | Select all in-scope, or clear when all already selected        |
-| `add(ids)`     | `(ids) => void`            | Add a subset (e.g. "select all pending")                       |
-| `remove(ids)`  | `(ids) => void`            | Remove a subset (e.g. after a partial bulk action)             |
-| `clear()`      | `() => void`               | Clear the whole selection                                      |
+| Member           | Type                     | Notes                                                   |
+| ---------------- | ------------------------ | ------------------------------------------------------- |
+| `selectionMode`  | `boolean` (readonly)     | Mirror of `isSelectionMode()`                           |
+| `selected`       | `Set<string>` (readonly) | Live selected ids (reactive)                            |
+| `ids`            | `string[]` (readonly)    | Selected ids still in scope (`getAllIds`)               |
+| `count`          | `number` (readonly)      | `ids.length`                                            |
+| `allSelected`    | `boolean` (readonly)     | Every in-scope id selected                              |
+| `someSelected`   | `boolean` (readonly)     | Some, but not all, in-scope ids selected                |
+| `isSelected(id)` | `(id) => boolean`        | Membership test                                         |
+| `toggle(id)`     | `(id) => void`           | Add/remove one id (immutable Set swap)                  |
+| `toggleAll()`    | `() => void`             | Select all in-scope, or clear when all already selected |
+| `add(ids)`       | `(ids) => void`          | Add a subset (e.g. "select all pending")                |
+| `remove(ids)`    | `(ids) => void`          | Remove a subset (e.g. after a partial bulk action)      |
+| `clear()`        | `() => void`             | Clear the whole selection                               |
 
 ## 10.3 Component props
 
 **`SelectableList<T>`**
 
-| Name        | Type                                                      | Default | Notes                                          |
-| ----------- | -------------------------------------------------------- | ------- | ---------------------------------------------- |
-| `items`     | `T[]` where `T extends { id: string }`                   | —       | Rows to render; keyed by `item.id`             |
-| `selection` | `ListSelection`                                          | —       | Shared controller; gates + drives the checkbox |
-| `row`       | `Snippet<[T, { selected: boolean; toggle: () => void }]>`| —       | Renders each row's content                     |
-| `getRowCheckboxLabel` | `((item: T) => string) \| undefined`           | see Notes | Accessible label for each row's select checkbox; defaults to ``(item) => `Select ${item.id}` `` when omitted |
-| `class`     | `string \| undefined`                                    | —       | Merged onto the `<ul>`                         |
+| Name                  | Type                                                      | Default   | Notes                                                                                                        |
+| --------------------- | --------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
+| `items`               | `T[]` where `T extends { id: string }`                    | —         | Rows to render; keyed by `item.id`                                                                           |
+| `selection`           | `ListSelection`                                           | —         | Shared controller; gates + drives the checkbox                                                               |
+| `row`                 | `Snippet<[T, { selected: boolean; toggle: () => void }]>` | —         | Renders each row's content                                                                                   |
+| `getRowCheckboxLabel` | `((item: T) => string) \| undefined`                      | see Notes | Accessible label for each row's select checkbox; defaults to ``(item) => `Select ${item.id}` `` when omitted |
+| `class`               | `string \| undefined`                                     | —         | Merged onto the `<ul>`                                                                                       |
 
 **`SelectAllCheckbox`** — `{ selection: ListSelection }` (extra attrs forwarded to `Checkbox`).
 **`RowSelectCheckbox`** — `{ selection: ListSelection; id: string }` (extra attrs — `aria-label`, `labelledBy`, `data-testid`… — forwarded to `Checkbox`).
@@ -722,13 +749,13 @@ The pieces:
 
 ## 11.2 Props
 
-| Name             | Type                  | Default | Notes                                                            |
-| ---------------- | --------------------- | ------- | ---------------------------------------------------------------- |
-| `selected`       | `boolean`             | `false` | Whether the row is selected (drives ring styling + checkbox)     |
-| `shaded`         | `boolean`             | `false` | Amber "needs attention" styling instead of the default surface   |
+| Name             | Type                        | Default     | Notes                                                                |
+| ---------------- | --------------------------- | ----------- | -------------------------------------------------------------------- |
+| `selected`       | `boolean`                   | `false`     | Whether the row is selected (drives ring styling + checkbox)         |
+| `shaded`         | `boolean`                   | `false`     | Amber "needs attention" styling instead of the default surface       |
 | `onToggleSelect` | `(() => void) \| undefined` | `undefined` | Select handler. **When `undefined`, the `Checkbox` is not rendered** |
-| `narrow`         | `Snippet`             | —       | Row content shown below the `sm` breakpoint                      |
-| `wide`           | `Snippet`             | —       | Row content shown at/above the `sm` breakpoint                   |
+| `narrow`         | `Snippet`                   | —           | Row content shown below the `sm` breakpoint                          |
+| `wide`           | `Snippet`                   | —           | Row content shown at/above the `sm` breakpoint                       |
 
 ## 11.3 Behaviour
 
@@ -756,11 +783,11 @@ Primary use case: rendering AI-generated assistant responses in the chat UI (AI 
 
 ## 12.2 Props
 
-| Name     | Type                  | Default | Notes                                                      |
-| -------- | --------------------- | ------- | ---------------------------------------------------------- |
-| `text`   | `string`              | —       | Markdown source string to render                           |
-| `breaks` | `boolean`             | `false` | Treat every single newline as a hard break (see §12.3.1)   |
-| `class`  | `string \| undefined` | —       | Extra classes merged onto the `salt-md` wrapper `<div>`    |
+| Name     | Type                  | Default | Notes                                                    |
+| -------- | --------------------- | ------- | -------------------------------------------------------- |
+| `text`   | `string`              | —       | Markdown source string to render                         |
+| `breaks` | `boolean`             | `false` | Treat every single newline as a hard break (see §12.3.1) |
+| `class`  | `string \| undefined` | —       | Extra classes merged onto the `salt-md` wrapper `<div>`  |
 
 ## 12.3 Implementation
 
@@ -771,7 +798,7 @@ Primary use case: rendering AI-generated assistant responses in the chat UI (AI 
 
 ### 12.3.1 `breaks` — line-per-thought source text
 
-CommonMark folds a lone newline into a space and requires a *blank* line to
+CommonMark folds a lone newline into a space and requires a _blank_ line to
 start a new paragraph. That is correct for prose, but wrong for freeform
 line-per-thought text that was written into a plain textarea and previously
 displayed with `whitespace-pre-wrap` — rendering it as Markdown would run every
@@ -785,7 +812,7 @@ so it adds no second Markdown dependency and does not touch the AST → Svelte
 pipeline.
 
 Blank lines are deliberately left untransformed, keeping their CommonMark
-paragraph meaning — a caller gets hard breaks *and* real paragraphs.
+paragraph meaning — a caller gets hard breaks _and_ real paragraphs.
 
 **Default is `false`**, so existing consumers (`ChatThread.svelte`, rendering
 AI replies that are already well-formed Markdown) are unaffected. Turn it on
@@ -799,25 +826,25 @@ the preview cannot disagree with the saved result.
 
 All styles are applied via `:global()` selectors scoped under `.salt-md` so they target only `svelte-exmarkdown`'s rendered HTML without polluting the rest of the app.
 
-| Element          | Style applied                                                           |
-| ---------------- | ----------------------------------------------------------------------- |
-| `:first-child`   | `margin-top: 0`                                                         |
-| `:last-child`    | `margin-bottom: 0`                                                      |
-| `p`              | `margin: 0`; successive paragraphs separated by `0.5rem` top margin     |
-| `ul`             | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: disc`           |
-| `ol`             | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: decimal`        |
-| `li`             | `margin: 0.125rem 0`                                                    |
-| `h1`–`h6`        | `font-weight: 600; line-height: 1.3; margin: 0.5rem 0 0.25rem`; font sizes step from `1.125rem` (h1) down to `1rem` (h3); h4–h6 inherit h3 size |
-| `strong`         | `font-weight: 600`                                                      |
-| `em`             | `font-style: italic`                                                    |
-| `a`              | `text-decoration: underline`                                            |
-| `code` (inline)  | `font-family: ui-monospace, monospace; font-size: 0.875em; background: rgb(0 0 0 / 0.06); padding: 0.0625rem 0.25rem; border-radius: 0.25rem` |
-| `pre`            | `background: rgb(0 0 0 / 0.06); padding: 0.5rem 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0` |
-| `pre code`       | Resets `background` and `padding` so block-code doesn't double-apply the inline-code tint |
-| `blockquote`     | `border-left: 3px solid currentColor; opacity: 0.85; padding-left: 0.75rem; margin: 0.5rem 0` |
-| `hr`             | `border: none; border-top: 1px solid currentColor; opacity: 0.2; margin: 0.5rem 0` |
-| `table`          | `border-collapse: collapse; margin: 0.5rem 0`                           |
-| `th`, `td`       | `border: 1px solid currentColor; padding: 0.25rem 0.5rem`              |
+| Element         | Style applied                                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:first-child`  | `margin-top: 0`                                                                                                                                 |
+| `:last-child`   | `margin-bottom: 0`                                                                                                                              |
+| `p`             | `margin: 0`; successive paragraphs separated by `0.5rem` top margin                                                                             |
+| `ul`            | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: disc`                                                                                    |
+| `ol`            | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: decimal`                                                                                 |
+| `li`            | `margin: 0.125rem 0`                                                                                                                            |
+| `h1`–`h6`       | `font-weight: 600; line-height: 1.3; margin: 0.5rem 0 0.25rem`; font sizes step from `1.125rem` (h1) down to `1rem` (h3); h4–h6 inherit h3 size |
+| `strong`        | `font-weight: 600`                                                                                                                              |
+| `em`            | `font-style: italic`                                                                                                                            |
+| `a`             | `text-decoration: underline`                                                                                                                    |
+| `code` (inline) | `font-family: ui-monospace, monospace; font-size: 0.875em; background: rgb(0 0 0 / 0.06); padding: 0.0625rem 0.25rem; border-radius: 0.25rem`   |
+| `pre`           | `background: rgb(0 0 0 / 0.06); padding: 0.5rem 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0`                             |
+| `pre code`      | Resets `background` and `padding` so block-code doesn't double-apply the inline-code tint                                                       |
+| `blockquote`    | `border-left: 3px solid currentColor; opacity: 0.85; padding-left: 0.75rem; margin: 0.5rem 0`                                                   |
+| `hr`            | `border: none; border-top: 1px solid currentColor; opacity: 0.2; margin: 0.5rem 0`                                                              |
+| `table`         | `border-collapse: collapse; margin: 0.5rem 0`                                                                                                   |
+| `th`, `td`      | `border: 1px solid currentColor; padding: 0.25rem 0.5rem`                                                                                       |
 
 ## 12.5 Usage example
 
@@ -851,6 +878,7 @@ This section records deliberate interaction decisions for existing primitives th
 **Rationale:** `ToastViewport` is a fixed, full-width strip anchored at the bottom of the viewport (above `BottomNav` in z-order). This strip is present in the DOM even when no toasts are visible. Without `pointer-events-none` on the container, the empty strip swallows tap events intended for the `BottomNav` beneath it.
 
 **Contract:**
+
 - `ToastViewport` class string must include `pointer-events-none`.
 - `Toast` (root) class string must include `pointer-events-auto`.
 - Do not remove either class during style refactors.
@@ -862,6 +890,7 @@ This section records deliberate interaction decisions for existing primitives th
 **Rationale:** Without `items-stretch`, each tab's interactive element is only as tall as its content (icon + label), leaving dead strips above and below the tappable area within the `h-14` nav bar. `items-stretch` makes it fill the full column height so the entire strip is tappable regardless of where the finger lands.
 
 **Contract:**
+
 - `<ul class="... items-stretch ...">` — `items-center` is forbidden here.
 - `<li class="flex flex-1">` — each tab column must fill the row height.
 - The tab's interactive element carries `flex flex-1` and inherits the full height via flex stretch. For a destination tab that element is the `<a>`; for the trailing overflow ("More") tab it is a `SheetTrigger` (§17), which is why `SheetTrigger` forwards `class` (ui-spec-v03 §5.3.1) — the constraint is on **every** tab column, so a tab that is not an anchor must still be able to receive these classes.
@@ -870,11 +899,12 @@ This section records deliberate interaction decisions for existing primitives th
 
 **Constraint:** The `AppShell` root must be `h-dvh` (the **dynamic** viewport height) — not `min-h-screen`, `h-screen`, or `min-h-dvh`. The root is a `flex flex-col` column of three rows: `TopBar`, then a `flex flex-1 overflow-hidden` row holding `SideNav` + `<main>`, then `BottomNav`. The scrolling region is the inner `<main class="flex-1 overflow-y-auto">`, **never** the outer shell.
 
-**Rationale:** `h-dvh` caps the shell to the dynamic viewport so a tall page scrolls its inner `<main>` region instead of growing the whole document. This keeps sticky / viewport-anchored children — e.g. the desktop Chef Chat sidebar on `RecipeViewPage`, which sticks to the top with a bounded `max-height` — fixed within the viewport and lets their content scroll internally rather than pushing the page (regression fixed in #261, commit `c17120a`, which changed the root from `min-h-screen` → `h-dvh`). `h-dvh` (not `h-screen` / `100vh`) tracks the *dynamic* viewport, so mobile browser chrome collapsing or expanding neither clips nor gaps the shell.
+**Rationale:** `h-dvh` caps the shell to the dynamic viewport so a tall page scrolls its inner `<main>` region instead of growing the whole document. This keeps sticky / viewport-anchored children — e.g. the desktop Chef Chat sidebar on `RecipeViewPage`, which sticks to the top with a bounded `max-height` — fixed within the viewport and lets their content scroll internally rather than pushing the page (regression fixed in #261, commit `c17120a`, which changed the root from `min-h-screen` → `h-dvh`). `h-dvh` (not `h-screen` / `100vh`) tracks the _dynamic_ viewport, so mobile browser chrome collapsing or expanding neither clips nor gaps the shell.
 
-**Trade-off (explicit):** the outer shell can never be taller than the viewport. Any surface that genuinely needs to scroll the *whole* shell (rather than an inner region) must opt out locally at the page level — do not change this primitive to accommodate it.
+**Trade-off (explicit):** the outer shell can never be taller than the viewport. Any surface that genuinely needs to scroll the _whole_ shell (rather than an inner region) must opt out locally at the page level — do not change this primitive to accommodate it.
 
 **Contract:**
+
 - `AppShell` root class must include `h-dvh` **and** `flex flex-col`. `min-h-screen`, `h-screen`, and `min-h-dvh` are forbidden here.
 - The `SideNav` + `<main>` row keeps `flex flex-1 overflow-hidden`; `<main>` keeps `flex-1 overflow-y-auto`. Scrolling lives in `<main>`, not the root.
 - `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(var(--salt-layout-bottom-nav-height)_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2). The height is a token as of #930 — the same one `BottomNav` reads, so the reservation cannot drift from what it reserves; it was the literal `3.5rem` in four places before that.
@@ -888,6 +918,7 @@ This section records deliberate interaction decisions for existing primitives th
 **Trade-off (explicit):** the gesture is unavailable to a mouse and under `prefers-reduced-motion: reduce`. This is deliberate — the buttons are the complete path; swipe is an enhancement layered only where a finger and full motion are both present.
 
 **Contract:**
+
 - **Coarse-pointer + touch gated.** The action no-ops unless `matchMedia('(pointer: coarse)')` matches **and** the pointer event's `pointerType === 'touch'`. On a desktop / fine pointer, rows are not draggable at all.
 - **Reduced motion → not draggable.** Under `prefers-reduced-motion: reduce` the action no-ops (falling back to today's instant, button-only behaviour — no transform, no haptic), mirroring the other four lively-list treatments' reduced-motion fallback.
 - **Thresholds are fixed:** `CHECK_THRESHOLD_PX = 78` (right) and `DELETE_THRESHOLD_PX = 78` (left); below threshold springs back. The release decision is pure arithmetic in `swipe.ts` (`resolveSwipe`) and is unit-tested without a DOM.
@@ -908,24 +939,24 @@ The primitive duplicates a small amount of logic from `@salt/domain` (`isCanonIc
 
 ## 14.2 Props
 
-| Name        | Type                            | Default | Notes                                                                                         |
-| ----------- | ------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
-| `thumbnail` | `string \| null`                | —       | Tri-state: a real download URL (renders `<img>`), `null` (pending — bare tile), or `"hidden"` (user opted out — bare tile). Required. |
-| `name`      | `string`                        | `''`    | `alt` text for the rendered `<img>`.                                                          |
-| `size`      | `number`                        | `30`    | Tile (and icon) edge length in px; applied via inline `width`/`height` style.                 |
-| `dimmed`    | `boolean`                       | `false` | Applies `opacity-40` — used for checked shopping-list items.                                  |
+| Name        | Type                            | Default | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `thumbnail` | `string \| null`                | —       | Tri-state: a real download URL (renders `<img>`), `null` (pending — bare tile), or `"hidden"` (user opted out — bare tile). Required.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `name`      | `string`                        | `''`    | `alt` text for the rendered `<img>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `size`      | `number`                        | `30`    | Tile (and icon) edge length in px; applied via inline `width`/`height` style.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `dimmed`    | `boolean`                       | `false` | Applies `opacity-40` — used for checked shopping-list items.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `version`   | `string \| number \| undefined` | —       | Per-regeneration cache-bust nonce. When non-empty, appended to the rendered `<img src>` as `?v=<version>` (or `&v=<version>` if the URL already contains `?`). Regenerated icons reuse the same byte-identical Storage URL, so the browser would otherwise serve a stale image without this nonce. Typically set to the canon item's `iconRequestedAt ?? updatedAt`. Omit or pass `null`/`undefined` to render the raw URL unchanged. `undefined` is explicit in the type (not just implied by `?`) so callers can safely pass a lookup result that widens to `undefined` under `exactOptionalPropertyTypes`. |
-| `matched`   | `boolean`                       | `false` | The item this tile stands for is matched to a canon. At rest this changes only a **bare** tile (sage backdrop + initial letter); a tile that renders an `<img>` is unchanged at rest. Combined with `shimmer` it also lifts an icon tile for the reveal window. See §14.5. |
-| `shimmer`   | `boolean`                       | `false` | Play the one-shot match reveal on the tile: a translucent band sweeps across once, and — when `matched` is also true — the backdrop lifts to sage for the duration, then fades back. The **caller owns the window** (holds it `true` only for the reveal, and only when motion is allowed). See §14.5. |
-| `class`     | `string \| undefined`           | —       | Merged onto the root `<span>`.                                                                |
+| `matched`   | `boolean`                       | `false` | The item this tile stands for is matched to a canon. At rest this changes only a **bare** tile (sage backdrop + initial letter); a tile that renders an `<img>` is unchanged at rest. Combined with `shimmer` it also lifts an icon tile for the reveal window. See §14.5.                                                                                                                                                                                                                                                                                                                                    |
+| `shimmer`   | `boolean`                       | `false` | Play the one-shot match reveal on the tile: a translucent band sweeps across once, and — when `matched` is also true — the backdrop lifts to sage for the duration, then fades back. The **caller owns the window** (holds it `true` only for the reveal, and only when motion is allowed). See §14.5.                                                                                                                                                                                                                                                                                                        |
+| `class`     | `string \| undefined`           | —       | Merged onto the root `<span>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## 14.3 Tri-state `thumbnail` contract
 
-| Value           | Meaning                                    | Rendered output            |
-| --------------- | ------------------------------------------ | -------------------------- |
-| non-empty string (not `"hidden"`) | Real icon URL (Firebase Storage download URL) | `<img>` inside the tile |
-| `null`          | Icon has not been generated yet (pending)  | Bare tile (empty `<span>`) |
-| `"hidden"`      | User opted out of icon display             | Bare tile (empty `<span>`) |
+| Value                             | Meaning                                       | Rendered output            |
+| --------------------------------- | --------------------------------------------- | -------------------------- |
+| non-empty string (not `"hidden"`) | Real icon URL (Firebase Storage download URL) | `<img>` inside the tile    |
+| `null`                            | Icon has not been generated yet (pending)     | Bare tile (empty `<span>`) |
+| `"hidden"`                        | User opted out of icon display                | Bare tile (empty `<span>`) |
 
 The `renderable` predicate: `thumbnail !== null && thumbnail !== "hidden" && thumbnail.length > 0`.
 
@@ -957,16 +988,16 @@ sageBare = matched && !renderable
 lit      = sageBare || (matched && shimmer)
 ```
 
-| `matched` | `shimmer` | `renderable` | Backdrop            | Initial letter | Sweep overlay |
-| --------- | --------- | ------------ | ------------------- | -------------- | ------------- |
-| `false`   | `false`   | `false`      | `bg-icon-tile`      | no             | no            |
-| `false`   | `false`   | `true`       | none (transparent)  | no             | no            |
-| `false`   | `true`    | `false`      | `bg-icon-tile`      | no             | yes           |
-| `false`   | `true`    | `true`       | none (transparent)  | no             | yes           |
-| `true`    | `false`   | `false`      | `bg-secondary-container` | yes (if `name`) | no       |
-| `true`    | `false`   | `true`       | none (transparent)  | no             | no            |
-| `true`    | `true`    | `false`      | `bg-secondary-container` | yes (if `name`) | yes      |
-| `true`    | `true`    | `true`       | `bg-secondary-container` | no        | yes           |
+| `matched` | `shimmer` | `renderable` | Backdrop                 | Initial letter  | Sweep overlay |
+| --------- | --------- | ------------ | ------------------------ | --------------- | ------------- |
+| `false`   | `false`   | `false`      | `bg-icon-tile`           | no              | no            |
+| `false`   | `false`   | `true`       | none (transparent)       | no              | no            |
+| `false`   | `true`    | `false`      | `bg-icon-tile`           | no              | yes           |
+| `false`   | `true`    | `true`       | none (transparent)       | no              | yes           |
+| `true`    | `false`   | `false`      | `bg-secondary-container` | yes (if `name`) | no            |
+| `true`    | `false`   | `true`       | none (transparent)       | no              | no            |
+| `true`    | `true`    | `false`      | `bg-secondary-container` | yes (if `name`) | yes           |
+| `true`    | `true`    | `true`       | `bg-secondary-container` | no              | yes           |
 
 Two rules fall out of this table and both are load-bearing:
 
@@ -1026,12 +1057,12 @@ lit
 
 A pictogram is drawn at one of **four** sizes, and `size` is typed `CanonIconSize = 32 | 40 | 64 | 96` so there is no fifth. The default is **32**, the bottom rung.
 
-| size | what sits there | where |
-| --- | --- | --- |
-| **32px** | a nested or secondary row, and an inline glyph inside a step's wrapped row — a picture that reads *under* a 40px one | the product-form rows nested inside a catalog row; guided cook's mise-card header, prep-card ingredients, step-note container and its contents, and its loose-ingredient rows; the recipe reading view's per-step first-use and kit strips |
-| **40px** | a primary list row, a chip, a pill | both shopping list rows, the recipe reading view's ingredient lines, cook mode's mise row and first-use chip, the catalog row, kitchen tools, the equipment list, guided cook's mise ingredient row, the ingredient match sheet, and `PictogramPill` (v0.12 §8.30) |
-| **64px** | a sheet's or an edit page's subject header | the shopping edit sheet, the equipment edit page |
-| **96px** | a detail page — the record that *is* the page | the canon detail record |
+| size     | what sits there                                                                                                      | where                                                                                                                                                                                                                                                              |
+| -------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **32px** | a nested or secondary row, and an inline glyph inside a step's wrapped row — a picture that reads _under_ a 40px one | the product-form rows nested inside a catalog row; guided cook's mise-card header, prep-card ingredients, step-note container and its contents, and its loose-ingredient rows; the recipe reading view's per-step first-use and kit strips                         |
+| **40px** | a primary list row, a chip, a pill                                                                                   | both shopping list rows, the recipe reading view's ingredient lines, cook mode's mise row and first-use chip, the catalog row, kitchen tools, the equipment list, guided cook's mise ingredient row, the ingredient match sheet, and `PictogramPill` (v0.12 §8.30) |
+| **64px** | a sheet's or an edit page's subject header                                                                           | the shopping edit sheet, the equipment edit page                                                                                                                                                                                                                   |
+| **96px** | a detail page — the record that _is_ the page                                                                        | the canon detail record                                                                                                                                                                                                                                            |
 
 **Why a union and not a sentence.** This section said "every in-list and in-chip consumer renders at 40px" from #610 until #1051, and eight distinct values shipped at call sites underneath it — 26, 28, 32, 36, 40, 44, 64, 96 — with a ninth, 30, sitting in `CanonIcon` as its own default. The claim was guarded by nothing, so nothing went red. The rungs are now the prop's type: `pnpm typecheck` covers the `.ts` call sites and `pnpm check` the `.svelte` ones, which is where all of them live. A fifth rung is an amendment to this section and an edit to `CanonIconSize`, in that order.
 
@@ -1075,11 +1106,11 @@ Primary use case: the recipe photo upload/paste flow, where the user picks or pa
 
 ## 15.2 Props
 
-| Name       | Type                  | Default | Notes                                                                                                                                                       |
-| ---------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src`      | `string`              | —       | Object URL or data URL of the image to crop. Required. Changing `src` resets pan and zoom to their initial values so a re-pick always starts centred.       |
-| `maxEdge`  | `number`              | `1600`  | Longest-edge cap (px) of the produced crop canvas. The server re-encodes to its own bound; this only limits the base64 payload sent over the wire.          |
-| `class`    | `string \| undefined` | —       | Merged onto the outer wrapper `<div>`.                                                                                                                      |
+| Name      | Type                  | Default | Notes                                                                                                                                                 |
+| --------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src`     | `string`              | —       | Object URL or data URL of the image to crop. Required. Changing `src` resets pan and zoom to their initial values so a re-pick always starts centred. |
+| `maxEdge` | `number`              | `1600`  | Longest-edge cap (px) of the produced crop canvas. The server re-encodes to its own bound; this only limits the base64 payload sent over the wire.    |
+| `class`   | `string \| undefined` | —       | Merged onto the outer wrapper `<div>`.                                                                                                                |
 
 > **Aspect ratio is not a prop.** The recipe hero is always 3:2. Exposing `aspect` as a prop would allow callers to silently violate the recipe photo contract. If a future feature requires a different aspect, add a new primitive rather than parameterising this one.
 
@@ -1123,18 +1154,22 @@ type ImageCropperHandle = {
 ## 15.4 Behaviour
 
 ### Pan / zoom
+
 - The crop stage is a fixed-3:2 container (`aspect-[3/2]`) with `svelte-easy-crop` filling it absolutely.
 - The user pans by dragging the stage; zooms by mouse wheel, pinch (touch), or the zoom slider.
 - `crop` (pan offset) and `zoom` are bound to `svelte-easy-crop`'s bindable props so the overlay stays in sync with the slider.
 
 ### Zoom slider
+
 - A `<input type="range">` below the stage controls zoom (`min=1`, `max=3`, `step=0.01`).
 - Labelled `aria-label="Zoom"` and carries `data-testid="image-cropper-zoom"`.
 
 ### Reset on new image
+
 - A `$effect` keyed on `src` resets `crop`, `zoom`, and `croppedAreaPixels` to initial values whenever `src` changes, so re-picking an image always starts centred at 1×.
 
 ### Crop area tracking
+
 - `svelte-easy-crop`'s `oncropcomplete` event fires on every pan/zoom change; the handler stores the pixel-space crop rectangle (`CropArea`) in `croppedAreaPixels`. `getCroppedBase64()` reads this rectangle.
 
 ## 15.5 Rendering pipeline (`getCroppedBase64`)
@@ -1168,9 +1203,9 @@ In production, both props are omitted and the bar renders with its default `bg-c
 
 ## 16.2 `TopBar` props
 
-| Name       | Type                  | Default     | Notes                                                                                                                                                                             |
-| ---------- | --------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `envLabel` | `string \| undefined` | `undefined` | Centred environment label (e.g. `"Staging"`). Rendered dead-centre on the bar, independent of the `title` (left-aligned) and `actions` (right-aligned). Omit in production.     |
+| Name       | Type                  | Default     | Notes                                                                                                                                                                         |
+| ---------- | --------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `envLabel` | `string \| undefined` | `undefined` | Centred environment label (e.g. `"Staging"`). Rendered dead-centre on the bar, independent of the `title` (left-aligned) and `actions` (right-aligned). Omit in production.   |
 | `envClass` | `string \| undefined` | `undefined` | Tailwind classes overriding the bar surface — typically background, text, and border-colour tokens (e.g. `"bg-sky-100 text-sky-900 border-sky-200"`). Omit to keep `bg-card`. |
 
 `envLabel` and `envClass` are independent: either can be supplied without the other, though in practice both are supplied together (a label with no colour override, or a colour override with no label, is unusual).
@@ -1179,10 +1214,10 @@ In production, both props are omitted and the bar renders with its default `bg-c
 
 `AppShell` forwards `envLabel` and `envClass` directly to the `TopBar` it renders. The props are identical in name and type on both components; `AppShell` adds no additional logic.
 
-| Name       | Type                  | Notes                                     |
-| ---------- | --------------------- | ----------------------------------------- |
-| `envLabel` | `string \| undefined` | Passed through to `TopBar` unchanged.     |
-| `envClass` | `string \| undefined` | Passed through to `TopBar` unchanged.     |
+| Name       | Type                  | Notes                                 |
+| ---------- | --------------------- | ------------------------------------- |
+| `envLabel` | `string \| undefined` | Passed through to `TopBar` unchanged. |
+| `envClass` | `string \| undefined` | Passed through to `TopBar` unchanged. |
 
 ## 16.4 Design contract
 
@@ -1193,24 +1228,17 @@ In production, both props are omitted and the bar renders with its default `bg-c
 ## 16.5 Typical call-site (web-pwa)
 
 ```svelte
-<AppShell
-  {navItems}
-  {currentPath}
-  envLabel={ENV_LABEL}
-  envClass={ENV_CLASS}
->
-  …
-</AppShell>
+<AppShell {navItems} {currentPath} envLabel={ENV_LABEL} envClass={ENV_CLASS}>…</AppShell>
 ```
 
 Where `ENV_LABEL` and `ENV_CLASS` are derived from `$env/static/public` in `web-pwa`. Illustrative mapping (colour classes are Tailwind literals in the app source, not in the primitive):
 
-| Environment | `envLabel`      | `envClass`                                           |
-| ----------- | --------------- | ---------------------------------------------------- |
-| Local       | `"Local"`       | `"bg-sky-100 text-sky-900 border-sky-200"`           |
-| Development | `"Development"` | `"bg-violet-100 text-violet-900 border-violet-200"`  |
-| Staging     | `"Staging"`     | `"bg-amber-100 text-amber-900 border-amber-200"`     |
-| Production  | *(omit)*        | *(omit)*                                             |
+| Environment | `envLabel`      | `envClass`                                          |
+| ----------- | --------------- | --------------------------------------------------- |
+| Local       | `"Local"`       | `"bg-sky-100 text-sky-900 border-sky-200"`          |
+| Development | `"Development"` | `"bg-violet-100 text-violet-900 border-violet-200"` |
+| Staging     | `"Staging"`     | `"bg-amber-100 text-amber-900 border-amber-200"`    |
+| Production  | _(omit)_        | _(omit)_                                            |
 
 ## 16.6 Testing requirements
 
@@ -1262,6 +1290,7 @@ Navigation is split into two tiers. **Primary** destinations (`navItems`) are th
 **Rationale:** a shape cue stays legible under kitchen glare, at a glance, and for colour-blind users (WCAG 1.4.1 — not by colour alone). `accent`/`accent-foreground` are Material 3's secondary-container / on-secondary-container pair, and `SideNav` already uses them for its active row, so mobile and desktop read the same.
 
 **Contract:**
+
 - Active tab: capsule `bg-accent text-accent-foreground`; label `font-semibold text-foreground`.
 - Inactive tab: icon and label both `muted-foreground`. `foreground/40` is **forbidden** here — at ~2.5:1 on the card it is under the WCAG text minimum for a 10px label, and now that the capsule does the differentiating work the inactive state does not need to be washed out. `muted-foreground` is ~9.7:1.
 - The badge anchors to the capsule's **top edge**, not above it: the row is only `h-14`, so a badge hung off the top pokes through the nav's `border-t` and floats over the page behind it.

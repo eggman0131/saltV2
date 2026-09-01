@@ -24,11 +24,11 @@ suite had none and drifted.
 **And writing it down changed nothing, which is why the guard exists.** #1134 re-measured seven days
 after this document landed, with the two rules the spec supplies its own grep for:
 
-| | `1e5026e2` 2026-08-24, the day this doc landed | `ff423e21` 2026-08-31 |
-| --- | --- | --- |
-| test files | 451 | 527 |
-| `UT-B1` breaches (>5 `vi.mock` in one file) | 66 | **75** |
-| `UT-C2` breaches (hand-rolled `makeRecipe`) | 34 | **38** |
+|                                             | `1e5026e2` 2026-08-24, the day this doc landed | `ff423e21` 2026-08-31 |
+| ------------------------------------------- | ---------------------------------------------- | --------------------- |
+| test files                                  | 451                                            | 527                   |
+| `UT-B1` breaches (>5 `vi.mock` in one file) | 66                                             | **75**                |
+| `UT-C2` breaches (hand-rolled `makeRecipe`) | 34                                             | **38**                |
 
 Not a proportion — an absolute rise, under a spec saying `MUST`. Nine of the ten files that newly
 breached the cap **did not exist when this was written**; they were created already in violation,
@@ -83,7 +83,7 @@ than the rule reads — and nothing verifies those sentences either. That half i
 this document and asks exactly one question of it: **is the doc stale?** All three of its verdicts
 are about the state of this prose. A PR adding nine files that each break `UT-B1` earns "everything
 is fine" — correctly, because the doc is accurate and it is the code that is out of compliance,
-which is a question that job does not ask and never did. #941's "done when" read the *so* in "exists
+which is a question that job does not ask and never did. #941's "done when" read the _so_ in "exists
 and is in the docs map, **so** `pr-doc-review.yml` routes to it" as producing enforcement. It does
 not, for any doc.
 
@@ -98,7 +98,7 @@ paraphrases it.
 ## A. Behaviour over implementation
 
 A unit test earns its place by failing when behaviour changes. An assertion that a function was
-called fails when the *wiring* changes — which is precisely what a behaviour-preserving refactor
+called fails when the _wiring_ changes — which is precisely what a behaviour-preserving refactor
 does, and precisely what it must not fail on.
 
 - **UT-A1 (MUST · guarded) — A test's assertions may not consist only of `toHaveBeenCalled*`.**
@@ -121,7 +121,7 @@ does, and precisely what it must not fail on.
 
 - **UT-A2 (SHOULD · review-only) — Prefer `toHaveBeenCalledWith` over `toHaveBeenCalled`.** When a
   collaborator call genuinely is the behaviour under test — a Cloud Function enqueueing a task, an
-  adapter issuing a `setDoc` — assert the *payload*. The bare call is satisfied by a call with
+  adapter issuing a `setDoc` — assert the _payload_. The bare call is satisfied by a call with
   entirely wrong arguments.
 
 - **UT-A3 (MUST · review-only) — Do not assert on a private helper the public entry point already
@@ -143,8 +143,7 @@ does, and precisely what it must not fail on.
   testing a wiring diagram, not a unit, and every module path in it is a tripwire that a future
   refactor detonates without touching the behaviour under test. Exceed it only with a comment naming
   why the seam cannot be narrowed.
-  **Evidence:** 66 of 451 files mock more than 5 modules — web-pwa 40 of 141, cloud-functions 25 of
-  92. The worst are `equipment.tracePropagation.test.ts` and `extractRecipeFromPhoto.test.ts` at 25
+  **Evidence:** 66 of 451 files mock more than 5 modules — web-pwa 40 of 141, cloud-functions 25 of 92. The worst are `equipment.tracePropagation.test.ts` and `extractRecipeFromPhoto.test.ts` at 25
   each; the RecipeViewPage suites sit at 13–14. `domain` (126 files), `ui-components` (39) and
   `observability` (21) each have **zero** files over the cap — and are the three best-covered areas
   in #941's coverage run, which is why no #913 refactor is blocked on them.
@@ -283,8 +282,11 @@ has. It is also the easiest to render vacuously green.
   package specifier. A relative path out of a package breaks on any file move and encodes the
   layout.
   _Guard:_ two or more `../` reaching `packages/` or `apps/`, with comments stripped so a mention of
-  the rule is not an instance. Note that four is not the threshold: the live escape this guard froze
-  climbs three.
+  the rule is not an instance. Note that four is not the threshold: the only escape this guard has
+  ever frozen climbed three, which is why #1134's grep for four read zero violations off a tree that
+  had one. #1163 resolved that one through the `@salt/firebase-sync` specifier and dropped the
+  ceiling in the same commit, so every area in `unit-test-spec.areas.mjs` now pins `UT-E4` at 0 — the
+  rule is pinned, not exempted, and the threshold is what holds it there.
 
 ---
 
@@ -322,7 +324,7 @@ has. It is also the easiest to render vacuously green.
   measured 7/7 lines on one and 6/7 on the other with the suite green either way.
 
 - **UT-F3 (MUST NOT · review-only) — No arbitrary sleeps.** Wait on the real signal: `await
-  waitFor(...)`, `findBy*`, or `vi.advanceTimersByTime` under fake timers. A bare `setTimeout` race
+waitFor(...)`, `findBy*`, or `vi.advanceTimersByTime` under fake timers. A bare `setTimeout` race
   resolves differently under the ~nCPU thread pool this suite runs on.
 
 - **UT-F4 (MUST · review-only) — Restore global state you mutate.** Fake timers, `vi.stubEnv`,
@@ -373,7 +375,7 @@ has. It is also the easiest to render vacuously green.
 
 - **UT-G4 (MUST · guarded) — A `.test-d.ts` type-assertion file needs its own typecheck wiring, not
   UT-G1's.** `expectTypeOf` assertions under `tests/**/*.test-d.ts` are inert at runtime — `vitest
-  run` executes them as ordinary code, where `expectTypeOf` returns a no-op object, so a broken
+run` executes them as ordinary code, where `expectTypeOf` returns a no-op object, so a broken
   assertion never fails the suite. UT-G1's `tsconfig.test.json` wired into the root `typecheck`
   script does not cover them either: a package's own `tsconfig.json` is `composite`, rooted at
   `src/`, and cannot see `tests/` at all. The mechanism is a package-local `tsconfig.typetest.json`
@@ -477,12 +479,12 @@ Triage
 Kept honest in the same spirit as the e2e spec's appendix: rules considered and rejected, so nobody
 re-proposes them as oversights.
 
-| Candidate rule | Verdict | Reason |
-| --- | --- | --- |
-| A per-file line cap | **Rejected** | `CookModePage.test.ts` is 1,894 lines and is the best-protected code in the #913 programme (#925 was dropped from the refactor because of it). Length is not the defect; preamble ratio is, and UT-C1–C4 target that directly. |
-| A blanket ban on `vi.mock` | **Narrowed → UT-B1/B2/B3** | `domain`, `ui-components` and `observability` reached 98.7% / 88.0% / 83.2% in #941's coverage run with 0, 0 and 12 mocks — but `cloud-functions` and `web-pwa` genuinely sit on Firebase and Genkit seams. The rule is a cap and a seam, not a ban. |
-| Mandate a coverage floor per file | **Rejected here** | A per-area coverage ratchet is #941 Track A4's job, in CI where it can block. A per-file number in a prose spec is unenforceable and gameable. |
-| Ban `toHaveBeenCalled*` outright | **Narrowed → UT-A1/A2** | For a CF trigger whose entire behaviour is "enqueue this task", the call *is* the behaviour. The defect is a test where it is the **only** assertion. |
-| Require AAA / given-when-then comment structure | **Rejected** | Adds preamble to fix a preamble problem, and nothing can check it in a minute. |
-| Forbid snapshot tests | **Not needed** | The suite has no meaningful snapshot usage to govern; adding a rule for an absent practice is spec bloat. |
-| Require a test per exported symbol | **Rejected** | This is exactly the grep-by-symbol error UT-A4 exists to prevent — `ssrf.ts` measured 97.3% covered while naming none of its exports. |
+| Candidate rule                                  | Verdict                    | Reason                                                                                                                                                                                                                                               |
+| ----------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A per-file line cap                             | **Rejected**               | `CookModePage.test.ts` is 1,894 lines and is the best-protected code in the #913 programme (#925 was dropped from the refactor because of it). Length is not the defect; preamble ratio is, and UT-C1–C4 target that directly.                       |
+| A blanket ban on `vi.mock`                      | **Narrowed → UT-B1/B2/B3** | `domain`, `ui-components` and `observability` reached 98.7% / 88.0% / 83.2% in #941's coverage run with 0, 0 and 12 mocks — but `cloud-functions` and `web-pwa` genuinely sit on Firebase and Genkit seams. The rule is a cap and a seam, not a ban. |
+| Mandate a coverage floor per file               | **Rejected here**          | A per-area coverage ratchet is #941 Track A4's job, in CI where it can block. A per-file number in a prose spec is unenforceable and gameable.                                                                                                       |
+| Ban `toHaveBeenCalled*` outright                | **Narrowed → UT-A1/A2**    | For a CF trigger whose entire behaviour is "enqueue this task", the call _is_ the behaviour. The defect is a test where it is the **only** assertion.                                                                                                |
+| Require AAA / given-when-then comment structure | **Rejected**               | Adds preamble to fix a preamble problem, and nothing can check it in a minute.                                                                                                                                                                       |
+| Forbid snapshot tests                           | **Not needed**             | The suite has no meaningful snapshot usage to govern; adding a rule for an absent practice is spec bloat.                                                                                                                                            |
+| Require a test per exported symbol              | **Rejected**               | This is exactly the grep-by-symbol error UT-A4 exists to prevent — `ssrf.ts` measured 97.3% covered while naming none of its exports.                                                                                                                |

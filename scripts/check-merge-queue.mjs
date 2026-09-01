@@ -39,6 +39,8 @@ if (problems.length === 0) {
   process.exit(0);
 }
 
-console.error(`Merge queue check failed (${problems.length} problem${problems.length === 1 ? '' : 's'}):\n`);
+console.error(
+  `Merge queue check failed (${problems.length} problem${problems.length === 1 ? '' : 's'}):\n`,
+);
 for (const problem of problems) console.error(`  ${problem}\n`);
 process.exit(1);

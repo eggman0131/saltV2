@@ -16,13 +16,13 @@ Delegate breadth — codebase sweeps, independent implementation work, CI-log tr
 
 GitHub through the `gh` CLI throughout (`gh issue view`, `gh issue comment`, `gh pr create`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo. Absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server; `git push` is unaffected, only the API layer substitutes. Two recipes below then have no equivalent, so substitute rather than skip: step 6's `gh pr checks --watch --fail-fast` becomes a backgrounded poll of `pull_request_read`, which makes it the one wait here that no longer blocks inside a single call; and step 8 reads the heavy suites' conclusions from the workflow-jobs listing rather than `gh run view --json jobs`, failing-step logs from `get_job_logs` rather than `--log-failed`, with empty output treated as a failed fetch and never as "no jobs".
 
-Two things dominate what a run costs: re-deriving context the issue already holds, and waiting serially on things that could overlap. The loop below is ordered so neither happens — the ordering *is* the optimisation, so keep it.
+Two things dominate what a run costs: re-deriving context the issue already holds, and waiting serially on things that could overlap. The loop below is ordered so neither happens — the ordering _is_ the optimisation, so keep it.
 
 ## Standing rules
 
 - **CLAUDE.md is binding.** Layer map, hard rules, data-model and Zod conventions, dependency pinning. A phase that can only be delivered by breaking one of them is a pause condition, not a judgment call.
 - **No bodges.** If the phase as specified can only be built by contorting the code, stop and raise the spec question. The cleanest, most maintainable code wins over a delivered phase.
-- **Flag the simpler path.** If a rule change or a different shape would be materially *simpler and more maintainable* (not merely easier or lazier), say so — in `DECISIONS` if you proceeded, as a pause if it changes the design.
+- **Flag the simpler path.** If a rule change or a different shape would be materially _simpler and more maintainable_ (not merely easier or lazier), say so — in `DECISIONS` if you proceeded, as a pause if it changes the design.
 - **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would each have run unprompted — and when you are a campaign worker, a permission stop blocks on a human who is not watching.
 - Everything else: make the call, record it, continue.
 
@@ -45,6 +45,7 @@ Do not try to build a lint rule for this. The campaign's five instances were fal
 ## Setup (once)
 
 `gh issue view ISSUE_NUMBER --comments`. Read it in full and hold:
+
 - the **baseline section** verbatim — the standard you validate every phase against. `/spec` issues call it **Intended Experience**; `/defect` issues, **Observed vs Expected** plus **Root Cause**; `/refactor-spec` issues, **Behavior Contract**.
 - the phase list: names, scopes, must-not-touch lists, outcomes, and which phase is last
 
@@ -90,7 +91,7 @@ node scripts/board.mjs set ISSUE_NUMBER --status "In progress"
 
 Nothing downstream needs a second call — the `Closes #ISSUE_NUMBER` you write into the PR body at step 6 is what `board-status.yml` reads to move the issue to `In review`, then `Merged`, then `Released` after a production deploy. This one line exists only because no event can observe the moment work starts. Skip it on a resumed run where the status is already `In progress` or later; setting it backwards is worse than leaving it.
 
-**A merged PR leaves no ancestry — ask content, not lineage.** `main` is squash-merged, so the commit carrying your work is a *new* commit with no parent link to the branch it came from. That branch is never an ancestor of `main` and never becomes one: `git branch --merged main` will not list it, `git log origin/main..HEAD` will keep showing every phase commit as unique, and `git merge-base --is-ancestor` will keep answering false — after the merge exactly as before it. Resume on a stale local branch, ask lineage whether the work landed, and you get a confident wrong *no*, then either re-implement landed phases or stack the next one on history that is already in `main`.
+**A merged PR leaves no ancestry — ask content, not lineage.** `main` is squash-merged, so the commit carrying your work is a _new_ commit with no parent link to the branch it came from. That branch is never an ancestor of `main` and never becomes one: `git branch --merged main` will not list it, `git log origin/main..HEAD` will keep showing every phase commit as unique, and `git merge-base --is-ancestor` will keep answering false — after the merge exactly as before it. Resume on a stale local branch, ask lineage whether the work landed, and you get a confident wrong _no_, then either re-implement landed phases or stack the next one on history that is already in `main`.
 
 Ask the PR, and confirm against content — every squash subject ends in `(#PR)`:
 
@@ -120,7 +121,7 @@ That gate matters because the sweep is not cheap and the issue was written to ma
 When you do delegate it, use `Agent(…, model: "haiku")` — or `"sonnet"` if the sweep has to reason about what it finds — and restrict the report to exactly these three, nothing else:
 
 > 1. **Layers in play** — which packages the phase touches, and any layer-map boundary it crosses.
-> 2. **Binding constraints** — the CLAUDE.md rules and doc contracts that bound *this* phase, each named (rule number, `docs/…` section) rather than paraphrased.
+> 2. **Binding constraints** — the CLAUDE.md rules and doc contracts that bound _this_ phase, each named (rule number, `docs/…` section) rather than paraphrased.
 > 3. **What to reuse or respect** — existing functions, types, patterns and tests already covering this ground, with `file:line`.
 >
 > No preamble, no restating the phase scope, no walkthrough of how the existing code works, no implementation proposal. If one of the three has nothing to report, say so in a line and move on.
@@ -136,6 +137,7 @@ Either way the work lands **on the issue branch with no worktree isolation**. Ph
 Use `isolation: "worktree"` only for genuinely independent work you want to run in parallel, and land it with `git cherry-pick` (not merge) onto the issue branch — a worktree branch's merge base is `main`, so merging drags the whole diff-from-main with it. Never run two in-place subagents concurrently; they share one checkout and one `HEAD`.
 
 When you do delegate, brief the implementer with **only** what the phase needs:
+
 - Phase N spec — scope, technical deliverables, must-not-touch — not the whole issue
 - the context from step 1
 - the previous phase's handoff contract (omit for phase 1)
@@ -147,11 +149,11 @@ And instruct it:
 > If the scope can only be delivered by bending a rule in CLAUDE.md or contorting the code, stop and report that instead of doing it.
 > Do not commit and do not post GitHub comments.
 > Return:
->   BUILT: [what was implemented]
->   DECISIONS: [any choice not specified in scope, and why]
->   UX_DELTA: [anything differing from the phase's stated outcome(s) — or NONE]
->   FLAGS: [anything the next phase must know that isn't in the scope — or NONE]
->   CONCERNS: [any rule the scope pushed against, or a simpler/more maintainable shape you'd recommend — or NONE]
+> BUILT: [what was implemented]
+> DECISIONS: [any choice not specified in scope, and why]
+> UX_DELTA: [anything differing from the phase's stated outcome(s) — or NONE]
+> FLAGS: [anything the next phase must know that isn't in the scope — or NONE]
+> CONCERNS: [any rule the scope pushed against, or a simpler/more maintainable shape you'd recommend — or NONE]
 
 ### 3. Validate
 
@@ -164,10 +166,11 @@ Check the work, not just the report — a self-report is a claim, `git diff` is 
 
   Every package exports `./src/*.ts`, so nothing waits on a build. `test` and `check` are the only long poles and the other nine finish inside them, so the whole set concurrently costs roughly what `pnpm test` costs alone — against ~80s for even the core five run one after another. Don't spend thought on which gates the change "implicates": that judgment costs more than the run, and getting it wrong costs a red CI five minutes later.
 
-  The five beyond the obvious six are there because they are the ones a phase trips *without noticing*: a new file under `docs/` fails `docsmap:check` unless `docs-map.md` gained a row, a paragraph added to `CLAUDE.md` fails `context:check` once it passes its budget, any `packages/ui-components` edit can fail `theme:check` or `provenance:check`, and an `eslint.config.*` or `.dependency-cruiser.*` change fails `boundary:test`.
-- **Add a production build when the phase touches `apps/web-pwa`'s entry, dependencies or asset pipeline:** `pnpm --filter @salt/web-pwa build`. CI's `boot-payload` job blocks on it, and it catches the class of failure `tsc` structurally cannot see — a bare specifier inside a CSS `url()`, a dynamic import that doesn't resolve. This one *is* conditional, because unlike the rest it is slow.
+  The five beyond the obvious six are there because they are the ones a phase trips _without noticing_: a new file under `docs/` fails `docsmap:check` unless `docs-map.md` gained a row, a paragraph added to `CLAUDE.md` fails `context:check` once it passes its budget, any `packages/ui-components` edit can fail `theme:check` or `provenance:check`, and an `eslint.config.*` or `.dependency-cruiser.*` change fails `boundary:test`.
+
+- **Add a production build when the phase touches `apps/web-pwa`'s entry, dependencies or asset pipeline:** `pnpm --filter @salt/web-pwa build`. CI's `boot-payload` job blocks on it, and it catches the class of failure `tsc` structurally cannot see — a bare specifier inside a CSS `url()`, a dynamic import that doesn't resolve. This one _is_ conditional, because unlike the rest it is slow.
 - On a failure, fix it and re-run **only** the gate that failed; run the full set once more before committing. Do not commit red. A red `format:check` is not a thinking problem — `pnpm format` fixes it, and hand-editing whitespace the pre-commit hook would have rewritten anyway is pure waste.
-- The set stops short of e2e and the emulator integration suite on purpose: those seize host-global singletons (see CLAUDE.md → *Worktree rules*), so they are **not** run here. They run in CI, at step 8.
+- The set stops short of e2e and the emulator integration suite on purpose: those seize host-global singletons (see CLAUDE.md → _Worktree rules_), so they are **not** run here. They run in CI, at step 8.
 - `UX_DELTA` against the phase's outcome(s), and `CONCERNS` against the standing rules.
 
 Deliverables missing, or must-not-touch violated → do not commit. Comment on the issue describing the gap, stop, wait for me.
@@ -249,7 +252,7 @@ sleep 20 && gh pr checks --watch --fail-fast      # Bash tool, run_in_background
 
 `--fail-fast` returns on the first failing check instead of waiting out the suites that are still green. On a broken phase that is four or five minutes you get back, and there is nothing you'd have done differently had you waited for the rest.
 
-The `sleep` is not padding: GitHub takes a few seconds to register the run, and `gh pr checks` exits straight away with *"no checks reported"* if none exist yet — which arrives looking exactly like a finished CI. If the watch does return within seconds, that is what happened; re-issue it rather than reading it as a result.
+The `sleep` is not padding: GitHub takes a few seconds to register the run, and `gh pr checks` exits straight away with _"no checks reported"_ if none exist yet — which arrives looking exactly like a finished CI. If the watch does return within seconds, that is what happened; re-issue it rather than reading it as a result.
 
 A run takes 5–7 minutes and you are re-invoked when the watch exits, so blocking here is the single largest waste in a multi-phase run. Do step 7 while it runs, then step 1 of phase N+1 if there is one — a context read is cheap and CI cannot invalidate it.
 
@@ -286,7 +289,7 @@ For a single-phase issue there is no phase N+1, so drop **Handoff contract** and
 
 Picks up when the backgrounded watch from step 6 returns.
 
-**A green tick is not proof a suite ran.** `E2E (Playwright)` and `Vitest integration (emulator)` are required checks, and a *skipped* required check reports as **passing** — deliberately, since that is how a docs-only PR merges. The e2e aggregator asserts "did not fail", not "succeeded". So read the job conclusions, not the check summary:
+**A green tick is not proof a suite ran.** `E2E (Playwright)` and `Vitest integration (emulator)` are required checks, and a _skipped_ required check reports as **passing** — deliberately, since that is how a docs-only PR merges. The e2e aggregator asserts "did not fail", not "succeeded". So read the job conclusions, not the check summary:
 
 ```
 gh run list --branch <type>/<slug>-ISSUE_NUMBER --limit 1 --json databaseId --jq '.[0].databaseId'
@@ -306,6 +309,7 @@ Note the blind spot: a phase editing the e2e or integration job setup **inside `
 More phases → straight into N+1. Its step 1 is already done if you overlapped it during the CI wait; pick up at step 2.
 
 Final phase done, CI green and the heavy suites confirmed run:
+
 1. Fill in the PR body:
    ```
    gh pr edit --body "<see below>"

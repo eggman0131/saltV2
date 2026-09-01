@@ -41,28 +41,28 @@ Recommending a `limit` on the other fourteen would be churn.
 
 ## 1. The thirteen findings — verdicts
 
-| finding | verdict | one line |
-| --- | --- | --- |
-| `B2-013` | **CONFIRMED** (issue body's headline count is STALE) | 9 whole-collection unbounded reads, not 11 of 15; only `subscribeMyCookSessions` carries a `limit` |
-| `A5-012` | **CONFIRMED — and the single biggest real cost** | app-lifetime, 76 fat documents, 52 of them written immortal — and no sweep has ever run |
-| `A5-011` | **CONFIRMED mechanically, REFUTED as a perf problem** | the collection holds 1 document |
-| `A5-010` | **CONFIRMED — but it is an AI-cost/behaviour decision, not a perf fix** | |
-| `A3-007` | **CONFIRMED** — and already carries a `ponytail:` debt marker in-code | 2–5 full 281-doc canon reads per recipe import |
-| `C2-001` | **CONFIRMED in substance, STALE in location** | the handler it names no longer exists; it is now the one shared parse loop |
-| `C2-002` | **CONFIRMED — OUT-OF-SCOPE for this issue** | AI blast radius in `domain`, no query and no snapshot involved |
-| `C2-007` | **CONFIRMED as fact, REFUTED as a defect** | 17 sites, N = 64 |
-| `C2-009` | **CONFIRMED** | 20 sequential document `get`s per manifest write; collapsible to 1 |
-| `A1-013` | **CONFIRMED as fact, REFUTED as a defect** | three `$derived` Maps over 281 items, rebuilt only when canon changes |
-| `A3-014` | **CONFIRMED as fact, REFUTED as a defect** | O(S×N) with S ≤ ~50, N = 295 |
-| `A4-012` | **CONFIRMED — the only UI finding with a real shape** | O(N²) ≈ 79k comparisons per keystroke, and it grows quadratically |
-| `C3-013` | **CONFIRMED — OUT-OF-SCOPE for this issue** | data-lifecycle, not query narrowing; and a TTL policy is blocked by the field's type — **resolved by #1008**, see §`C3-013` |
+| finding  | verdict                                                                 | one line                                                                                                                    |
+| -------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `B2-013` | **CONFIRMED** (issue body's headline count is STALE)                    | 9 whole-collection unbounded reads, not 11 of 15; only `subscribeMyCookSessions` carries a `limit`                          |
+| `A5-012` | **CONFIRMED — and the single biggest real cost**                        | app-lifetime, 76 fat documents, 52 of them written immortal — and no sweep has ever run                                     |
+| `A5-011` | **CONFIRMED mechanically, REFUTED as a perf problem**                   | the collection holds 1 document                                                                                             |
+| `A5-010` | **CONFIRMED — but it is an AI-cost/behaviour decision, not a perf fix** |                                                                                                                             |
+| `A3-007` | **CONFIRMED** — and already carries a `ponytail:` debt marker in-code   | 2–5 full 281-doc canon reads per recipe import                                                                              |
+| `C2-001` | **CONFIRMED in substance, STALE in location**                           | the handler it names no longer exists; it is now the one shared parse loop                                                  |
+| `C2-002` | **CONFIRMED — OUT-OF-SCOPE for this issue**                             | AI blast radius in `domain`, no query and no snapshot involved                                                              |
+| `C2-007` | **CONFIRMED as fact, REFUTED as a defect**                              | 17 sites, N = 64                                                                                                            |
+| `C2-009` | **CONFIRMED**                                                           | 20 sequential document `get`s per manifest write; collapsible to 1                                                          |
+| `A1-013` | **CONFIRMED as fact, REFUTED as a defect**                              | three `$derived` Maps over 281 items, rebuilt only when canon changes                                                       |
+| `A3-014` | **CONFIRMED as fact, REFUTED as a defect**                              | O(S×N) with S ≤ ~50, N = 295                                                                                                |
+| `A4-012` | **CONFIRMED — the only UI finding with a real shape**                   | O(N²) ≈ 79k comparisons per keystroke, and it grows quadratically                                                           |
+| `C3-013` | **CONFIRMED — OUT-OF-SCOPE for this issue**                             | data-lifecycle, not query narrowing; and a TTL policy is blocked by the field's type — **resolved by #1008**, see §`C3-013` |
 
 ### B2-013 — "nine collection subscriptions with no `limit`/`where`/`orderBy`"
 
 **CONFIRMED as written. The issue body's own restatement ("11 of 15") is STALE.**
 
 The contract table (`tests/subscriptionContract.emulator.test.ts:697`) carries 15
-collection rows and 13 document rows. But `subscribeAisles` is a *single-document*
+collection rows and 13 document rows. But `subscribeAisles` is a _single-document_
 read that happens to deliver an array (`aisleSubscription.ts:20` → `subscribeDocument`,
 `canonData/aisles` holds the whole array in one doc). So there are **14 real
 `collection()` reads**, of which:
@@ -99,12 +99,12 @@ before the descriptor refactor and should be corrected on the issue.
   for any session with a `recipeId` (#696, deliberate). Counted against staging on
   **2026-08-25** (point-in-time; re-count before quoting these):
 
-  | count | over staging's `chatSessions` |
-  | --- | --- |
-  | 76 | documents in total |
-  | 24 | with `recipeId == null` — so **52 carry one** and are written immortal |
-  | 31 | actually holding the `9999-12-31` sentinel today |
-  | 42 | already past their own recorded `expiresAt`, and all 42 still present |
+  | count | over staging's `chatSessions`                                          |
+  | ----- | ---------------------------------------------------------------------- |
+  | 76    | documents in total                                                     |
+  | 24    | with `recipeId == null` — so **52 carry one** and are written immortal |
+  | 31    | actually holding the `9999-12-31` sentinel today                       |
+  | 42    | already past their own recorded `expiresAt`, and all 42 still present  |
 
   A chat claims its recipe as soon as it produces one, so the immortal class is
   the majority, not an edge case. The 52/31 gap is the sessions written before
@@ -112,7 +112,7 @@ before the descriptor refactor and should be corrected on the issue.
 
   The 42 are the other half of the finding, and this investigation originally
   missed it: **nothing has ever swept a chat**, sentinel or not. `expiresAt` is
-  written as an ISO-8601 *string*, and a Firestore TTL policy only expires a
+  written as an ISO-8601 _string_, and a Firestore TTL policy only expires a
   document whose TTL field holds a `Timestamp` — anything else is skipped in
   silence. So the fortnightly sweep described since #206 has never run on any
   project. Fixed in part by #939 (the sentinel became a 540-day window); the
@@ -140,7 +140,7 @@ adds no serial round-trip).
 time, by ~5 people. It is bounded by human effort at the tens.
 
 The genuine risk here is not the read — it is that `renderKitchenMemories`
-concatenates *every* note into the system prompt unbounded, so prompt size grows
+concatenates _every_ note into the system prompt unbounded, so prompt size grows
 with the collection. That is an AI-cost and prompt-quality question, and capping
 it changes what the model sees. **Do not add a `limit` to this read as a perf
 fix.** If a cap is wanted, it is a product decision (§4).
@@ -182,7 +182,7 @@ dedupe by normalised name), and each such call is another full list.
 
 At the real N of **281 canon items**, a recipe import that mints 3 new parents
 costs `2 + 3 = 5` full collection reads = **1,405 document reads**. That is a
-Firestore billing line, server-side, and it is the same *shape* as #410 — which is
+Firestore billing line, server-side, and it is the same _shape_ as #410 — which is
 why it is worth recording — but it is a different mechanism from `docChanges()`
 and touches `domain`, so it belongs in its own change (§4).
 
@@ -250,7 +250,7 @@ change, not a subscription one.
 changes, not per render and not per ingredient. At N = 281 that is three
 Map/Set constructions ≈ tens of microseconds, on a store that changes rarely.
 
-There *is* a tidiness point buried here — `canonNameById` is a strict projection of
+There _is_ a tidiness point buried here — `canonNameById` is a strict projection of
 `canonById` and one Map would serve both — but that is dead weight, not latency,
 and it is a two-line change in one page. Not worth a perf issue.
 
@@ -292,6 +292,7 @@ likely still ~1 ms.
 **CONFIRMED. And it does not belong in this issue.**
 
 Confirmations:
+
 - Three writers, one collection: `onCookTimerDispatch.ts:255`,
   `onBatchStageDispatch.ts:124`, `onKitchenTimerDispatch.ts:187`.
 - `firestore.rules:371` — `allow read, write: if false`. No client ever reads it,
@@ -324,23 +325,23 @@ Counts are **live aggregation `count()` reads taken 2026-08-24** against staging
 available proxy for prod. **There is no prod MCP server**, so no prod figure is
 quoted as fact.
 
-| # | subscription | collection | bound today | attach scope | staging N | verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | `subscribeAisles` | `canonData/aisles` | single document | app-lifetime | 1 doc | **not a collection read.** One doc holds the whole aisle array. Correct. |
-| 2 | `subscribeBatches` | `batches` | none | page (`BatchListPage`) | 0 (collection absent) | **correct unbounded.** Bread batches; expect tens, page-scoped. Revisit if #778 phases 03–05 land and it becomes a log. |
-| 3 | `subscribeBatchObservations` | `batches/{id}/observations` | `orderBy('at')` | page (`BatchDetailPage`) | n/a | **correct.** Path-bounded to one run. |
-| 4 | `subscribeCanonItems` | `canonItems` | none | app-lifetime | **281** | **deliberately unbounded — do not add a `limit`.** The whole canon *is* the client-side matching index, and offline matching needs all of it. A bound would break matching, not speed it up. Size gate tracked at #410. |
-| 5 | `subscribeChatSessions` | `chatSessions` | `where(ownerUid)` | **app-lifetime, at auth** | **76, never expiring** | **DEFECT.** The only unbounded-growth, app-lifetime, fat-document read. See §4. |
-| 6 | `subscribeMyCookSessions` | `cookSessions` | `where` + `orderBy` + `limit(5)` | app-lifetime | 1 | **already bounded.** The reference implementation. |
-| 7 | `subscribeEquipmentIcons` | `equipmentIcons` | none | app-lifetime | 20 | **correct unbounded.** Bounded by the equipment manifest (one doc, ~19 items). Permanently tiny. |
-| 8 | `subscribeKitchenMemories` | `kitchenMemories` | none | page (`ChatMemoryPage`) | **1** | **correct unbounded.** Hand-written notes; tens forever. |
-| 9 | `subscribeKitchenTools` | `kitchenTools` | none | app-lifetime | 2 | **correct unbounded.** Permanently tiny. |
-| 10 | `subscribeMembers` | `members` | none | app-lifetime | 5 | **correct unbounded, permanently.** It is a household. CLAUDE.md is explicit. |
-| 11 | `subscribeProductForms` | `productForms` | none | app-lifetime | 14 | **correct unbounded.** Grows with canon at ~5% of its rate. |
-| 12 | `subscribeRecipes` | `recipes` | none | app-lifetime | **64** | **unbounded is correct — a `limit` is the wrong fix.** The list, the planner picker, search, Mine and cook all need every recipe. But it is the heaviest schema in the app (§3) and "several hundred expected", so this is the collection `docChanges()` is *for*. |
-| 13 | `subscribeShoppingDaysInRange` | `shoppingDays` | `documentId()` range | app-lifetime | 4 | **already bounded** to the planner's week. |
-| 14 | `subscribeShoppingListItems` | `shoppingLists/{id}/items` | subcollection path | page | 3 total | **correct.** Path-bounded to one list. |
-| 15 | `subscribeShoppingLists` | `shoppingLists` | none | app-lifetime | 4 | **correct unbounded.** Permanently tiny. |
+| #   | subscription                   | collection                  | bound today                      | attach scope              | staging N              | verdict                                                                                                                                                                                                                                                            |
+| --- | ------------------------------ | --------------------------- | -------------------------------- | ------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `subscribeAisles`              | `canonData/aisles`          | single document                  | app-lifetime              | 1 doc                  | **not a collection read.** One doc holds the whole aisle array. Correct.                                                                                                                                                                                           |
+| 2   | `subscribeBatches`             | `batches`                   | none                             | page (`BatchListPage`)    | 0 (collection absent)  | **correct unbounded.** Bread batches; expect tens, page-scoped. Revisit if #778 phases 03–05 land and it becomes a log.                                                                                                                                            |
+| 3   | `subscribeBatchObservations`   | `batches/{id}/observations` | `orderBy('at')`                  | page (`BatchDetailPage`)  | n/a                    | **correct.** Path-bounded to one run.                                                                                                                                                                                                                              |
+| 4   | `subscribeCanonItems`          | `canonItems`                | none                             | app-lifetime              | **281**                | **deliberately unbounded — do not add a `limit`.** The whole canon _is_ the client-side matching index, and offline matching needs all of it. A bound would break matching, not speed it up. Size gate tracked at #410.                                            |
+| 5   | `subscribeChatSessions`        | `chatSessions`              | `where(ownerUid)`                | **app-lifetime, at auth** | **76, never expiring** | **DEFECT.** The only unbounded-growth, app-lifetime, fat-document read. See §4.                                                                                                                                                                                    |
+| 6   | `subscribeMyCookSessions`      | `cookSessions`              | `where` + `orderBy` + `limit(5)` | app-lifetime              | 1                      | **already bounded.** The reference implementation.                                                                                                                                                                                                                 |
+| 7   | `subscribeEquipmentIcons`      | `equipmentIcons`            | none                             | app-lifetime              | 20                     | **correct unbounded.** Bounded by the equipment manifest (one doc, ~19 items). Permanently tiny.                                                                                                                                                                   |
+| 8   | `subscribeKitchenMemories`     | `kitchenMemories`           | none                             | page (`ChatMemoryPage`)   | **1**                  | **correct unbounded.** Hand-written notes; tens forever.                                                                                                                                                                                                           |
+| 9   | `subscribeKitchenTools`        | `kitchenTools`              | none                             | app-lifetime              | 2                      | **correct unbounded.** Permanently tiny.                                                                                                                                                                                                                           |
+| 10  | `subscribeMembers`             | `members`                   | none                             | app-lifetime              | 5                      | **correct unbounded, permanently.** It is a household. CLAUDE.md is explicit.                                                                                                                                                                                      |
+| 11  | `subscribeProductForms`        | `productForms`              | none                             | app-lifetime              | 14                     | **correct unbounded.** Grows with canon at ~5% of its rate.                                                                                                                                                                                                        |
+| 12  | `subscribeRecipes`             | `recipes`                   | none                             | app-lifetime              | **64**                 | **unbounded is correct — a `limit` is the wrong fix.** The list, the planner picker, search, Mine and cook all need every recipe. But it is the heaviest schema in the app (§3) and "several hundred expected", so this is the collection `docChanges()` is _for_. |
+| 13  | `subscribeShoppingDaysInRange` | `shoppingDays`              | `documentId()` range             | app-lifetime              | 4                      | **already bounded** to the planner's week.                                                                                                                                                                                                                         |
+| 14  | `subscribeShoppingListItems`   | `shoppingLists/{id}/items`  | subcollection path               | page                      | 3 total                | **correct.** Path-bounded to one list.                                                                                                                                                                                                                             |
+| 15  | `subscribeShoppingLists`       | `shoppingLists`             | none                             | app-lifetime              | 4                      | **correct unbounded.** Permanently tiny.                                                                                                                                                                                                                           |
 
 **Summary: 1 defect, 1 collection where the answer is `docChanges()` rather than a
 bound, 1 deliberately unbounded by design, 12 already correct.** The issue's
@@ -357,14 +358,14 @@ Other counts taken at the same time, for context: `canonEmbeddings` 281 (server-
 ### What was measured, and why this harness
 
 The claim under test is "every snapshot re-`safeParse`s every document". The cost
-of that is *entirely* inside `parseDocuments` (`schemaParsing.ts:63`) — the
+of that is _entirely_ inside `parseDocuments` (`schemaParsing.ts:63`) — the
 Firestore transport, the cache and the listener are identical either way, because
 `docChanges()` is a view over a snapshot the client has already materialised. So a
 Vitest harness over `parseDocuments` with N synthetic documents measures the exact
 quantity the fix changes, **needs no emulator**, and is deterministic enough to
 re-run and compare.
 
-It does *not* measure: bytes on the wire (unchanged by `docChanges()`), Firestore
+It does _not_ measure: bytes on the wire (unchanged by `docChanges()`), Firestore
 read billing (unchanged), or Svelte re-render cost downstream (a separate question
 — see the object-identity note in §4).
 
@@ -373,27 +374,27 @@ read billing (unchanged), or Svelte re-render cost downstream (a separate questi
 `RecipeSchema`, fixture = 12 ingredients + 12 steps + metadata + image (comparable
 to real staging recipes, which run 11–23 steps):
 
-| N | ms per snapshot | µs per document |
-| --- | --- | --- |
-| 1 | 0.0391 | 39.05 |
-| 10 | 0.1949 | 19.49 |
-| **64 (staging today)** | **1.3074** | 20.43 |
-| 100 | 2.1638 | 21.64 |
-| 250 | 5.4244 | 21.70 |
-| **500 (projected)** | **10.5781** | 21.16 |
-| 1000 | 22.0488 | 22.05 |
+| N                      | ms per snapshot | µs per document |
+| ---------------------- | --------------- | --------------- |
+| 1                      | 0.0391          | 39.05           |
+| 10                     | 0.1949          | 19.49           |
+| **64 (staging today)** | **1.3074**      | 20.43           |
+| 100                    | 2.1638          | 21.64           |
+| 250                    | 5.4244          | 21.70           |
+| **500 (projected)**    | **10.5781**     | 21.16           |
+| 1000                   | 22.0488         | 22.05           |
 
 `CanonItemSchema`, fixture = 3 synonyms, no embedding:
 
-| N | ms per snapshot | µs per document |
-| --- | --- | --- |
-| 1 | 0.0015 | 1.47 |
-| 10 | 0.0095 | 0.95 |
-| 100 | 0.0884 | 0.88 |
-| **281 (staging today)** | **0.2508** | 0.89 |
-| 500 | 0.4449 | 0.89 |
-| 1000 | 0.8827 | 0.88 |
-| 2000 | 1.8106 | 0.91 |
+| N                       | ms per snapshot | µs per document |
+| ----------------------- | --------------- | --------------- |
+| 1                       | 0.0015          | 1.47            |
+| 10                      | 0.0095          | 0.95            |
+| 100                     | 0.0884          | 0.88            |
+| **281 (staging today)** | **0.2508**      | 0.89            |
+| 500                     | 0.4449          | 0.89            |
+| 1000                    | 0.8827          | 0.88            |
+| 2000                    | 1.8106          | 0.91            |
 
 Cost is linear in N, as expected, at **~21 µs per recipe** and **~0.9 µs per canon
 item**. The recipe schema is ~24× heavier per document than canon — that difference
@@ -413,13 +414,13 @@ over a burst of M writes:      today          = M × N
 
 Applied to the real N from §2, one document changed:
 
-| collection | N | today | after | speed-up |
-| --- | --- | --- | --- | --- |
-| `recipes` (staging) | 64 | 64 parses, 1.307 ms | 1 parse, 0.039 ms | **33×** |
-| `recipes` (projected) | 500 | 500 parses, 10.58 ms | 1 parse, 0.039 ms | **271×** |
-| `canonItems` | 281 | 281 parses, 0.251 ms | 1 parse, 0.0015 ms | **167×** |
-| `productForms` | 14 | 14 parses | 1 parse | negligible either way |
-| `members` | 5 | 5 parses | 1 parse | negligible either way |
+| collection            | N   | today                | after              | speed-up              |
+| --------------------- | --- | -------------------- | ------------------ | --------------------- |
+| `recipes` (staging)   | 64  | 64 parses, 1.307 ms  | 1 parse, 0.039 ms  | **33×**               |
+| `recipes` (projected) | 500 | 500 parses, 10.58 ms | 1 parse, 0.039 ms  | **271×**              |
+| `canonItems`          | 281 | 281 parses, 0.251 ms | 1 parse, 0.0015 ms | **167×**              |
+| `productForms`        | 14  | 14 parses            | 1 parse            | negligible either way |
+| `members`             | 5   | 5 parses             | 1 parse            | negligible either way |
 
 **The burst case is the one that matters.** A recipe import is not one write: the
 create is followed by `onRecipeWritten` write-backs (thumbnail, kit, canonicalised
@@ -536,13 +537,23 @@ function timeMs(fn: () => void, reps: number): number {
 
 describe('#939 baseline: whole-snapshot re-parse cost', () => {
   it('measures parseDocuments over N docs vs 1 doc', async () => {
-    const id = <T,>(x: T): T => x;
+    const id = <T>(x: T): T => x;
     const rows: string[] = [];
     const cases: Array<
-      [string, typeof RecipeSchema | typeof CanonItemSchema, (i: number) => Record<string, unknown>, number[]]
+      [
+        string,
+        typeof RecipeSchema | typeof CanonItemSchema,
+        (i: number) => Record<string, unknown>,
+        number[],
+      ]
     > = [
       ['RecipeSchema (recipes)', RecipeSchema, recipeDoc, [1, 10, 64, 100, 250, 500, 1000]],
-      ['CanonItemSchema (canonItems)', CanonItemSchema, canonDoc, [1, 10, 100, 281, 500, 1000, 2000]],
+      [
+        'CanonItemSchema (canonItems)',
+        CanonItemSchema,
+        canonDoc,
+        [1, 10, 100, 281, 500, 1000, 2000],
+      ],
     ];
     for (const [label, schema, make, ns] of cases) {
       const probe = schema.safeParse(make(0));
@@ -565,7 +576,7 @@ describe('#939 baseline: whole-snapshot re-parse cost', () => {
 
 ### The one measurement that does need the emulator
 
-The parse count per snapshot in a *real* listener — i.e. proving that
+The parse count per snapshot in a _real_ listener — i.e. proving that
 `docChanges()` actually fires with `k = 1` and not `k = N` on an ordinary
 single-document write — can only be observed against Firestore. **This worktree is
 a linked worktree, so `scripts/host-guard.mjs` refuses `pnpm test:emulator`, and I
@@ -609,7 +620,7 @@ stating in the commit message:
    reorder those two. Expect ~40 lines, not 1.
 2. **Object identity becomes stable across snapshots.** Today every snapshot
    produces fresh objects; with a cache, an unchanged document is delivered as the
-   *same* object reference. That is a net win for Svelte (fewer downstream
+   _same_ object reference. That is a net win for Svelte (fewer downstream
    invalidations) but it is a behaviour change, and any consumer that mutates a
    delivered object in place would now be mutating the cache. Worth a `grep` before
    landing. Note `canonSubscription.ts:31` is the only `project` that allocates
@@ -617,18 +628,18 @@ stating in the commit message:
    than once per snapshot, which is the point.
 3. **Rejected documents must stay rejected.** A document that fails `safeParse` is
    skipped today on every snapshot and logged every time. With a cache it is
-   skipped once and logged once — which is *better*, but the contract test asserts
+   skipped once and logged once — which is _better_, but the contract test asserts
    the log happened at all (`schemaParsing.ts:41`), not how often, so this stays
    green.
 
-**Characterisation rows that redden: predicted NONE.** `docChanges()` changes *how*
-the delivered set is computed, not *what* it is, and the net asserts delivered sets
+**Characterisation rows that redden: predicted NONE.** `docChanges()` changes _how_
+the delivered set is computed, not _what_ it is, and the net asserts delivered sets
 (`toEqual` over id lists) plus the rejection log. All 15 collection rows and all 13
 document rows should stay green. **If a row does redden, that is a real behaviour
 change and must be treated as one — not test-edited away.** So per the #931 house
 pattern there is no companion net commit here; the absence of one is the claim.
 
-Add one *unit* test alongside (no emulator): a fake snapshot sequence proving the
+Add one _unit_ test alongside (no emulator): a fake snapshot sequence proving the
 `safeParse` call count is `N` on the first snapshot and `1` on a single-document
 change. That is the regression guard the benchmark cannot be.
 
@@ -643,7 +654,7 @@ equivalent:
   `cookSessions` `(ownerUid ASC, updatedAt DESC)` index at `firestore.indexes.json:4`.
   The emulator auto-creates indexes and production does not, so a missing index is a
   green CI and a dead listener in prod. **This is the trap on this change.**
-  *And it truncates the chat list*: a recipe you last chatted about 200 sessions ago
+  _And it truncates the chat list_: a recipe you last chatted about 200 sessions ago
   stops showing its conversation on `RecipeViewPage`. That is user-visible, so it is
   Daniel's call, not the implementer's.
 - **(b) Move `messages[]` to a subcollection.** Fixes the size problem rather than
@@ -662,7 +673,7 @@ the index must be in `firestore.indexes.json` in the same commit.
 
 ### Stage 3 — own issue: server-side whole-collection reads (`A3-007`, `C2-009`)
 
-Same *shape* as #410 — a whole collection read per operation — but server-side and
+Same _shape_ as #410 — a whole collection read per operation — but server-side and
 in `domain`/`cloud-functions`, not in a subscription. `A3-007` is 2–5 × 281-doc
 reads per recipe import; `C2-009` is 20 sequential document reads per manifest
 write. Both are Firestore billing rather than latency, both are already annotated

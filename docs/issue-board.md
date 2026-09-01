@@ -4,7 +4,7 @@
 
 The board is where an issue's **priority, kind, size and pipeline position** live.
 None of those are labels any more. This doc is the part that is not recoverable
-from the board itself: what each value *means*, why the shape is what it is, and
+from the board itself: what each value _means_, why the shape is what it is, and
 what breaks if you change it.
 
 Mechanics live beside the code — [`scripts/board.mjs`](../scripts/board.mjs) for
@@ -64,13 +64,13 @@ issue. See the header of [`scripts/lib/specIssueShape.mjs`](../scripts/lib/specI
 
 ## `Queue` — which pile
 
-| | |
-| --- | --- |
+|                 |                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Recommended** | Actionable **and proven**: regular user impact, a security risk, or dev friction actually being felt — regular test flake, merge-queue problems, CI/CD problems. |
-| **Medium** | Real work, ordered by impact. |
-| **Low** | Theoretical, never triggered, or drift that has not bitten. Safe to ignore; fold into a related issue, or pick up when bored. |
-| **Deferred** | Parked, with the reason in `Blocked by`. |
-| **Epic** | Not a work unit at all — a container tracked here and never sequenced against work. |
+| **Medium**      | Real work, ordered by impact.                                                                                                                                    |
+| **Low**         | Theoretical, never triggered, or drift that has not bitten. Safe to ignore; fold into a related issue, or pick up when bored.                                    |
+| **Deferred**    | Parked, with the reason in `Blocked by`.                                                                                                                         |
+| **Epic**        | Not a work unit at all — a container tracked here and never sequenced against work.                                                                              |
 
 **"Proven" is the whole discriminator.** A defect that is real, confirmed and
 alarming but that has never once occurred is `Low`, not `Recommended` — #1056 is
@@ -97,7 +97,7 @@ when a Recommended item's blocker is absent from Recommended or ordered below it
   The comparison is case-insensitive, because name resolution is.
 - **No view carries a sort** — the other half of having no rank field.
 - **A closed issue is at a shipping status.** Closed is not by itself stale: an
-  issue closes the moment its PR merges and must *stay* on the board at `Merged`,
+  issue closes the moment its PR merges and must _stay_ on the board at `Merged`,
   because that is the set `board.mjs release` walks. What is wrong is a closed
   issue that never reached `Merged` — either it was closed without shipping and
   belongs off the board, or a PR closed it without the `Closes #N` that moves it,
@@ -108,7 +108,7 @@ when a Recommended item's blocker is absent from Recommended or ordered below it
 ## `Epic` — a container, not a band
 
 An epic is the one thing on the board that is not work. It holds work, so it
-cannot be *done*, cannot be sized honestly against its neighbours, and cannot
+cannot be _done_, cannot be sized honestly against its neighbours, and cannot
 carry a priority — its children carry that. Until August 2026 the live epics sat
 in `Medium` anyway, which put five permanently "In progress" cards in the middle
 of the queue and made the Medium band read as bigger than the work in it.
@@ -147,7 +147,7 @@ without twenty refactors in the way.
 
 ## Sequence is position, not a number
 
-There is no rank field, and adding one would be a step backwards. Triage *is*
+There is no rank field, and adding one would be a step backwards. Triage _is_
 placement: you pick the band and the slot against the neighbours you can already
 see, in one gesture. A view grouped by `Queue` with **no sort** gives that as a
 drag; `updateProjectV2ItemPosition(projectId, itemId, afterId)` gives the
@@ -191,23 +191,23 @@ That kind of note belongs in a comment on the issue.
 Triage → Todo → In progress → In review → Merged → Released
 ```
 
-*In review* is a PR raised, *Merged* is on `main` and not yet live, *Released* is
+_In review_ is a PR raised, _Merged_ is on `main` and not yet live, _Released_ is
 in production. **Blocked and Deferred are deliberately not statuses** — an issue
-can be in progress *and* blocked, and the old board could not say so.
+can be in progress _and_ blocked, and the old board could not say so.
 
-| To | Set by | |
-| --- | --- | --- |
-| Triage | GitHub's built-in "item added to project" project workflow | |
-| Todo | a person, or `/triage` | the one real decision; no event can observe it |
-| In progress | `/run`, when the branch is cut — `board.mjs` directly where `gh` is, or a `board-dispatch.yml` dispatch from a cloud session | a branch push is too noisy to key on |
-| In review | `board-status.yml` | `pull_request` opened / ready_for_review |
-| Merged | `board-status.yml` | `pull_request` closed && merged |
-| Released | `board-status.yml` | production deploy succeeded **and** the merge commit is an ancestor of the deployed sha |
+| To          | Set by                                                                                                                       |                                                                                         |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Triage      | GitHub's built-in "item added to project" project workflow                                                                   |                                                                                         |
+| Todo        | a person, or `/triage`                                                                                                       | the one real decision; no event can observe it                                          |
+| In progress | `/run`, when the branch is cut — `board.mjs` directly where `gh` is, or a `board-dispatch.yml` dispatch from a cloud session | a branch push is too noisy to key on                                                    |
+| In review   | `board-status.yml`                                                                                                           | `pull_request` opened / ready_for_review                                                |
+| Merged      | `board-status.yml`                                                                                                           | `pull_request` closed && merged                                                         |
+| Released    | `board-status.yml`                                                                                                           | production deploy succeeded **and** the merge commit is an ancestor of the deployed sha |
 
 The issue↔PR link is the `Closes #N` that `/run` writes into every PR body —
 the same text GitHub derives its own linked-issue relation from.
 
-**`Released` is not "everything Merged".** Production deploys a *tag*, and
+**`Released` is not "everything Merged".** Production deploys a _tag_, and
 `Merged` only means "on `main`". Between a release tag being cut and its
 approval-gated deploy finishing, more can land on main; marking those live would
 be a lie the board tells about production. Hence the per-issue ancestry test, and
@@ -221,7 +221,7 @@ hence `fetch-depth: 0` on that job.
 things a **cloud session has neither of**: the `gh` CLI, and a route to GitHub's
 GraphQL API. `gh` is absent there and cannot be installed, and GraphQL is refused
 wholesale by the session proxy — even `{viewer{login}}` comes back 403. Projects
-v2 exists *only* in GraphQL, so there is no REST fallback and **no token fixes
+v2 exists _only_ in GraphQL, so there is no REST fallback and **no token fixes
 it**: the query is refused before any credential is evaluated. Copying
 `PROJECT_TOKEN` into the cloud environment would not have worked either, and
 would have put a PAT into variables that are plaintext to anyone using that
@@ -230,7 +230,7 @@ environment.
 [`board-dispatch.yml`](../.github/workflows/board-dispatch.yml) is the way round
 it. It exposes `add`, `set`, `pr` and `release` behind `workflow_dispatch` with
 typed inputs, and runs the unmodified script on a runner under `PROJECT_TOKEN`.
-A session can therefore *ask* for a board write; it never gains the credential
+A session can therefore _ask_ for a board write; it never gains the credential
 that performs one.
 
 Two things follow, both easy to get wrong:
@@ -238,8 +238,8 @@ Two things follow, both easy to get wrong:
 - **A dispatch is a request, not a result.** It is fire-and-forget — the caller
   does not wait for the run. For the four writes that is the right trade: a lost
   one is a nuisance, and the board itself shows whether it landed. But a dispatch
-  is never *evidence* that a write happened.
-- **`check` is not relayed, and must not be.** It is a read whose *exit code* is
+  is never _evidence_ that a write happened.
+- **`check` is not relayed, and must not be.** It is a read whose _exit code_ is
   the whole point — the promotion rule above is an invariant only because `check`
   can go red. Dispatched and unwatched it would be invisible, and an agent could
   report the invariant verified having observed nothing. Run it where `gh` is. If
@@ -250,7 +250,7 @@ It doubles as a **manual lever**: Actions → Board dispatch → Run workflow mo
 an issue from a phone, from a machine with no checkout, or when `gh auth` has
 expired.
 
-It is not a second *automated* writer. Every run is a human or an agent asking;
+It is not a second _automated_ writer. Every run is a human or an agent asking;
 `board-status.yml` remains the only thing that writes the board **from an event**,
 and the two sit in separate concurrency groups so they can never race on the same
 item.
@@ -259,12 +259,12 @@ item.
 
 ## The views
 
-| View | Layout | Filter | Group by |
-| --- | --- | --- | --- |
-| The queue | table | `is:open -queue:Deferred` | Queue |
-| Deferred | table | `queue:Deferred` | Class |
-| Product | table | `is:open class:"New feature","Feature update"` | Class |
-| Workflow | board | `is:open -queue:Epic` | Status |
+| View      | Layout | Filter                                         | Group by |
+| --------- | ------ | ---------------------------------------------- | -------- |
+| The queue | table  | `is:open -queue:Deferred`                      | Queue    |
+| Deferred  | table  | `queue:Deferred`                               | Class    |
+| Product   | table  | `is:open class:"New feature","Feature update"` | Class    |
+| Workflow  | board  | `is:open -queue:Epic`                          | Status   |
 
 **Grouping cannot be _set_ through the API, but it can be _read_.**
 `ProjectV2ViewConfigurationInput` exposes only `visibleFieldIds`, so a rebuilt
@@ -274,7 +274,7 @@ and `sortByFields` for reading, which is why `board.mjs check` can enforce the
 no-sort rule rather than only asserting it.
 
 Two names for one idea, which is genuinely confusing in the UI: a **table** view
-has **Group by**; a **board** view has no such menu, because its columns *are*
+has **Group by**; a **board** view has no such menu, because its columns _are_
 the grouping — that setting is called **Column field**. A new board view defaults
 its column field to `Status`, so the Workflow view needed nothing.
 
@@ -288,12 +288,12 @@ its column field to `Status`, so the Workflow view needed nothing.
   board-add step in `pr-doc-review.yml` both need this. Locally, the `gh` CLI's
   own login needs the `project` scope.
 - **The board must stay org-owned.** GitHub only links a project to a repository
-  under the *same* owner, and `eggmanorg/salt` is org-owned. A user-owned project
+  under the _same_ owner, and `eggmanorg/salt` is org-owned. A user-owned project
   can hold the issues but can never appear on the repo, which is what the old
   "Saltv2" board did.
 - **`updateProjectV2Field` DELETES every item's value for any option you pass
   without its `id`.** Adding one option means re-sending the whole option list,
-  and an entry with no `id` is a *new* option — GitHub silently re-issues ids for
+  and an entry with no `id` is a _new_ option — GitHub silently re-issues ids for
   the lot and clears the field on every item on the board. Adding the `Epic`
   option this way wiped `Queue` on all 52 items, and restoring the old ids did
   not bring the values back. Always send the existing options with their ids

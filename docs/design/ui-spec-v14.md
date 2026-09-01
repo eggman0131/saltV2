@@ -59,12 +59,12 @@ to get the padding, the hover ground or the icon size subtly wrong.
 
 The four shapes those 28 took, and what became of each:
 
-| shape | count | what it was | in this component |
-| --- | --- | --- | --- |
-| plain | 20 | the base string | the default |
-| disabled | 5 | base + `disabled:opacity-50` | folded into the base — §8.33.5 |
-| destructive | 2 | `text-destructive hover:bg-destructive/10` in place of `hover:bg-accent` | `variant="destructive"` |
-| selected | 1 | base minus `gap-2`, plus `font-medium` | `selected` — §8.33.6 |
+| shape       | count | what it was                                                              | in this component              |
+| ----------- | ----- | ------------------------------------------------------------------------ | ------------------------------ |
+| plain       | 20    | the base string                                                          | the default                    |
+| disabled    | 5     | base + `disabled:opacity-50`                                             | folded into the base — §8.33.5 |
+| destructive | 2     | `text-destructive hover:bg-destructive/10` in place of `hover:bg-accent` | `variant="destructive"`        |
+| selected    | 1     | base minus `gap-2`, plus `font-medium`                                   | `selected` — §8.33.6           |
 
 ## 8.33.3 Anatomy
 
@@ -81,15 +81,15 @@ The four shapes those 28 took, and what became of each:
 
 ## 8.33.4 Props
 
-| prop | type | default | notes |
-| --- | --- | --- | --- |
-| `variant` | `'default' \| 'destructive'` | `'default'` | which hover ground, and whether the label is destructive-coloured |
-| `icon` | `IconName \| undefined` | — | a leading glyph from the closed registry, rendered at 14px |
-| `iconVisible` | `boolean` | `true` | when `false`, the glyph still occupies its column but is not painted (§8.33.8) |
-| `selected` | `boolean` | `false` | marks the row as the chosen one by weight (§8.33.6) |
-| `disabled` | `boolean` | `false` | native; the row also dims (§8.33.5) |
-| `children` | `Snippet` | — | the label |
-| `class` | `string` | — | merged last, as everywhere in this package |
+| prop          | type                         | default     | notes                                                                          |
+| ------------- | ---------------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `variant`     | `'default' \| 'destructive'` | `'default'` | which hover ground, and whether the label is destructive-coloured              |
+| `icon`        | `IconName \| undefined`      | —           | a leading glyph from the closed registry, rendered at 14px                     |
+| `iconVisible` | `boolean`                    | `true`      | when `false`, the glyph still occupies its column but is not painted (§8.33.8) |
+| `selected`    | `boolean`                    | `false`     | marks the row as the chosen one by weight (§8.33.6)                            |
+| `disabled`    | `boolean`                    | `false`     | native; the row also dims (§8.33.5)                                            |
+| `children`    | `Snippet`                    | —           | the label                                                                      |
+| `class`       | `string`                     | —           | merged last, as everywhere in this package                                     |
 
 Everything else — `onclick`, `data-testid`, `data-*`, `title`, `aria-*` — rides
 `...rest` onto the button, as `Chip` does (v0.9 §8.23.3).
@@ -115,7 +115,7 @@ no `role="menuitemradio"`.
 
 That is deliberate and it is a limitation, stated rather than papered over. The
 one row using it — the shopping list's list-switcher — is a navigation menu whose
-"selected" entry means *the list you are already looking at*, and the correct
+"selected" entry means _the list you are already looking at_, and the correct
 announcement for that is a matter for the menu, not for the row. A future menu
 that genuinely is a radio group needs the ARIA, and §8.33 must be amended before
 it is added rather than a caller passing `aria-checked` through `...rest`.

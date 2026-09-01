@@ -305,7 +305,9 @@ const toAsk = args.redo ? cookable : cookable.filter((r) => !r.estimated);
 
 console.log(`Recipes found     : ${recipes.length}`);
 console.log(`Not cookable      : ${notCookable.length} (skipped — an outing has no prep time)`);
-console.log(`Already estimated : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`);
+console.log(
+  `Already estimated : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`,
+);
 console.log(`To ask            : ${toAsk.length}\n`);
 
 if (toAsk.length === 0) {

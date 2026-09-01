@@ -28,7 +28,8 @@
 import { execFileSync } from 'node:child_process';
 
 const STAGING_PROJECT = process.env.SALT_STAGING_PROJECT ?? 's2-stage-ccb22';
-const BUCKET = process.env.SALT_FS_STAGING_EXPORT_BUCKET ?? `gs://${STAGING_PROJECT}-firestore-exports`;
+const BUCKET =
+  process.env.SALT_FS_STAGING_EXPORT_BUCKET ?? `gs://${STAGING_PROJECT}-firestore-exports`;
 
 function run(cmd, args) {
   execFileSync(cmd, args, { stdio: 'inherit' });
@@ -59,12 +60,18 @@ try {
 }
 if (!bucketOk) {
   console.error(`✖ Export bucket ${BUCKET} not found (or no access). One-time setup:`);
-  console.error(`    gcloud storage buckets create ${BUCKET} --project=${STAGING_PROJECT} --location=US`);
+  console.error(
+    `    gcloud storage buckets create ${BUCKET} --project=${STAGING_PROJECT} --location=US`,
+  );
   console.error(
     '    # --location must match the DB location: multi-region nam5 -> US, eur3 -> EU;',
   );
-  console.error('    # a regional DB (e.g. europe-west2) uses that region. See docs/data-refresh.md.');
-  console.error('  (The restore step also needs dev granted read on this bucket — see docs/data-refresh.md.)');
+  console.error(
+    '    # a regional DB (e.g. europe-west2) uses that region. See docs/data-refresh.md.',
+  );
+  console.error(
+    '  (The restore step also needs dev granted read on this bucket — see docs/data-refresh.md.)',
+  );
   process.exit(1);
 }
 
@@ -79,7 +86,9 @@ console.log('(read-only on staging; no Cloud Functions triggers fire; blocks unt
 try {
   run('gcloud', ['firestore', 'export', dest, `--project=${STAGING_PROJECT}`]);
 } catch {
-  console.error('\n✖ Export failed. Check `gcloud auth login` and your Firestore export IAM role on staging.');
+  console.error(
+    '\n✖ Export failed. Check `gcloud auth login` and your Firestore export IAM role on staging.',
+  );
   process.exit(1);
 }
 

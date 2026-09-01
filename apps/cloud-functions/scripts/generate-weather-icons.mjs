@@ -55,10 +55,7 @@ import { resolveModel } from '../src/ai/resolveModel.js';
 import { withAiTimeout } from '../src/adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from '../src/flows/assets/canonIconSeed.js';
 import { removeFlatBackground } from '../src/imaging/removeFlatBackground.js';
-import {
-  buildWeatherIconPrompt,
-  WEATHER_ICON_IDS,
-} from '../src/flows/weatherIconPrompt.js';
+import { buildWeatherIconPrompt, WEATHER_ICON_IDS } from '../src/flows/weatherIconPrompt.js';
 // Framing normaliser — shared with the canon-icon pipeline, which applies it at
 // runtime (see its header). Weather keeps the module's 92px default.
 import { normalizeIconFraming } from '../src/imaging/normalizeIconFraming.js';
@@ -156,9 +153,7 @@ async function main() {
       const outPath = resolve(OUTPUT_DIR, `${iconId}.webp`);
       await writeFile(outPath, webp);
       ok += 1;
-      console.log(
-        `  ✓ ${iconId} (${webp.length} bytes, ${Date.now() - startedAt}ms) → ${outPath}`,
-      );
+      console.log(`  ✓ ${iconId} (${webp.length} bytes, ${Date.now() - startedAt}ms) → ${outPath}`);
     } catch (err) {
       failures.push(iconId);
       console.error(`  ✗ ${iconId}: ${err instanceof Error ? err.message : String(err)}`);

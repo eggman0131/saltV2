@@ -52,7 +52,7 @@ miniature.
 
 Compare step-advance, timer wiring, deck geometry, keyboard handling and session
 lifecycle. #1036 made guided cook compose cook mode and removed 2,101 lines, so
-much of the old copy-paste is gone — the question now is whether the *policies*
+much of the old copy-paste is gone — the question now is whether the _policies_
 that survived on both sides still agree.
 
 ## 2. The two deck abstractions
@@ -66,7 +66,7 @@ transition rules, not names.
 
 **Files:** `apps/cloud-functions/src/flows/equipmentIconPrompt.ts` ↔ `apps/cloud-functions/src/flows/kitchenToolIconPrompt.ts` ↔ `apps/cloud-functions/src/flows/weatherIconPrompt.ts`
 
-Compare the *prompt policies*, not the strings: style anchors, framing rules,
+Compare the _prompt policies_, not the strings: style anchors, framing rules,
 what each forbids. #887 found two readers for one kill switch in this family.
 
 ## 4. The image generators
@@ -102,7 +102,7 @@ is whether the debounce, the skip conditions and the write-back shape agree.
 **Files:** `packages/adapters/firebase-sync/src/appSettingsSync.ts` ↔ `packages/adapters/firebase-sync/src/devSettingsSync.ts`
 
 These score 1.00 in the rename layer. The question the rename layer cannot
-answer is whether they are *supposed* to be identical — one shape applied to two
+answer is whether they are _supposed_ to be identical — one shape applied to two
 documents is fine; two independently maintained copies of a defaulting policy is
 not.
 

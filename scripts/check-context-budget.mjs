@@ -48,12 +48,16 @@ const claudeFiles = execFileSync('git', ['ls-files', '-z', '*CLAUDE.md', 'CLAUDE
   .sort();
 
 if (!claudeFiles.includes('CLAUDE.md')) {
-  console.error('CLAUDE.md is not tracked at the repo root — the architecture contract cannot go missing.');
+  console.error(
+    'CLAUDE.md is not tracked at the repo root — the architecture contract cannot go missing.',
+  );
   process.exit(1);
 }
 
 const rows = claudeFiles.map((file) => {
-  const bytes = existsSync(path.join(repoRoot, file)) ? Buffer.byteLength(readFileSync(path.join(repoRoot, file))) : 0;
+  const bytes = existsSync(path.join(repoRoot, file))
+    ? Buffer.byteLength(readFileSync(path.join(repoRoot, file)))
+    : 0;
   const budget = file === 'CLAUDE.md' ? ROOT_BUDGET : NESTED_BUDGET;
   return { file, bytes, budget, over: bytes > budget };
 });
@@ -61,20 +65,26 @@ const rows = claudeFiles.map((file) => {
 const width = Math.max(...rows.map((r) => r.file.length));
 for (const { file, bytes, budget, over } of rows) {
   const pct = Math.round((bytes / budget) * 100);
-  console.log(`  ${file.padEnd(width)}  ${String(bytes).padStart(6)} / ${budget}  (${pct}%)${over ? '  ← OVER' : ''}`);
+  console.log(
+    `  ${file.padEnd(width)}  ${String(bytes).padStart(6)} / ${budget}  (${pct}%)${over ? '  ← OVER' : ''}`,
+  );
 }
 
 // ~4 chars per token is the usual rule of thumb; it is a scale cue for the reader,
 // not an accounting figure, so it is deliberately not what the check compares.
 const total = rows.reduce((n, r) => n + r.bytes, 0);
-console.log(`\n  ${rows.length} auto-loaded file(s), ${total} bytes total (~${Math.round(total / 4 / 100) / 10}k tokens if every one loads).`);
+console.log(
+  `\n  ${rows.length} auto-loaded file(s), ${total} bytes total (~${Math.round(total / 4 / 100) / 10}k tokens if every one loads).`,
+);
 
 const over = rows.filter((r) => r.over);
 if (over.length === 0) process.exit(0);
 
 console.error('\nContext budget exceeded:\n');
 for (const { file, bytes, budget } of over) {
-  console.error(`  ${file} is ${bytes} bytes, over its ${budget}-byte budget by ${bytes - budget}.`);
+  console.error(
+    `  ${file} is ${bytes} bytes, over its ${budget}-byte budget by ${bytes - budget}.`,
+  );
 }
 console.error(
   `

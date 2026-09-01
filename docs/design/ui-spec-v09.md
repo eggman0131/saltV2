@@ -23,7 +23,7 @@ v0.9 introduces:
 
 v0.9.1 adds one thing that is **not** a promotion:
 
-- **the value chip** — `valueChipVariants()`, a pill *surface* worn by a `Select`,
+- **the value chip** — `valueChipVariants()`, a pill _surface_ worn by a `Select`,
   `Combobox` or `TextField` so a decision can be read and changed in place
   (§8.27). §8.23.2 left a hole here ("add it to this spec before writing it");
   this is that amendment, and it carries a `frameClass` prop onto `TextField`
@@ -94,25 +94,25 @@ Consumers today: the recipe list's section, authorship and tag filters.
 
 ## 8.23.2 Chip or Button?
 
-| Use | Component |
-| --- | --- |
-| A facet that is on or off, shown alongside its siblings | `Chip` |
-| Anything that navigates, submits, opens or destroys | `Button` |
-| A one-off toggle with no row of peers — "show weather on the planner" | `Switch` (v0.2 §8.19) |
-| A **current value**, shown as a pill and changeable where it sits | Not a component at all — the value-chip **surface** (§8.27) |
-| A **measured attribute** of the thing being read — "Serves 4", "Prep 40 min" | `Chip variant="fact"` (§8.23.8) |
-| A **word someone attached** to the thing — a recipe tag | `Chip variant="tag"` (§8.23.8) |
+| Use                                                                          | Component                                                   |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| A facet that is on or off, shown alongside its siblings                      | `Chip`                                                      |
+| Anything that navigates, submits, opens or destroys                          | `Button`                                                    |
+| A one-off toggle with no row of peers — "show weather on the planner"        | `Switch` (v0.2 §8.19)                                       |
+| A **current value**, shown as a pill and changeable where it sits            | Not a component at all — the value-chip **surface** (§8.27) |
+| A **measured attribute** of the thing being read — "Serves 4", "Prep 40 min" | `Chip variant="fact"` (§8.23.8)                             |
+| A **word someone attached** to the thing — a recipe tag                      | `Chip variant="tag"` (§8.23.8)                              |
 
 ## 8.23.3 Props
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `variant` | `'filter' \| 'expander' \| 'fact' \| 'tag'` | `'filter'` | See §8.23.5 and §8.23.8 |
-| `pressed` | `boolean` | `false` | Emitted as `aria-pressed`. **`filter` only** — see §8.23.6 |
-| `icon` | `Snippet` | — | A leading glyph. **`fact` only** — see §8.23.8 |
-| `tone` | `'neutral' \| 'primary' \| 'secondary' \| 'tertiary'` | `'neutral'` | The tinted ground. **`fact` only** — see §8.23.9 |
-| `children` | `Snippet` | — | The chip's label. Text only |
-| `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
+| Prop       | Type                                                  | Default     | Notes                                                      |
+| ---------- | ----------------------------------------------------- | ----------- | ---------------------------------------------------------- |
+| `variant`  | `'filter' \| 'expander' \| 'fact' \| 'tag'`           | `'filter'`  | See §8.23.5 and §8.23.8                                    |
+| `pressed`  | `boolean`                                             | `false`     | Emitted as `aria-pressed`. **`filter` only** — see §8.23.6 |
+| `icon`     | `Snippet`                                             | —           | A leading glyph. **`fact` only** — see §8.23.8             |
+| `tone`     | `'neutral' \| 'primary' \| 'secondary' \| 'tertiary'` | `'neutral'` | The tinted ground. **`fact` only** — see §8.23.9           |
+| `children` | `Snippet`                                             | —           | The chip's label. Text only                                |
+| `class`    | `string`                                              | —           | Merged last via `cn()` (v0.2 §2.3)                         |
 
 Everything else — `onclick`, `data-testid`, `data-*`, `title` — rides `...rest`
 onto the element the variant renders, exactly as `Button` (v0.2 §8.1) does.
@@ -177,8 +177,8 @@ The two non-interactive variants — **`fact`** and **`tag`** — are in §8.23.
 "Show less" once expanded. Dashed border, no background, `text-muted-foreground`,
 `hover:bg-muted`.
 
-The dashed border is doing real work: it says *this pill is not one of the
-things, it is the way to see more of them*. Without it a "+3 more" chip sits in
+The dashed border is doing real work: it says _this pill is not one of the
+things, it is the way to see more of them_. Without it a "+3 more" chip sits in
 the row looking like a fourth filter you could turn on.
 
 Both are `<button type="button">`. `expander` is an action, not a state, so it
@@ -210,14 +210,14 @@ entirely in what the page does on click — see §8.24.2.
 ## 8.23.7 What Chip does not do
 
 - **No trailing icon, no dismiss "×".** A removable chip is a different control
-  (it has two hit targets), and nothing needs one. A *leading* icon exists on
+  (it has two hit targets), and nothing needs one. A _leading_ icon exists on
   `fact` alone, added in v0.9.2 — see §8.23.8.
 - **No loading or disabled treatment.** A facet that cannot be applied is not
   rendered — the recipe list drops the whole authorship row when the household
   has one member, rather than showing two dead chips.
 - **No count badge.** The recipe list ranks its tag chips by frequency and
   deliberately never shows the number; a chip that could show one would invite
-  the opposite. (A count on a *tab* is a different thing and is specified —
+  the opposite. (A count on a _tab_ is a different thing and is specified —
   v0.10 §8.28.4.)
 - **No press-scale.** `.salt-button`'s tap-scale is not inherited. A chip's
   answer to a tap is the fill, which lands on the same frame.
@@ -242,7 +242,7 @@ recipe tag. Quiet outline (`border-border`), no background, no icon.
 
 They name the **role** the chip plays, as `filter` and `expander` do. The
 obvious alternative — `static` for the plain one, since it is the plain one —
-names the *mechanism* instead, and would have left the axis reading half role,
+names the _mechanism_ instead, and would have left the axis reading half role,
 half implementation, with nothing to call the next static role when it arrives.
 Both of these are static; only one of them is a fact.
 
@@ -272,7 +272,7 @@ every variant but `fact`.
 because two chip sizes shipped from two pages guessing; an icon size left to the
 call site would drift the same way inside a year.
 
-*Amended in v0.9.4.* Until then this clause read "the style sizes the icon, at
+_Amended in v0.9.4._ Until then this clause read "the style sizes the icon, at
 12px, not the caller", which was true of the CSS and false of the type — see
 below.
 
@@ -342,12 +342,12 @@ A `fact` chip takes an optional **`tone`**: `'neutral' | 'primary' | 'secondary'
 of §8.23.8, unchanged; the other three paint one of the palette's three tints
 and the foreground that goes with it.
 
-| `tone` | Ground | Foreground |
-| --- | --- | --- |
-| `neutral` (default) | `bg-muted` | `text-muted-foreground` |
-| `primary` | `bg-primary-tint` | `text-primary-tint-foreground` |
-| `secondary` | `bg-secondary-tint` | `text-secondary-tint-foreground` |
-| `tertiary` | `bg-tertiary-tint` | `text-tertiary-tint-foreground` |
+| `tone`              | Ground              | Foreground                       |
+| ------------------- | ------------------- | -------------------------------- |
+| `neutral` (default) | `bg-muted`          | `text-muted-foreground`          |
+| `primary`           | `bg-primary-tint`   | `text-primary-tint-foreground`   |
+| `secondary`         | `bg-secondary-tint` | `text-secondary-tint-foreground` |
+| `tertiary`          | `bg-tertiary-tint`  | `text-tertiary-tint-foreground`  |
 
 The six `--color-*-tint*` tokens are declared in `salt.css` and come verbatim
 from `design.md`'s `*-fixed` / `on-*-fixed-variant` keys. Every pair clears 7:1,
@@ -380,7 +380,7 @@ learns that colour carries nothing and stops looking.
 
 It is never the only carrier of meaning (v0.2 §7). Every fact chip already
 states its own kind in words — "Serves 4", "Prep 40 min" — and the tone only
-lets the row be *scanned* rather than read. A consumer that would need the
+lets the row be _scanned_ rather than read. A consumer that would need the
 colour explained in a legend wants a different component.
 
 ### What `tone` does not do
@@ -428,11 +428,11 @@ the row.
 
 ## 8.24.3 Props
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `ariaLabel` | `string \| undefined` | — | Names the set. See §8.24.4. Explicitly `\| undefined` so a consumer whose name is conditional can pass it through under `exactOptionalPropertyTypes`; an explicit `undefined` means the same as omitting it |
-| `children` | `Snippet` | — | The chips |
-| `class` | `string` | — | Merged last via `cn()`. Outer spacing (`mb-3`) belongs to the page, not the group |
+| Prop        | Type                  | Default | Notes                                                                                                                                                                                                       |
+| ----------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ariaLabel` | `string \| undefined` | —       | Names the set. See §8.24.4. Explicitly `\| undefined` so a consumer whose name is conditional can pass it through under `exactOptionalPropertyTypes`; an explicit `undefined` means the same as omitting it |
+| `children`  | `Snippet`             | —       | The chips                                                                                                                                                                                                   |
+| `class`     | `string`              | —       | Merged last via `cn()`. Outer spacing (`mb-3`) belongs to the page, not the group                                                                                                                           |
 
 `data-testid` and any other attribute ride `...rest` onto the wrapping `<div>`.
 
@@ -475,16 +475,16 @@ Consumers today: the shopping list's aisle groups and its Checked group.
 
 ## 8.25.2 Props
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `title` | `string` | — | The header label. Upper-cased by the style, not by the caller |
-| `expanded` | `boolean` | — | Open state. Owned by the page — see §8.25.4 |
-| `onToggle` | `() => void` | — | Called on header activation. The section never flips itself |
-| `collapsedCount` | `number \| undefined` | — | Rendered as `(N)` **only while collapsed**. Omit for a section that carries its count in the title |
-| `action` | `Snippet` | — | Trailing header content — a button that acts on the whole section |
-| `triggerTestId` | `string \| undefined` | — | `data-testid` for the header button. See §8.25.5 |
-| `children` | `Snippet` | — | The body. Not rendered at all while collapsed |
-| `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
+| Prop             | Type                  | Default | Notes                                                                                              |
+| ---------------- | --------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `title`          | `string`              | —       | The header label. Upper-cased by the style, not by the caller                                      |
+| `expanded`       | `boolean`             | —       | Open state. Owned by the page — see §8.25.4                                                        |
+| `onToggle`       | `() => void`          | —       | Called on header activation. The section never flips itself                                        |
+| `collapsedCount` | `number \| undefined` | —       | Rendered as `(N)` **only while collapsed**. Omit for a section that carries its count in the title |
+| `action`         | `Snippet`             | —       | Trailing header content — a button that acts on the whole section                                  |
+| `triggerTestId`  | `string \| undefined` | —       | `data-testid` for the header button. See §8.25.5                                                   |
+| `children`       | `Snippet`             | —       | The body. Not rendered at all while collapsed                                                      |
+| `class`          | `string`              | —       | Merged last via `cn()` (v0.2 §2.3)                                                                 |
 
 Everything else rides `...rest` onto the `<section>`.
 
@@ -502,7 +502,7 @@ inside it and is untouched.
 ## 8.25.4 The page owns the open state
 
 `expanded` and `onToggle` are required and there is no internal fallback. The
-real consumers keep collapse state for *many* sections at once — the shopping
+real consumers keep collapse state for _many_ sections at once — the shopping
 list holds a `Set` of collapsed aisle ids — and a component that also kept its
 own copy would be a second source of truth for something the page must be able
 to reset, persist or derive.
@@ -564,9 +564,9 @@ would have meant rewriting `EditableRow` into a different component:
   label; and it has no `selected` / `onToggleSelect` at all.
 - **The revealed content is a sibling of the row, not a child of it.** The row
   sits inside a collapse shell that animates the check-off; the breakdown must
-  render *outside* that shell or it would animate away with the row. A component
+  render _outside_ that shell or it would animate away with the row. A component
   whose root is the row cannot render content outside its own root.
-- The trigger is a *region* of the row — the label column — while the icon and
+- The trigger is a _region_ of the row — the label column — while the icon and
   the check-off button beside it must stay outside the button, or tapping
   "done" would also toggle the disclosure.
 
@@ -577,20 +577,20 @@ So disclosure stays separable from the row. `EditableRow` keeps one axis
 
 `DisclosureTrigger`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `expanded` | `boolean` | — | Rendered as `aria-expanded` |
-| `children` | `Snippet` | — | The trigger's content, including where the chevron sits |
-| `class` | `string` | — | The caller's layout. The trigger ships none of its own |
+| Prop       | Type      | Default | Notes                                                   |
+| ---------- | --------- | ------- | ------------------------------------------------------- |
+| `expanded` | `boolean` | —       | Rendered as `aria-expanded`                             |
+| `children` | `Snippet` | —       | The trigger's content, including where the chevron sits |
+| `class`    | `string`  | —       | The caller's layout. The trigger ships none of its own  |
 
 `onclick`, `data-testid` and the rest ride `...rest` onto the button.
 
 `DisclosureChevron`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `expanded` | `boolean` | — | Picks the glyph |
-| `size` | `number` | `14` | Pixels. 14 for a section header, 12 inside a row's sub-label |
+| Prop       | Type      | Default | Notes                                                        |
+| ---------- | --------- | ------- | ------------------------------------------------------------ |
+| `expanded` | `boolean` | —       | Picks the glyph                                              |
+| `size`     | `number`  | `14`    | Pixels. 14 for a section header, 12 inside a row's sub-label |
 
 `DisclosureChevron` takes **no `class`**. It is a glyph inside a trigger the
 caller already styles, neither consumer needs to nudge it, and `Icon` (v0.2
@@ -626,7 +626,7 @@ A pill that shows a decision **and lets you change it where it sits**: which
 aisle an item belongs to, how it is shopped, the quantity that counts as a lot.
 It reads as a chip and it edits like a field.
 
-It is **not a component**. It is a *surface*: one class, `salt-value-chip`,
+It is **not a component**. It is a _surface_: one class, `salt-value-chip`,
 produced by the exported `valueChipVariants()`, worn by the control that already
 owns the interaction — a `SelectTrigger`, a `ComboboxInput`, or a `TextField`'s
 frame.
@@ -639,13 +639,13 @@ shown as value chips so a reviewer can correct one without leaving the list.
 
 Extends the table in §8.23.2.
 
-| Use | Component |
-| --- | --- |
-| A facet that is on or off, shown alongside its siblings | `Chip` (§8.23) |
-| Anything that navigates, submits, opens or destroys | `Button` |
-| A **current value** you can read at a glance and change in place, sitting inline in a sentence or a row of its peers | the value-chip **surface**, on the control that owns the interaction (§8.27.4) |
-| A value being set as part of a form, with a label, a description and room for an error | `TextField` / `Select` / `Combobox` as they come — no surface |
-| A read-only badge that cannot be changed at all | Still neither. A value chip is *editable*; nothing needs a dead pill yet, so add it to this spec before writing it |
+| Use                                                                                                                  | Component                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| A facet that is on or off, shown alongside its siblings                                                              | `Chip` (§8.23)                                                                                                     |
+| Anything that navigates, submits, opens or destroys                                                                  | `Button`                                                                                                           |
+| A **current value** you can read at a glance and change in place, sitting inline in a sentence or a row of its peers | the value-chip **surface**, on the control that owns the interaction (§8.27.4)                                     |
+| A value being set as part of a form, with a label, a description and room for an error                               | `TextField` / `Select` / `Combobox` as they come — no surface                                                      |
+| A read-only badge that cannot be changed at all                                                                      | Still neither. A value chip is _editable_; nothing needs a dead pill yet, so add it to this spec before writing it |
 
 The line between the last two is about the reader's posture. A form field is
 something you fill in; a value chip is something already decided that you may
@@ -659,7 +659,7 @@ Three shapes were considered and two were rejected:
 
 1. **A `value` variant on `Chip`** — rejected. `Chip` renders its own
    `<button type="button">`. A value chip must be the control that opens the
-   picker, so a `Chip` would have to *contain* a `SelectTrigger` (a button inside
+   picker, so a `Chip` would have to _contain_ a `SelectTrigger` (a button inside
    a button) or sit next to one and be decorative. Worse, `Chip`'s prop type
    would then offer `variant="value"` to callers with no picker behind it — a
    pill that looks editable and is not.
@@ -685,7 +685,7 @@ The surface always goes on the element that paints the border, merged last via
 `cn()` (v0.2 §2.3) — every one of these controls already does that with its
 `class` prop.
 
-A `Select` — the trigger *is* the button, so the surface goes straight on it and
+A `Select` — the trigger _is_ the button, so the surface goes straight on it and
 the chevron stays inside the one hit target:
 
 ```svelte
@@ -737,7 +737,7 @@ problem as `triggerTestId` in §8.25.5: the thing that needs naming is one level
 in from where `...rest` lands.
 
 `frameClass` exists for this one purpose and is not a general styling hatch.
-Anything that wants to change how a field frame *looks* outside this surface
+Anything that wants to change how a field frame _looks_ outside this surface
 earns a variant on `textFieldFrameVariants`, not a class from the page.
 
 ```svelte
@@ -792,7 +792,7 @@ one-pixel `border-border`, `bg-background`, `hover:bg-muted`. Two deliberate
 differences from `Chip`:
 
 - `text-foreground`, not `text-muted-foreground`. A filter chip's label is a
-  category name; a value chip's label is *the answer*, and the answer is not
+  category name; a value chip's label is _the answer_, and the answer is not
   secondary text.
 - `h-auto`, defeating the `h-9` / `h-10` its base class sets, so the pill's
   height comes from `py-1` and it matches the chips around it.
@@ -806,7 +806,7 @@ differences from `Chip`:
 - **No sizes.** One size, for the reason §8.23.4 gives: the row it sits in is a
   row of chips, and a second size re-opens the drift.
 - **No component, no wrapper, no `ValueChip.svelte`.** If a future consumer finds
-  itself repeating a *composition* (say, the number-plus-unit pair below), that
+  itself repeating a _composition_ (say, the number-plus-unit pair below), that
   composition earns a component and this surface stays what it is.
 - **No layout.** `ChipGroup` (§8.24) is for a row of `Chip`s; a row of value
   chips is `flex flex-wrap items-center gap-2` owned by the page, because the

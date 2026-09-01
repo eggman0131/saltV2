@@ -82,12 +82,12 @@ reason: a size left to the call site drifts.
 </span>
 ```
 
-| Part | Classes |
-| --- | --- |
-| Pill | `inline-flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base` |
-| Pill, left padding | `pl-1` with a picture, `pl-4` without (§8.30.4) |
-| Tile | `CanonIcon` at `size={40}`, `class="rounded-full"`, `name=""`, wrapped in `aria-hidden="true"` (§8.30.6) |
-| Label | `min-w-0 break-words` |
+| Part               | Classes                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| Pill               | `inline-flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base`           |
+| Pill, left padding | `pl-1` with a picture, `pl-4` without (§8.30.4)                                                          |
+| Tile               | `CanonIcon` at `size={40}`, `class="rounded-full"`, `name=""`, wrapped in `aria-hidden="true"` (§8.30.6) |
+| Label              | `min-w-0 break-words`                                                                                    |
 
 - **Dashed border, `bg-card`.** The pill inventories a thing you either have or
   do not; the dashed outline says "not one of the app's own objects — a thing in
@@ -104,7 +104,7 @@ reason: a size left to the call site drifts.
   (`.salt-chip--fact` and its siblings, v0.9 §8.23.8) is inline-level; a
   block-level pill stretches to fill any non-flex parent it is dropped into.
   `inline-flex` is what makes the pill sit inline in ordinary prose flow — the
-  `shrink-0 max-w-full` above is a *separate* obligation, for when the caller's
+  `shrink-0 max-w-full` above is a _separate_ obligation, for when the caller's
   own row is a flex container the pill must not stretch or overflow inside.
 
 ## 8.30.4 The padding switch
@@ -155,7 +155,7 @@ announced as a control.
   announces the object twice: once from the image `alt`, once from the label
   span beside it. (An early draft of this section reasoned the opposite way —
   "the tile adds nothing a reader does not already get" — but that is the
-  argument *for* silencing it, not evidence it was already silent. The
+  argument _for_ silencing it, not evidence it was already silent. The
   per-step kit row (`RecipeViewPage.svelte`'s `recipe-view-step-kit`) already
   solved this by hand with the same `aria-hidden` + empty/`sr-only` pattern;
   the primitive now does it natively so no caller has to remember.)
@@ -165,12 +165,12 @@ announced as a control.
 
 ## 8.30.7 Props
 
-| Name | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `label` | `string` | — | The object's words. Required: a pill with no name is a picture, and a picture on its own is not the content. |
-| `thumbnail` | `string \| null \| undefined` | `undefined` | An **already-resolved** pictogram URL, or one of the no-picture states (§8.30.5). |
-| `version` | `string \| number \| undefined` | `undefined` | Cache-bust nonce, passed straight to `CanonIcon` (v0.4 §14.4). |
-| `class` | `string` | — | Merged onto the pill via `cn`. |
+| Name        | Type                            | Default     | Notes                                                                                                        |
+| ----------- | ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `label`     | `string`                        | —           | The object's words. Required: a pill with no name is a picture, and a picture on its own is not the content. |
+| `thumbnail` | `string \| null \| undefined`   | `undefined` | An **already-resolved** pictogram URL, or one of the no-picture states (§8.30.5).                            |
+| `version`   | `string \| number \| undefined` | `undefined` | Cache-bust nonce, passed straight to `CanonIcon` (v0.4 §14.4).                                               |
+| `class`     | `string`                        | —           | Merged onto the pill via `cn`.                                                                               |
 
 Plus the `HTMLAttributes<HTMLElement>` passthrough (`data-testid`, `data-*`,
 `id`, `title`, `aria-*`), minus `onclick`, which is `never` (§8.30.6).

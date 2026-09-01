@@ -36,25 +36,25 @@ First consumer: My Kitchen's timer cards (issue #843).
 
 ## 8.22.2 Dial or Progress?
 
-| Use | Component |
-| --- | --- |
-| A quantity advancing toward a known end, laid out in a row with text — a cook's completed steps, an upload | `Progress` |
-| A countdown, or anything whose value belongs **inside** the indicator | `Dial` |
-| Anything below ~40px | `Dial` |
-| Indeterminate ("something is happening, length unknown") | `Progress` — `Dial` has no indeterminate state and must not grow one; use `Spinner` if there is no value at all |
+| Use                                                                                                        | Component                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A quantity advancing toward a known end, laid out in a row with text — a cook's completed steps, an upload | `Progress`                                                                                                      |
+| A countdown, or anything whose value belongs **inside** the indicator                                      | `Dial`                                                                                                          |
+| Anything below ~40px                                                                                       | `Dial`                                                                                                          |
+| Indeterminate ("something is happening, length unknown")                                                   | `Progress` — `Dial` has no indeterminate state and must not grow one; use `Spinner` if there is no value at all |
 
 A cook's step progress stays on `Progress` and is **not** migrated. Both may appear on the same screen; they are different questions, not two dialects of one.
 
 ## 8.22.3 Props
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `value` | `number` | `0` | Fraction drawn, `0..1`. Clamped; non-finite reads as `0` |
-| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | 34px / 44px / 60px |
-| `tone` | `'neutral' \| 'heat'` | `'neutral'` | See §8.22.5 |
-| `children` | `Snippet` | — | Rendered centred inside the ring |
-| `ariaLabel` | `string \| null` | **required** | `null` is the explicit "decorative" — see §8.22.6 |
-| `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
+| Prop        | Type                   | Default      | Notes                                                    |
+| ----------- | ---------------------- | ------------ | -------------------------------------------------------- |
+| `value`     | `number`               | `0`          | Fraction drawn, `0..1`. Clamped; non-finite reads as `0` |
+| `size`      | `'sm' \| 'md' \| 'lg'` | `'md'`       | 34px / 44px / 60px                                       |
+| `tone`      | `'neutral' \| 'heat'`  | `'neutral'`  | See §8.22.5                                              |
+| `children`  | `Snippet`              | —            | Rendered centred inside the ring                         |
+| `ariaLabel` | `string \| null`       | **required** | `null` is the explicit "decorative" — see §8.22.6        |
+| `class`     | `string`               | —            | Merged last via `cn()` (v0.2 §2.3)                       |
 
 `value` is a **fraction, not a percentage**, and takes no `max`. This differs from `Progress` deliberately: every producer in the app already computes a `0..1` ratio (`timerProgress`), and accepting `value`/`max` would invite a second, differently-rounded path to the same number.
 

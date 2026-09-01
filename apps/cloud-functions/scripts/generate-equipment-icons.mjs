@@ -135,7 +135,9 @@ async function loadManifestItems() {
   }
   const parsed = EquipmentManifestSchema.safeParse(snap.data());
   if (!parsed.success) {
-    throw new Error(`generate-equipment-icons: manifest failed validation: ${parsed.error.message}`);
+    throw new Error(
+      `generate-equipment-icons: manifest failed validation: ${parsed.error.message}`,
+    );
   }
   return parsed.data.items;
 }
@@ -147,9 +149,7 @@ function selectItems(items, args) {
   const unmatched = [];
   for (const arg of args) {
     const needle = arg.toLowerCase();
-    const hits = items.filter(
-      (it) => it.id === arg || it.name.toLowerCase().includes(needle),
-    );
+    const hits = items.filter((it) => it.id === arg || it.name.toLowerCase().includes(needle));
     if (hits.length === 0) unmatched.push(arg);
     for (const hit of hits) chosen.set(hit.id, hit);
   }

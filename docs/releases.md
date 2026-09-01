@@ -2,7 +2,7 @@
 
 How Salt ships. The release model is **trunk-based**: `main` is always releasable,
 merges to `main` auto-deploy to **staging**, and a published **GitHub Release**
-promotes that *same commit* to **production** behind a manual approval gate.
+promotes that _same commit_ to **production** behind a manual approval gate.
 Full plan and phases: GitHub issue #118.
 
 > Environment is a deploy **target**, not a branch. We deliberately do **not**
@@ -11,11 +11,11 @@ Full plan and phases: GitHub issue #118.
 
 ## Firebase projects (`.firebaserc` aliases)
 
-| Alias        | Project ID       | Plan  | Used for                                  |
-| ------------ | ---------------- | ----- | ----------------------------------------- |
-| `default`    | `demo-salt`      | —     | Local emulators only (no real network)    |
-| `staging`    | `s2-stage-ccb22` | Blaze | Auto-deployed on merge to `main`          |
-| `production` | `s2-prod-e46bd`  | Blaze | Promoted from a GitHub Release (gated)     |
+| Alias        | Project ID       | Plan  | Used for                               |
+| ------------ | ---------------- | ----- | -------------------------------------- |
+| `default`    | `demo-salt`      | —     | Local emulators only (no real network) |
+| `staging`    | `s2-stage-ccb22` | Blaze | Auto-deployed on merge to `main`       |
+| `production` | `s2-prod-e46bd`  | Blaze | Promoted from a GitHub Release (gated) |
 
 Deploys always target an alias explicitly: `firebase deploy -P staging` /
 `-P production`. Bare `firebase` commands hit `default` (emulators), which is
@@ -33,17 +33,17 @@ Lives in `apps/web-pwa/.env.<mode>` (Vite picks the file by `--mode`). These are
 correct and expected. They are guarded by Firestore/Storage security rules and
 API-key restrictions, not by secrecy.
 
-| Variable                            | Notes                                              |
-| ----------------------------------- | -------------------------------------------------- |
-| `VITE_FIREBASE_API_KEY`             | Public web API key (per project)                   |
-| `VITE_FIREBASE_AUTH_DOMAIN`         | `<project>.firebaseapp.com`                        |
-| `VITE_FIREBASE_PROJECT_ID`          | Firebase project ID                                |
-| `VITE_FIREBASE_STORAGE_BUCKET`      | `<project>.firebasestorage.app`                    |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Sender ID                                          |
-| `VITE_FIREBASE_APP_ID`              | Web app ID                                         |
+| Variable                            | Notes                                                                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_FIREBASE_API_KEY`             | Public web API key (per project)                                                                                                                                            |
+| `VITE_FIREBASE_AUTH_DOMAIN`         | `<project>.firebaseapp.com`                                                                                                                                                 |
+| `VITE_FIREBASE_PROJECT_ID`          | Firebase project ID                                                                                                                                                         |
+| `VITE_FIREBASE_STORAGE_BUCKET`      | `<project>.firebasestorage.app`                                                                                                                                             |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Sender ID                                                                                                                                                                   |
+| `VITE_FIREBASE_APP_ID`              | Web app ID                                                                                                                                                                  |
 | `VITE_PUBLIC_POSTHOG_KEY`           | PostHog **browser project** key — public, per **PostHog project** (staging ≠ prod). An empty value gates browser observability off entirely (the e2e build relies on this). |
-| `VITE_PUBLIC_POSTHOG_HOST`          | PostHog ingestion host (optional; defaults to the EU region `https://eu.i.posthog.com`) |
-| `VITE_USE_EMULATORS`                | `false` for staging/production                     |
+| `VITE_PUBLIC_POSTHOG_HOST`          | PostHog ingestion host (optional; defaults to the EU region `https://eu.i.posthog.com`)                                                                                     |
+| `VITE_USE_EMULATORS`                | `false` for staging/production                                                                                                                                              |
 
 Each environment must use its **own** values; in particular the PostHog browser
 project key must point at the matching PostHog project.
@@ -64,14 +64,14 @@ project**, and are bound to the functions via `defineSecret()` in
 `apps/cloud-functions/src`. They must differ between staging and production
 (sharing one would let staging traffic bill/pollute prod).
 
-| Secret          | What it is                                              | Set with                                          |
-| --------------- | ------------------------------------------------------- | ------------------------------------------------- |
-| `GEMINI_API_KEY` | Gemini/Genkit API key for the AI flows                 | `firebase functions:secrets:set GEMINI_API_KEY -P <alias>` |
-| `POSTHOG_API_KEY` | PostHog **server project** key (`posthog-node`) for CF event capture; absent ⇒ server observability no-ops | `firebase functions:secrets:set POSTHOG_API_KEY -P <alias>` |
-| `RESEND_API_KEY` | Resend API key used by `requestEmailOtp` to deliver the sign-in code (#546). Use a **separate key per environment** so staging sends can't be confused with prod ones in the Resend dashboard. | `firebase functions:secrets:set RESEND_API_KEY -P <alias>` |
-| `OTP_EMAIL_FROM` | The OTP sender address, e.g. `Salt <no-reply@salt.pendery.org>`. Not sensitive, but Secret Manager is the only runtime-config channel a deployed function has here (the `dist` deploy source is wiped by every build, so a `.env` can't survive). Must be on a Resend-**verified** domain — `onboarding@resend.dev` only delivers to the Resend account owner and is not a usable default. | `firebase functions:secrets:set OTP_EMAIL_FROM -P <alias>` |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web-push signing keypair for cook-timer notifications (#544). **Distinct per environment** — a subscription minted under one project's public key is undeliverable by another's private key. Generate with `npx web-push generate-vapid-keys`; the public half also goes in `apps/web-pwa/.env.<mode>` as `VITE_VAPID_PUBLIC_KEY` (empty ⇒ the notifications toggle is hidden). | `firebase functions:secrets:set VAPID_PUBLIC_KEY -P <alias>` (and `VAPID_PRIVATE_KEY`) |
-| `PUSHOVER_APP_TOKEN` / `PUSHOVER_USER_KEY` | Pushover credentials for cook-timer delivery (#680) — the sink that actually wakes a dozing Android device. Unlike VAPID these are the **same in every environment**: there is ONE shared family account, the user key *is* the account, and per-person targeting is the `device` parameter, so no per-user identity data is stored anywhere. The blast radius is handled in code instead — outside production the sender only targets `daniel-*` devices, so a staging timer test cannot wake the family. Absent ⇒ the Pushover sink logs and no-ops; web push still runs. | `firebase functions:secrets:set PUSHOVER_APP_TOKEN -P <alias>` (and `PUSHOVER_USER_KEY`) |
+| Secret                                     | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Set with                                                                                 |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                           | Gemini/Genkit API key for the AI flows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `firebase functions:secrets:set GEMINI_API_KEY -P <alias>`                               |
+| `POSTHOG_API_KEY`                          | PostHog **server project** key (`posthog-node`) for CF event capture; absent ⇒ server observability no-ops                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `firebase functions:secrets:set POSTHOG_API_KEY -P <alias>`                              |
+| `RESEND_API_KEY`                           | Resend API key used by `requestEmailOtp` to deliver the sign-in code (#546). Use a **separate key per environment** so staging sends can't be confused with prod ones in the Resend dashboard.                                                                                                                                                                                                                                                                                                                                                                              | `firebase functions:secrets:set RESEND_API_KEY -P <alias>`                               |
+| `OTP_EMAIL_FROM`                           | The OTP sender address, e.g. `Salt <no-reply@salt.pendery.org>`. Not sensitive, but Secret Manager is the only runtime-config channel a deployed function has here (the `dist` deploy source is wiped by every build, so a `.env` can't survive). Must be on a Resend-**verified** domain — `onboarding@resend.dev` only delivers to the Resend account owner and is not a usable default.                                                                                                                                                                                  | `firebase functions:secrets:set OTP_EMAIL_FROM -P <alias>`                               |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`   | Web-push signing keypair for cook-timer notifications (#544). **Distinct per environment** — a subscription minted under one project's public key is undeliverable by another's private key. Generate with `npx web-push generate-vapid-keys`; the public half also goes in `apps/web-pwa/.env.<mode>` as `VITE_VAPID_PUBLIC_KEY` (empty ⇒ the notifications toggle is hidden).                                                                                                                                                                                             | `firebase functions:secrets:set VAPID_PUBLIC_KEY -P <alias>` (and `VAPID_PRIVATE_KEY`)   |
+| `PUSHOVER_APP_TOKEN` / `PUSHOVER_USER_KEY` | Pushover credentials for cook-timer delivery (#680) — the sink that actually wakes a dozing Android device. Unlike VAPID these are the **same in every environment**: there is ONE shared family account, the user key _is_ the account, and per-person targeting is the `device` parameter, so no per-user identity data is stored anywhere. The blast radius is handled in code instead — outside production the sender only targets `daniel-*` devices, so a staging timer test cannot wake the family. Absent ⇒ the Pushover sink logs and no-ops; web push still runs. | `firebase functions:secrets:set PUSHOVER_APP_TOKEN -P <alias>` (and `PUSHOVER_USER_KEY`) |
 
 There is **no** OTLP secret or endpoint var: server-side spans export to GCP /
 Firebase Monitoring via `enableFirebaseTelemetry()` (Genkit-native), and PostHog
@@ -93,10 +93,10 @@ CI authenticates to Firebase via **Workload Identity Federation** (no long-lived
 key in the repo — see #118 Phase 2). Three GitHub Environments scope what each
 deploy job can see:
 
-| Environment  | Protection           | Holds                                                        |
-| ------------ | -------------------- | ----------------------------------------------------------- |
-| `dev`        | none (manual dispatch only) | dev WIF provider + service-account refs               |
-| `staging`    | none (auto-deploy)   | staging WIF provider + service-account refs                 |
+| Environment  | Protection                                         | Holds                                          |
+| ------------ | -------------------------------------------------- | ---------------------------------------------- |
+| `dev`        | none (manual dispatch only)                        | dev WIF provider + service-account refs        |
+| `staging`    | none (auto-deploy)                                 | staging WIF provider + service-account refs    |
 | `production` | required reviewer (maintainer) = the approval gate | production WIF provider + service-account refs |
 
 No PR-triggered jobs run against either Environment (per-PR Hosting previews were
@@ -118,11 +118,11 @@ These are **not secret** (resource paths + SA emails). The deploy workflows pass
 them to `google-github-actions/auth` as `workload_identity_provider` +
 `service_account`, sourced per GitHub Environment.
 
-| Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
-| ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
-| `dev`        | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `firebase-adminsdk-fbsvc@s2-dev-eggman.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
-| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggmanorg/salt` |
-| `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
+| Env          | `workload_identity_provider`                                                                   | `service_account`                                               | Impersonation scope                          |
+| ------------ | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------- |
+| `dev`        | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `firebase-adminsdk-fbsvc@s2-dev-eggman.iam.gserviceaccount.com` | repo `eggmanorg/salt`                        |
+| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com`           | repo `eggmanorg/salt`                        |
+| `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`            | **only** the `production` GitHub Environment |
 
 **There are two pools, not three.** `dev` and `staging` share one — the pool in
 `s2-stage-ccb22` (`946977631175`). A pool can mint tokens that impersonate a service
@@ -132,8 +132,8 @@ workload-identity-pools` command aimed at it returns `NOT_FOUND`, which looks li
 broken setup and is not one. Two consequences worth holding on to:
 
 - In a `principalSet://` member for the dev SA, the project number is **staging's**
-  (`946977631175`), not dev's. `--project` names the project the *service account* lives
-  in; the path names the project the *pool* lives in, and for `dev` those differ.
+  (`946977631175`), not dev's. `--project` names the project the _service account_ lives
+  in; the path names the project the _pool_ lives in, and for `dev` those differ.
 - Changing staging's provider changes dev's too. There is no way to re-scope one without
   the other.
 
@@ -148,10 +148,10 @@ against dev holds a much wider identity than the same job against the other two.
 
 ## Deploying
 
-| Target       | Trigger                                   | Workflow                |
-| ------------ | ----------------------------------------- | ----------------------- |
-| `staging`    | every push to `main` (after CI passes)    | `deploy-staging.yml`    |
-| `production` | a **published GitHub Release** (gated)    | `deploy-production.yml` |
+| Target       | Trigger                                | Workflow                |
+| ------------ | -------------------------------------- | ----------------------- |
+| `staging`    | every push to `main` (after CI passes) | `deploy-staging.yml`    |
+| `production` | a **published GitHub Release** (gated) | `deploy-production.yml` |
 
 **Production is a deliberate promotion, never automatic.** Publishing a GitHub
 Release deploys that release's exact tagged commit — the same commit already
@@ -199,7 +199,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 **cannot** do itself (it deliberately lacks project-IAM-admin). Done for staging;
 **still required for production before its first deploy.**
 
-1. **Enable the required APIs** (the SA can *use* APIs but not enable them):
+1. **Enable the required APIs** (the SA can _use_ APIs but not enable them):
    `firebasestorage`, `cloudfunctions`, `cloudbuild`, `artifactregistry`, `run`,
    `eventarc`, `pubsub`, `firestore`, `firebasehosting`, `storage`,
    `secretmanager`, `cloudbilling`, plus `iamcredentials` + `sts` (WIF).
@@ -256,7 +256,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 
    Granting only the runtime role (the obvious one) still fails the deploy with
    `403 … lacks IAM permission "cloudtasks.queues.get"`. **The trap on recovery:**
-   after that failed deploy the function is still *registered*, so every later
+   after that failed deploy the function is still _registered_, so every later
    deploy reports `onCookTimerDispatch — Skipped (No changes detected)` and never
    retries the queue creation. The workflow goes green while
    `gcloud tasks queues list` shows zero queues, and timer pushes fail at enqueue
@@ -279,12 +279,12 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    ```
 
    Without it the deploy fails with `403 … lacks IAM permission
-   "cloudscheduler.jobs.update"`. A **local owner deploy hides this** — an owner
+"cloudscheduler.jobs.update"`. A **local owner deploy hides this** — an owner
    has the permission — so the gap only surfaces on the first CI/SA deploy after
    a scheduled function is added.
 
    **It then hides itself, exactly like the Cloud Tasks trap.** The function is
-   created *before* the scheduler job is written, so the failed deploy still
+   created _before_ the scheduler job is written, so the failed deploy still
    leaves it registered; every later deploy reports
    `sweepOrphanedStorage(europe-west2) — Skipped (No changes detected)`, never
    re-attempts the job, and the workflow goes green. Granting the role and
@@ -298,12 +298,12 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    ```
 
    **Use `gcloud`, not `firebase functions:delete`** — the Firebase CLI tears the
-   scheduler job down *before* the function, so on a job that was never created it
+   scheduler job down _before_ the function, so on a job that was never created it
    dies with `HTTP Error: 404, Job not found` and aborts without deleting anything.
    Chicken-and-egg: it can't clean up a resource its own failed deploy never made.
    `gcloud` removes the service (and its Artifact Registry artifacts) without
    touching Cloud Scheduler. Firebase derives deploy state from the live resources,
-   so the next deploy creates function *and* job from scratch.
+   so the next deploy creates function _and_ job from scratch.
 
    For staging, redeploy via `workflow_dispatch` rather than a push — a docs-only
    commit won't clear `deploy-staging.yml`'s deploy-relevant-path guard, and manual
@@ -317,8 +317,8 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 
    **Check this list after every release that adds a scheduled function.** The
    grant is per-project, not per-function, so all three environments already hold
-   `roles/cloudscheduler.admin`; but a *new* `onSchedule` function still creates a
-   *new* job, and any failure to write that job hides itself the same way. One
+   `roles/cloudscheduler.admin`; but a _new_ `onSchedule` function still creates a
+   _new_ job, and any failure to write that job hides itself the same way. One
    `gcloud scheduler jobs list` per environment is the whole check — a job count
    short of the number of `onSchedule` exports means something never fires.
 

@@ -147,7 +147,7 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     seeder.)
   - The **guided plan** seed
     (`seedGuidedPlan`, [helpers/seed.ts:229-239](../apps/web-pwa/e2e/helpers/seed.ts#L229-L239)):
-    the hazard is the same shape, but *inferred* rather than measured — the guided journey is new
+    the hazard is the same shape, but _inferred_ rather than measured — the guided journey is new
     (#994) and has no CI failure history to draw on. A plan is one document
     (`guidedPlans/{recipeId}`, id = the recipe id) whose single-document listener attaches when the
     recipe view mounts, with the doc absent. Unlike the four above, it has no bridge writer at all:
@@ -172,7 +172,7 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
 
 ---
 
-## D. Realtime & cross-tab convergence  _(Salt-specific)_
+## D. Realtime & cross-tab convergence _(Salt-specific)_
 
 This is the category generic Playwright guidance does not cover, and the one most responsible for
 post-#297 flake.
@@ -198,7 +198,7 @@ post-#297 flake.
 
 ---
 
-## E. AI & Cloud-Function trigger determinism  _(Salt-specific)_
+## E. AI & Cloud-Function trigger determinism _(Salt-specific)_
 
 AI flows are made deterministic by the `FUNCTIONS_AI_FAKE=1` fake-model seam (#297). The real
 callable → trigger → Firestore pipeline still runs; only the model output is canned.
@@ -277,7 +277,7 @@ Changing them is a harness change, not a test change — issue-first.
   report + traces + `test-results` + server logs as artifacts (`playwright-report-shard-N` /
   `playwright-test-results-shard-N` / `e2e-server-logs-shard-N` — the last carries the emulator log,
   the Vite log, and the shard's flake NDJSON). Upload now triggers on `failure() || <retry-recovered
-  flakes detected>`, not `failure()` alone (see [docs/e2e.md](e2e.md#flake-telemetry-issue-669)) — a
+flakes detected>`, not `failure()` alone (see [docs/e2e.md](e2e.md#flake-telemetry-issue-669)) — a
   shard that flaked but ended green used to leave nothing to download. **Those artifacts _are_ the CI
   debugging path:** download them and open with the normal Playwright UI (`npx playwright show-trace`
   / `show-report`) and CI debugging is identical to local (see NF-I1). **Trace
@@ -300,7 +300,7 @@ Adopting `webServer` is therefore viable, but it is a **cleanup, not a flake fix
 **partial**:
 
 - It can own **only** the Vite server. The flake-prone work — `pnpm --filter @salt/cloud-functions
-  build` **before** emulator bring-up, `docker compose … up --wait` (healthcheck-gated trigger
+build` **before** emulator bring-up, `docker compose … up --wait` (healthcheck-gated trigger
   registration), and the `VITE_EMULATOR_*` env wiring — must stay in `globalSetup`, in that order.
   `webServer` cannot express "build a bundle → start a container → wait for a CORS healthcheck."
 - If introduced, it MUST use `url`/`wait.stdout` readiness (never `port` — NF-G1),
@@ -414,26 +414,26 @@ Observability
 The starting point was a generic "stable Playwright" rule list. Not all of it is valuable _here_;
 this records the verdicts so the spec stays honest about what it kept and why.
 
-| Generic rule | Verdict for Salt | Reason |
-| --- | --- | --- |
-| Web-first / retrying assertions | **Kept → NF-A3** | Core; the suite already leans on `expect.poll`/`toPass`. |
-| Ban `waitForTimeout` | **Kept but narrowed → NF-A1/A2** | A blanket ban would wrongly flag the legitimate negative-assertion hold in `chat.spec`. Carved a precise exception. |
-| Avoid `networkidle`/`waitForLoadState` | **Kept → NF-A4** | Doubly true: the PWA holds Firestore Listen streams open, so it never idles. Suite is already clean — keep it. |
-| Accessible-first locators; `data-testid` sparingly | **Kept → NF-B1/B2** | Matches existing authoring conventions. |
-| No `nth`/structural CSS | **Kept → NF-B3** | ~25 `nth`/`locator(css)` sites exist; flagged for per-case audit rather than a blanket ban. |
-| Per-test unique data | **Kept → NF-C2** | `uniqueEmail(testId)` already does this; made it a hard rule. |
-| Reset backend state per test | **Adapted → NF-C1** | Salt does a **global** wipe per test, which is only safe at `workers:1`. The real risk is the _opposite_ of the generic "enable parallelism" advice — so the rule is "don't raise workers," not "parallelise." |
-| `fullyParallel` + cross-worker isolation | **Rejected as written** | `workers:1` makes cross-worker DB collisions impossible; `fullyParallel:true` is a no-op today. Generic parallel-safety advice doesn't apply; the global-clear coupling does. |
-| `storageState` auth-once | **Rejected** | The app's `window.__e2e.devSignIn` bridge + allowlist seed is the established, faster auth path; `storageState` would bypass the blocking-function ordering this app actually needs to exercise. |
-| `forbidOnly` on CI | **Already satisfied → NF-G2** | Set in config. |
-| `retries: 2` on CI | **Adapted → NF-G3** | Salt uses `1`; the valuable part isn't the number, it's "a retry-pass is a bug, not a green." |
-| `trace`/`screenshot`/`video` on failure | **Corrected → NF-G4/NF-I1** | Trace/screenshot kept, but trace mode moves `on-first-retry`→`retain-on-failure` (the former traces the passing retry, not the failure) and `video: 'retain-on-failure'` is adopted. Downloaded Playwright artifacts are the CI debugging path. |
-| `webServer` for app readiness | **Conditional → NF-G1 + [Harness note](#harness-option-webserver-deferred)** | The blanket ban was a WSL2 socket-probe deadlock (issue #79), moot on Mac and Linux CI. Now allowed for the Vite server only, via `url`/`wait.stdout` readiness, with emulator/CF bring-up still in `globalSetup`. Deferred cleanup, not a flake fix. |
-| Mock 3rd-party/nondeterministic calls | **Specialised → NF-E1/E4** | Realised concretely as the `FUNCTIONS_AI_FAKE` stub seam + stub-before-fire ordering. |
-| Freeze time/randomness | **Kept implicitly → NF-E3 / date-anchoring** | #297 already date-anchors the meal planner off live `this-week` rather than hardcoded dates; folded into determinism. |
-| Quarantine, don't ignore | **Kept → NF-G3/H1** | Combined with environment triage so a flaky test is diagnosed, not blanket-retried. |
-| Reproduce flake by repetition | **Kept → NF-H2** | `--repeat-each` before claiming a fix. |
-| `expect.poll`/`toPass` for eventual state | **Kept → NF-A3/D2/E2** | Already the suite's idiom; made mandatory for convergence/trigger facts. |
-| **(net-new)** Realtime long-poll settle-before-act | **Added → NF-D1** | Salt-specific; not in any generic list. The #199 Listen-drop is a leading post-#297 flake cause. |
-| **(net-new)** Environment-vs-code triage | **Added → NF-H1** | Salt-specific poisoned-environment signature; prevents "fixing" tests that aren't broken. |
-| **(net-new)** Keep the shared `./fixtures/test` import | **Added → NF-I1** | Importing straight from `@playwright/test` silently drops the clear + tagging + coverage fixtures. |
+| Generic rule                                           | Verdict for Salt                                                             | Reason                                                                                                                                                                                                                                                |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web-first / retrying assertions                        | **Kept → NF-A3**                                                             | Core; the suite already leans on `expect.poll`/`toPass`.                                                                                                                                                                                              |
+| Ban `waitForTimeout`                                   | **Kept but narrowed → NF-A1/A2**                                             | A blanket ban would wrongly flag the legitimate negative-assertion hold in `chat.spec`. Carved a precise exception.                                                                                                                                   |
+| Avoid `networkidle`/`waitForLoadState`                 | **Kept → NF-A4**                                                             | Doubly true: the PWA holds Firestore Listen streams open, so it never idles. Suite is already clean — keep it.                                                                                                                                        |
+| Accessible-first locators; `data-testid` sparingly     | **Kept → NF-B1/B2**                                                          | Matches existing authoring conventions.                                                                                                                                                                                                               |
+| No `nth`/structural CSS                                | **Kept → NF-B3**                                                             | ~25 `nth`/`locator(css)` sites exist; flagged for per-case audit rather than a blanket ban.                                                                                                                                                           |
+| Per-test unique data                                   | **Kept → NF-C2**                                                             | `uniqueEmail(testId)` already does this; made it a hard rule.                                                                                                                                                                                         |
+| Reset backend state per test                           | **Adapted → NF-C1**                                                          | Salt does a **global** wipe per test, which is only safe at `workers:1`. The real risk is the _opposite_ of the generic "enable parallelism" advice — so the rule is "don't raise workers," not "parallelise."                                        |
+| `fullyParallel` + cross-worker isolation               | **Rejected as written**                                                      | `workers:1` makes cross-worker DB collisions impossible; `fullyParallel:true` is a no-op today. Generic parallel-safety advice doesn't apply; the global-clear coupling does.                                                                         |
+| `storageState` auth-once                               | **Rejected**                                                                 | The app's `window.__e2e.devSignIn` bridge + allowlist seed is the established, faster auth path; `storageState` would bypass the blocking-function ordering this app actually needs to exercise.                                                      |
+| `forbidOnly` on CI                                     | **Already satisfied → NF-G2**                                                | Set in config.                                                                                                                                                                                                                                        |
+| `retries: 2` on CI                                     | **Adapted → NF-G3**                                                          | Salt uses `1`; the valuable part isn't the number, it's "a retry-pass is a bug, not a green."                                                                                                                                                         |
+| `trace`/`screenshot`/`video` on failure                | **Corrected → NF-G4/NF-I1**                                                  | Trace/screenshot kept, but trace mode moves `on-first-retry`→`retain-on-failure` (the former traces the passing retry, not the failure) and `video: 'retain-on-failure'` is adopted. Downloaded Playwright artifacts are the CI debugging path.       |
+| `webServer` for app readiness                          | **Conditional → NF-G1 + [Harness note](#harness-option-webserver-deferred)** | The blanket ban was a WSL2 socket-probe deadlock (issue #79), moot on Mac and Linux CI. Now allowed for the Vite server only, via `url`/`wait.stdout` readiness, with emulator/CF bring-up still in `globalSetup`. Deferred cleanup, not a flake fix. |
+| Mock 3rd-party/nondeterministic calls                  | **Specialised → NF-E1/E4**                                                   | Realised concretely as the `FUNCTIONS_AI_FAKE` stub seam + stub-before-fire ordering.                                                                                                                                                                 |
+| Freeze time/randomness                                 | **Kept implicitly → NF-E3 / date-anchoring**                                 | #297 already date-anchors the meal planner off live `this-week` rather than hardcoded dates; folded into determinism.                                                                                                                                 |
+| Quarantine, don't ignore                               | **Kept → NF-G3/H1**                                                          | Combined with environment triage so a flaky test is diagnosed, not blanket-retried.                                                                                                                                                                   |
+| Reproduce flake by repetition                          | **Kept → NF-H2**                                                             | `--repeat-each` before claiming a fix.                                                                                                                                                                                                                |
+| `expect.poll`/`toPass` for eventual state              | **Kept → NF-A3/D2/E2**                                                       | Already the suite's idiom; made mandatory for convergence/trigger facts.                                                                                                                                                                              |
+| **(net-new)** Realtime long-poll settle-before-act     | **Added → NF-D1**                                                            | Salt-specific; not in any generic list. The #199 Listen-drop is a leading post-#297 flake cause.                                                                                                                                                      |
+| **(net-new)** Environment-vs-code triage               | **Added → NF-H1**                                                            | Salt-specific poisoned-environment signature; prevents "fixing" tests that aren't broken.                                                                                                                                                             |
+| **(net-new)** Keep the shared `./fixtures/test` import | **Added → NF-I1**                                                            | Importing straight from `@playwright/test` silently drops the clear + tagging + coverage fixtures.                                                                                                                                                    |

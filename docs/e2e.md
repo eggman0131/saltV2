@@ -23,10 +23,10 @@ for the failure mode this prevents.
 There are **two** independent composed stacks. They use distinct compose projects, distinct host
 ports, and distinct named volumes, and **by design never run concurrently**:
 
-| Stack                | Compose file                                  | Compose project        | Scope                         |
-| -------------------- | --------------------------------------------- | ---------------------- | ----------------------------- |
-| e2e (Playwright)     | `docker/test-emulators/docker-compose.test.yml`   | `test-emulators`       | Firestore + Auth + Functions  |
-| Vitest integration   | `docker/test-emulators/docker-compose.vitest.yml` | `salt-vitest-emulators`| Firestore + Auth only         |
+| Stack              | Compose file                                      | Compose project         | Scope                        |
+| ------------------ | ------------------------------------------------- | ----------------------- | ---------------------------- |
+| e2e (Playwright)   | `docker/test-emulators/docker-compose.test.yml`   | `test-emulators`        | Firestore + Auth + Functions |
+| Vitest integration | `docker/test-emulators/docker-compose.vitest.yml` | `salt-vitest-emulators` | Firestore + Auth only        |
 
 Both reuse the single settled image (`docker/test-emulators/Dockerfile` — `node:22` + Temurin 21
 JRE + pinned `firebase-tools`, with the Firestore/UI emulator jars baked in so a cold `up` never
@@ -43,13 +43,13 @@ Both test stacks use project ID `demo-salt`. Isolation is **structural** (separa
 compose projects) plus disjoint host ports — not project-ID-based — so existing `firestore.rules`
 and any `demo-salt`-coded test paths work unchanged.
 
-| Service     | Dev (`firebase.json`) | e2e stack (host) | Vitest stack (host) |
-| ----------- | --------------------- | ---------------- | ------------------- |
-| Firestore   | 8080                  | 8081             | 8082                |
-| Auth        | 9099                  | 9100             | 9101                |
-| Functions   | 5001                  | 5002             | — (not run)         |
-| Emulator hub| 4400                  | 4402             | — (not mapped)      |
-| App (Vite)  | 5173                  | 5174             | — (n/a)             |
+| Service      | Dev (`firebase.json`) | e2e stack (host) | Vitest stack (host) |
+| ------------ | --------------------- | ---------------- | ------------------- |
+| Firestore    | 8080                  | 8081             | 8082                |
+| Auth         | 9099                  | 9100             | 9101                |
+| Functions    | 5001                  | 5002             | — (not run)         |
+| Emulator hub | 4400                  | 4402             | — (not mapped)      |
+| App (Vite)   | 5173                  | 5174             | — (n/a)             |
 
 The e2e container also runs Storage/Hosting/UI internally (they are in `firebase.test.docker.json`)
 but those ports are **not** mapped to the host — the e2e suite only uses Firestore/Auth/Functions.
@@ -98,8 +98,8 @@ parent shell went away and closed the read end. Local spawns now use `'ignore'` 
 already wrote to a real file, and is the only path that reads the log). **Do not spawn the e2e Vite
 with an unread `'pipe'`.**
 
-The discriminator, if you ever see it again: `globalSetup` output says whether the run *spawned* a
-fresh Vite or *reused an identity-matched pid*. Killing `:5174` before the run forces the spawn
+The discriminator, if you ever see it again: `globalSetup` output says whether the run _spawned_ a
+fresh Vite or _reused an identity-matched pid_. Killing `:5174` before the run forces the spawn
 path.
 
 **Both test stacks are host singletons, and the guard refuses them in a worktree.** The `:5174`
@@ -257,8 +257,7 @@ test before anyone noticed (issue #580).
 
 The Dockerfile fetches a Temurin JRE from `packages.adoptium.net` and `firebase-tools` + the
 emulator jars from npm. Rebuilding it on every run put two third-party registries on the critical
-path of every CI run — and on 2026-07-24 `apt-get install temurin-21-jre` failed outright (exit
-100) and took the e2e job with it.
+path of every CI run — and on 2026-07-24 `apt-get install temurin-21-jre` failed outright (exit 100) and took the e2e job with it.
 
 So the image is built **once per Dockerfile change** by
 [`.github/workflows/emulator-image.yml`](../.github/workflows/emulator-image.yml) and published to
@@ -304,7 +303,7 @@ three).
 
 ### Flake telemetry (issue #669)
 
-Those artifacts are the *debugging* path, and they are `failure()`-only — which means the **flaky**
+Those artifacts are the _debugging_ path, and they are `failure()`-only — which means the **flaky**
 signal (failed once, passed on the retry) left no trace at all, and workflow logs expire after ~8
 days. "Is the suite flakier than it was two weeks ago, and which tests?" was therefore
 unanswerable by the time anyone asked. #668 was the proof: 128 retry-recovered flakes against 13
@@ -316,21 +315,21 @@ So every shard now also runs
 `apps/web-pwa/e2e-flake-events.ndjson`, passes included. An `if: always()` step wraps that file in
 a `/batch/` envelope with `jq` and `curl`s it to PostHog.
 
-| Property | Why it is there |
-| --- | --- |
-| `status` | `passed` / `flaky` / `failed` / `skipped`, collapsed from `TestCase.outcome()` |
-| `retries` | attempts − 1; a `flaky` record is `retries ≥ 1` by definition |
-| `shard`, `shard_total` | #668's pattern was flakiness following shard **position**, not the test — invisible without this |
-| `test_title`, `test_file`, `project` | the breakdown keys |
-| `duration_ms`, `error` | deciding attempt's duration; first line of the failing attempt, de-coloured and capped at 300 chars |
-| `failed_attempt_duration_ms` | duration of the attempt that actually FAILED (null when nothing failed) — `duration_ms` alone is the passing retry's time and can wildly understate a timeout |
-| `failure_kind` | `test-timeout` / `assertion` / `error` — how it failed, not just that it did |
-| `test_index`, `file_index` | position in the shard's run order (0-based) and the index of the test's file — flakes cluster at the start of a shard (the cold-server class) |
-| `ms_into_shard` | wall-clock milliseconds from the shard's first test starting to this one starting — the axis the cold-server effect actually lives on |
-| `error_fingerprint` | the error with volatile bits (ids, counts, timeouts, seeded emails) normalised out, so repeat occurrences group by cause |
-| `ctx_*` | scalars a test contributed via a `flake-context` attachment (see below) — generic, namespaced, reporter knows nothing about the app |
-| `branch`, `commit_sha`, `run_id`, `run_attempt` | which run to go and look at |
-| `source: ci`, `$process_person_profile: false` | CI is not a person and must never mint a person profile |
+| Property                                        | Why it is there                                                                                                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`                                        | `passed` / `flaky` / `failed` / `skipped`, collapsed from `TestCase.outcome()`                                                                                |
+| `retries`                                       | attempts − 1; a `flaky` record is `retries ≥ 1` by definition                                                                                                 |
+| `shard`, `shard_total`                          | #668's pattern was flakiness following shard **position**, not the test — invisible without this                                                              |
+| `test_title`, `test_file`, `project`            | the breakdown keys                                                                                                                                            |
+| `duration_ms`, `error`                          | deciding attempt's duration; first line of the failing attempt, de-coloured and capped at 300 chars                                                           |
+| `failed_attempt_duration_ms`                    | duration of the attempt that actually FAILED (null when nothing failed) — `duration_ms` alone is the passing retry's time and can wildly understate a timeout |
+| `failure_kind`                                  | `test-timeout` / `assertion` / `error` — how it failed, not just that it did                                                                                  |
+| `test_index`, `file_index`                      | position in the shard's run order (0-based) and the index of the test's file — flakes cluster at the start of a shard (the cold-server class)                 |
+| `ms_into_shard`                                 | wall-clock milliseconds from the shard's first test starting to this one starting — the axis the cold-server effect actually lives on                         |
+| `error_fingerprint`                             | the error with volatile bits (ids, counts, timeouts, seeded emails) normalised out, so repeat occurrences group by cause                                      |
+| `ctx_*`                                         | scalars a test contributed via a `flake-context` attachment (see below) — generic, namespaced, reporter knows nothing about the app                           |
+| `branch`, `commit_sha`, `run_id`, `run_attempt` | which run to go and look at                                                                                                                                   |
+| `source: ci`, `$process_person_profile: false`  | CI is not a person and must never mint a person profile                                                                                                       |
 
 **Authoring `ctx_*` correlation data.** A test can attach app-side state at the moment it failed —
 promoted from artifact-only to queryable — via the helpers in

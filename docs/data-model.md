@@ -23,7 +23,7 @@ Unlike `chatSessions` it has **no TTL** — a cook may span several days — and
 orphan cleanup (deleted recipe → delete session) is client-side only.
 
 Its read/delete rule also permits `resource == null` (issue #558). **Do not remove
-that clause.** The deterministic id means the cook page subscribes *before* the
+that clause.** The deterministic id means the cook page subscribes _before_ the
 session exists, and a rule that dereferences `resource.data` on an absent document
 is denied — which kills the listener for good, not just for that read. Both emulator
 suites cover it.
@@ -45,7 +45,7 @@ dismissed timer just leaves the array, and one left ringing over a day is pruned
 the next start.
 
 Its rule is the one that **deliberately has no `resource == null` clause, and must
-not gain one.** The document id simply *is* the uid, so ownership is provable from
+not gain one.** The document id simply _is_ the uid, so ownership is provable from
 the path and the rule never dereferences `resource.data` at all; the absent-document
 denial that forced the clause onto the other two cannot arise here.
 
@@ -61,11 +61,11 @@ would clobber it under LWW.
 It serves several producers that **deliberately share one collection**, the key
 prefixes keeping the key spaces apart:
 
-| Producer | Key | Issue |
-| --- | --- | --- |
-| Cook timers | `${sessionId}_${timerId}_${endsAtMs}` | #544 |
-| Batch stage reminders | `batch_${batchId}_${stageId}_${plannedStartAtMs}` | #812 |
-| Standalone kitchen timers | `kitchen_${uid}_${timerId}_${endsAtMs}` | #842 |
+| Producer                  | Key                                               | Issue |
+| ------------------------- | ------------------------------------------------- | ----- |
+| Cook timers               | `${sessionId}_${timerId}_${endsAtMs}`             | #544  |
+| Batch stage reminders     | `batch_${batchId}_${stageId}_${plannedStartAtMs}` | #812  |
+| Standalone kitchen timers | `kitchen_${uid}_${timerId}_${endsAtMs}`           | #842  |
 
 A second collection of the same kind, with the same `allow read, write: if false`
 rules and the same purpose, would be pure duplication — **do not add one.** The
@@ -78,7 +78,7 @@ Retention on this collection and on `chatSessions` has its own runbook:
 
 One tiny family-shared document per shop trip (issue #629).
 
-Not a field on a shopping list — it is a fact about the household's *week*, read by
+Not a field on a shopping list — it is a fact about the household's _week_, read by
 both the planner and the reminder. Not a field on `mealPlans/{startDate}` either: a
 week document only exists once someone plans that week, but the shop happens
 regardless, and keeping it separate means marking a shop never contends with a
@@ -135,12 +135,12 @@ still occupies a slot, because it is attached on its own rather than chosen.
 Always `.safeParse()`, then handle by boundary type — the shape of the failure path
 is what differs, not the decision to validate:
 
-| Boundary | On failure |
-| --- | --- |
+| Boundary                                                                               | On failure                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Adapter single-document read — one-shot (`load(id)`) **or live** (`subscribeDocument`) | log the rejection, then `Failure<DomainError>` (`{ kind: 'StorageError', reason: 'corruption' }`) — never throw across an internal layer seam, and never a `null`: `null` is what an ABSENT document delivers, so answering a refusal with one tells the caller the document was never written (#928) |
-| Adapter list reads & COLLECTION subscriptions | skip the invalid document, log it, return the valid subset; one corrupt document must not fail the whole read. Stream-level errors still surface via `onError` |
-| Callable CF entrypoints | `throw new HttpsError('invalid-argument', …)` — the Firebase callable protocol for rejecting bad client input, not an internal seam |
-| Firestore triggers | log and return; there is no caller to surface a `Failure` to |
+| Adapter list reads & COLLECTION subscriptions                                          | skip the invalid document, log it, return the valid subset; one corrupt document must not fail the whole read. Stream-level errors still surface via `onError`                                                                                                                                        |
+| Callable CF entrypoints                                                                | `throw new HttpsError('invalid-argument', …)` — the Firebase callable protocol for rejecting bad client input, not an internal seam                                                                                                                                                                   |
+| Firestore triggers                                                                     | log and return; there is no caller to surface a `Failure` to                                                                                                                                                                                                                                          |
 
 ## Back-compat
 

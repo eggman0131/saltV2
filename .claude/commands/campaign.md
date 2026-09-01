@@ -9,11 +9,11 @@ model: opus
 
 Arguments: $ARGUMENTS → issue numbers (space- or comma-separated), plus optional flags anywhere in the string:
 
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--pool N` | 2 | Concurrent workers. See **Pool** below before raising it. |
-| `--max-diff N` | 1500 | Changed-line ceiling per PR, enforced by the worker. |
-| `--stop-at-green` | off | Review and leave PRs green; do not run the merge queue. |
+| Flag              | Default | Meaning                                                   |
+| ----------------- | ------- | --------------------------------------------------------- |
+| `--pool N`        | 2       | Concurrent workers. See **Pool** below before raising it. |
+| `--max-diff N`    | 1500    | Changed-line ceiling per PR, enforced by the worker.      |
+| `--stop-at-green` | off     | Review and leave PRs green; do not run the merge queue.   |
 
 `/campaign 641 652 703 --pool 3` is the shape. Unrecognised flags are an error, not a guess — say which and stop.
 
@@ -33,7 +33,7 @@ The success condition is a clean tree when Daniel comes back: every issue merged
 - **Settle how you reach GitHub before you write a single brief.** `command -v gh` decides it, and the answer is a property of where this session runs, not of the repo. Every `gh` recipe in this file is written in the first form below; under the second, every brief you write carries the substitution in place of them.
   - **`gh` present (the Mac).** Use it throughout, with two harness traps that every brief must also carry: plain `gh issue view` / `gh pr view` exit 0 with **empty stdout** in a non-TTY session, so use the `--json` forms or `gh api` and treat empty comment output as a failed fetch rather than "no comments"; and every `gh` call needs the sandbox disabled.
   - **`gh` absent (a cloud session), and it cannot be made present.** `api.github.com` is refused by the session proxy and `gh` itself by the permission classifier. GitHub is reachable only through the GitHub MCP server. `git push` is unaffected — only the API layer is substituted. What changes: CI is waited on by polling `pull_request_read` on a backgrounded timer rather than `gh pr checks --watch`, which makes it the one blocking wait this command has that no longer blocks inside a single call; heavy-suite conclusions come from the workflow-jobs listing rather than `gh run view --json jobs`, with **empty output → park** unchanged; and `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back. Record the deviation once in the ledger's **Plan** block and never again. Campaign #1064 established all of this the hard way; do not rediscover it.
-- **Waiting is ending your turn, not running a command.** After you dispatch a worker, a reviewer, a fix agent or a conflict resolver there is nothing for you to do until it returns, so stop — a final line and **no tool call**. A tool call is what keeps a turn open, so a no-op "yield" (`echo hold`, `true`, a bare `sleep`) is not waiting; it is polling at API speed, re-sending the whole campaign context every few seconds. You do not need to poll, because you already armed the wake signals: a background `Agent` re-invokes you when it returns, and the watchdog's `sleep` re-invokes you when it exits. Campaign #1046 had this backwards and ran `echo hold` 1,304 times across eight hours — roughly $600 of cache reads to learn nothing, while its own transcript said "polling just burns turns". The only legitimate blocking wait is one that blocks *inside* a single call, like `gh pr checks <pr> --watch` while a PR's CI runs.
+- **Waiting is ending your turn, not running a command.** After you dispatch a worker, a reviewer, a fix agent or a conflict resolver there is nothing for you to do until it returns, so stop — a final line and **no tool call**. A tool call is what keeps a turn open, so a no-op "yield" (`echo hold`, `true`, a bare `sleep`) is not waiting; it is polling at API speed, re-sending the whole campaign context every few seconds. You do not need to poll, because you already armed the wake signals: a background `Agent` re-invokes you when it returns, and the watchdog's `sleep` re-invokes you when it exits. Campaign #1046 had this backwards and ran `echo hold` 1,304 times across eight hours — roughly $600 of cache reads to learn nothing, while its own transcript said "polling just burns turns". The only legitimate blocking wait is one that blocks _inside_ a single call, like `gh pr checks <pr> --watch` while a PR's CI runs.
 - **Never open a shell command with `cd`.** Use `git -C <worktree>` and absolute paths; for a non-git command that needs a directory, `(cd <path> && …)` only when nothing else will do. The permission allowlist matches whole command strings, so `cd <path> && cat x && sed -n y` matches none of the `cat`/`sed`/`git` entries that would have let each part through unprompted — a compound command led by `cd` is the single largest source of permission stops in this command, and every one of them blocks the fleet on a human. This applies to every brief you write, not just your own calls.
 
 ## Reporting — five moments, and silence in between
@@ -58,14 +58,14 @@ Each message: the state in one line, then the decision or the recommendation. **
 
 So this command names a model at **every** `Agent` call rather than letting one inherit:
 
-| Spawn | Model | Why |
-| --- | --- | --- |
-| you, the coordinator | `opus` | you adjudicate technical disputes without being allowed to read the code, and your merges are irreversible |
-| footprint extractor | `haiku` | fixed extraction against a known heading set |
-| worker (`/run`) | `opus` | owns validation and the git history |
-| reviewer | `opus` | the other genuine reasoning job in this command |
-| fix agent | `sonnet` | findings arrive enumerated and the scope is closed |
-| conflict resolver | `sonnet` | you have already classified the conflict; it applies a rule you handed it |
+| Spawn                | Model    | Why                                                                                                        |
+| -------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| you, the coordinator | `opus`   | you adjudicate technical disputes without being allowed to read the code, and your merges are irreversible |
+| footprint extractor  | `haiku`  | fixed extraction against a known heading set                                                               |
+| worker (`/run`)      | `opus`   | owns validation and the git history                                                                        |
+| reviewer             | `opus`   | the other genuine reasoning job in this command                                                            |
+| fix agent            | `sonnet` | findings arrive enumerated and the scope is closed                                                         |
+| conflict resolver    | `sonnet` | you have already classified the conflict; it applies a rule you handed it                                  |
 
 Never omit `model:` and let it inherit. If you find yourself running on anything other than Opus, say so once in the ledger's **Plan** block before you dispatch anything — that line is the only chance anyone gets to catch it before the bill.
 
@@ -115,7 +115,7 @@ Spawn one extractor per issue, all in one message so they run concurrently, each
 
 - **Ordering may act on it.** Over-collection there costs a serialisation you did not need, which is the cheap direction and the reason **Conflict graph** tells you to be generous.
 - **Nothing else may.** A footprint is never grounds for a statement about a PR — not a scope breach, not a finding, not a park reason, not a line in a review or a ledger. You hold neither the issue's real wording nor the diff, so scope is not yours to adjudicate.
-- **When it looks breached, hand it over as a question.** Add one line to that PR's reviewer brief — *"the issue's Must-not-touch says `<the entry, verbatim>`; check whether the diff breaches it"* — and take the reviewer's answer as the verdict, including when the answer is no. The reviewer fetches both the issue and the diff, so it is the only actor in this command that can tell a real breach from an extraction artefact. A prohibition worth enforcing survives being asked as a question.
+- **When it looks breached, hand it over as a question.** Add one line to that PR's reviewer brief — _"the issue's Must-not-touch says `<the entry, verbatim>`; check whether the diff breaches it"_ — and take the reviewer's answer as the verdict, including when the answer is no. The reviewer fetches both the issue and the diff, so it is the only actor in this command that can tell a real breach from an extraction artefact. A prohibition worth enforcing survives being asked as a question.
 
 `RUNNABLE: no` → **confirm it before you act on it.** A false negative here silently parks a good issue and nothing downstream ever contradicts it, so spend the one call: `gh api repos/{owner}/{repo}/issues/N --jq '.body' | grep -c '^### Phase'` returns a count rather than prose, which keeps it inside your standing rule. Where there is no `gh` (see **Standing rules**), have a `haiku` agent fetch the body and return the count alone — never the body, and never into your context. Zero → park it and say which. Non-zero → the extractor was wrong; dispatch the issue and let /run be the judge, since it reads the issue from source and returns BLOCKED on a phase block missing the fields its loop consumes.
 
@@ -205,7 +205,7 @@ Explicitly, with `git worktree add` — **not** the Agent tool's `isolation: "wo
 
 ## Dispatch
 
-**Workers are Agent-tool subagents on `opus`, spawned in the background — one per worktree.** This choice is load-bearing, so do not substitute a mechanism: a subagent has a task id the harness can kill (`TaskStop`) and *confirm* killed, it cannot outlive your session — so a resumed campaign never inherits a live worker it cannot see — and it runs unattended without any permission-flag guesswork. Record the agent's id in the ledger row **at the moment you dispatch it**, before anything else. A handle you did not record at dispatch cannot be recovered afterwards, and you will not read logs to find it.
+**Workers are Agent-tool subagents on `opus`, spawned in the background — one per worktree.** This choice is load-bearing, so do not substitute a mechanism: a subagent has a task id the harness can kill (`TaskStop`) and _confirm_ killed, it cannot outlive your session — so a resumed campaign never inherits a live worker it cannot see — and it runs unattended without any permission-flag guesswork. Record the agent's id in the ledger row **at the moment you dispatch it**, before anything else. A handle you did not record at dispatch cannot be recovered afterwards, and you will not read logs to find it.
 
 **Arm a watchdog with every dispatch.** Every worker carries a budget — state it in the brief (default: no single phase longer than 45 minutes, no worker longer than 3 hours) — but a budget nobody checks is dead text: a spinning worker does not return BLOCKED, it returns nothing, and nothing wakes you for a worker that has hung. So alongside each worker, start a backgrounded shell that is nothing but `sleep <budget-seconds>` (Bash, `run_in_background: true`), named for the issue. Its exit re-invokes you; record its shell id in the same ledger row. Worker returns on time → `TaskStop` its watchdog as part of processing the return. Watchdog fires first → the budget is breached.
 
@@ -223,6 +223,7 @@ Brief each worker with:
 > - run.md's pause conditions are yours, with one change: you cannot wait for a human. On a pause condition, stop, commit what you have, leave the branch as it is, and return BLOCKED with the reason.
 >
 > Return, and nothing else:
+>
 > ```
 > ISSUE: N
 > BRANCH: <name>          PR: <number or NONE>
@@ -265,6 +266,7 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 > Review PR #X against issue #N adversarially. Assume it is wrong and find where.
 >
 > Gather your own material first — every `gh` call needs the sandbox disabled, and the plain `--comments` forms print nothing in this harness, so empty output is a failed fetch and never "no comments":
+>
 > - the issue: `gh api repos/{owner}/{repo}/issues/N --jq '.body'`
 > - the per-phase handoff comments: `gh api "repos/{owner}/{repo}/issues/N/comments"`
 > - the PR discussion, from **both** endpoints, because conversation comments and review bodies live apart: `gh api "repos/{owner}/{repo}/issues/<pr>/comments"` and `gh api "repos/{owner}/{repo}/pulls/<pr>/reviews"`
@@ -277,14 +279,16 @@ So: confirm, don't split. `gh pr view <pr> --json additions,deletions,changedFil
 > Scope is the issue's phases. The handoff comments carry **Out of scope (do not suggest)** — that list is binding. Suggesting work the issue deliberately deferred is a defect in the review, not a finding.
 >
 > **You are hunting defects, not auditing quality.** Anything a tool can find, a tool has already found. Look at the four things the gates structurally cannot see, in this order — the first two are where real defects live and where most of your effort belongs:
+>
 > 1. **Correctness** — an input, a state, or an ordering under which this code does the wrong thing. Concurrency, LWW clobbering, partial failure, empty and boundary cases, a `Failure` swallowed, a trigger racing a client write. **Including a false invariant:** a safety property this diff asserts — in a header comment, a test name, a doc paragraph or the PR body — which the code does not actually guarantee. Read each such claim against the code that is supposed to enforce it and name the input, state or second construction path that falsifies it. Campaign #1064 shipped five of these, every one green on every gate, and three would have destroyed production data.
 > 2. **Architectural intent** — legal by depcruise but wrong in spirit: policy leaking into an adapter, a domain concern implemented in a component, a rule that will be true today and unenforced tomorrow.
 > 3. **Duplication** — semantic, not textual: the same rule expressed in two places that can now disagree. Not duplicated test scaffolding, not similar-looking code.
 > 4. **Testing** — report a gap **only** where a missing assertion means a real defect could ship undetected, and say what that defect would be. Do not audit against a checklist; do not open `docs/unit-test-spec.md` or `docs/e2e-test-spec.md` — 50KB of checklist compels enumeration, and enumeration is what makes a review unreadable. No findings about test style, test naming, or duplicated test helpers.
 >
-> **Documentation is not your lens.** `pr-doc-review.yml` has already run on this PR and is the tool that owns it. Raise a doc point only when the diff makes a specific existing sentence factually false *and* the doc review did not catch it. A false invariant is not a doc point and this rule does not apply to it — it is lens 1, wherever the sentence happens to live.
+> **Documentation is not your lens.** `pr-doc-review.yml` has already run on this PR and is the tool that owns it. Raise a doc point only when the diff makes a specific existing sentence factually false _and_ the doc review did not catch it. A false invariant is not a doc point and this rule does not apply to it — it is lens 1, wherever the sentence happens to live.
 >
 > Severity, and be strict about the top one:
+>
 > - **blocking** — you can state a concrete failure: this input, this state, this wrong output or crash. If you cannot name one, it is not blocking.
 > - **should-fix** — real, but ships safely and can be a follow-up. Append `[trivial]` to the line when the whole fix is **≤5 lines and mechanical** in a file this diff already touches — a stale line reference, a wrong glob, a sentence this PR made false. You are the only actor holding the diff, so you are the only one who can size it; the coordinator decides what to do with the mark.
 > - **note** — style, taste, preference. Say them in one line each or not at all.
@@ -300,6 +304,7 @@ Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose
 > In worktree `<path>` on branch `<branch>`, address these review findings — every blocking one, plus any marked `[trivial]`: [list]. Do not rebase, do not merge, do not touch another branch, and do not take work beyond the findings — the issue's Out of scope list still binds. Run the safe gate set, commit, push.
 >
 > Return:
+>
 > ```
 > FIXED: [finding → what changed]
 > REJECTED: [finding → why it is wrong, or why the fix is worse than the bug]
@@ -308,7 +313,7 @@ Do not re-dispatch /run for this. run.md is a phase loop keyed to an issue whose
 
 **Trivial should-fix findings ride along.** Filing has a floor cost that a two-line edit does not clear. Send a `[trivial]`-marked **should-fix** finding to the fix agent in round 1, rather than listing it, once you have confirmed both of the things you can confirm without a diff:
 
-- **the file is already in this PR's footprint** — `gh pr view <pr> --json files`, which is yours under **Standing rules**: file names are not diffs. No new footprint means the queue's conflict model is untouched, and that is the condition making the rest of this safe — /run's scope discipline protects *footprint*, not line count, and **Dispatch** scores conflicts on deliverables;
+- **the file is already in this PR's footprint** — `gh pr view <pr> --json files`, which is yours under **Standing rules**: file names are not diffs. No new footprint means the queue's conflict model is untouched, and that is the condition making the rest of this safe — /run's scope discipline protects _footprint_, not line count, and **Dispatch** scores conflicts on deliverables;
 - **it needs no decision from Daniel** — no design fork, no rule change, no question about what the right shape would be. Judge this from the finding's one-line summary; if you cannot tell, that is a no.
 
 The third condition — ≤5 lines and mechanical — is the reviewer's `[trivial]` mark, because sizing a fix needs the diff and you do not read diffs. Unmarked should-fix findings are never sent, however small they sound.
@@ -394,7 +399,7 @@ gh run view <id> --json jobs --jq '.jobs[] | select(.name | test("E2E|integratio
 
 - `success` → land it in the ledger.
 - `skipped`, and the batch's changed files are only docs/CI/meta paths →
-  legitimate skip: say so in the ledger. Under the queue this is the *only*
+  legitimate skip: say so in the ledger. Under the queue this is the _only_
   reason a heavy suite skips; "the branch was behind" no longer exists.
 - **empty output → park.** No matching jobs means the job names have moved and
   this check is now blind. Cannot-confirm is never green.

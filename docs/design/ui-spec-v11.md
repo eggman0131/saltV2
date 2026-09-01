@@ -30,14 +30,14 @@ v0.6 §1.3 says outright that adding a third value to `ImageCropperAspect` is a 
 
 The new consumer is the pictogram upload (issue #892): a person supplies their own photograph in place of the AI-drawn icon for a grocery, a product form, a kitchen tool or a piece of equipment. The uploaded bytes go through the same server-side framing every generated pictogram goes through — `normalizeIconFraming` with `contentMax: 108` — and **that step is why the crop shape matters**, in a way it does not for a hero.
 
-`normalizeIconFraming` finds the subject's **alpha** bounding box, scales its longer side to `contentMax`, and re-pads it dead-centre in a 128px transparent square. Generated pictograms have a real alpha channel (the flat background is removed first), so the box is the drawn subject. **An uploaded photograph is fully opaque**, so its bounding box is the whole crop — and the longer side of *that* is what gets scaled to 108. The consequence is direct:
+`normalizeIconFraming` finds the subject's **alpha** bounding box, scales its longer side to `contentMax`, and re-pads it dead-centre in a 128px transparent square. Generated pictograms have a real alpha channel (the flat background is removed first), so the box is the drawn subject. **An uploaded photograph is fully opaque**, so its bounding box is the whole crop — and the longer side of _that_ is what gets scaled to 108. The consequence is direct:
 
-| Crop shape | Framed result | Beside a pictogram bounded ~108 × ~100 |
-| --- | --- | --- |
-| `1:1` | 108 × 108 | matches |
-| `3:2` | 108 × 72 | reads short |
-| a 4:3 phone photo under `free` | 108 × 81 | reads short |
-| a 16:9 phone photo under `free` | 108 × 61 | reads conspicuously short |
+| Crop shape                      | Framed result | Beside a pictogram bounded ~108 × ~100 |
+| ------------------------------- | ------------- | -------------------------------------- |
+| `1:1`                           | 108 × 108     | matches                                |
+| `3:2`                           | 108 × 72      | reads short                            |
+| a 4:3 phone photo under `free`  | 108 × 81      | reads short                            |
+| a 16:9 phone photo under `free` | 108 × 61      | reads conspicuously short              |
 
 Neither existing mode delivers the square. `'3:2'` is the wrong shape by construction, and `'free'` **is not a free-hand crop** — v0.6 §1.4 locks its frame to the source image's own ratio, so it hands back whatever shape the camera produced and gives the user no way to square it up. A third locked ratio is the only route, and it is a smaller change than either alternative: no second primitive, no numeric aspect, no re-implementation of downscale/WebP encoding in a consuming app.
 
@@ -45,14 +45,14 @@ Neither existing mode delivers the square. `'3:2'` is the wrong shape by constru
 
 v0.6 §1 stays in force in full, with one clause amended.
 
-1. **§1.3's "two named modes" and its closing sentence, "Adding a third value is a spec amendment, not a call-site decision."** The union is now three named modes. The sentence itself is not repealed — it is **obeyed**, by this document, and it carries forward unchanged to any *fourth* value. The hazard it guards is untouched: `aspect` is still a string union of named modes and still cannot express "some other fixed ratio", so no call site can silently violate the hero contract.
+1. **§1.3's "two named modes" and its closing sentence, "Adding a third value is a spec amendment, not a call-site decision."** The union is now three named modes. The sentence itself is not repealed — it is **obeyed**, by this document, and it carries forward unchanged to any _fourth_ value. The hazard it guards is untouched: `aspect` is still a string union of named modes and still cannot express "some other fixed ratio", so no call site can silently violate the hero contract.
 
 Everything else in v0.6 §1 is untouched and binding: the active-aspect concept (§1.4), the free-mode measurement rules and its placeholder stage, the amended rendering pipeline (§1.5), and the whole of §1.7 except the sentence above.
 
 ## 1.3 Props
 
-| Name     | Type                       | Default | Notes                                                                                   |
-| -------- | -------------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| Name     | Type                       | Default | Notes                                                                                                                                                             |
+| -------- | -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `aspect` | `'3:2' \| '1:1' \| 'free'` | `'3:2'` | Which ratio the crop frame is locked to. `'3:2'` is the recipe-hero frame; `'1:1'` is the Tier-1 pictogram frame; `'free'` locks to the source image's own ratio. |
 
 ```ts

@@ -62,8 +62,8 @@ services:
       # repo mount is read-only. Removed by `down -v`.
       - vitest-emulator-work:/work
     ports:
-      - "127.0.0.1:8082:8081" # Firestore (host 8082 -> container 8081)
-      - "127.0.0.1:9101:9100" # Auth      (host 9101 -> container 9100)
+      - '127.0.0.1:8082:8081' # Firestore (host 8082 -> container 8081)
+      - '127.0.0.1:9101:9100' # Auth      (host 9101 -> container 9100)
     healthcheck:
       # Override the image's Functions-aware healthcheck: this stack runs no
       # Functions emulator, so "healthy" = Firestore + Auth reachable
