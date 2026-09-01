@@ -58,12 +58,19 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(testDir, '../src');
-const barrelPath = join(testDir, '../../../packages/adapters/firebase-sync/src/index.ts');
+// Resolved through the package specifier rather than a `../../../packages/…`
+// climb out of this app — `docs/unit-test-spec.md` UT-E4. `@salt/firebase-sync`
+// declares `"exports": { ".": "./src/index.ts" }`, so this lands on the barrel
+// wherever the package sits, and the assertions at the bottom of this file are
+// what say it landed on the right one. `createRequire` and not
+// `import.meta.resolve`, which is not proven to work under Vite's transform.
+const barrelPath = createRequire(import.meta.url).resolve('@salt/firebase-sync');
 
 /** Every source file under `src`, found by walking — never by a hand-kept list. */
 function walk(dir: string): string[] {

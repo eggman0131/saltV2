@@ -106,14 +106,13 @@ export const violationCeilings = {
     'UT-G3': 0,
     'UT-G4': 0,
   },
-  // The UT-E4 is `apps/web-pwa/tests/subscriptionReportingGuard.test.ts:66`,
-  // which reads firebase-sync's barrel through `../../../packages/adapters/…`.
-  // #1134 reported 0 because it grepped for four `../` and this one climbs
-  // three. It is the genuine article — a guard that stops seeing its subject the
-  // day that barrel moves — and it is frozen, not fixed, because #1134 edits no
-  // existing test file.
+  // UT-E4 was 1 here: `subscriptionReportingGuard.test.ts` read firebase-sync's
+  // barrel through `../../../packages/adapters/…`, and #1134 froze it rather
+  // than fixing it because that issue edited no existing test file. #1163
+  // resolved it through the `@salt/firebase-sync` specifier and dropped the
+  // ceiling in the same commit, so the rule is pinned rather than exempted.
   //
-  // Three OTHER files match a raw grep and are not counted, correctly: they
+  // Three files match a raw grep and are not counted, correctly: they
   // spell a `../../packages/` path inside a comment ABOUT the rule
   // (`sheetCallSites`, `sharedHelperGuard`, `extractProcessStages`). That is the
   // must-not-match self-test case in the guard.
@@ -123,7 +122,7 @@ export const violationCeilings = {
     'UT-C1': 0,
     'UT-C2': 33,
     'UT-C3': 31,
-    'UT-E4': 1,
+    'UT-E4': 0,
     'UT-G1': 0,
     'UT-G3': 0,
     'UT-G4': 0,
