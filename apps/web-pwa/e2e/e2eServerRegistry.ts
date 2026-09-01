@@ -4,15 +4,23 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-// The e2e Vite server on :5174 is HOST-GLOBAL (one server per port across every
-// worktree/checkout on this machine — Playwright does not manage it, issue #79).
-// So its reuse sentinel is host-global too: a single file in the OS temp dir,
-// keyed by port, NOT per-worktree. A server rooted at a different checkout, wired
-// to different emulator ports, or built from a different git sha must NOT be
-// reused — Vite serves files live from its cwd + env, so a mismatched server
+import { E2E_APP_PORT } from './e2eAppOrigin';
+
+// The e2e Vite server on E2E_APP_PORT is HOST-GLOBAL (one server per port across
+// every worktree/checkout on this machine — Playwright does not manage it, issue
+// #79). So its reuse sentinel is host-global too: a single file in the OS temp
+// dir, keyed by port, NOT per-worktree. A server rooted at a different checkout,
+// wired to different emulator ports, or built from a different git sha must NOT
+// be reused — Vite serves files live from its cwd + env, so a mismatched server
 // would silently serve the wrong app. The sentinel records the identity of the
 // server we spawned so a later run can verify it before reusing.
-export const SENTINEL_PATH = path.join(os.tmpdir(), 'salt-e2e-5174.json');
+//
+// The port is interpolated, not written out (#1162). It was `salt-e2e-5174.json`
+// — a sixth copy of the number that would have survived a port move intact,
+// misnaming the file rather than disagreeing with anything, because both
+// globalSetup and globalTeardown read this same constant. Harmless and silent,
+// which is exactly why #1132 missed it.
+export const SENTINEL_PATH = path.join(os.tmpdir(), `salt-e2e-${E2E_APP_PORT}.json`);
 
 export interface E2eServerSentinel {
   pid: number;
