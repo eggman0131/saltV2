@@ -35,7 +35,10 @@ const mapFile = 'docs-map.md';
 // the one file outside it is called out by its own row today, and is listed
 // here so that moving or dropping that row is caught rather than silently
 // losing the only pointer to it.
-const REQUIRED_IN_MAP = [(f) => f.startsWith('docs/') && f.endsWith('.md'), (f) => f === 'infra/bigquery-export/README.md'];
+const REQUIRED_IN_MAP = [
+  (f) => f.startsWith('docs/') && f.endsWith('.md'),
+  (f) => f === 'infra/bigquery-export/README.md',
+];
 
 const errors = [];
 const warnings = [];
@@ -68,7 +71,9 @@ function extractSection(markdown) {
 const source = readFileSync(path.join(repoRoot, mapFile), 'utf8');
 const section = extractSection(source);
 if (!section) {
-  console.error(`${mapFile}: no "Docs map" heading found — the map is the routing source for doc review and for every agent; it cannot go missing.`);
+  console.error(
+    `${mapFile}: no "Docs map" heading found — the map is the routing source for doc review and for every agent; it cannot go missing.`,
+  );
   process.exit(1);
 }
 
@@ -86,7 +91,10 @@ section.lines.forEach((line, i) => {
     if (!filePath) continue;
     linkTargets.add(filePath);
     if (!existsSync(path.join(repoRoot, filePath))) {
-      fail(`${mapFile}:${section.offset + i + 1}`, `links to \`${filePath}\`, which does not exist. If it moved, update the link; if it was deleted, remove the row.`);
+      fail(
+        `${mapFile}:${section.offset + i + 1}`,
+        `links to \`${filePath}\`, which does not exist. If it moved, update the link; if it was deleted, remove the row.`,
+      );
     }
   }
 });
@@ -109,13 +117,22 @@ section.lines.forEach((line, i) => {
 const tableRows = section.lines
   .map((line, i) => ({ line, lineNo: section.offset + i + 1 }))
   .filter(({ line }) => line.trimStart().startsWith('|'))
-  .map(({ line, lineNo }) => ({ cells: line.split('|').slice(1, -1).map((c) => c.trim()), lineNo }))
+  .map(({ line, lineNo }) => ({
+    cells: line
+      .split('|')
+      .slice(1, -1)
+      .map((c) => c.trim()),
+    lineNo,
+  }))
   .filter(({ cells }) => cells.length >= 3)
   // Drop the header row and its `---|---|---` separator.
   .filter(({ cells }) => cells[0] !== 'Read this' && !/^-+$/.test(cells[0].replace(/\s/g, '')));
 
 if (tableRows.length === 0) {
-  fail(mapFile, 'the Docs map table has no rows — it was probably reformatted in a way this parser cannot read. Fix the table or this script, but do not leave the map unchecked.');
+  fail(
+    mapFile,
+    'the Docs map table has no rows — it was probably reformatted in a way this parser cannot read. Fix the table or this script, but do not leave the map unchecked.',
+  );
 }
 
 for (const { cells, lineNo } of tableRows) {
@@ -123,7 +140,10 @@ for (const { cells, lineNo } of tableRows) {
   const globs = [...cells[1].matchAll(/`([^`]+)`/g)].map(([, g]) => g.trim()).filter(Boolean);
 
   if (globs.length === 0) {
-    fail(`${mapFile}:${lineNo}`, `row for \`${doc}\` has no Tracks glob, so nothing routes to it. Give it a glob or drop the row.`);
+    fail(
+      `${mapFile}:${lineNo}`,
+      `row for \`${doc}\` has no Tracks glob, so nothing routes to it. Give it a glob or drop the row.`,
+    );
     continue;
   }
 
@@ -134,7 +154,9 @@ for (const { cells, lineNo } of tableRows) {
       `row for \`${doc}\` routes nothing — none of its Tracks globs (${dead.map((g) => `\`${g}\``).join(', ')}) matches a tracked file. Fix the glob, or drop the row if the code it tracked is gone.`,
     );
   } else if (dead.length > 0) {
-    warnings.push(`${mapFile}:${lineNo} — row for \`${doc}\` has ${dead.length} glob(s) matching nothing: ${dead.map((g) => `\`${g}\``).join(', ')}. Fine if the code is not built yet; stale otherwise.`);
+    warnings.push(
+      `${mapFile}:${lineNo} — row for \`${doc}\` has ${dead.length} glob(s) matching nothing: ${dead.map((g) => `\`${g}\``).join(', ')}. Fine if the code is not built yet; stale otherwise.`,
+    );
   }
 }
 
@@ -144,7 +166,10 @@ for (const { cells, lineNo } of tableRows) {
 for (const file of trackedFiles) {
   if (!REQUIRED_IN_MAP.some((matches) => matches(file))) continue;
   if (linkTargets.has(file)) continue;
-  fail(file, `is not mentioned anywhere in ${mapFile}. Neither \`docs/\` nor the map itself is auto-loaded, so a doc missing from the map is invisible to every agent — add a row (or a bullet, for a design doc).`);
+  fail(
+    file,
+    `is not mentioned anywhere in ${mapFile}. Neither \`docs/\` nor the map itself is auto-loaded, so a doc missing from the map is invisible to every agent — add a row (or a bullet, for a design doc).`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -152,10 +177,14 @@ for (const file of trackedFiles) {
 for (const warning of warnings) console.warn(`  warning: ${warning}`);
 
 if (errors.length === 0) {
-  console.log(`Docs map OK — ${tableRows.length} rows, ${linkTargets.size} link targets, every row routing${warnings.length ? `, ${warnings.length} warning(s) above` : ''}.`);
+  console.log(
+    `Docs map OK — ${tableRows.length} rows, ${linkTargets.size} link targets, every row routing${warnings.length ? `, ${warnings.length} warning(s) above` : ''}.`,
+  );
   process.exit(0);
 }
 
-console.error(`Docs map check failed (${errors.length} problem${errors.length === 1 ? '' : 's'}):\n`);
+console.error(
+  `Docs map check failed (${errors.length} problem${errors.length === 1 ? '' : 's'}):\n`,
+);
 for (const { where, message } of errors) console.error(`  ${where}\n    ${message}\n`);
 process.exit(1);

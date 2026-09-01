@@ -35,7 +35,7 @@ Why they might disagree.
 `;
 
 describe('parsePairs', () => {
-  it('reads only the numbered entries, not the file\'s own prose headings', () => {
+  it("reads only the numbered entries, not the file's own prose headings", () => {
     const entries = parsePairs(FIXTURE);
     expect(entries.map((e) => e.number)).toEqual([1, 2, 3]);
     expect(entries.map((e) => e.title)).toEqual(['First pair', 'Second pair', 'Third pair']);

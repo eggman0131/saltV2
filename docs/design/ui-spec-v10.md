@@ -51,7 +51,7 @@ tabindex, the arrow/Home/End key handling, the id minting that ties
 `aria-controls` to `aria-labelledby` in both directions, and the focus that must
 survive a re-render. All of that is solved, tested and maintained upstream.
 Hand-rolling it here would be reinvention, and the two primitives in this
-package that *do* hand-roll a headless layer (`RadioGroup`, `Select`) predate the
+package that _do_ hand-roll a headless layer (`RadioGroup`, `Select`) predate the
 decision rather than justify it.
 
 What Salt owns is the vocabulary — the four component names, the count, and the
@@ -61,13 +61,13 @@ Consumer intended: the recipe detail page, switching Ingredients and Method.
 
 ## 8.28.2 Tabs or something else?
 
-| Use | Component |
-| --- | --- |
-| Two or more views of **the same region**, one at a time, all of comparable weight | `Tabs` |
-| Sections that are all part of one document and could all be read at once | `CollapsibleSection` (v0.9 §8.25) — several may be open together; tabs never are |
-| A row that **narrows a list** rather than replacing it | `Chip` + `ChipGroup` (v0.9 §8.23, §8.24) |
-| Two views of the whole **page**, with their own URLs | Routes. A tab strip that changes the address bar is a nav bar wearing the wrong ARIA |
-| A single detail that opens beneath its row | `DisclosureTrigger` (v0.9 §8.26) |
+| Use                                                                               | Component                                                                            |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Two or more views of **the same region**, one at a time, all of comparable weight | `Tabs`                                                                               |
+| Sections that are all part of one document and could all be read at once          | `CollapsibleSection` (v0.9 §8.25) — several may be open together; tabs never are     |
+| A row that **narrows a list** rather than replacing it                            | `Chip` + `ChipGroup` (v0.9 §8.23, §8.24)                                             |
+| Two views of the whole **page**, with their own URLs                              | Routes. A tab strip that changes the address bar is a nav bar wearing the wrong ARIA |
+| A single detail that opens beneath its row                                        | `DisclosureTrigger` (v0.9 §8.26)                                                     |
 
 The distinction that actually decides it: **a tab strip claims that its panels
 are alternatives.** If a reader could reasonably want two of them visible
@@ -126,7 +126,7 @@ need one earns an amendment to this section first.
 **The count is a prop, not something the caller writes into the label.**
 `<TabsTrigger count={19}>Ingredients</TabsTrigger>` renders the number inside the
 button, so it joins the tab's accessible name — the tab announces as
-"Ingredients 19", which is what the tab *is*. Making it a prop rather than
+"Ingredients 19", which is what the tab _is_. Making it a prop rather than
 interpolated text is what lets the style decide the number's size, weight and
 colour once, and keeps it from being a second thing the page has to remember to
 mute. `0` is a real count and renders; only an omitted `count` renders nothing.
@@ -204,38 +204,38 @@ inside the callback sees the tab it has arrived at, not the one it left.
 
 ## 8.29.1 `Tabs`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `value` | `string` | — | The selected tab. `$bindable` — see §8.28.5 |
-| `defaultValue` | `string` | `''` | The initial selection when `value` is not supplied. Read once, untracked |
-| `onValueChange` | `(value: string) => void` | — | Fires on every change, from any cause |
-| `children` | `Snippet` | — | The `TabsList`, then the `TabsContent` panels |
-| `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
+| Prop            | Type                      | Default | Notes                                                                    |
+| --------------- | ------------------------- | ------- | ------------------------------------------------------------------------ |
+| `value`         | `string`                  | —       | The selected tab. `$bindable` — see §8.28.5                              |
+| `defaultValue`  | `string`                  | `''`    | The initial selection when `value` is not supplied. Read once, untracked |
+| `onValueChange` | `(value: string) => void` | —       | Fires on every change, from any cause                                    |
+| `children`      | `Snippet`                 | —       | The `TabsList`, then the `TabsContent` panels                            |
+| `class`         | `string`                  | —       | Merged last via `cn()` (v0.2 §2.3)                                       |
 
 ## 8.29.2 `TabsList`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `ariaLabel` | `string \| undefined` | — | Names the strip. §8.28.6. Explicitly `\| undefined` so a conditional name can be passed straight through under `exactOptionalPropertyTypes`, matching `ChipGroupProps['ariaLabel']` |
-| `children` | `Snippet` | — | The `TabsTrigger`s |
-| `class` | `string` | — | Merged last via `cn()` |
+| Prop        | Type                  | Default | Notes                                                                                                                                                                               |
+| ----------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ariaLabel` | `string \| undefined` | —       | Names the strip. §8.28.6. Explicitly `\| undefined` so a conditional name can be passed straight through under `exactOptionalPropertyTypes`, matching `ChipGroupProps['ariaLabel']` |
+| `children`  | `Snippet`             | —       | The `TabsTrigger`s                                                                                                                                                                  |
+| `class`     | `string`              | —       | Merged last via `cn()`                                                                                                                                                              |
 
 ## 8.29.3 `TabsTrigger`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `value` | `string` | — | **Required.** Ties this tab to the panel with the same value |
-| `count` | `number \| undefined` | — | Rendered after the label, inside the button, and part of the accessible name. `0` renders; omitted renders nothing. §8.28.4 |
-| `children` | `Snippet` | — | The tab's label. Text only |
-| `class` | `string` | — | Merged last via `cn()` |
+| Prop       | Type                  | Default | Notes                                                                                                                       |
+| ---------- | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `value`    | `string`              | —       | **Required.** Ties this tab to the panel with the same value                                                                |
+| `count`    | `number \| undefined` | —       | Rendered after the label, inside the button, and part of the accessible name. `0` renders; omitted renders nothing. §8.28.4 |
+| `children` | `Snippet`             | —       | The tab's label. Text only                                                                                                  |
+| `class`    | `string`              | —       | Merged last via `cn()`                                                                                                      |
 
 ## 8.29.4 `TabsContent`
 
-| Prop | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `value` | `string` | — | **Required.** Ties this panel to the trigger with the same value |
-| `children` | `Snippet` | — | The page's own markup (§8.28.3) |
-| `class` | `string` | — | Merged last via `cn()` |
+| Prop       | Type      | Default | Notes                                                            |
+| ---------- | --------- | ------- | ---------------------------------------------------------------- |
+| `value`    | `string`  | —       | **Required.** Ties this panel to the trigger with the same value |
+| `children` | `Snippet` | —       | The page's own markup (§8.28.3)                                  |
+| `class`    | `string`  | —       | Merged last via `cn()`                                           |
 
 ## 8.29.5 The passthrough is `data-*`, and only `data-*`
 
@@ -247,7 +247,7 @@ Two reasons, and the first is the real one:
 
 - **Everything else on these elements is the widget.** `role`, `id`,
   `aria-selected`, `aria-controls`, `aria-labelledby`, `tabindex` and `hidden`
-  are computed and kept in agreement by bits-ui. Wiring them together *is* the
+  are computed and kept in agreement by bits-ui. Wiring them together _is_ the
   primitive, and a wide passthrough would hand a page the means to overwrite
   precisely the attributes it must not touch. Compare v0.9 §8.23.3, where the
   wide passthrough is right because a `Chip` is a button with a class on it and

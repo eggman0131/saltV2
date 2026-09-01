@@ -204,10 +204,13 @@ if (args.dryRun) {
 if (args.project === 'prod') {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise((resolve) =>
-    rl.question(`Type "production" to stamp ${toStamp.length} recipe(s) in ${env.project}: `, (a) => {
-      rl.close();
-      resolve(a.trim());
-    }),
+    rl.question(
+      `Type "production" to stamp ${toStamp.length} recipe(s) in ${env.project}: `,
+      (a) => {
+        rl.close();
+        resolve(a.trim());
+      },
+    ),
   );
   if (answer !== 'production') {
     console.error('✖ Not confirmed. Nothing written.');
@@ -237,5 +240,7 @@ for (const r of toStamp) {
   }
 }
 
-console.log(`\n✔ ${env.project}: stamped ${stamped}, skipped ${already}, failed ${failures.length}.`);
+console.log(
+  `\n✔ ${env.project}: stamped ${stamped}, skipped ${already}, failed ${failures.length}.`,
+);
 process.exit(failures.length > 0 ? 1 : 0);

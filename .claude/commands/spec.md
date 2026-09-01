@@ -29,7 +29,7 @@ cost rather than a courtesy. When unsure, say so and ask before spinning up the 
 
 - **CLAUDE.md is binding.** If the feature can only be built by bending a rule in it, that is a finding to surface in Step 2 — not a detail to settle quietly during implementation.
 - **No bodges.** If the clean design needs the spec to change, say so and get agreement before the issue is posted. Never contort the architecture to fit a draft spec.
-- **Flag the simpler path.** If a different shape — or changing a repo rule — would be materially *simpler and more maintainable* (not merely easier or faster to write), raise it with the trade-off. Staying silent is a claim that the current shape is right.
+- **Flag the simpler path.** If a different shape — or changing a repo rule — would be materially _simpler and more maintainable_ (not merely easier or faster to write), raise it with the trade-off. Staying silent is a claim that the current shape is right.
 - **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 0 — Read back before spending anything
@@ -41,11 +41,11 @@ you expect it to land. Correcting you here is free; correcting you after a wide 
 was aimed at the wrong surface, and Step 2 is too late to find that out.
 
 If the ask is already unambiguous and you can name the module, say so in that same paragraph and carry
-straight on to Step 1 — the point is that I *can* interrupt, not that you stop and wait every time.
+straight on to Step 1 — the point is that I _can_ interrupt, not that you stop and wait every time.
 
 ## Step 1 — Architecture read
 
-Read what the feature actually touches. CLAUDE.md is already in your context — don't re-read it. The routing table is `docs-map.md` at the repo root, which is NOT in your context: read it, then open the docs whose *Tracks* globs match the code you expect to change, plus `docs/salt-architecture.md` for anything crossing a layer boundary.
+Read what the feature actually touches. CLAUDE.md is already in your context — don't re-read it. The routing table is `docs-map.md` at the repo root, which is NOT in your context: read it, then open the docs whose _Tracks_ globs match the code you expect to change, plus `docs/salt-architecture.md` for anything crossing a layer boundary.
 
 Read the long docs at section granularity. `docs/design/ui-spec-v02.md` is ~1800 lines and `-v04` ~1270 — grep their headings and read the section your change lands in. Whole-file reads are for the short docs.
 
@@ -57,10 +57,10 @@ Scope the read's output to five things and no others: **layers involved**, **bin
 
 **Can it ship dark?** Production is a deliberate promotion, so anything half-built on `main` holds
 back everything merged behind it. A per-user flag is the release valve (#831), but a flag hides a
-*surface*, never a *consequence*. Answer three questions, in order:
+_surface_, never a _consequence_. Answer three questions, in order:
 
 1. Does it own its own collections, or does it add fields to shared ones?
-2. Does it *add* surfaces, or modify existing ones?
+2. Does it _add_ surfaces, or modify existing ones?
 3. **Does anything it writes get read by someone the feature is hidden from?**
 
 Pass all three and it can be released to one person at a time for the cost of a feature key and a
@@ -78,7 +78,7 @@ not a refactor.
 
 ## Step 2 — Clarify with user
 
-Ask about intended UX and outcomes, and put the architecture forks in front of me *before* they get baked in. Use `AskUserQuestion` for real forks with discrete options; plain prose for open-ended UX questions. Do not propose implementation yet.
+Ask about intended UX and outcomes, and put the architecture forks in front of me _before_ they get baked in. Use `AskUserQuestion` for real forks with discrete options; plain prose for open-ended UX questions. Do not propose implementation yet.
 
 If a new dependency is in the picture, check what is actually published (`npm view <pkg> version`) before it reaches the issue — never a version from memory.
 
@@ -87,6 +87,7 @@ If a new dependency is in the picture, check what is actually published (`npm vi
 Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
+
 - Title: `feat: <concise feature name>` (imperative, no trailing period)
 - Labels: the area and topical labels that fit (`gh label list` for the current set — e.g. `area: web-pwa`, `domain`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `feature`, and **not** a `priority:` label — those two facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class "New feature" --queue <band> --size <S|M|L>`. `New feature` is something Salt cannot do at all today; `Feature update` is something it already does, done better. See [docs/issue-board.md](../../docs/issue-board.md).
@@ -95,33 +96,40 @@ Once we've agreed, post it with `gh issue create`.
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 
 ---
+
 ## Intended Experience
+
 [UX outcomes only. What the user will see and feel. Specific flows. What changes from today.
 No implementation detail. Written for a non-coder deciding if this is right.]
 
 ## Architecture Notes
+
 [Layer map references. Packages touched. Key decisions made. Constraints from CLAUDE.md.
 What must NOT be done. Existing patterns to reuse. Whether it can ship dark behind a flag, and
 what keeps it that way. Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
+
 [Every architecture risk or fork raised in Step 2 goes here, each as:
+
 - **Decision:** what was chosen
 - **Why:** the reasoning
 - **Rejected:** the alternative(s) and why not
-Unresolved items stay listed as open questions, not silently assumed away.
-This section is the audit trail — the "why" that Architecture Notes does not hold.]
+  Unresolved items stay listed as open questions, not silently assumed away.
+  This section is the audit trail — the "why" that Architecture Notes does not hold.]
 
 ## Phases
+
 [One `### Phase` block per phase, numbered Phase 1 through Phase N.
 
-Every phase must end user-testable — but that is a constraint on where a boundary may *fall*, not a
+Every phase must end user-testable — but that is a constraint on where a boundary may _fall_, not a
 reason for one to exist. Phases are not free: each one costs a context read, a validation pass, a gate
 run, a commit and a handoff contract, and that contract is a lossy hand-off of things the model would
 otherwise simply hold in context. A phase may carry several user-testable outcomes when they form one
 coherent unit of work.
 
 Split only where there is a reason to:
+
 - **an unresolved fork** — the increment rests on something in Open Questions the user should judge
   before more is built on it;
 - **a learning dependency** — the next increment's design depends on what this one reveals in practice;
@@ -132,15 +140,17 @@ None of those apply? Keep it together. A settled design with no open questions i
 an exploratory one with live forks earns more.]
 
 ### Phase 1: [Name]
+
 **Scope:** [What gets built — precise, not vague]
 **User-testable outcome(s):** [What the user can observe when this phase is done — one line each if several]
 **Technical deliverables:** [Files, routes, Firestore paths, exported functions/types]
-**Context pointers:** [What Step 1 already learned about *this* phase, so `/run` reads rather than re-sweeps:
+**Context pointers:** [What Step 1 already learned about _this_ phase, so `/run` reads rather than re-sweeps:
 `file:line` for the code to reuse or respect, and the named rules and `docs/…` sections that bound it.
 Written for an agent arriving with no context — thin here buys a fresh Explore sweep there.]
 **Must not touch:** [Explicitly out of scope]
 
 ### Phase 2: [Name]
+
 **Scope:** [...]
 **User-testable outcome(s):** [...]
 **Technical deliverables:** [...]
@@ -150,6 +160,7 @@ Written for an agent arriving with no context — thin here buys a fresh Explore
 [...continue through Phase N...]
 
 ## Definition of Done
+
 [User-perspective acceptance criteria for the complete feature]
 ---
 

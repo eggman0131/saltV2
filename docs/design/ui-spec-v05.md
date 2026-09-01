@@ -49,10 +49,10 @@ div.flex.h-dvh.flex-col
 
 Under `fill`:
 
-- The root `<section>` gains `h-full min-h-0`. `h-full` resolves against `<main>`'s definite height (and, because `<main>` carries the bottom-nav padding, resolves to the space *above* the nav automatically). `min-h-0` allows the section to shrink inside the flex column rather than being floored at its intrinsic content height.
+- The root `<section>` gains `h-full min-h-0`. `h-full` resolves against `<main>`'s definite height (and, because `<main>` carries the bottom-nav padding, resolves to the space _above_ the nav automatically). `min-h-0` allows the section to shrink inside the flex column rather than being floored at its intrinsic content height.
 - The content wrapper gains `flex flex-1 flex-col` alongside its existing `min-h-0`, so it takes the height left over after the header and toolbar and passes it to `children`.
 
-**`AppShell` is not modified, and must not be.** `<main>` is `overflow-y-auto`, which scrolls only *on overflow*. A page that exactly fills it therefore leaves it with nothing to scroll. The two mechanisms do not have to be coordinated because they never overlap.
+**`AppShell` is not modified, and must not be.** `<main>` is `overflow-y-auto`, which scrolls only _on overflow_. A page that exactly fills it therefore leaves it with nothing to scroll. The two mechanisms do not have to be coordinated because they never overlap.
 
 ## 1.3 Props
 
@@ -104,12 +104,12 @@ A **full-viewport route** is a page that occupies the entire screen with no app 
 
 The list, amended (§2.6 requires every member to be named here with its justification):
 
-| Route | Page | Justification |
-| --- | --- | --- |
-| `/recipes/:id/cook` | `CookModePage.svelte` | Cook mode (issue #641). Cooking is heads-down and hands-busy; a nav bar you can fat-finger mid-step is a hazard, not an escape hatch. |
-| `/recipes/:id/cook/guided` | `GuidedCookPage.svelte` | Guided cook (issue #751, Phase 2). **The same mode**, read through the recipe's guided plan: the plan's prep list in place of the ingredient checklist, and the plan's notes under each step's own words. Same pager, same gestures, same keep-awake, same hands-full cook. It is a separate route rather than a flag on the first because what mise en place *is* differs between them, and because which one you get is a choice made at the moment you start cooking — not a stored preference. Everything §2.2 says of cook mode is true of it verbatim. |
+| Route                      | Page                    | Justification                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/recipes/:id/cook`        | `CookModePage.svelte`   | Cook mode (issue #641). Cooking is heads-down and hands-busy; a nav bar you can fat-finger mid-step is a hazard, not an escape hatch.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `/recipes/:id/cook/guided` | `GuidedCookPage.svelte` | Guided cook (issue #751, Phase 2). **The same mode**, read through the recipe's guided plan: the plan's prep list in place of the ingredient checklist, and the plan's notes under each step's own words. Same pager, same gestures, same keep-awake, same hands-full cook. It is a separate route rather than a flag on the first because what mise en place _is_ differs between them, and because which one you get is a choice made at the moment you start cooking — not a stored preference. Everything §2.2 says of cook mode is true of it verbatim. |
 
-The plan **editor** (`/recipes/:id/guided`, issue #751 Phase 1) is deliberately *not* on this list and must not be added: writing and reading a plan is desk work you do before you cook, and it belongs inside the shell you arrived from.
+The plan **editor** (`/recipes/:id/guided`, issue #751 Phase 1) is deliberately _not_ on this list and must not be added: writing and reading a plan is desk work you do before you cook, and it belongs inside the shell you arrived from.
 
 This is not the same thing as `ListPage` fill (§1). Fill is a page that fills the shell's content area; a full-viewport route **leaves the shell** entirely. Fill is a layout choice; this is a mode.
 
@@ -133,7 +133,7 @@ Not rendering is the mechanism, and the distinction is load-bearing. A page that
 
 - The route is declared in `apps/web-pwa/src/routes/fullViewport.ts`; `App.svelte` derives `chrome` from it. A page must **not** reach for a store or a context to switch the shell off from the inside — the shell's shape is decided by the route, in one place, before the page renders.
 - The page **moves focus into itself on mount** (a `tabindex="-1"` container is enough). The chrome that had focus is unmounted as the route activates, so without this the user's next Tab restarts at the top of the document.
-- Focus on exit needs no ceremony **when the route was entered from a page that unmounts** — the element to restore to no longer exists, and focus falling to `<body>` with the chrome remounted puts the next Tab on the `TopBar`, which is the correct start of the restored page. A full-viewport route reachable from something that *survives* must restore focus to it.
+- Focus on exit needs no ceremony **when the route was entered from a page that unmounts** — the element to restore to no longer exists, and focus falling to `<body>` with the chrome remounted puts the next Tab on the `TopBar`, which is the correct start of the restored page. A full-viewport route reachable from something that _survives_ must restore focus to it.
 - The page owns the whole screen; it does not re-implement a `TopBar`. Its own header, if any, is its own design.
 
 ## 2.5 Testing requirements

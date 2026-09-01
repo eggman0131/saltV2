@@ -20,20 +20,20 @@ verified against `formDemand` in Firestore rather than the rendered number alone
 > exist**. Both are corrected; neither was a product bug:
 >
 > - **Lemon is ×2, not ×3.** The seeded yield is **45 ml/lemon**; this file said 30.
->   Nobody had checked the form doc. The runbook was wrong, so the *number* changed.
+>   Nobody had checked the form doc. The runbook was wrong, so the _number_ changed.
 > - **Recipe C had lost its `1 whole chicken` line.** Staging's recipe held only
 >   breasts/thighs/salt, so C+D observed **×5** — matching the #518 issue's headline and
->   contradicting this file's ×6. Here the *recipe* was wrong, not the number: the line
+>   contradicting this file's ×6. Here the _recipe_ was wrong, not the number: the line
 >   carries the only test of `Σwhole`, so it was **restored** on 2026-07-17 rather than
 >   deleted from the docs to make ×5 fit. C+D now observe **×6**, as always documented.
 >
-> See **finding #4**. The lesson generalises: *read the seeded `productForms` yield and
+> See **finding #4**. The lesson generalises: _read the seeded `productForms` yield and
 > the recipe doc's `parsed.quantity`/`unit` before trusting any expected number in this
-> file.* Gotchas #5 and #6 make every wrong number look like a known-stale artefact, so
+> file._ Gotchas #5 and #6 make every wrong number look like a known-stale artefact, so
 > a runner who reaches for them first will "fix" a discrepancy that is really a doc bug —
 > or worse, will re-run until the number matches and report a clean pass. Note the two
-> errors resolved in *opposite* directions: one by fixing the doc, one by fixing staging.
-> Deciding which requires knowing what the row is *for*.
+> errors resolved in _opposite_ directions: one by fixing the doc, one by fixing staging.
+> Deciding which requires knowing what the row is _for_.
 
 ---
 
@@ -58,11 +58,12 @@ how much of the component one parent produces — instead of creating an orphan
 - **Rounding happens ONCE, on the summed demand** — never per recipe. At a 4 g/lime
   yield, 6 g + 6 g of zest is 12 g = 3 limes; rounding each recipe first gives 2 + 2 = 4.
 
-Before #518 the list MAXed the already-rounded per-recipe counts for *every* case,
+Before #518 the list MAXed the already-rounded per-recipe counts for _every_ case,
 which under-bought whenever two recipes wanted the same form (the Lime case below).
 
 Pipeline (in `apps/cloud-functions/src/flows/canonicaliseRecipeIngredients.ts`),
 per ingredient, in order:
+
 1. **Tier 1 — resolve** against the `productForms` table. A form is identified by
    its **`label` as well as its `matchers`**, competing on equal terms; every
    phrase and the ingredient text are folded with canon's `normaliseName` (case,
@@ -92,11 +93,11 @@ per ingredient, in order:
 
 ### Collections (Firestore paths)
 
-| Data | Path |
-|---|---|
-| Canon items | `canonItems` |
-| Product forms | `productForms` |
-| Recipes | `recipes` |
+| Data                | Path                                           |
+| ------------------- | ---------------------------------------------- |
+| Canon items         | `canonItems`                                   |
+| Product forms       | `productForms`                                 |
+| Recipes             | `recipes`                                      |
 | Shopping list items | `shoppingLists/<listId>/items` (subcollection) |
 
 > The default shopping list id in staging at time of writing:
@@ -106,9 +107,9 @@ per ingredient, in order:
 
 ## ⚠️ Gotchas discovered (read before running)
 
-1. **Product forms cannot bootstrap from an *empty* canon.** Tier-2 arbitration is
+1. **Product forms cannot bootstrap from an _empty_ canon.** Tier-2 arbitration is
    gated on `candidates.length > 0` (existing buyable canon). On a freshly-wiped
-   canon, the *first* recipe's derivatives skip arbitration and become orphan
+   canon, the _first_ recipe's derivatives skip arbitration and become orphan
    canons (`Lemon Juice`, `Egg Yolk`, …). **Fix for testing:** ensure ≥1 unrelated
    buyable canon exists first (any item — e.g. add `caster sugar` to the list, or
    keep two plain items around). See finding #1.
@@ -129,26 +130,27 @@ per ingredient, in order:
      form seeded with a **gram** yield no longer reconciles. This is why Recipe C2's
      seeded chicken yields below are now `count`, not the `g` they used to be.
 
-   Rule of thumb: seed the yield in whatever unit the *re-parsed* recipe doc actually
+   Rule of thumb: seed the yield in whatever unit the _re-parsed_ recipe doc actually
    holds — check the ingredient's `quantity`/`unit` in Firestore first. See finding #2.
+
 4. **AI image generation hangs the recipe view briefly** after first save. If the
    Chrome tab times out, re-navigate to the recipe URL and continue.
 5. **Re-canonicalise ≠ re-parse — parser-layer fixes need a re-parse.** Canonicalise
-   only re-runs *matching* over the ingredient amounts **already stored** on the recipe
+   only re-runs _matching_ over the ingredient amounts **already stored** on the recipe
    doc; it never re-parses. So a fix in `parseRecipeIngredients` (e.g. #515, which keeps
    eggs / egg parts / poultry joints / whole fish as a COUNT — `quantity:<n>, unit:null`
    — instead of flattening to grams) is **invisible** if you only wipe canon+forms and
    re-canonicalise: the recipe still holds the pre-fix parse, so a count-yield form fed
    those stale grams can't roll up and you still see `Free Range Egg (350 g)`. To validate
    a parser change you must **re-parse each recipe**: recipe → **Edit** → **Parse from
-   text** → paste the ingredient block → **Parse** → **Save**, *then* Canonicalise. Verify
+   text** → paste the ingredient block → **Parse** → **Save**, _then_ Canonicalise. Verify
    in Firestore that the eggs now read `quantity:<count>, unit:null` (grams demoted to
    `displayText`, e.g. "about 36g") before trusting the list. This masked #515 on the
    2026-07-15 re-run — the eggs read `350 g` until the recipes were re-parsed, after which
    they rolled up to a parent count (`Free Range Egg ×3` under the then-current MAX rule;
    the same recipes now expect **×4** under #518 — see step 4 and finding #3).
 6. **Existing lists do NOT retro-fix themselves — re-add the recipe.** #518's per-form
-   demand (`formDemand`) is written at *add-to-list* time. Items already on a list from
+   demand (`formDemand`) is written at _add-to-list_ time. Items already on a list from
    before it predate the field, carry only their collapsed per-recipe count, and take a
    **degrade path that deliberately reproduces the OLD MAX number**. There is no
    migration and none is planned: the field is optional and additive, so old docs stay
@@ -163,22 +165,26 @@ per ingredient, in order:
 ## Procedure
 
 ### 0. Confirm / establish canon state
+
 - To validate the **cold-start gate** (finding #1): wipe `canonItems` + `productForms`
   entirely, then run step 1 — expect orphan derivatives, no forms.
 - To validate **normal behaviour**: ensure ≥1 unrelated buyable canon exists first
   (e.g. run a throwaway recipe of plain items, or keep `Caster Sugar`/`Double Cream`).
 
 ### 1. Create a recipe (web UI)
+
 1. Recipes → **New recipe** → set a Title.
 2. **Parse from text** → paste the ingredient block (one per line) → **Parse**.
 3. **Save**. You land on the recipe view; ingredients show a red ✗ (unmatched).
 
 ### 2. Canonicalise
+
 1. On the recipe **view** page, click **Canonicalise** (top of the Ingredients card).
 2. Wait ~8–12 s (concurrent AI calls). ✗ marks clear when done; the **Admin** badge
    increments by the number of new `needs_approval` items (canon + forms).
 
 ### 3. Inspect Firestore (MCP)
+
 - `productForms` — each hit has `matchers`, `parentCanonId`, `label`,
   `yield {formUnit, amountPerParent}`, `needs_approval`.
 - `canonItems` — parents minted (Lemon, Lime, …); confirm **no orphan derivative**
@@ -189,6 +195,7 @@ per ingredient, in order:
   is tier-3.
 
 ### 4. Add to shopping list & verify rollup
+
 1. Recipe view → **Add to list** → review sheet shows resolved rows and converted
    quantities (e.g. `Lime (3 count)`). Toggle ADD/CHECK as needed → **Add N to list**.
 2. Repeat for a second recipe sharing a parent.
@@ -205,15 +212,22 @@ per ingredient, in order:
    ones collapsed away at write time — each with an **unrounded** `parentCount`:
    ```jsonc
    // recipe B's egg row: collapsed to the MAX (3) for display, but both forms ride along
-   { "amount": 3, "unit": "count",
-     "formDemand": [ { "formId": "<egg-white form>", "parentCount": 3 },
-                     { "formId": "<egg-yolk form>",  "parentCount": 2 } ] }
+   {
+     "amount": 3,
+     "unit": "count",
+     "formDemand": [
+       { "formId": "<egg-white form>", "parentCount": 3 },
+       { "formId": "<egg-yolk form>", "parentCount": 2 },
+     ],
+   }
    ```
    **No `formDemand` on a count row = a pre-#518 item on the degrade path** — it will
    show the old MAX number. Re-add the recipe (gotcha #6) before reporting a bug.
 
 ### 5. Reset for a re-run
+
 Delete, via MCP:
+
 - `productForms/*` (all, or just the AI-seeded ones)
 - `canonItems/*` (the ones under test)
 - `recipes/<id>` (optional)
@@ -241,6 +255,7 @@ These recipes do **not** cover the round-once rule; see the warning under the A+
 That is the one clause of the rule this runbook still cannot observe.
 
 ### Recipe A — "Lemon & Lime Posset"
+
 ```
 90 ml freshly squeezed lemon juice
 10 g lime zest
@@ -249,12 +264,14 @@ That is the one clause of the rule this runbook still cannot observe.
 150 g caster sugar
 300 ml double cream
 ```
+
 Expected forms: `lemon juice→Lemon` (**45 ml/lemon** — the yield the AI actually
 seeded, confirmed on the form doc 2026-07-17; this file said 30 ml until then),
 `lime zest→Lime` (5 g/lime), `egg yolks→Free Range Egg` (count),
 `vanilla seeds→Vanilla Pod` (count). Plain: caster sugar, double cream.
 
 ### Recipe B — "Passionfruit Orange Meringue"
+
 ```
 3 egg whites
 2 egg yolks
@@ -263,6 +280,7 @@ seeded, confirmed on the form doc 2026-07-17; this file said 30 ml until then),
 120 g orange segments
 100 g caster sugar
 ```
+
 Expected: `egg whites` → new form, **reuses** Free Range Egg parent;
 `egg yolks`/`lime zest` **resolve** to A's existing forms (no dup); `passion fruit
 pulp` → new form + minted Passion Fruit; `orange segments` **declined** → own
@@ -270,14 +288,14 @@ buyable canon; caster sugar resolves.
 
 Shopping-list checks (A+B) — all six observed on staging 2026-07-17:
 
-| Row | Expected | Arithmetic |
-|---|---|---|
-| **Lime ×5** | ×5 | Zest is ONE form used by both recipes → its demand SUMS: A 10 g + B 15 g = 25 g @ 5 g/lime = **5**. No whole limes. *(Was ×3 pre-#518 — MAX(2,3). This row is the headline regression #518 fixes.)* |
-| **Free Range Egg ×4** | ×4 | Two forms of one parent. Yolks are the same form in both recipes → SUM: A 2 + B 2 = 4. Whites: B 3. MAX(4, 3) = **4**. *(Was ×3 pre-#518 — MAX(2,3,2). Not 7: one egg yields both parts.)* |
-| **Caster Sugar 250 g** | 250 g | Plain non-form sum: 150 + 100. Unchanged. |
-| **Lemon ×2** | ×2 | Only recipe A: 90 ml @ **45 ml/lemon** = 2. Single recipe → #518 is a no-op here. *(Documented as ×3 until 2026-07-17, from a 30 ml/lemon yield that was never what the AI seeded — finding #4.)* |
-| **Passion Fruit ×4** | ×4 | Only recipe B: 80 g @ 20 g/fruit = 4. Single recipe → unchanged. |
-| ⚠️ **Vanilla Pod** | *no rollup* | `1 tsp vanilla seeds` still parses to grams against a `count` yield → gotcha #3, still open under #513. |
+| Row                    | Expected    | Arithmetic                                                                                                                                                                                          |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Lime ×5**            | ×5          | Zest is ONE form used by both recipes → its demand SUMS: A 10 g + B 15 g = 25 g @ 5 g/lime = **5**. No whole limes. _(Was ×3 pre-#518 — MAX(2,3). This row is the headline regression #518 fixes.)_ |
+| **Free Range Egg ×4**  | ×4          | Two forms of one parent. Yolks are the same form in both recipes → SUM: A 2 + B 2 = 4. Whites: B 3. MAX(4, 3) = **4**. _(Was ×3 pre-#518 — MAX(2,3,2). Not 7: one egg yields both parts.)_          |
+| **Caster Sugar 250 g** | 250 g       | Plain non-form sum: 150 + 100. Unchanged.                                                                                                                                                           |
+| **Lemon ×2**           | ×2          | Only recipe A: 90 ml @ **45 ml/lemon** = 2. Single recipe → #518 is a no-op here. _(Documented as ×3 until 2026-07-17, from a 30 ml/lemon yield that was never what the AI seeded — finding #4.)_   |
+| **Passion Fruit ×4**   | ×4          | Only recipe B: 80 g @ 20 g/fruit = 4. Single recipe → unchanged.                                                                                                                                    |
+| ⚠️ **Vanilla Pod**     | _no rollup_ | `1 tsp vanilla seeds` still parses to grams against a `count` yield → gotcha #3, still open under #513.                                                                                             |
 
 A+B are the cleanest #518 check: **Lime** proves same-form-sums and **Free Range Egg**
 proves sum-within-form-then-max-across-forms, in one pair of recipes. Both require the
@@ -296,6 +314,7 @@ observed as documented on 2026-07-17.
 > 12 g = 3 limes, round-per-recipe gives 2 + 2 = 4. No reference recipe does this today.
 
 ### Recipe C — "Roast Chicken Two Ways" (manual-seed test)
+
 ```
 2 chicken breasts
 4 chicken thighs
@@ -308,7 +327,7 @@ observed as documented on 2026-07-17.
 > `4 chicken thighs`, `1 tsp sea salt`), so C+D observed **×5** instead of ×6 and the
 > whole/direct-sums-on-top clause was silently **untested**. (The `Whole Chicken` canon
 > still existed because an earlier C1 pass minted it at 19:59 on 2026-07-15, an hour
-> *before* the then-current recipe doc was created at 21:22 — the parent outlived the
+> _before_ the then-current recipe doc was created at 21:22 — the parent outlived the
 > line that created it, which is exactly why the gap was invisible.)
 >
 > Fixed by re-parsing C from the 4-line block above and re-adding it; C+D now observe
@@ -325,15 +344,22 @@ observed as documented on 2026-07-17.
 - **C2** — delete the `Chicken Breast`/`Chicken Thigh` canons, then **seed** two
   `productForms` docs pointing at the `Whole Chicken` id, with **count yields**
   (one bird ≈ 2 breasts, 2 thighs):
+
   ```jsonc
   // productForms/<uuid>
-  { "id": "<uuid>", "schemaVersion": 1,
-    "matchers": ["chicken breast"], "parentCanonId": "<Whole Chicken id>",
+  {
+    "id": "<uuid>",
+    "schemaVersion": 1,
+    "matchers": ["chicken breast"],
+    "parentCanonId": "<Whole Chicken id>",
     "label": "Chicken breast",
     "yield": { "formUnit": "count", "amountPerParent": 2 },
-    "needs_approval": false, "updatedAt": "<iso>" }
+    "needs_approval": false,
+    "updatedAt": "<iso>",
+  }
   // thigh: formUnit "count", amountPerParent 2
   ```
+
   > **Changed from the gram yields (`breast 350 g`, `thigh 240 g`) this runbook used
   > through 2026-07-15.** Those were a workaround for the pre-#515 parser, which
   > flattened `2 chicken breasts` to grams. #515 now keeps poultry joints as a COUNT
@@ -375,9 +401,11 @@ observed as documented on 2026-07-17.
   > #518. To actually test #518 on chicken you need Recipe D.
 
 ### Recipe D — "Chicken Thigh Curry" (add alongside C, for #518)
+
 ```
 6 chicken thighs
 ```
+
 Reuses C2's thigh form (tier-1, no AI). 6 thighs @ 2/bird = **3 birds**.
 
 > **Naming/content drift, corrected 2026-07-17.** This runbook called D "Chicken Thigh
@@ -389,7 +417,7 @@ Reuses C2's thigh form (tier-1, no AI). 6 thighs @ 2/bird = **3 birds**.
 Shopping-list check (C+D): **Whole Chicken ×6** — observed 2026-07-17.
 Arithmetic: thigh is the SAME form in C and D → its demand SUMS: 2 + 3 = **5**.
 Breasts stay **1**. MAX(1, 5) = 5. C's `1 whole chicken` SUMS on top → **6**.
-*(Pre-#518 this row read MAX(1, 2, 3) = 3, +1 whole = 4 — the under-buy.)*
+_(Pre-#518 this row read MAX(1, 2, 3) = 3, +1 whole = 4 — the under-buy.)_
 
 Verified at the mechanism, three rows on one `canonId`:
 `[{thigh,3}]` (D) + `[{breast,1},{thigh,2}]` (C forms) + a bare `amount:1` row with no
@@ -432,7 +460,7 @@ clause is exercised anywhere outside CI.
     yield stops rolling up for anything in #515's count scope. Recipe C2's chicken
     yields were gram-based and are now documented as `count`. Not yet re-observed on
     staging — see the note on C2.
-  - **Still open:** count-yield forms for items *outside* the #515 protein scope —
+  - **Still open:** count-yield forms for items _outside_ the #515 protein scope —
     e.g. **vanilla pods** (`vanilla seeds` still parses to `2 g`, so the Vanilla Pod
     count-yield form can't roll up). Tracked under #513.
 - **#3 — same form across recipes under-bought** (GitHub #518, FIXED). The list
@@ -485,18 +513,18 @@ clause is exercised anywhere outside CI.
     data. But that line is the **only** test of the `Σwhole` clause anywhere outside CI,
     so the fix was to restore it, not to write ×5 into the docs. C+D now observe ×6.
   - **The general shape:** when observation and documentation disagree, the question is
-    not "which number is right" but "what was this row *for*". A doc number with nothing
+    not "which number is right" but "what was this row _for_". A doc number with nothing
     behind it should yield to the data (Lemon). A doc number that encodes coverage the
     data has quietly lost should pull the data back (Recipe C). Reconciling both toward
     "whatever staging currently says" would have produced a green run with one clause of
     the rule silently untested — which is exactly the state this file was in on arrival.
   - **Why this matters more than the two numbers.** Gotchas #5 (needs re-parse) and #6
-    (needs re-add) give a runner a ready-made, *plausible* explanation for any number
+    (needs re-add) give a runner a ready-made, _plausible_ explanation for any number
     that comes out low — and finding #3 explicitly nominates stale items as "the most
     likely reason a staging run 'fails'". Both wrong numbers here would have been
     absorbed by that story: see ×2 instead of ×3, blame staleness, re-add, still see
     ×2, eventually stop looking. The discriminators are cheap and must be checked
-    *before* reaching for a gotcha: **no `formDemand` on a count row** = genuinely
+    _before_ reaching for a gotcha: **no `formDemand` on a count row** = genuinely
     stale (gotcha #6); **`quantity` in grams where a count was expected** = missing
     re-parse (gotcha #5). If neither holds, the number is real and the doc is wrong.
   - **Standing rule for future runs:** derive expectations from `productForms/*.yield`

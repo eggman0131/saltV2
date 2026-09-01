@@ -119,7 +119,10 @@ describe('findRenamedClones size floor', () => {
   });
 
   it('discards re-export stubs, which match each other perfectly and mean nothing', () => {
-    const stub = (name) => ({ path: `${name}/index.ts`, tokens: tokenize(`export * from './${name}';`) });
+    const stub = (name) => ({
+      path: `${name}/index.ts`,
+      tokens: tokenize(`export * from './${name}';`),
+    });
     expect(findRenamedClones([stub('canon'), stub('recipe')])).toHaveLength(0);
   });
 });

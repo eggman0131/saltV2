@@ -79,7 +79,13 @@ const HELP = `Usage: pnpm flake:emulator [--since=DATE] [--until=DATE] [--job="<
 `;
 
 function parseArgs(argv) {
-  const opts = { since: DEFAULT_SINCE, until: undefined, job: EMULATOR_JOB_NAME, json: false, help: false };
+  const opts = {
+    since: DEFAULT_SINCE,
+    until: undefined,
+    job: EMULATOR_JOB_NAME,
+    json: false,
+    help: false,
+  };
   for (const arg of argv) {
     const match = /^--([a-z]+)(?:=(.*))?$/.exec(arg);
     if (!match) throw new Error(`Unrecognised argument: ${arg}`);
@@ -92,10 +98,14 @@ function parseArgs(argv) {
     else throw new Error(`Unrecognised argument: ${arg}`);
   }
   if (!ISO_PATTERN.test(opts.since)) {
-    throw new Error(`--since must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.since}"`);
+    throw new Error(
+      `--since must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.since}"`,
+    );
   }
   if (opts.until !== undefined && !ISO_PATTERN.test(opts.until)) {
-    throw new Error(`--until must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.until}"`);
+    throw new Error(
+      `--until must be an ISO date or date-time (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ), got "${opts.until}"`,
+    );
   }
   return opts;
 }
@@ -174,9 +184,7 @@ async function listRunIds(since, until) {
  *  every one of several hundred runs to defend against a case that has not
  *  occurred; revisit if ci.yml grows a wide matrix. */
 async function jobsForRun(runId) {
-  const body = await ghApi(
-    `repos/${REPO}/actions/runs/${runId}/jobs?filter=all&per_page=100`,
-  );
+  const body = await ghApi(`repos/${REPO}/actions/runs/${runId}/jobs?filter=all&per_page=100`);
   return body.jobs ?? [];
 }
 
@@ -202,7 +210,9 @@ async function mapPool(items, size, worker) {
 
 function report(summary, { since, until, runsScanned }) {
   const { records, runs } = summary;
-  const windowLabel = until ? `${since} .. ${until}` : `since ${since} (open-ended — through "now")`;
+  const windowLabel = until
+    ? `${since} .. ${until}`
+    : `since ${since} (open-ended — through "now")`;
   const lines = [
     `Residual flake rate — ${summary.jobName}`,
     `  window        ${windowLabel} (${runsScanned} CI runs scanned, ${runs.total} contained the job)`,
@@ -230,7 +240,10 @@ function report(summary, { since, until, runsScanned }) {
   ];
 
   if (summary.failures.length > 0) {
-    lines.push('', `  ${summary.failures.length} failing run${summary.failures.length === 1 ? '' : 's'}:`);
+    lines.push(
+      '',
+      `  ${summary.failures.length} failing run${summary.failures.length === 1 ? '' : 's'}:`,
+    );
     for (const failure of summary.failures) {
       const shape = failure.attempts.map((a) => `#${a.attempt} ${a.conclusion}`).join(', ');
       lines.push(`    ${failure.branch ?? '?'} — ${shape}`);
@@ -255,7 +268,9 @@ async function main() {
 
   const runIds = await listRunIds(opts.since, opts.until);
   if (runIds.length === 0) {
-    console.error(`No CI runs found since ${opts.since}${opts.until ? ` and before ${opts.until}` : ''}.`);
+    console.error(
+      `No CI runs found since ${opts.since}${opts.until ? ` and before ${opts.until}` : ''}.`,
+    );
     process.exitCode = 1;
     return;
   }
@@ -285,7 +300,9 @@ async function main() {
     );
     return;
   }
-  process.stdout.write(`${report(summary, { since: opts.since, until: opts.until, runsScanned: runIds.length })}\n`);
+  process.stdout.write(
+    `${report(summary, { since: opts.since, until: opts.until, runsScanned: runIds.length })}\n`,
+  );
 }
 
 main().catch((error) => {

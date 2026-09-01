@@ -63,7 +63,11 @@ function gql(query) {
       maxBuffer: 32 * 1024 * 1024,
     });
   } catch (err) {
-    die(`gh failed — ${String(err.stderr || err.message).trim().slice(0, 400)}`);
+    die(
+      `gh failed — ${String(err.stderr || err.message)
+        .trim()
+        .slice(0, 400)}`,
+    );
   }
   const body = JSON.parse(out);
   if (body.errors) die(`GraphQL — ${JSON.stringify(body.errors).slice(0, 400)}`);
@@ -78,7 +82,10 @@ function loadProject() {
       ... on ProjectV2FieldCommon { id name dataType }
       ... on ProjectV2SingleSelectField { id name dataType options{ id name } } } } } } }`)
     .organization?.projectV2;
-  if (!p) die(`project #${PROJECT_NUMBER} not found under ${OWNER} — is the token missing the project scope?`);
+  if (!p)
+    die(
+      `project #${PROJECT_NUMBER} not found under ${OWNER} — is the token missing the project scope?`,
+    );
 
   const nodes = p.fields.nodes.filter((f) => f?.name);
   const fields = new Map(nodes.map((f) => [f.name, f]));
@@ -94,7 +101,10 @@ function loadProject() {
     option(fieldName, value) {
       const f = this.field(fieldName);
       const o = f.options?.find((x) => x.name.toLowerCase() === String(value).toLowerCase());
-      if (!o) die(`"${value}" is not an option of ${fieldName} — have: ${(f.options ?? []).map((x) => x.name).join(', ')}`);
+      if (!o)
+        die(
+          `"${value}" is not an option of ${fieldName} — have: ${(f.options ?? []).map((x) => x.name).join(', ')}`,
+        );
       return o.id;
     },
   };
@@ -159,18 +169,21 @@ const FLAG_FIELD = { queue: 'Queue', class: 'Class', size: 'Size', status: 'Stat
 
 function cmdAdd(project, [num, ...rest]) {
   const number = Number(num);
-  if (!Number.isInteger(number)) die('usage: board.mjs add <issue> [--queue X --class Y --size Z --status W]');
+  if (!Number.isInteger(number))
+    die('usage: board.mjs add <issue> [--queue X --class Y --size Z --status W]');
   const flags = parseFlags(rest);
 
-  const issue = gql(`{ repository(owner:"${OWNER}",name:"${REPO}"){ issue(number:${number}){ id title } } }`)
-    .repository?.issue;
+  const issue = gql(
+    `{ repository(owner:"${OWNER}",name:"${REPO}"){ issue(number:${number}){ id title } } }`,
+  ).repository?.issue;
   if (!issue) die(`issue #${number} not found in ${OWNER}/${REPO}`);
 
   const existing = loadItems(project).find((i) => i.number === number);
   const itemId = existing
     ? existing.id
-    : gql(`mutation{ addProjectV2ItemById(input:{projectId:"${project.id}", contentId:"${issue.id}"}){ item{ id } } }`)
-        .addProjectV2ItemById.item.id;
+    : gql(
+        `mutation{ addProjectV2ItemById(input:{projectId:"${project.id}", contentId:"${issue.id}"}){ item{ id } } }`,
+      ).addProjectV2ItemById.item.id;
 
   for (const [flag, field] of Object.entries(FLAG_FIELD)) {
     if (flags[flag]) setSelect(project, itemId, field, flags[flag]);
@@ -179,19 +192,26 @@ function cmdAdd(project, [num, ...rest]) {
     .filter(([flag]) => flags[flag])
     .map(([flag, field]) => `${field}=${flags[flag]}`)
     .join(' ');
-  console.log(`${existing ? 'updated' : 'added'} #${number} — ${set || 'no fields set'}  ${issue.title}`);
+  console.log(
+    `${existing ? 'updated' : 'added'} #${number} — ${set || 'no fields set'}  ${issue.title}`,
+  );
 }
 
 function cmdSet(project, [num, ...rest]) {
   const number = Number(num);
-  if (!Number.isInteger(number)) die('usage: board.mjs set <issue> [--queue X --class Y --size Z --status W]');
+  if (!Number.isInteger(number))
+    die('usage: board.mjs set <issue> [--queue X --class Y --size Z --status W]');
   const flags = parseFlags(rest);
   const item = loadItems(project).find((i) => i.number === number);
   if (!item) die(`#${number} is not on the board — use \`add\` first`);
   for (const [flag, field] of Object.entries(FLAG_FIELD)) {
     if (flags[flag]) setSelect(project, item.id, field, flags[flag]);
   }
-  console.log(`set #${number} — ${Object.entries(flags).map(([k, v]) => `${FLAG_FIELD[k] ?? k}=${v}`).join(' ')}`);
+  console.log(
+    `set #${number} — ${Object.entries(flags)
+      .map(([k, v]) => `${FLAG_FIELD[k] ?? k}=${v}`)
+      .join(' ')}`,
+  );
 }
 
 /**
@@ -205,12 +225,14 @@ function cmdPr(project, [num, ...rest]) {
   const flags = parseFlags(rest);
   if (!flags.status) die('board.mjs pr needs --status');
 
-  const pr = gql(`{ repository(owner:"${OWNER}",name:"${REPO}"){ pullRequest(number:${number}){ body } } }`)
-    .repository?.pullRequest;
+  const pr = gql(
+    `{ repository(owner:"${OWNER}",name:"${REPO}"){ pullRequest(number:${number}){ body } } }`,
+  ).repository?.pullRequest;
   if (!pr) die(`PR #${number} not found`);
 
-  const closes = [...pr.body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi)]
-    .map((m) => Number(m[1]));
+  const closes = [
+    ...pr.body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi),
+  ].map((m) => Number(m[1]));
   const targets = [...new Set(closes)];
   if (targets.length === 0) {
     console.log(`PR #${number} closes no issue — nothing to move`);
@@ -246,7 +268,9 @@ function cmdRelease(project, rest) {
   try {
     execFileSync('git', ['cat-file', '-e', `${flags.sha}^{commit}`], { stdio: 'ignore' });
   } catch {
-    die(`${flags.sha} is not in this checkout — the ancestry test needs full history (fetch-depth: 0)`);
+    die(
+      `${flags.sha} is not in this checkout — the ancestry test needs full history (fetch-depth: 0)`,
+    );
   }
 
   const statuses = gql(`{ node(id:"${project.id}"){ ... on ProjectV2 {
@@ -298,7 +322,9 @@ function cmdCheck(project) {
     if (!order.has(blocker)) {
       failures.push(`#${item.number} is blocked by #${blocker}, which is not on the board`);
     } else if (!recommended.has(blocker)) {
-      failures.push(`#${item.number} is blocked by #${blocker}, which is not Recommended — promote it`);
+      failures.push(
+        `#${item.number} is blocked by #${blocker}, which is not Recommended — promote it`,
+      );
     } else if (order.get(blocker) > order.get(item.number)) {
       failures.push(`#${item.number} is blocked by #${blocker}, which is sequenced below it`);
     }
@@ -333,7 +359,9 @@ function cmdCheck(project) {
   // their children as body links), so `Epic` without sub-issues is legal.
   for (const item of items) {
     if (item.state !== 'OPEN' || item.children === 0 || item.queue === 'Epic') continue;
-    failures.push(`#${item.number} has ${item.children} sub-issue(s) but sits in Queue="${item.queue ?? 'unset'}" — an epic belongs in the Epic band, not among the work units`);
+    failures.push(
+      `#${item.number} has ${item.children} sub-issue(s) but sits in Queue="${item.queue ?? 'unset'}" — an epic belongs in the Epic band, not among the work units`,
+    );
   }
 
   // TWO OPTIONS CANNOT SHARE A NAME. Everything here resolves options by name
@@ -373,14 +401,19 @@ function cmdCheck(project) {
   for (const v of views) {
     const sorts = v.sortByFields.nodes.map((s) => `${s.field.name} ${s.direction}`);
     if (sorts.length) {
-      failures.push(`view ${v.number} "${v.name}" is sorted by ${sorts.join(', ')} — that hides the triage order and disables dragging`);
+      failures.push(
+        `view ${v.number} "${v.name}" is sorted by ${sorts.join(', ')} — that hides the triage order and disables dragging`,
+      );
     }
     // A board's columns ARE its grouping, which GitHub calls the column field.
-    const group = v.layout === 'BOARD_LAYOUT'
-      ? v.verticalGroupByFields.nodes.map((f) => f.name)
-      : v.groupByFields.nodes.map((f) => f.name);
+    const group =
+      v.layout === 'BOARD_LAYOUT'
+        ? v.verticalGroupByFields.nodes.map((f) => f.name)
+        : v.groupByFields.nodes.map((f) => f.name);
     if (group.length === 0) {
-      console.log(`  note: view ${v.number} "${v.name}" has no grouping set — set it in the UI, the API cannot`);
+      console.log(
+        `  note: view ${v.number} "${v.name}" has no grouping set — set it in the UI, the API cannot`,
+      );
     }
   }
 

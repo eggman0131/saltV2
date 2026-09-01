@@ -292,15 +292,15 @@ describe('areasAffectedByDroppedFiles', () => {
   const AREAS = ['packages/domain/src/**', 'apps/web-pwa/src/components/**'];
 
   it('names the areas whose glob matches at least one dropped file', () => {
-    expect(
-      areasAffectedByDroppedFiles(['packages/domain/src/scratch.ts'], AREAS),
-    ).toEqual(['packages/domain/src/**']);
+    expect(areasAffectedByDroppedFiles(['packages/domain/src/scratch.ts'], AREAS)).toEqual([
+      'packages/domain/src/**',
+    ]);
   });
 
   it('is empty when the dropped file matches no pinned area, e.g. shared-types', () => {
-    expect(
-      areasAffectedByDroppedFiles(['packages/shared-types/src/scratch.ts'], AREAS),
-    ).toEqual([]);
+    expect(areasAffectedByDroppedFiles(['packages/shared-types/src/scratch.ts'], AREAS)).toEqual(
+      [],
+    );
   });
 
   it('is empty when nothing was dropped', () => {
@@ -456,7 +456,14 @@ describe('ratchetFindings', () => {
   // neither certifiable nor stale.
   it('certifies an area sitting exactly floor plus the tolerance', () => {
     expect(ratchetFindings([fsArea(93, 61)], fsPin, { staleAbove: 1 })).toEqual([
-      { kind: 'ceiling', glob: FS_AREA, metric: 'lines', uncovered: 61, ceiling: 54, ratio: 'grew' },
+      {
+        kind: 'ceiling',
+        glob: FS_AREA,
+        metric: 'lines',
+        uncovered: 61,
+        ceiling: 54,
+        ratio: 'grew',
+      },
     ]);
   });
 

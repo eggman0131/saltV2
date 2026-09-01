@@ -19,11 +19,11 @@ is _why_ the Storybook app exists.
 Chromatic snapshots **every** story on **every** run, and the plan's snapshot
 budget is finite. So visual review is spent deliberately, never automatically:
 
-| Trigger | How | When to use |
-| --- | --- | --- |
-| Manual | `workflow_dispatch` from the **Actions** tab | Ad-hoc check of a UI branch |
-| Labelled PR | Add the **`visual-review`** label to a PR | You want a diff on _this_ PR |
-| Release | Publishing a GitHub Release (`release: published`) | Capture a fresh baseline at each release |
+| Trigger     | How                                                | When to use                              |
+| ----------- | -------------------------------------------------- | ---------------------------------------- |
+| Manual      | `workflow_dispatch` from the **Actions** tab       | Ad-hoc check of a UI branch              |
+| Labelled PR | Add the **`visual-review`** label to a PR          | You want a diff on _this_ PR             |
+| Release     | Publishing a GitHub Release (`release: published`) | Capture a fresh baseline at each release |
 
 It does **not** run on `push`, and it does **not** run on ordinary (unlabelled)
 PRs. It is **never a required status check** — the workflow reports diffs with

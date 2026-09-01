@@ -297,7 +297,10 @@ describe('the harvester CLI, read as source', () => {
   it('still has a `jobsForRun` to read', () => {
     // Renaming or inlining the function would make every assertion below vacuous
     // rather than red, which is the failure this whole block exists to prevent.
-    expect(jobsForRunBody, 'no `async function jobsForRun(` in scripts/emulator-flake-rate.mjs').toBeDefined();
+    expect(
+      jobsForRunBody,
+      'no `async function jobsForRun(` in scripts/emulator-flake-rate.mjs',
+    ).toBeDefined();
   });
 
   it('asks the jobs endpoint for `filter=all`, not the default latest attempt', () => {

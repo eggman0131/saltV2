@@ -166,7 +166,10 @@ describe('every TypeScript tests/ directory is in the root typecheck script', ()
     // not exist would fail `coveredPrefixes` above with ENOENT, which is the
     // point — this test asserts the pairing is complete in both directions.
     for (const config of configs) {
-      expect(() => read(config), `${config} is named in \`typecheck\` but does not exist`).not.toThrow();
+      expect(
+        () => read(config),
+        `${config} is named in \`typecheck\` but does not exist`,
+      ).not.toThrow();
     }
   });
 });

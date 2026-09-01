@@ -75,7 +75,9 @@ if (files.length === 0) {
 }
 const sources = files.map((file) => ({ file, text: readFileSync(file, 'utf8') }));
 if (!sources.some(({ text }) => /\btext-(?:xs|sm|base|lg|xl)\b/.test(text))) {
-  console.error('typescale:check — no Tailwind text-size utility found anywhere. The scan is broken.');
+  console.error(
+    'typescale:check — no Tailwind text-size utility found anywhere. The scan is broken.',
+  );
   process.exit(1);
 }
 

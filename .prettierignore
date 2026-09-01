@@ -5,3 +5,11 @@
 # expansion onto every PR. Excluding the dir stops both the reformat and the
 # `pnpm format:check` (CI Format check) drift on these files.
 graphify-out/
+
+# pnpm's lockfile — generated, and owned by the package manager's own writer.
+# It entered prettier's scope when `format`'s glob widened to `.yaml` (#1168).
+# Reformatting it puts every `pnpm install` in a fight with `pnpm format`: pnpm
+# rewrites the file in its own style, `format:check` then reds CI, and the
+# autofix bot pushes the reflow back. Nobody reads it by hand, so there is
+# nothing to gain on the other side of that trade.
+pnpm-lock.yaml

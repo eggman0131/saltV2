@@ -16,7 +16,7 @@ You are designing, not building. The deliverable is a GitHub issue. Do not write
 
 - **CLAUDE.md is binding** — and a refactor is the most likely place to quietly drift from it. Layer map, adapter rules, data-model and Zod conventions all hold across the move.
 - **No bodges.** If the target shape can only be reached by bending a rule in CLAUDE.md, that is the finding: surface it in Step 2 and get agreement to change the rule, rather than shipping a structure that violates it.
-- **Flag the simpler path.** If the honest answer is a *different* target shape than the one I asked for — or that the churn isn't worth it at all — say so with the trade-off. "Simpler and more maintainable" is the bar; "less work" is not.
+- **Flag the simpler path.** If the honest answer is a _different_ target shape than the one I asked for — or that the churn isn't worth it at all — say so with the trade-off. "Simpler and more maintainable" is the bar; "less work" is not.
 - **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). `command -v gh` settles which, and the answer is a property of where this session runs, not of the repo: absent — a cloud session, where it cannot be made present — GitHub is reachable only through the GitHub MCP server. One trap there: `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back.
 
 ## Step 0 — Behavior-preserving?
@@ -27,7 +27,7 @@ Mixing structural churn with behavior change is the classic way refactors go wro
 
 ## Step 1 — Architecture read
 
-Read the target area and what surrounds it. The routing table is `docs-map.md` at the repo root, which is not auto-loaded: read it, then open the docs whose *Tracks* globs match the code you expect to move, plus `docs/salt-architecture.md` for anything crossing a layer boundary. Delegate breadth to Explore subagents when the target area is wide or its call sites are unknown; read directly when it's one module.
+Read the target area and what surrounds it. The routing table is `docs-map.md` at the repo root, which is not auto-loaded: read it, then open the docs whose _Tracks_ globs match the code you expect to move, plus `docs/salt-architecture.md` for anything crossing a layer boundary. Delegate breadth to Explore subagents when the target area is wide or its call sites are unknown; read directly when it's one module.
 
 Note the repo's own trap here: Serena's semantic tools cannot see `.svelte` files, so "what consumes this?" answered by `find_referencing_symbols` alone is a confident, wrong answer for anything with UI call sites. Use `grep` over `**/*.svelte` for those, and treat `pnpm depcruise` / `pnpm typecheck` as the authority on what is actually connected.
 
@@ -54,6 +54,7 @@ If the refactor adds or drops a dependency, check what is actually published (`n
 Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
+
 - Title: `refactor: <concise target>` (imperative, no trailing period)
 - Labels: the area and topical labels that fit (`gh label list` — e.g. `domain`, `area: web-pwa`, `architecture` when the layer map moves, `breaking-change` when back-compat is at stake). **Not** `refactor` or `tech-debt`, and **not** a `priority:` label — those facts live on the board as `Class` and `Queue`, and the labels that carried them are gone. **Not** `specced` either — that one is applied and removed by [`spec-shape.yml`](../../.github/workflows/spec-shape.yml) from the body itself, on every edit, not by whoever posted the issue.
 - Board: `node scripts/board.mjs add <issue> --class Refactor --queue <band> --size <S|M|L>`. A refactor reaches `Recommended` only when the drift it describes is **proven** to be costing something now; the shape being wrong is not by itself proof. See [docs/issue-board.md](../../docs/issue-board.md).
@@ -62,44 +63,53 @@ Once we've agreed, post it with `gh issue create`.
 **Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 
 ---
+
 ## Current State & Motivation
+
 [What exists today and what's wrong with it. The cost of leaving it as-is. The target shape.
 Decider-facing: written so a non-coder can judge whether this churn is worth it and the target is right.
 NOT a UX description — a refactor changes structure, not what the user sees.]
 
 ## Behavior Contract
+
 [The observable behavior that MUST be identical before and after, end to end.
 This is the invariant the entire refactor is judged against.
 If pure refactor: "no observable behavior changes." If refactor + change: that change lives in a
 separate issue, linked here, not performed in this one.]
 
 ## Verification Strategy
+
 [How behavior-preservation is PROVEN, per phase. Pick and state: existing coverage is sufficient /
 characterization tests written first to lock current behavior / parity or snapshot check / manual
 parity steps. This governs every phase below — a phase whose preservation can't be verified is a
 red flag, not a phase.]
 
 ## Architecture Notes
+
 [Target-state layer map. Packages touched. Migration approach: in-place / parallel-implementation
 behind a flag / strangler (incremental call-site migration). Existing patterns to reuse.
 Constraints from CLAUDE.md. Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
+
 [Every cut-point or risk raised in Step 2, each as:
+
 - **Decision:** what was chosen
 - **Why:** the reasoning
 - **Rejected:** the alternative(s) and why not
-Unresolved items stay listed as open questions, not silently assumed away.]
+  Unresolved items stay listed as open questions, not silently assumed away.]
 
 ## Phases
+
 [One `### Phase` block per phase, numbered Phase 1 through Phase N.
 
 Every phase must end behavior-preserving and verifiable — that is a constraint on where a boundary may
-*fall*. Unlike a feature, a refactor's boundaries are genuinely driven by structure: the useful question
+_fall_. Unlike a feature, a refactor's boundaries are genuinely driven by structure: the useful question
 is **"where can we safely stop?"**, and each such resting point is worth a phase even when the work either
 side is small. A phase whose preservation can't be verified is a red flag, not a phase.
 
 Split at:
+
 - **safe resting points** — the codebase is consistent and shippable here, old and new coexisting if need be;
 - **characterization-first** — locking current behavior in tests before moving anything is its own phase
   whenever existing coverage isn't strong enough to prove preservation;
@@ -109,10 +119,11 @@ Split at:
 Do not split a single atomic move that has no safe midpoint — say so in **Safe to stop here?** instead.]
 
 ### Phase 1: [Name]
+
 **Scope:** [What gets restructured — precise, not vague]
 **Behavior-preserving check:** [How this phase proves behavior is unchanged — which tests, which parity check]
 **Technical deliverables:** [Files moved/split/renamed, new boundaries, exported functions/types]
-**Context pointers:** [What Step 1 already learned about *this* phase, so `/run` reads rather than re-sweeps:
+**Context pointers:** [What Step 1 already learned about _this_ phase, so `/run` reads rather than re-sweeps:
 the `file:line` call sites it must update, the tests that cover them, and the named rules and `docs/…`
 sections that bound the target shape. Written for an agent arriving with no context — thin here buys a
 fresh Explore sweep there, and on a refactor that sweep is the expensive one.]
@@ -120,6 +131,7 @@ fresh Explore sweep there, and on a refactor that sweep is the expensive one.]
 **Safe to stop here?:** [Yes/No — is the codebase in a shippable, consistent state after this phase, or is this a point of no return mid-migration?]
 
 ### Phase 2: [Name]
+
 **Scope:** [...]
 **Behavior-preserving check:** [...]
 **Technical deliverables:** [...]
@@ -130,6 +142,7 @@ fresh Explore sweep there, and on a refactor that sweep is the expensive one.]
 [...continue through Phase N...]
 
 ## Definition of Done
+
 [Structural goal reached AND behavior unchanged per the Behavior Contract AND mechanical gates
 (tests/types/lint/depcruise) green. Any dead code from the old structure removed or explicitly scheduled.]
 ---

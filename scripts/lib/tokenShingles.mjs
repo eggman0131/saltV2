@@ -39,9 +39,7 @@ const KEYWORDS = new Set(
    null package private protected public return static super switch this throw true try
    typeof var void while with yield as asserts any boolean constructor declare from get infer
    is keyof module namespace never readonly require number object set string symbol type
-   undefined unique unknown global satisfies abstract async of out override accessor`.split(
-    /\s+/,
-  ),
+   undefined unique unknown global satisfies abstract async of out override accessor`.split(/\s+/),
 );
 
 const ID_START = /[A-Za-z_$]/;

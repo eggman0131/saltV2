@@ -6,7 +6,7 @@ description: How proactive to be on a PR this repo's sessions opened — what to
 # PR stewardship
 
 Read on PR activity events and self check-ins for PRs opened from this repo.
-It adjusts **cadence only**. Everything the harness contract says about *what*
+It adjusts **cadence only**. Everything the harness contract says about _what_
 to act on — merge conflicts, red CI, review comments, the Claude Approvals
 rows, never skipping a test, never merging — stands unchanged.
 

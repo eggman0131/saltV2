@@ -31,12 +31,12 @@ amendment against these sections.
 These four components shipped with provenance headers that named a real
 document and a section that did not exist in it:
 
-| component | header said | what that section actually is |
-| --- | --- | --- |
+| component    | header said            | what that section actually is                                                 |
+| ------------ | ---------------------- | ----------------------------------------------------------------------------- |
 | `EmptyState` | `ui-spec-v02.md §8.25` | v0.2's §8 stops at **8.15 Progress**. §8.25 is v0.9's **CollapsibleSection**. |
-| `ErrorState` | `ui-spec-v02.md §8.26` | v0.9's **DisclosureTrigger / DisclosureChevron**. |
-| `FormPage` | `ui-spec-v02.md §9.2` | v0.2's §9 is the **Changelog**. §9.2 is v0.4's **ListPage behaviour**. |
-| `DetailPage` | `ui-spec-v02.md §9.3` | v0.4's **`ListPage` props changes**. |
+| `ErrorState` | `ui-spec-v02.md §8.26` | v0.9's **DisclosureTrigger / DisclosureChevron**.                             |
+| `FormPage`   | `ui-spec-v02.md §9.2`  | v0.2's §9 is the **Changelog**. §9.2 is v0.4's **ListPage behaviour**.        |
+| `DetailPage` | `ui-spec-v02.md §9.3`  | v0.4's **`ListPage` props changes**.                                          |
 
 `check-provenance.ts` resolved the **document** and never the `§`, so all eight
 files passed. The header was not a stale cross-reference that drifted — there
@@ -128,19 +128,19 @@ inert when `footer` is supplied. This is declared, not enforced.
 
 ## 1.6 Props
 
-| Name | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `title` | `string` | — | Required. Rendered as the page's `<h1>`. |
-| `description` | `string` | `undefined` | One line under the title. |
-| `submitLabel` | `string` | `'Save'` | Default-footer only (§1.5). |
-| `cancelLabel` | `string` | `'Cancel'` | Default-footer only. |
-| `isSubmitting` | `boolean` | `false` | Submit shows `loading`; cancel is disabled (§1.4). |
-| `canSubmit` | `boolean` | `true` | `false` disables the submit button. |
-| `onSubmit` | `(event: SubmitEvent) => void` | `undefined` | Called after `preventDefault()`. |
-| `onCancel` | `() => void` | `undefined` | Omitted ⇒ **no cancel button is rendered at all** in the default footer. |
-| `footer` | `Snippet` | `undefined` | Replaces the whole default pair (§1.5). |
-| `children` | `Snippet` | `undefined` | The fields. |
-| `class` | `string` | — | Merged onto the `<form>` via `cn`. |
+| Name           | Type                           | Default     | Notes                                                                    |
+| -------------- | ------------------------------ | ----------- | ------------------------------------------------------------------------ |
+| `title`        | `string`                       | —           | Required. Rendered as the page's `<h1>`.                                 |
+| `description`  | `string`                       | `undefined` | One line under the title.                                                |
+| `submitLabel`  | `string`                       | `'Save'`    | Default-footer only (§1.5).                                              |
+| `cancelLabel`  | `string`                       | `'Cancel'`  | Default-footer only.                                                     |
+| `isSubmitting` | `boolean`                      | `false`     | Submit shows `loading`; cancel is disabled (§1.4).                       |
+| `canSubmit`    | `boolean`                      | `true`      | `false` disables the submit button.                                      |
+| `onSubmit`     | `(event: SubmitEvent) => void` | `undefined` | Called after `preventDefault()`.                                         |
+| `onCancel`     | `() => void`                   | `undefined` | Omitted ⇒ **no cancel button is rendered at all** in the default footer. |
+| `footer`       | `Snippet`                      | `undefined` | Replaces the whole default pair (§1.5).                                  |
+| `children`     | `Snippet`                      | `undefined` | The fields.                                                              |
+| `class`        | `string`                       | —           | Merged onto the `<form>` via `cn`.                                       |
 
 ## 1.7 Testing requirements
 
@@ -225,18 +225,18 @@ enforced.
 
 ## 2.6 Props
 
-| Name | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `title` | `string` | — | Required, even with `titleSlot` (§2.4). |
-| `subtitle` | `string` | `undefined` | One line under the title. |
-| `onBack` | `() => void` | `undefined` | Omitted ⇒ no back button. The template never touches the router. |
-| `backLabel` | `string` | `'Back'` | |
-| `actions` | `Snippet` | `undefined` | Right-aligned cluster (§2.3). |
-| `metadata` | `Snippet` | `undefined` | The aside (§2.5). Not with `fill`. |
-| `titleSlot` | `Snippet` | `undefined` | Replaces the `<h1>` (§2.4). |
-| `children` | `Snippet` | `undefined` | The body. |
-| `class` | `string` | — | Merged onto the `<section>` via `cn`. |
-| `fill` | `boolean` | `false` | **v0.7 §1.3** — specified there, listed here for completeness. |
+| Name        | Type         | Default     | Notes                                                            |
+| ----------- | ------------ | ----------- | ---------------------------------------------------------------- |
+| `title`     | `string`     | —           | Required, even with `titleSlot` (§2.4).                          |
+| `subtitle`  | `string`     | `undefined` | One line under the title.                                        |
+| `onBack`    | `() => void` | `undefined` | Omitted ⇒ no back button. The template never touches the router. |
+| `backLabel` | `string`     | `'Back'`    |                                                                  |
+| `actions`   | `Snippet`    | `undefined` | Right-aligned cluster (§2.3).                                    |
+| `metadata`  | `Snippet`    | `undefined` | The aside (§2.5). Not with `fill`.                               |
+| `titleSlot` | `Snippet`    | `undefined` | Replaces the `<h1>` (§2.4).                                      |
+| `children`  | `Snippet`    | `undefined` | The body.                                                        |
+| `class`     | `string`     | —           | Merged onto the `<section>` via `cn`.                            |
+| `fill`      | `boolean`    | `false`     | **v0.7 §1.3** — specified there, listed here for completeness.   |
 
 ## 2.7 Testing requirements
 
@@ -291,13 +291,13 @@ actions — is optional, and the common call (`ListPage`'s) passes only the titl
 
 ## 8.31.4 Props
 
-| Name | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `title` | `string` | — | Required (§8.31.3). Rendered as an `<h3>`. |
-| `description` | `string` | `undefined` | `max-w-md`, so it wraps at a readable measure rather than the panel's width. |
-| `icon` | `Snippet` | `undefined` | Rendered above the title, in `text-muted-foreground`. The caller supplies the `Icon`; the primitive picks none. |
-| `actions` | `Snippet` | `undefined` | A centred row below. |
-| `class` | `string` | — | Merged onto the panel via `cn`. |
+| Name          | Type      | Default     | Notes                                                                                                           |
+| ------------- | --------- | ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `title`       | `string`  | —           | Required (§8.31.3). Rendered as an `<h3>`.                                                                      |
+| `description` | `string`  | `undefined` | `max-w-md`, so it wraps at a readable measure rather than the panel's width.                                    |
+| `icon`        | `Snippet` | `undefined` | Rendered above the title, in `text-muted-foreground`. The caller supplies the `Icon`; the primitive picks none. |
+| `actions`     | `Snippet` | `undefined` | A centred row below.                                                                                            |
+| `class`       | `string`  | —           | Merged onto the panel via `cn`.                                                                                 |
 
 Everything else — `data-testid`, `data-*`, `id`, `aria-*` — rides `...rest` onto
 the panel element, as it does on `Chip` (v0.9 §8.23.3). Added in v0.13.1 by
@@ -356,7 +356,7 @@ correctly with no arguments at all.
 - The panel is `role="alert"` — an assertive live region. A load that failed
   interrupts, because the content the user asked for is not coming.
 - The warning icon carries `ariaLabel="Error"` rather than being decorative.
-  It is the only thing in the panel that names the *kind* of state when the
+  It is the only thing in the panel that names the _kind_ of state when the
   title has been overridden to something specific.
 - The title defaults to `'Something went wrong'`, so `<ErrorState />` is a
   complete, sayable panel.
@@ -383,14 +383,14 @@ lifecycle it cannot see the end of.
 
 ## 8.32.5 Props
 
-| Name | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `title` | `string` | `'Something went wrong'` | Rendered as an `<h3>` (§8.31.4's reasoning applies identically). |
-| `description` | `string` | `undefined` | `max-w-md`. Put the human-readable cause here — never a raw error or a stack. |
-| `onRetry` | `() => void` | `undefined` | Renders the retry button (§8.32.3). |
-| `retryLabel` | `string` | `'Try again'` | |
-| `actions` | `Snippet` | `undefined` | Replaces the retry button entirely. |
-| `class` | `string` | — | Merged onto the panel via `cn`. |
+| Name          | Type         | Default                  | Notes                                                                         |
+| ------------- | ------------ | ------------------------ | ----------------------------------------------------------------------------- |
+| `title`       | `string`     | `'Something went wrong'` | Rendered as an `<h3>` (§8.31.4's reasoning applies identically).              |
+| `description` | `string`     | `undefined`              | `max-w-md`. Put the human-readable cause here — never a raw error or a stack. |
+| `onRetry`     | `() => void` | `undefined`              | Renders the retry button (§8.32.3).                                           |
+| `retryLabel`  | `string`     | `'Try again'`            |                                                                               |
+| `actions`     | `Snippet`    | `undefined`              | Replaces the retry button entirely.                                           |
+| `class`       | `string`     | —                        | Merged onto the panel via `cn`.                                               |
 
 ## 8.32.6 Testing requirements
 
@@ -413,6 +413,6 @@ lifecycle it cannot see the end of.
 
 # 9. Changelog
 
-| Date       | Version | Summary                                                                                                       |
-| ---------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| Date       | Version | Summary                                                                                                                                                     |
+| ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-08-28 | v0.13   | Initial. Ratifies `FormPage` (§1), `DetailPage` base (§2), `EmptyState` (§8.31) and `ErrorState` (§8.32), which shipped without a spec section; issue #976. |

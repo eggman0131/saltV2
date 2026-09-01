@@ -101,11 +101,10 @@ const relative = Object.fromEntries(
 // deliberately NOT the three-line `git ls-files` read `check-coverage-files.mjs`
 // still uses for its own different purpose (there, an untracked extra is a
 // note, not a failure it needs to survive one `git add`).
-const trackedFiles = execFileSync(
-  'git',
-  ['ls-tree', '-r', 'HEAD', '--name-only', '-z'],
-  { cwd: repoRoot, encoding: 'utf8' },
-)
+const trackedFiles = execFileSync('git', ['ls-tree', '-r', 'HEAD', '--name-only', '-z'], {
+  cwd: repoRoot,
+  encoding: 'utf8',
+})
   .split('\0')
   .filter(Boolean);
 

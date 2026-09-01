@@ -106,7 +106,8 @@ export function triggersPushToMain(text) {
 /** A merge_group run that gets cancelled is an ejected queue entry. A literal
  *  `cancel-in-progress: true` cancels every event; the expression form that
  *  narrows it to pull_request is what ci.yml uses and what this permits. */
-export const cancelsEveryEvent = (text) => /^\s*cancel-in-progress:\s*true\s*$/m.test(stripComments(text));
+export const cancelsEveryEvent = (text) =>
+  /^\s*cancel-in-progress:\s*true\s*$/m.test(stripComments(text));
 
 /**
  * @param {{path: string, text: string}[]} workflows
