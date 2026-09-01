@@ -232,11 +232,36 @@ export const coverageThresholds = {
   // The two figures on the line below are #1133's, not #929's — kept as history
   // because they are the worked example of the one operation the ratio cannot
   // see, and #1133's Phase 2 turns that worked example into a test.
+  // Branches RE-PINNED 74.53 → 74.52 when the Combobox anchor mechanism was
+  // rewritten to two slots (the fix for the effect_update_depth_exceeded loop
+  // svelte 5.56.10 exposed). Same operation as #929's above, and it passes the
+  // same test — this time with room, because the uncovered count did not merely
+  // hold, it FELL:
+  //
+  //     before   635 / 852 branches   →   217 uncovered
+  //     after    632 / 848 branches   →   216 uncovered
+  //
+  // Four branch-paths left the denominator because they were DEAD, not because
+  // a duplicate went. `ComboboxInput` used to ask `if (ctx.anchorEl === null)`
+  // before registering, and both it and `ComboboxField` guarded their teardown
+  // with `if (ctx.anchorEl === <own el>)`. Reading the anchor to decide whether
+  // you may write it is what made the effect depend on the state it assigns, so
+  // deleting those reads IS the bug fix; a slot each, with the precedence
+  // declared once in `Combobox.svelte`, cannot express the cycle. Two of the
+  // deleted paths were covered only by the loop's own spurious re-runs —
+  // coverage the defect was manufacturing — and the `fieldAnchorEl ??
+  // inputAnchorEl` that replaced them is covered both ways.
+  //
+  // So the ratio fell by 0.01 while one more branch became covered. Per the
+  // header's rule this is the deliberate act, not a red PR being papered over:
+  // had the uncovered count risen by even one, the fix would have been a test.
+  // Lines UNMOVED at 89.14 (measured 89.15) — a pin that does not need to move
+  // does not move.
   'packages/ui-components/src/**': {
     lines: 89.14,
-    branches: 74.53,
+    branches: 74.52,
     uncoveredLines: 191,
-    uncoveredBranches: 217,
+    uncoveredBranches: 216,
   },
   // Lines CORRECTED DOWN 83.56 → 82.58 in #977, and this is the one case
   // where that is not a ratchet release. 83.56 was never measured: it was

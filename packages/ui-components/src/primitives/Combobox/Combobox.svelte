@@ -36,7 +36,14 @@
   let inputValue = $state('');
   let filterValue = $state('');
   let activeIndex = $state<number | null>(null);
-  let anchorEl = $state<HTMLElement | null>(null);
+  // Two anchor slots, not one, and the precedence between them is declared here
+  // rather than negotiated between the components (issue: effect_update_depth).
+  // A single slot forced whoever registered second to READ the slot to decide
+  // whether it was allowed to write — an effect reading the state it assigns,
+  // which loops the moment Svelte tracks that read. With a slot each, neither
+  // component ever reads the anchor, so the cycle cannot be written.
+  let fieldAnchorEl = $state<HTMLElement | null>(null);
+  let inputAnchorEl = $state<HTMLElement | null>(null);
 
   // Sync inputValue to selected value's label on init
   const initialItem = untrack(() => items.find((i) => i.value === value));
@@ -95,9 +102,14 @@
     listboxId,
     inputId,
     getOnCreate: () => onCreate,
-    anchorEl: () => anchorEl,
-    setAnchorEl: (el) => {
-      anchorEl = el;
+    // A ComboboxField, when one wraps the input, is the wider box and so the
+    // better thing to hang the popup off; the input is the fallback.
+    anchorEl: () => fieldAnchorEl ?? inputAnchorEl,
+    setFieldAnchorEl: (el) => {
+      fieldAnchorEl = el;
+    },
+    setInputAnchorEl: (el) => {
+      inputAnchorEl = el;
     },
   });
 
