@@ -238,9 +238,10 @@ describe('process-e2e-coverage.ts', () => {
     // Two assertions replace it, and between them they cover both shapes of the
     // fifth copy:
     //   IMPORT_OF     — an actual `import … from '<specifier>'` STATEMENT, which
-    //                   a comment cannot satisfy: the pattern anchors on a line
-    //                   beginning with `import`, and a comment line begins `//`
-    //                   or `*`.
+    //                   a `//` comment cannot satisfy (its line begins `//`,
+    //                   never `import`) and a `/* … */` block comment is
+    //                   stripped before matching, so an archaeological block
+    //                   quoting a removed import line can't satisfy it either.
     //   SHADOW_DECL   — a local `const`/`let`/`var`/`function`/`class` binding
     //                   one of the three exported names, AT ANY VALUE. Value-
     //                   agnostic on purpose: it reds both on a shadow copy that
@@ -306,20 +307,31 @@ describe('process-e2e-coverage.ts', () => {
     const STRAY_LITERAL_ORIGIN = new RegExp(`['"\`]${escapeRegExp(E2E_APP_ORIGIN)}`);
 
     /** A real `import … from '<specifier>'`, single- or multi-line. Anchored to
-     *  a line that STARTS with `import` (`m` flag), which is what a comment
-     *  mentioning the specifier cannot do: its line starts `//` or `*`. The
+     *  a line that STARTS with `import` (`m` flag), which is what a `//`
+     *  comment mentioning the specifier cannot do: its line starts `//`. A
+     *  `/* … *\/` block comment CAN open a line with `import` (its body lines
+     *  carry no required prefix), so callers must match against
+     *  `stripBlockComments(src)`, not raw `src` — see the call site below. The
      *  clause body is `[^;]*?` so a braced multi-line import still matches,
      *  and stops at the statement's own semicolon so it cannot reach across
      *  one import into the next. */
     const importOf = (specifier: string): RegExp =>
       new RegExp(`^\\s*import\\s[^;]*?from\\s*['"\`]${escapeRegExp(specifier)}['"\`]`, 'm');
 
+    /** Strips `/* … *\/` block comments only — `//` line comments are already
+     *  excluded by `importOf`'s line anchor, and stripping them too would just
+     *  as happily hide a real import that follows one on the same line. */
+    const stripBlockComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '');
+
     /** A local binding of one of the three exported names, at any value — the
      *  shape #1132 removed from globalTeardown.ts and the one #1162 reproduced.
      *  Not comment-stripped: a comment containing the literal text
      *  `const E2E_APP_PORT` would be a FALSE POSITIVE, which is the harmless
-     *  direction and is not the case in the tree today. `e2eAppOrigin.ts` is not
-     *  a consumer, so its own declarations are never scanned. */
+     *  direction — and is not the case in the five files CONSUMERS scans today
+     *  (this test file itself carries that exact text, in this comment and in
+     *  the review-history prose above, which is exactly why this file can
+     *  never join CONSUMERS without being reworded). `e2eAppOrigin.ts` is not
+     *  a consumer either, so its own declarations are never scanned. */
     const SHADOW_DECLARATION =
       /\b(?:const|let|var|function|class)\s+(?:E2E_APP_HOST|E2E_APP_PORT|E2E_APP_ORIGIN)\b/;
 
@@ -327,9 +339,10 @@ describe('process-e2e-coverage.ts', () => {
       '$label derives the origin from e2eAppOrigin.ts',
       ({ file, importSpecifier }) => {
         const src = readFileSync(file, 'utf8');
-        expect(src, `no \`import … from '${importSpecifier}'\` statement`).toMatch(
-          importOf(importSpecifier),
-        );
+        expect(
+          stripBlockComments(src),
+          `no \`import … from '${importSpecifier}'\` statement`,
+        ).toMatch(importOf(importSpecifier));
         // A stray literal origin here — even alongside the import — is the
         // drift finding 1 flagged: a second, independently-editable copy of the
         // port that the import no longer prevents. `e2eAppOrigin.ts` itself is

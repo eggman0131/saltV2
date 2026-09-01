@@ -71,7 +71,8 @@ rule headers below and asserts that the set marked `guarded` equals `RULE_IDS` i
 [`scripts/lib/unitTestSpec.mjs`](../scripts/lib/unitTestSpec.mjs) — both directions, so demoting a
 marker to `review-only` reds it and so does adding a rule to `FILE_RULES`/`AREA_RULES` without
 marking it here (#1162, which measured the gap: demoting `UT-E4` left all 92 tests green). It matches
-the header **form**, never the word `guarded`, which also appears in prose on six lines of this file.
+the header **form**, never the word `guarded`, which also appears in prose on several other lines of
+this file.
 
 What it does **not** check is whether a rule's prose describes what its matcher actually does. Each
 of the nine carries a `_Guard:_` line saying what the matcher really sees — three of them narrower

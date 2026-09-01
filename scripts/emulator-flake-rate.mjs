@@ -161,13 +161,18 @@ async function listRunIds(since, until) {
  *  ignores `body.total_count`, unlike `listRunIds` above, which passes
  *  `{ paginate: true }`. ci.yml declares 9 jobs, one of them a 3-way matrix, so
  *  a run emits 11 records per attempt and would need roughly ten full re-runs
- *  before it overflowed `per_page=100`. If one ever did, the overflow is silent
- *  and it is NOT in a safe direction — a dropped failing attempt reclassifies
- *  its run as green, and a run whose emulator records all fall past the boundary
- *  leaves the denominator entirely. Both understate the rate. Not paginated here
- *  because pagination costs a second API call on every one of several hundred
- *  runs to defend against a case that has not occurred; revisit if ci.yml grows
- *  a wide matrix. */
+ *  before it overflowed `per_page=100`. The jobs API groups records by attempt
+ *  in ASCENDING order (verified live against run 32876589235; undocumented, so
+ *  this is still an assumption) — attempt 1's records always land inside the
+ *  first 11, so a run can never leave the denominator entirely. Truncation
+ *  instead drops the NEWEST attempts: the fail-then-rerun-green shape keeps its
+ *  failing attempt and loses the green one, and `classifyRun`'s
+ *  failure-beats-success fold returns `failure` either way — no understatement
+ *  there. What DOES understate the rate: a run whose early attempts succeeded
+ *  and whose ~10th-or-later attempt failed and fell past the boundary reads as
+ *  `success`. Not paginated here because pagination costs a second API call on
+ *  every one of several hundred runs to defend against a case that has not
+ *  occurred; revisit if ci.yml grows a wide matrix. */
 async function jobsForRun(runId) {
   const body = await ghApi(
     `repos/${REPO}/actions/runs/${runId}/jobs?filter=all&per_page=100`,

@@ -229,18 +229,20 @@ function rawOf(path) {
 // plus one anchor: the equality below is self-anchoring in the `guarded`
 // direction (a regex that stopped matching would compare an empty set against
 // nine ids and red), but not in the `review-only` direction — twenty-one
-// unparsed rules are indistinguishable from twenty-one absent ones. The count
-// test is what covers that half.
+// unparsed rules are indistinguishable from twenty-one absent ones, and the
+// two floors below cannot tell either apart from a bullet RULE_HEADER simply
+// failed to recognise (both floors still hold at the old counts). The
+// "recognises every UT-* rule bullet" test below is what covers that half —
+// it compares against a bullet count RULE_HEADER cannot silently undershoot.
 
 describe("the spec's `guarded` markers name the rules this guard implements", () => {
   /** A rule HEADER, which is a structural form, not the word "guarded": the doc
-   *  uses that word in prose on six other lines (UT-E3 — do not match prose).
+   *  uses that word in prose on several other lines (UT-E3 — do not match prose).
    *  `MUST NOT` before `MUST` because alternation is first-match. */
   const RULE_HEADER = /^- \*\*(UT-[A-Z0-9]+) \((?:MUST NOT|MUST|SHOULD) · (guarded|review-only)\) — /gm;
 
-  const headers = [...readFileSync(join(repoRoot, 'docs/unit-test-spec.md'), 'utf8').matchAll(RULE_HEADER)].map(
-    ([, id, marker]) => ({ id, marker }),
-  );
+  const specDoc = readFileSync(join(repoRoot, 'docs/unit-test-spec.md'), 'utf8');
+  const headers = [...specDoc.matchAll(RULE_HEADER)].map(([, id, marker]) => ({ id, marker }));
 
   it('still parses the spec, both markers', () => {
     // Thirty rules today, nine of them guarded. A floor rather than an equality
@@ -249,6 +251,17 @@ describe("the spec's `guarded` markers name the rules this guard implements", ()
     // below cannot tell apart from an empty file.
     expect(headers.length, 'no UT-* rule headers parsed out of docs/unit-test-spec.md').toBeGreaterThanOrEqual(30);
     expect(headers.filter((h) => h.marker === 'review-only').length).toBeGreaterThanOrEqual(21);
+  });
+
+  it('recognises every UT-* rule bullet, not just enough of them', () => {
+    // The two floors above are silent if a bullet's form deviates from
+    // RULE_HEADER by as little as one character (an ASCII hyphen for the em
+    // dash, say): the parse just drops it, and both floors can still pass at
+    // the old counts. This compares against a looser scan — any line that
+    // opens a `UT-*` bullet at all — so a header RULE_HEADER fails to
+    // recognise reds here even when the floors above do not move.
+    const bulleted = [...specDoc.matchAll(/^- \*\*UT-[A-Z0-9]+ /gm)].length;
+    expect(headers.length, 'a UT-* rule bullet exists that RULE_HEADER did not recognise').toBe(bulleted);
   });
 
   it('marks exactly RULE_IDS as guarded, in both directions', () => {
