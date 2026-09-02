@@ -204,9 +204,14 @@
   // crops; this is the one place the describe callable is actually invoked —
   // `briefBusy` is passed straight through so the dialog can show its own
   // "Reading the photo…" state instead of a second, disconnected spinner.
-  async function handleDescribeFromPhoto(photo: EquipmentReferencePhoto): Promise<void> {
-    if (!item) return;
-    const name = item.name;
+  //
+  // Takes the name rather than re-reading `item`: the call site is the inline
+  // `onDescribe` below, already inside `{#if item && PhotoDialog}` — narrowed
+  // there, so there is no `item` to re-check here.
+  async function handleDescribeFromPhoto(
+    name: string,
+    photo: EquipmentReferencePhoto,
+  ): Promise<void> {
     briefSteer = '';
     await runBriefAction(() => describeEquipmentFromPhoto(name, photo));
     photoOpen = false;
@@ -885,5 +890,9 @@
 {/if}
 
 {#if item && PhotoDialog}
-  <PhotoDialog bind:open={photoOpen} busy={briefBusy} onDescribe={handleDescribeFromPhoto} />
+  <PhotoDialog
+    bind:open={photoOpen}
+    busy={briefBusy}
+    onDescribe={(photo) => handleDescribeFromPhoto(item.name, photo)}
+  />
 {/if}
