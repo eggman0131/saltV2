@@ -2707,16 +2707,23 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  there is no OWNED-ITEM picture for an accessory — but `kitIconFor`
                  is not that lookup alone; per that file's header it asks the
                  equipment vocabulary FIRST, then falls through to the kitchen-tool
-                 vocabulary. An accessory row is, by construction, exactly a label
-                 `resolveEquipmentItem` refused — so the tool-vocabulary half is
-                 precisely the half that still has something to draw for it (a
-                 rice spoon draws the generic rice-paddle pictogram; a mixing bowl
-                 accessory draws the generic bowl). Calling the same lookup here
-                 means a genuine miss on BOTH vocabularies still renders no tile —
-                 never a placeholder (#882) — but a tool-vocabulary hit is not
-                 suppressed just because the row is nested (#1179 review finding
-                 B1). `RecipeViewPage.kit.test.ts` pins a real hit alongside the
-                 real miss so this claim stays true.
+                 vocabulary. MOST accessory rows are a label
+                 `resolveEquipmentItem` refused — every bare one, which is how the
+                 library names them today — and for those the tool-vocabulary half
+                 is precisely the half that still has something to draw (a rice
+                 spoon draws the generic rice-paddle pictogram; a mixing bowl
+                 accessory draws the generic bowl). Since #1182 that is no longer
+                 ALL of them: a prefixed accessory ("Magimix Cocotte Slow Cook
+                 Pot") does resolve, to its owning item, so its nested row draws
+                 the SAME equipment picture as the appliance heading it. That
+                 reads correctly — indented and muted under the machine it is part
+                 of — and it is exactly what must not happen on two TOP-LEVEL rows,
+                 which is the defect #1182 fixed in the query. Calling the same
+                 lookup here means a genuine miss on BOTH vocabularies still
+                 renders no tile — never a placeholder (#882) — but a
+                 tool-vocabulary hit is not suppressed just because the row is
+                 nested (#1179 review finding B1). `RecipeViewPage.kit.test.ts`
+                 pins a real hit alongside the real miss so this claim stays true.
 
                  Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
                  rhythm is unbroken and `last:border-b-0` still means the last line

@@ -13,7 +13,9 @@ import type { RecipeKitEntryDoc } from '@salt/domain/schemas';
 // written so it goes RED if the guard is removed rather than merely passing today:
 //   • an accessory whose appliance is absent is never nested (and never invents it);
 //   • two appliances owning the same accessory name nest nothing;
-//   • every entry appears exactly once, so the tab's count stays `kit.length`.
+//   • every entry appears exactly once, so the tab's count stays `kit.length`;
+//   • which entry HEADS a row never depends on stored order (#1182), so every case
+//     that could turn on it is written in both orders.
 
 function entry(label: string): RecipeKitEntryDoc {
   return { label, stepIds: [] };
@@ -52,6 +54,10 @@ const HAND_BLENDER = item('eq-ninja', 'Ninja Foodi 3-in-1 Hand Blender, Mixer & 
 ]);
 const ANOVA = item('eq-anova', 'Anova Precision Oven', ['Oven Sheet Pan', 'Wire Oven Rack']);
 const SAGE_Q = item('eq-sage-q', 'Sage The Super Q', ['Spatula', 'Tamper']);
+// The prefixed spelling issue #1182 is about. `resolveEquipmentItem`'s header names
+// this exact pair as a label the kit flow is licensed to write, and both spellings
+// resolve to this one item — which is why pass one had to stop making both heads.
+const MAGIMIX = item('eq-magimix', 'Magimix Cook Expert', ['Cocotte Slow Cook Pot', 'Blender Jug']);
 
 describe('groupKitByEquipment', () => {
   it('folds a bare accessory name under the appliance beside it', () => {
@@ -187,6 +193,66 @@ describe('groupKitByEquipment', () => {
     expect(lines(groups)).toEqual(['Cosori 5L Rice Cooker', '  ↳ Rice Spoon']);
   });
 
+  // Issue #1182. `resolveEquipmentItem` resolves BOTH of these to the Magimix — the
+  // prefixed accessory spelling is one of the two its header names — so pass one saw
+  // two genuine resolutions and made two heads out of them, drawing the same machine
+  // twice with the same picture. These four cases are what pins the fix.
+  it.each([
+    ['appliance first', ['Magimix Cook Expert', 'Magimix Cocotte Slow Cook Pot']],
+    ['accessory first', ['Magimix Cocotte Slow Cook Pot', 'Magimix Cook Expert']],
+  ])(
+    'nests a PREFIXED accessory under its appliance, whichever order they are stored in (%s)',
+    (_name, labels) => {
+      // The order-independence is the point, not a bonus. The reverted attempt during
+      // #1179's review nested whatever resolved second under whatever resolved first,
+      // so "accessory first" rendered the MACHINE indented and muted under its own
+      // pot — a false relationship, which is worse than the missing one it replaced.
+      const groups = groupKitByEquipment(labels.map(entry), [MAGIMIX, RICE_COOKER]);
+
+      expect(lines(groups)).toEqual(['Magimix Cook Expert', '  ↳ Magimix Cocotte Slow Cook Pot']);
+    },
+  );
+
+  it('keeps a prefixed accessory top-level when its appliance is not in the kit', () => {
+    // The same guard pass two has, on pass one's side: the appliance heads the row
+    // or there is no row to head. Promoting a whole Magimix to a heading because the
+    // recipe wants its pot invents kit the cook was never asked for.
+    const groups = groupKitByEquipment(
+      [entry('Magimix Cocotte Slow Cook Pot'), entry('sharp knife')],
+      [MAGIMIX, RICE_COOKER],
+    );
+
+    expect(lines(groups)).toEqual(['Magimix Cocotte Slow Cook Pot', 'sharp knife']);
+  });
+
+  it('keeps two prefixed accessories flat when neither names the appliance', () => {
+    // The stated boundary of the fix (CLAUDE.md rule 12): the same item CAN still
+    // appear on two top-level rows here, and deliberately does. Nesting the jug
+    // under the pot would say the jug is part of the pot, and the appliance that
+    // actually owns both is not in the kit to head them.
+    const groups = groupKitByEquipment(
+      [entry('Magimix Cocotte Slow Cook Pot'), entry('Magimix Blender Jug')],
+      [MAGIMIX],
+    );
+
+    expect(lines(groups)).toEqual(['Magimix Cocotte Slow Cook Pot', 'Magimix Blender Jug']);
+  });
+
+  it('orders a mixed group by stored position, not by which pass nested it', () => {
+    // A bare accessory (pass two) and a prefixed one (pass one) under one head. The
+    // rows read in the order the flow wrote them, not in pass order.
+    const groups = groupKitByEquipment(
+      [entry('Magimix Blender Jug'), entry('Magimix Cook Expert'), entry('Cocotte Slow Cook Pot')],
+      [MAGIMIX],
+    );
+
+    expect(lines(groups)).toEqual([
+      'Magimix Cook Expert',
+      '  ↳ Magimix Blender Jug',
+      '  ↳ Cocotte Slow Cook Pot',
+    ]);
+  });
+
   it('returns a flat list when the manifest is empty or has not loaded yet', () => {
     // A cold load paints before the manifest lands. Flat is the correct reading of
     // "nothing is known to be owned", not a degraded one.
@@ -255,12 +321,18 @@ describe('groupKitByEquipment', () => {
       [entry('Oven Sheet Pan'), entry('Wire Oven Rack')],
       [entry('Rice Spoon'), entry('Cosori 5L Rice Cooker'), entry('Measuring Cup')],
       [entry('Anova Precision Oven'), entry('Oven Sheet Pan'), entry('Wire Oven Rack')],
+      // #1182, in both orders — the pass-one nesting is a THIRD disposition, and
+      // this property is what says it did not lose or duplicate an entry.
+      [entry('Magimix Cook Expert'), entry('Magimix Cocotte Slow Cook Pot')],
+      [entry('Magimix Cocotte Slow Cook Pot'), entry('Magimix Cook Expert')],
+      [entry('Magimix Blender Jug'), entry('Magimix Cook Expert'), entry('Cocotte Slow Cook Pot')],
     ];
     const manifest = [
       RICE_COOKER,
       HAND_BLENDER,
       ANOVA,
       SAGE_Q,
+      MAGIMIX,
       item('eq-rival', 'Kenwood Chef', ['Measuring Cup']),
     ];
 
