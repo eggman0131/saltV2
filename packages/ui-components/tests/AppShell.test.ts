@@ -1,10 +1,12 @@
-// spec: ui-spec-v05.md §3 v0.5
-// Covers chrome suppression for full-viewport routes only. The rest of AppShell
-// (h-dvh constraint, env banner, overflow nav) is spec'd in ui-spec-v04 §13/§16/§17.
+// spec: ui-spec-v05.md §2 v0.5; ui-spec-v15.md §1 v0.15 (navCollapsed)
+// Covers chrome suppression for full-viewport routes and the collapsible
+// SideNav. The rest of AppShell (h-dvh constraint, env banner, overflow nav) is
+// spec'd in ui-spec-v04 §13/§16/§17.
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/svelte';
+import { render, cleanup, fireEvent } from '@testing-library/svelte';
 import { House, Settings } from '@lucide/svelte';
 import AppShell from '../src/layout/AppShell/AppShell.svelte';
+import { SIDE_NAV_ID } from '../src/layout/SideNav/SideNav.types';
 import type { NavItem } from '../src/layout/NavItem.types';
 
 afterEach(() => cleanup());
@@ -26,7 +28,7 @@ function focusables(container: HTMLElement): Element[] {
  */
 const NAV_HEIGHT_VAR = '--salt-layout-bottom-nav-height';
 
-describe('AppShell chrome suppression (ui-spec-v05 §3)', () => {
+describe('AppShell chrome suppression (ui-spec-v05 §2)', () => {
   it('renders the nav chrome by default', () => {
     const { container } = render(AppShell, { props: { navItems, currentPath: '/' } });
     expect(container.querySelector('header')).toBeTruthy();
@@ -77,5 +79,83 @@ describe('AppShell chrome suppression (ui-spec-v05 §3)', () => {
     const navRow = container.querySelector('nav.fixed.bottom-0 ul')!.className;
     expect(main).toContain(NAV_HEIGHT_VAR);
     expect(navRow).toContain(NAV_HEIGHT_VAR);
+  });
+});
+
+describe('AppShell collapsible SideNav (ui-spec-v15 §1)', () => {
+  /** The TopBar's collapse control. `aria-expanded` is what makes it that one. */
+  const toggle = (c: HTMLElement) =>
+    c.querySelector<HTMLButtonElement>('header button[aria-expanded]');
+
+  it('renders the SideNav and its toggle by default', () => {
+    const { container } = render(AppShell, { props: { navItems, currentPath: '/' } });
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeTruthy();
+
+    const control = toggle(container)!;
+    expect(control).toBeTruthy();
+    expect(control.getAttribute('aria-expanded')).toBe('true');
+    // The name says what pressing it DOES, not what it is (ui-spec-v15 §1.4).
+    expect(control.getAttribute('aria-label')).toBe('Hide navigation');
+    // …and `aria-controls` names an element that is actually here while expanded.
+    expect(container.querySelector(`#${control.getAttribute('aria-controls')}`)).toBe(
+      container.querySelector(`#${SIDE_NAV_ID}`),
+    );
+  });
+
+  // Issue #641 one gate along. A collapsed nav that is merely `hidden`, `w-0`,
+  // `inert` or painted over stays in the DOM, in the tab order and in the
+  // accessibility tree — so a keyboard user tabs into navigation that is not on
+  // screen. Not rendering is what removes it from both, which is why this
+  // asserts absence from the DOM AND the drop in what a keyboard can reach:
+  // the first assertion alone would pass over an `aria-hidden` nav that kept a
+  // different id, and the count alone would pass over a nav rendered empty.
+  it('renders NO SideNav — and none of its links — when navCollapsed', () => {
+    const open = render(AppShell, { props: { navItems, currentPath: '/' } });
+    const sideNav = open.container.querySelector<HTMLElement>(`#${SIDE_NAV_ID}`)!;
+    const sideNavReachable = focusables(sideNav).length;
+    expect(sideNavReachable).toBeGreaterThan(0);
+    const openReachable = focusables(open.container).length;
+    cleanup();
+
+    const { container } = render(AppShell, {
+      props: { navItems, currentPath: '/', navCollapsed: true },
+    });
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeNull();
+    // SideNav and BottomNav carry the SAME `aria-label`, so the label cannot
+    // tell them apart — one nav survives, and its fixed bottom edge says which.
+    expect(container.querySelectorAll('nav[aria-label="Main navigation"]')).toHaveLength(1);
+    expect(container.querySelector('nav.fixed.bottom-0')).toBeTruthy();
+    expect(focusables(container)).toHaveLength(openReachable - sideNavReachable);
+  });
+
+  it('tracks the state on aria-expanded, and the control says which way it goes', () => {
+    const { container } = render(AppShell, {
+      props: { navItems, currentPath: '/', navCollapsed: true },
+    });
+    const control = toggle(container)!;
+    expect(control.getAttribute('aria-expanded')).toBe('false');
+    expect(control.getAttribute('aria-label')).toBe('Show navigation');
+  });
+
+  it('toggles with no binding at the call site — the uncontrolled path the app uses', async () => {
+    const { container } = render(AppShell, { props: { navItems, currentPath: '/' } });
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeTruthy();
+
+    await fireEvent.click(toggle(container)!);
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeNull();
+    expect(toggle(container)!.getAttribute('aria-expanded')).toBe('false');
+
+    await fireEvent.click(toggle(container)!);
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeTruthy();
+    expect(toggle(container)!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('renders no control when there is no chrome to toggle', () => {
+    const { container } = render(AppShell, {
+      props: { navItems, currentPath: '/recipes/r1/cook', chrome: false, navCollapsed: true },
+    });
+    expect(container.querySelector('header')).toBeNull();
+    expect(toggle(container)).toBeNull();
+    expect(focusables(container)).toHaveLength(0);
   });
 });

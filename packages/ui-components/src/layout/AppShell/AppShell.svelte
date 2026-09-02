@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v04.md §13.3, §16.3, §17.2 v0.4; ui-spec-v05.md §2.3 v0.5 (chrome) -->
+<!-- spec: ui-spec-v04.md §13.3, §16.3, §17.2 v0.4; ui-spec-v05.md §2.3 v0.5 (chrome); ui-spec-v15.md §1 v0.15 (navCollapsed) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import TopBar from '../TopBar/TopBar.svelte';
@@ -16,6 +16,7 @@
     envClass,
     sideNavFooter,
     chrome = true,
+    navCollapsed = $bindable(false),
     class: className,
     children,
   }: AppShellProps = $props();
@@ -30,11 +31,32 @@
     one move, and is why no `inert` is needed here.
   -->
   {#if chrome}
-    <TopBar {title} {actions} {envLabel} {envClass} />
+    <!--
+      The TopBar carries the collapse control, and it is the reason the control
+      lives there rather than in the nav it hides: the TopBar is present at every
+      width and in every state the SideNav can be in, so the way back is never
+      inside the thing that just went away (ui-spec-v15 §1.4).
+    -->
+    <TopBar
+      {title}
+      {actions}
+      {envLabel}
+      {envClass}
+      {navCollapsed}
+      onToggleNav={() => (navCollapsed = !navCollapsed)}
+    />
   {/if}
 
   <div class="flex flex-1 overflow-hidden">
-    {#if chrome}
+    <!--
+      Collapsed is NOT RENDERED, for the same reason `chrome={false}` is, and it
+      composes with it here rather than adding a second visual mode: a nav that
+      is merely hidden, `inert` or covered stays focusable and stays in the
+      accessibility tree (issue #641, ui-spec-v15 §1.2). `<main>` is a `flex-1`
+      sibling in this row, so the freed 256px goes to the page on its own — no
+      page is told the nav collapsed and none needs to be.
+    -->
+    {#if chrome && !navCollapsed}
       <!-- Desktop has the vertical room for the full list; only the BottomNav overflows. -->
       <SideNav items={[...navItems, ...overflowNavItems]} {currentPath} footer={sideNavFooter} />
     {/if}

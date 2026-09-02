@@ -12,14 +12,16 @@
   let {
     title = 'Salt',
     currentPath = '/recipes',
+    navCollapsed = false,
   }: {
     title?: string;
     currentPath?: string;
+    navCollapsed?: boolean;
   } = $props();
 </script>
 
 <div class="h-[560px] w-full overflow-hidden rounded-lg border border-border">
-  <AppShell navItems={demoNavItems} {currentPath} {title} class="h-full">
+  <AppShell navItems={demoNavItems} {currentPath} {title} {navCollapsed} class="h-full">
     {#snippet actions()}
       <Button variant="ghost" size="sm">Sign out</Button>
     {/snippet}
