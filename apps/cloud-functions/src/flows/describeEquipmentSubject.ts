@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   DescribeEquipmentSubjectInputSchema,
   DescribeEquipmentSubjectOutputSchema,
@@ -6,7 +5,7 @@ import {
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 // describeEquipmentSubject — the cheap TEXT step in front of the expensive image
 // step (issue #877). The equipment counterpart of describeRecipeScene, and it
@@ -227,8 +226,7 @@ export const describeEquipmentSubjectFlow = ai.defineFlow(
       !photo && !revising && trimmedHint ? `Additional guidance: ${trimmedHint}` : null,
     ].filter((p): p is string => p !== null);
 
-    const modelId = await resolveModel('describeEquipmentSubject');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('describeEquipmentSubject');
 
     const system = photo
       ? PHOTO_EQUIPMENT_SYSTEM

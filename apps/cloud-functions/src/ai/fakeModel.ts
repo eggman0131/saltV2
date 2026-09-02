@@ -63,6 +63,41 @@ import { resolveModel } from './resolveModel.js';
 //   the flag is off this is a no-op; when on, the flow's model reads its stub.
 //   This swaps the MODEL, not the callable boundary — the contract CLAUDE.md
 //   requires ("replace the model, not the callable boundary").
+//
+// WHAT IS NOT ON THIS SEAM, AND WHY (issue #935, phase 4)
+//   Every text-generation flow in `src/flows` now takes its model from
+//   `flowModel`. That is the claim and it is a BOUNDED one — these sit outside
+//   it deliberately, so "nothing reaches Gemini under the flag" would be false:
+//
+//     • The four IMAGE flows — `generateCanonIcon`, `generateEquipmentIcon`,
+//       `generateKitchenToolIcon` (the three through `defineIconFlow`) and
+//       `generateRecipeImage`. The fake model emits TEXT and cannot stand in for
+//       image media, so these still call the real model under the flag. Closing
+//       that needs a fake IMAGE model, which does not exist yet.
+//     • `embedText` — an embedder is not a model action, so `flowModel` cannot
+//       return one. Its seam is `ai/fakeEmbedding.ts`; since #935 the batch
+//       adapter inherits that one by delegating to the flow rather than keeping
+//       a second short-circuit.
+//     • `arbitrateCanon` and `arbitrateProductForm` — both SHORT-CIRCUIT under
+//       the flag instead of using a fake model, returning the already-degraded
+//       answer ('no-match' / `{ kind: 'none' }`). The reasoning is written at
+//       each site and both stay as they are.
+//     • `ai/testModel.ts` — the admin "test this model" probe, which exists to
+//       call a model id an admin typed. Faking it would defeat its only purpose.
+//
+//   Nothing enforces that list. It states where the seam reaches today, and a
+//   flow added tomorrow with `googleAI.model(...)` written out by hand would sit
+//   outside it silently. What IS enforced is narrower, and worth not confusing
+//   with it: registry membership, by the single-argument `resolveModel(flowId)`
+//   signature (issue #935, phase 1).
+//
+//   DEFAULT STUBS. Four flows are driven by a trigger rather than by a spec —
+//   `identifyRecipeKit`, `estimateRecipeTimes`, `describeRecipeScene` on every
+//   recipe write and `describeEquipmentSubject` on every equipment-manifest
+//   write — so the loud throw below would fire on writes no spec asked for. The
+//   e2e harness pre-seeds a default answer for those four after each Firestore
+//   wipe (`apps/web-pwa/e2e/helpers/seed.ts` → `seedDefaultAiStubs`). Every
+//   other flow keeps the throw, which is the point of it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Firestore collection holding one canned answer per flow. Test-only. */

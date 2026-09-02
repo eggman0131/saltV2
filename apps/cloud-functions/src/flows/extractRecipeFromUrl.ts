@@ -1,5 +1,4 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import {
   ExtractRecipeFromUrlInputSchema,
@@ -15,7 +14,7 @@ import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { persistImportedRecipe } from './persistImportedRecipe.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { recipeFieldRules } from './recipeFieldRules.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
@@ -115,8 +114,7 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       : buildHtmlPrompt(html, parsed.href);
 
     // Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
-    const extractModelId = await resolveModel('extractRecipeFromUrl');
-    const extractModel = googleAI.model(extractModelId);
+    const extractModel = await flowModel('extractRecipeFromUrl');
     let extracted: ExtractRecipeAIOutput;
     try {
       extracted = await withAiTimeout(

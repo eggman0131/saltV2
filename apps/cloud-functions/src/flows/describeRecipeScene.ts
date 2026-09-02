@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   DescribeRecipeSceneInputSchema,
   DescribeRecipeSceneOutputSchema,
@@ -6,7 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { PLACEHOLDER_TAG_VOCABULARY } from './placeholderVocabulary.js';
 
 // describeRecipeScene — the cheap text step in front of the expensive image step.
@@ -446,8 +445,7 @@ export const describeRecipeSceneFlow = ai.defineFlow(
       revising ? `Requested change: ${hint}` : null,
     ].filter((p): p is string => p !== null);
 
-    const modelId = await resolveModel('describeRecipeScene');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('describeRecipeScene');
     const result = await withAiTimeout(
       'describeRecipeScene',
       () =>

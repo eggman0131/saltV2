@@ -971,7 +971,15 @@ const writerCases: WriterCase[] = [
  * is on the union, not on this list's freshness. See the header for the limit
  * this does have.
  */
-const NON_WRITERS: Record<string, 'subscription' | 'read' | 'callable' | 'infrastructure'> = {
+const NON_WRITERS: Record<
+  string,
+  'subscription' | 'read' | 'callable' | 'infrastructure' | 'constant'
+> = {
+  // The emulator-only collection `setAiStub` writes into, exported for the e2e
+  // harness's pre-boot REST seeding (issue #935). A string, so it writes nothing
+  // and has no contract to hold.
+  E2E_AI_STUB_COLLECTION: 'constant',
+
   // Realtime reads. Their contract is pinned by subscriptionContract.emulator.test.ts (#928).
   subscribeAisles: 'subscription',
   subscribeAppSettings: 'subscription',
@@ -1089,7 +1097,7 @@ describe('writer contract — table coverage', () => {
     // A new export must arrive as a row or as a stated non-writer. This is the
     // recurrence guard: a writer added with neither fails here.
     expect(classified).toEqual(exported);
-    expect(exported).toHaveLength(115);
+    expect(exported).toHaveLength(116);
     expect(writerCases).toHaveLength(43);
   });
 

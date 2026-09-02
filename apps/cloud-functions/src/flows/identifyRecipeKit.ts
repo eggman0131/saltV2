@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   IdentifyRecipeKitInputSchema,
   IdentifyRecipeKitAIOutputSchema,
@@ -9,7 +8,7 @@ import {
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { equipmentSectionForKit } from './equipmentContext.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 // identifyRecipeKit (issue #882) — "what do I need to get out?", answered from the
 // WHOLE stored recipe.
@@ -141,8 +140,7 @@ export const identifyRecipeKitFlow = ai.defineFlow(
     // `fast` + temperature 0: the same posture as categoriseRecipe. Two cooks
     // reading the same recipe should reach for the same pans, and a kit list is
     // not a place for invention.
-    const modelId = await resolveModel('identifyRecipeKit');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('identifyRecipeKit');
     // The manifest rides on the SYSTEM prompt, beneath the naming rules, exactly as
     // it does for the chef and the librarian — it is policy about the kitchen, not
     // part of the recipe being read. '' (no manifest, or an unreadable one) leaves

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
 import { attachFailureSnapshot } from '../helpers/diagnostics';
 import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
+import { seedDefaultAiStubs } from '../helpers/seed';
 
 const E2E_RAW_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -69,6 +70,12 @@ export const test = baseTest.extend<AutoFixtures>({
       if (!resp.ok && resp.status !== 404) {
         throw new Error(`Failed to clear Firestore emulator: HTTP ${resp.status}`);
       }
+      // The wipe takes the AI stubs with it, so the defaults are re-seeded here
+      // rather than in globalSetup — inside this fixture, not a second `auto`
+      // one, so the ordering against the wipe is a sequence and not a guess.
+      // Which flows get a default, and why the rest keep the loud throw, is at
+      // `seedDefaultAiStubs` (issue #935).
+      await seedDefaultAiStubs();
       await use();
     },
     { auto: true },
