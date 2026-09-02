@@ -11,7 +11,10 @@
 // — the asymmetry here is load-bearing in a way the equipment one is not:
 //   - MEAL_CHEF_FRAMING shows WHOLE DISHES. Gap-spotting ("nothing green here",
 //     "both of those want the oven at 200 °C at once") IS a reading of
-//     ingredients and methods, so the chef cannot do the job without them.
+//     ingredients and methods, so the chef cannot do the job without them. As of
+//     #934 the chef's dish is `formatRecipeForPrompt` under a `Dish N:` heading
+//     rather than a thinner copy of it — the copy omitted tags, step timers and
+//     notes, which is precisely the hole #890 closed one layer up.
 //   - MEAL_LIBRARIAN_FRAMING shows NAMES, DESCRIPTIONS AND TIMES ONLY. authorRecipe
 //     returns a COMPLETE RecipeDoc that `mergeAmendedRecipe` spreads over the
 //     stored recipe, so an ingredient line it copies from a dish lands on the
@@ -39,6 +42,7 @@ import type { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { RecipeSchema } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
+import { formatRecipeForPrompt } from './recipeText.js';
 
 /**
  * The component recipes of `recipe`, in stored order.
@@ -83,39 +87,6 @@ export async function readComponentContext(
     logger.warn(`${flow}: failed to read component recipes`, { err });
     return [];
   }
-}
-
-/**
- * One attached dish in full, for the chef: what it is, how long it takes, what
- * goes in it and how it is made.
- *
- * `ordinal` numbers the dish in the meal's stored order so the chef can refer to
- * them and reason about the running order it implies.
- */
-function renderComponentForChef(r: RecipeDoc, ordinal: number): string {
-  const parts = [`Dish ${ordinal}: ${r.title}`];
-  if (r.description) parts.push(`Description: ${r.description}`);
-
-  const meta: string[] = [];
-  if (r.metadata.servings != null) meta.push(`servings: ${r.metadata.servings}`);
-  if (r.metadata.prepTimeMinutes != null) meta.push(`prep: ${r.metadata.prepTimeMinutes} min`);
-  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
-  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
-  if (meta.length > 0) parts.push(meta.join(', '));
-
-  const ingredientLines: string[] = [];
-  for (const group of r.ingredients) {
-    if (group.name) ingredientLines.push(`${group.name}:`);
-    for (const ing of group.items) {
-      ingredientLines.push(`  - ${ing.rawText}${ing.isOptional ? ' (optional)' : ''}`);
-    }
-  }
-  if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
-
-  const stepLines = r.steps.map((s, i) => `  ${i + 1}. ${s.text}`);
-  if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
-
-  return parts.join('\n');
 }
 
 /**
@@ -203,7 +174,24 @@ transcribe it as written.
  */
 export function componentSectionForChef(components: readonly RecipeDoc[]): string {
   if (components.length === 0) return '';
-  const dishes = components.map((r, i) => renderComponentForChef(r, i + 1)).join('\n\n');
+  // `formatRecipeForPrompt` under a `Dish N:` heading, NOT a rendering of its own
+  // (issue #934, finding A5-007). There used to be a thinner copy here — no tags,
+  // no step timers, no notes — which is the exact hole #890 closed one layer up
+  // and re-opened one layer down: a chef shown no timer on a component dish hands
+  // back a meal whose dishes have lost their timings, and nothing notices.
+  //
+  // The heading carries the ordinal AND the title, the same shape the librarian's
+  // section uses: the dishes are in the meal's stored order, which is roughly the
+  // order things start, and both framings tell the model to "PRESERVE the dish
+  // names exactly as they appear here" — so the ordinal-to-name binding is stated
+  // once, explicitly, rather than left to be inferred from the `Title:` line the
+  // shared rendering opens with.
+  //
+  // The librarian's rendering below deliberately does NOT converge on this one;
+  // its omission of ingredients and steps is structural. See its docstring.
+  const dishes = components
+    .map((r, i) => `Dish ${i + 1}: ${r.title}\n${formatRecipeForPrompt(r)}`)
+    .join('\n\n');
   return `${MEAL_CHEF_FRAMING}\n\n${dishes}`;
 }
 
