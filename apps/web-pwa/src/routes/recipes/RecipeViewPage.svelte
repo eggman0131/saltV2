@@ -2745,7 +2745,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  replacement: the visible label is its first words, so nothing a
                  sighted user reads goes missing from what is announced.
                  `RecipeViewPage.kit.test.ts` asserts it through
-                 `getByRole('listitem', { name })`, never through the class. -->
+                 `getByRole('listitem', { name })`, never through the class.
+
+                 One template literal, not `aria-label="{a}, part of {b}"`. The
+                 interpolated-attribute form compiles to a concatenation with a
+                 `?? ''` per hole, and both labels are non-optional `string`s in
+                 `RecipeKitEntrySchema` — so those two branches are unreachable,
+                 uncoverable, and cost the routes area exactly the two uncovered
+                 branches that put it over its ratchet ceiling. -->
             {#if kit.length > 0}
               <TabsContent value="equipment">
                 <Card>
@@ -2776,7 +2783,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                           <li
                             class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
                             data-testid="recipe-kit-accessory-row"
-                            aria-label="{accessory.label}, part of {group.entry.label}"
+                            aria-label={`${accessory.label}, part of ${group.entry.label}`}
                           >
                             <div class="flex h-10 w-10 shrink-0 items-center justify-center">
                               {#if $kitIcons.kitIconFor(accessory.label)}
