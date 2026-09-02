@@ -123,6 +123,7 @@ function buildPrompt(req: ProductFormArbitrationRequest): string {
     `- matcher: the lowercase phrase identifying this form in an ingredient name, e.g. "lime juice"`,
     `  The matcher MUST name the parent as well as the component — "lime juice", never "juice"; "lemon zest", never "zest"; "egg yolk", never "yolk". A bare component word matches every other parent's version of the same thing, so "juice" would bind orange juice to Lime.`,
     `- label: a short human label, e.g. "Lime juice"`,
+    `  The label MUST name the parent too, for the same reason the matcher must — "Lime zest", never "Zest"; "Egg yolk", never "Yolk". The label is not display-only: it is matched against ingredient text on equal terms with the matcher, so a bare component word would file every other parent's version of the same thing under this one. A label sharing no word with the parent name is rejected and no form is created.`,
     `- form_unit: "g", "ml", or "count" — the unit the component is measured in`,
     `- amount_per_parent: how much of form_unit ONE whole parent yields (e.g. one lime ≈ 30 ml juice; one lemon ≈ 5 g zest). A positive number.`,
     `If modifier_kind is "action" or "none", set parent_name, parent_id, matcher, label, form_unit and amount_per_parent to null.`,
