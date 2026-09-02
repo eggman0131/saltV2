@@ -9,7 +9,7 @@ import type { RecipeKitEntryDoc } from '@salt/domain/schemas';
 // manifest genuinely makes possible — the point of the query is that it behaves on
 // the library that exists, not on a shape invented to make it look good.
 //
-// Three of these cases are the safety properties the design rests on, and each is
+// Four of these cases are the safety properties the design rests on, and each is
 // written so it goes RED if the guard is removed rather than merely passing today:
 //   • an accessory whose appliance is absent is never nested (and never invents it);
 //   • two appliances owning the same accessory name nest nothing;
@@ -196,7 +196,7 @@ describe('groupKitByEquipment', () => {
   // Issue #1182. `resolveEquipmentItem` resolves BOTH of these to the Magimix — the
   // prefixed accessory spelling is one of the two its header names — so pass one saw
   // two genuine resolutions and made two heads out of them, drawing the same machine
-  // twice with the same picture. These four cases are what pins the fix.
+  // twice with the same picture. These five cases are what pins the fix.
   it.each([
     ['appliance first', ['Magimix Cook Expert', 'Magimix Cocotte Slow Cook Pot']],
     ['accessory first', ['Magimix Cocotte Slow Cook Pot', 'Magimix Cook Expert']],
@@ -251,6 +251,29 @@ describe('groupKitByEquipment', () => {
       '  ↳ Magimix Blender Jug',
       '  ↳ Cocotte Slow Cook Pot',
     ]);
+  });
+
+  // Reproduced against PR #1186's review: a bare accessory (pass two) reached an
+  // accessory-form top-level row through `headOfItem`, even though that row itself
+  // never named the appliance — nesting a jug under a pot, or a pot under itself.
+  // `headOfItem` only registers a row that `namesTheItemItself`, so pass two now
+  // finds no owner and every row here stays flat, matching the boundary above.
+  it('never nests a bare accessory under an accessory-form row when no entry names the appliance', () => {
+    const groups = groupKitByEquipment(
+      [entry('Magimix Cocotte Slow Cook Pot'), entry('Blender Jug')],
+      [MAGIMIX],
+    );
+
+    expect(lines(groups)).toEqual(['Magimix Cocotte Slow Cook Pot', 'Blender Jug']);
+  });
+
+  it('never nests a prefixed accessory under itself when no entry names the appliance', () => {
+    const groups = groupKitByEquipment(
+      [entry('Magimix Cocotte Slow Cook Pot'), entry('Cocotte Slow Cook Pot')],
+      [MAGIMIX],
+    );
+
+    expect(lines(groups)).toEqual(['Magimix Cocotte Slow Cook Pot', 'Cocotte Slow Cook Pot']);
   });
 
   it('returns a flat list when the manifest is empty or has not loaded yet', () => {

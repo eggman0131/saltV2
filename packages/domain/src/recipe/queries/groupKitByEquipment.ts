@@ -161,7 +161,9 @@ export function groupKitByEquipment(
   });
 
   // The rows themselves, in stored order. `headOfItem` then lets pass two ask "is
-  // this accessory's appliance already here?" without resolving anything twice.
+  // this accessory's appliance already here, HEADED BY AN ENTRY NAMING IT?" without
+  // resolving anything twice — an accessory-form top-level row is deliberately never
+  // registered here, so it can never anchor another accessory beneath it.
   type Head = {
     index: number;
     entry: RecipeKitEntryDoc;
@@ -177,7 +179,15 @@ export function groupKitByEquipment(
     heads.push(head);
     const item = resolved[index];
     if (item) {
-      if (!headOfItem.has(item.id)) headOfItem.set(item.id, head);
+      // Only a row that names the item ITSELF is a legitimate nesting target for
+      // pass two. An accessory-form top-level row (this kit never names the
+      // appliance directly, so pass one left it heading its own row rather than
+      // nesting it) must never anchor another accessory beneath it — that would
+      // claim one accessory owns another, the exact false relationship pass one's
+      // own boundary above refuses to state.
+      if (!headOfItem.has(item.id) && namesTheItemItself(entry.label, item)) {
+        headOfItem.set(item.id, head);
+      }
     } else {
       unresolved.push({ index, entry });
     }
