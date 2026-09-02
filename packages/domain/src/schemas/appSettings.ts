@@ -38,10 +38,13 @@ export const AI_MODEL_DEFAULTS = {
 // missing from here cannot resolve a model at all: there is no signature that
 // accepts it. That makes the compiler, not a convention, the thing that keeps
 // this list complete and keeps the admin override list from silently omitting a
-// job. The boundary of that guarantee: it binds every call that goes through
-// `resolveModel`/`flowModel`, which is every model and embedder call in
-// `apps/cloud-functions/src`; a flow that hardcoded a model literal instead
-// would bypass it, and nothing here would notice.
+// job. The boundary of that guarantee: it binds every FLOW's model and embedder
+// call — every site that goes through `resolveModel`/`flowModel`. It does not
+// reach `apps/cloud-functions/src/ai/testModel.ts`, the admin "test this model"
+// probe, which calls `googleAI.model`/`googleAI.embedder` directly on a model id
+// an admin typed — off-seam by design, since faking or registering it would
+// defeat its purpose. A flow that hardcoded a model literal instead of going
+// through the resolver would also bypass it, and nothing here would notice.
 export const AI_FLOW_ROLES = {
   arbitrateCanon: 'lite',
   // `lite` (issue #500, registered #935). Same shape and same tier as
@@ -76,16 +79,19 @@ export const AI_FLOW_ROLES = {
   // was never a parse failure, only an orphaned override quietly moving batch
   // canon vectors onto a different embedding model from the stored ones.
   //
-  // The evidence that nothing was orphaned, and its boundary. Staging's
-  // `appSettings/singleton` was read on 2026-09-02 and carries no `perFlow` map
-  // at all — absent, not empty — so it held no override of any kind; and a
-  // staging restore is a full mirror of production that includes `appSettings`
-  // (`docs/data-refresh.md`). That is a mirror read on a date, NOT a read of
-  // production: an override set in production since the last restore would
-  // falsify it. If one ever surfaces, the repair is to set the same value on
-  // `embedText` from /admin/app-settings — the override is recoverable there,
-  // whereas vectors already written under a different model are not comparable
-  // and would need a re-embed.
+  // The evidence that nothing was orphaned, and its boundary. Staging (project
+  // `s2-stage-ccb22`) was restored from production on 2026-09-01 — a restore is
+  // a full mirror that includes `appSettings` (`docs/data-refresh.md`) — and its
+  // `appSettings/singleton` was read on 2026-09-02: no `perFlow` map at all,
+  // absent rather than empty. Daniel (repo owner) states no per-flow model
+  // override has ever been set on `serverEmbedding` in either environment,
+  // before the restore or since. Together that is a dated as-of, not an
+  // unqualified guarantee: what would falsify it is an override the owner is
+  // not aware of, or one set in production after this note was written. If one
+  // ever surfaces, the repair is to set the same value on `embedText` from
+  // /admin/app-settings — the override is recoverable there, whereas vectors
+  // already written under a different model are not comparable and would need
+  // a re-embed.
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   // Multimodal: 1–4 cookbook-page images in, structured recipe JSON out (#649).

@@ -91,13 +91,15 @@ import { resolveModel } from './resolveModel.js';
 //   with it: registry membership, by the single-argument `resolveModel(flowId)`
 //   signature (issue #935, phase 1).
 //
-//   DEFAULT STUBS. Four flows are driven by a trigger rather than by a spec —
+//   Four flows are driven by a TRIGGER rather than by a spec —
 //   `identifyRecipeKit`, `estimateRecipeTimes`, `describeRecipeScene` on every
 //   recipe write and `describeEquipmentSubject` on every equipment-manifest
-//   write — so the loud throw below would fire on writes no spec asked for. The
-//   e2e harness pre-seeds a default answer for those four after each Firestore
-//   wipe (`apps/web-pwa/e2e/helpers/seed.ts` → `seedDefaultAiStubs`). Every
-//   other flow keeps the throw, which is the point of it.
+//   write — and every one of those triggers returns on `aiFakeEnabled()` before
+//   it reaches its flow call, so under this harness none of the four is ever
+//   invoked and the loud throw below never fires for them. A spec that drives
+//   one of these flows directly through its deployed callable (recipe
+//   art-direction, equipment describe) still hits the throw and still needs
+//   `stubAi()` — that path is unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Firestore collection holding one canned answer per flow. Test-only. */

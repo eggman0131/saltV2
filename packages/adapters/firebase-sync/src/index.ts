@@ -172,7 +172,7 @@ export { callRefreshWeatherForecast } from './weatherCallables.js';
 export type { RefreshWeatherForecastResult } from './weatherCallables.js';
 // E2E-only AI stub writer (test-infra Phase 1). Used by apps/web-pwa's e2e
 // bridge to register canned answers for the CF fake model; never used in prod.
-export { setAiStub, E2E_AI_STUB_COLLECTION } from './e2eAiStubSync.js';
+export { setAiStub } from './e2eAiStubSync.js';
 // E2E-only Firestore local-cache probe (issue #734). Answers "did the SDK's own
 // cache still hold the document the store was missing?" from a failing e2e run.
 // Reachable only through the emulator-gated e2e bridge; never used in prod.

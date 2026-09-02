@@ -11,7 +11,6 @@ import type {
 } from '@salt/domain';
 import type { GuidedPlanDoc } from '@salt/domain/schemas';
 import { FIRESTORE_DOCUMENTS_BASE_URL } from './emulator';
-import { E2E_AI_STUB_COLLECTION } from '@salt/firebase-sync';
 
 export interface SeedCanonItemInput {
   readonly id?: string;
@@ -295,68 +294,4 @@ export async function clearAllStores(page: Page): Promise<void> {
 // deterministically, without racing the DOM.
 export async function getShoppingListItems(page: Page): Promise<readonly ShoppingListItem[]> {
   return page.evaluate(() => window.__e2e!.getShoppingListItems());
-}
-
-// ─── Default AI stubs for the trigger-driven flows (issue #935) ───────────────
-//
-// Four flows are driven by a TRIGGER rather than by a spec: three fire on every
-// recipe write (`identifyRecipeKit`, `estimateRecipeTimes`, `describeRecipeScene`)
-// and one on every equipment-manifest write (`describeEquipmentSubject`, reached
-// by ai-stub-smoke and equipment-capture). Once they run on the fake-model seam,
-// an unstubbed call throws "no stub registered" — caught and reported by the
-// trigger, so nothing fails, but every recipe a spec creates would log one.
-//
-// A flow a spec drives deliberately keeps the loud throw: reaching an unstubbed
-// flow there IS a bug, and that is the seam's stated contract
-// (apps/cloud-functions/src/ai/fakeModel.ts). These four had no spec to ask, so
-// they get a default. A spec that cares about one of these answers still calls
-// `stubAi()` — same document, written later, so it wins.
-//
-// ENCODING. `response` is written as a STRING holding the JSON the flow's output
-// schema expects, rather than as a nested map. The CF fake model emits a string
-// stub verbatim as the model's text and JSON-stringifies anything else, and a
-// structured-output flow parses that text back through its schema either way —
-// so the bytes the flow sees are identical. It is a string here only because the
-// Firestore REST API wants a typed value per field, and a string needs no
-// encoder. If that encoding rule ever changes, these fail loudly as schema parse
-// errors rather than silently.
-const DEFAULT_AI_STUBS: Readonly<Record<string, unknown>> = {
-  // An EMPTY kit, deliberately. The flow's answer is sanitised against the recipe
-  // it was asked about, and every spec writes a different recipe — so an empty
-  // kit is the only default that is correct for all of them. A spec that wants a
-  // kit stubs its own.
-  identifyRecipeKit: { kit: [] },
-  estimateRecipeTimes: { prepTimeMinutes: 10, cookTimeMinutes: 20, totalTimeMinutes: 30 },
-  describeRecipeScene: { brief: 'A deterministic e2e scene brief.' },
-  describeEquipmentSubject: { brief: 'A deterministic e2e equipment brief.' },
-};
-
-/**
- * Writes the default stubs above into the emulator, straight over REST.
- *
- * Called after the per-test Firestore wipe and before the app boots, because the
- * wipe removes them and the triggers can fire before any spec has a page.
- */
-export async function seedDefaultAiStubs(): Promise<void> {
-  const updatedAt = new Date().toISOString();
-  await Promise.all(
-    Object.entries(DEFAULT_AI_STUBS).map(async ([flowName, response]) => {
-      const url = `${FIRESTORE_DOCUMENTS_BASE_URL}/${E2E_AI_STUB_COLLECTION}/${flowName}`;
-      const res = await fetch(url, {
-        method: 'PATCH',
-        headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            response: { stringValue: JSON.stringify(response) },
-            updatedAt: { stringValue: updatedAt },
-          },
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(
-          `seedDefaultAiStubs(${flowName}) failed: HTTP ${res.status} ${await res.text()}`,
-        );
-      }
-    }),
-  );
 }
