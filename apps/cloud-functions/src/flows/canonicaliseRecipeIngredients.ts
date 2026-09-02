@@ -315,11 +315,13 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         // embedding) — the `else` branch below re-checks against the
         // AUTHORITATIVE parent id before minting, so a miss here is never the
         // final answer (issue #1127 review, finding B1). Note the boundary that
-        // remains: this scopes the PROPOSAL path only. The two `resolveProductForm`
-        // calls here (`:165` and the one immediately below) still cross parents on
-        // a bare-noun label, because a form's label is also one of its matching
-        // phrases — see `findFormWithSameLabel`'s header and the follow-up defect
-        // split from #1127, filed as issue #1180.
+        // remains: this scopes the PROPOSAL path only. Three `resolveProductForm`
+        // calls here (`:165`; the mid-batch re-resolve at `:294` above, which runs
+        // before each proposal is even inspected and reads a `forms` table the
+        // batch's own mints have grown; and the one immediately below) still
+        // cross parents on a bare-noun label, because a form's label is also one
+        // of its matching phrases — see `findFormWithSameLabel`'s header and the
+        // follow-up defect split from #1127, filed as issue #1180.
         if (proposal.kind === 'form') {
           // Two proposals are coherent but must never be minted — a form naming
           // its own parent, and a form for something a recipe already PRODUCES.

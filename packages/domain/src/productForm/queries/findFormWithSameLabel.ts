@@ -55,13 +55,15 @@ import type { ProductForm } from '../entities/ProductForm.js';
 // It does not make product-form binding parent-safe in general:
 // `resolveProductForm` matches on `[form.label, ...form.matchers]`
 // (`resolveProductForm.ts:42`), so a stored form's own label is itself a global,
-// parent-blind matching phrase — and both `resolveProductForm` calls in
+// parent-blind matching phrase — and three `resolveProductForm` calls in
 // `canonicaliseRecipeIngredients.ts` still cross parents on a bare-noun label:
 // `:165`, the pre-arbitration bind, which fires first and owns the reported
-// symptom, and the sibling `resolveProductForm` call that sits right beside
-// this function's own call, in the same proposal-covering check. Follow-up
-// issue #1180 owns them; the measurement is in #1127's Phase-1 deviation
-// comment, and the limit is pinned by the `KNOWN LIMIT` case in
+// symptom; `:294`, the mid-batch re-resolve that runs before each proposal is
+// even inspected, against a `forms` table the batch's own mints have grown; and
+// the sibling `resolveProductForm` call that sits right beside this function's
+// own call, in the same proposal-covering check. Follow-up issue #1180 owns
+// them; the measurement is in #1127's Phase-1 deviation comment, and the limit
+// is pinned by the `KNOWN LIMIT` case in
 // `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`.
 //
 // Match-time only: nothing here is written back. Stored labels stay exactly as
