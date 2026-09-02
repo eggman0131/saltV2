@@ -422,6 +422,18 @@ describe('proposeSchedule — the trust boundaries', () => {
     expect(mockGenerate).not.toHaveBeenCalled();
   });
 
+  it('throws when the stored recipe fails validation', async () => {
+    // An object, so it reaches RecipeSchema and fails there rather than at
+    // `exists` — the same payload the guided-plan and extraction suites use.
+    // Its formula is valid, so a `failed-precondition` here can only be the
+    // recipe's parse, which is the path this suite otherwise never took.
+    stubDocs({ id: 'recipe-1', schemaVersion: 2 }, LOAF_FORMULA);
+    await expect(
+      run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' }),
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
   it('throws when the recipe has no formula', async () => {
     stubDocs(LOAF_RECIPE, null);
     await expect(
