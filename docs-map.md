@@ -109,7 +109,12 @@ put that file in that doc's row yourself — a file may appear in more than one.
   menu a `PopoverContent` holds; the string it replaces was hand-written 28
   times across four pages and still climbing, and §8.33.5/§8.33.6 record the two
   tokens the component adds to some of those rows and why each is inert where it
-  was not written before). Touching
+  was not written before),
+  [v15](docs/design/ui-spec-v15.md) `AppShell`'s collapsible `SideNav` (§1 — a
+  `navCollapsed` prop and the `TopBar` control that flips it; collapsed means the
+  nav is **not rendered**, for the identical #641 reason v05 §2.3 gives for
+  `chrome`, and §1.8 records why the choice is deliberately not remembered and
+  why the freed 256px is not a token). Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

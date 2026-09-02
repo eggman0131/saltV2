@@ -1,7 +1,7 @@
-<!-- spec: ui-spec-v04.md §13 v0.4 -->
+<!-- spec: ui-spec-v04.md §13 v0.4; ui-spec-v15.md §1.3 v0.15 (id) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
-  import type { SideNavProps } from './SideNav.types';
+  import { SIDE_NAV_ID, type SideNavProps } from './SideNav.types';
 
   let { items, currentPath, footer, class: className }: SideNavProps = $props();
 
@@ -13,6 +13,7 @@
 </script>
 
 <nav
+  id={SIDE_NAV_ID}
   class={cn('hidden w-64 shrink-0 flex-col border-r bg-card lg:flex', className)}
   aria-label="Main navigation"
 >
