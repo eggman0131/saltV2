@@ -251,12 +251,14 @@ export async function assembleRecipeDraft(
   // raises an understated STATED total — it must never fabricate one that was
   // never stated. On a fresh draft that distinction is moot: there is no stored
   // value to protect. But `baseRecipe` means this draft is about to be spread
-  // over an existing recipe by `mergeAmendedRecipe`'s `draft ?? existing` (or,
-  // for a refresh, an equivalent client-side merge) — and a fabricated non-null
-  // total wins that `??` and silently overwrites the real stored one (a 4-hour
-  // chill, say) with `prep + cook`. So in edit mode a librarian `total: null`
-  // stays null, exactly like a forgotten `servings`; only a STATED total still
-  // gets raised to the parts' floor.
+  // over an existing recipe by `mergeAmendedRecipe`'s own
+  // `draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes` —
+  // Refresh goes through that same path too (issue #890 folded it into
+  // `proposeRecipeAmendment`; there is no separate client-side merge for it) —
+  // and a fabricated non-null total wins that `??` and silently overwrites the
+  // real stored one (a 4-hour chill, say) with `prep + cook`. So in edit mode a
+  // librarian `total: null` stays null, exactly like a forgotten `servings`;
+  // only a STATED total still gets raised to the parts' floor.
   const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
 
   // The phase strip and its one-line summary (issue #1122), merged as ONE fact

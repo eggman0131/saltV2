@@ -82,9 +82,19 @@ export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt
   // came back `null` and silently restored the stored recipe's OLD sentence
   // underneath it — a one-block traybake described as taking 2¼ hours.
   //
-  // This keeps, rather than trades away, the no-loss floor the scalars have: a
-  // draft carrying no strip at all falls back to the stored pair WHOLE, so an
-  // unrelated chat turn still cannot erase a strip a cook corrected by hand.
+  // `reconcileRecipePhases` keeps the no-loss floor the scalars have: a draft
+  // carrying no strip at all falls back to the stored pair WHOLE. That IS the
+  // boundary of the claim, and on today's amend path it does not clear it —
+  // the librarian is always instructed to return 3–6 phases (`PHASE_RULES`,
+  // `recipeFieldRules.ts`) and is never shown the stored strip to preserve
+  // (`formatRecipeForPrompt`, `recipeText.ts`, not extended for #1122's two
+  // fields), so `draft.metadata.phases` on an unrelated chat turn is a freshly
+  // invented strip, not an absent one, and the "answered" branch takes it every
+  // time. The floor is real for a caller whose draft omits phases; a chat
+  // amend is not yet that caller, so a hand-corrected strip is NOT yet
+  // protected from being overwritten by an unrelated turn. Closing that gap is
+  // teaching the prompt to show the stored strip, which is out of scope here
+  // (issue #1202 Phase 2 / #1203 Must-not-touch: the flows and prompts).
   const phaseStrip = reconcileRecipePhases(draft.metadata, existing.metadata);
 
   return {

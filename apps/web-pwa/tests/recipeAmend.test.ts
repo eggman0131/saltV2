@@ -223,8 +223,12 @@ describe('mergeAmendedRecipe — the phase strip and its summary are one fact', 
   });
 
   it('keeps the stored pair whole when the draft returned neither — the no-loss floor', () => {
-    // The #1201 guarantee this fix must not trade away: an unrelated chat turn
-    // ("add some chilli") cannot erase a strip a cook corrected by hand.
+    // The #1201 floor this fix must not trade away, exercised directly against
+    // a draft with no strip. It is not yet what a real chat amend produces: the
+    // librarian is always asked for 3-6 phases (`PHASE_RULES`) and is never
+    // shown the stored strip (`formatRecipeForPrompt`), so `draftWithoutMetadata`
+    // here is not a case an unrelated "add some chilli" turn currently reaches —
+    // see the boundary note on `mergeAmendedRecipe`.
     const merged = mergeAmendedRecipe(recipeWithStrip(), draftWithoutMetadata(), NOW);
     expect(merged.metadata.phases).toEqual(STORED_PHASES);
     expect(merged.metadata.timingSummary).toBe(STORED_SUMMARY);
