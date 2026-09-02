@@ -10,7 +10,7 @@ export type {
   IngredientGroup,
 } from './entities/Ingredient.js';
 export type { Step, StepTimer } from './entities/Step.js';
-export type { Recipe, RecipeKind, RecipeMetadata } from './entities/Recipe.js';
+export type { Recipe, RecipeKind, RecipeMetadata, RecipePhase } from './entities/Recipe.js';
 
 export {
   emptyRecipe,
@@ -29,6 +29,10 @@ export { normaliseTags } from './commands/normaliseTags.js';
 // clause that is now the `deriveMissingTotal` argument.
 export { reconcileRecipeTimes } from './commands/reconcileRecipeTimes.js';
 export type { RecipeTimes } from './commands/reconcileRecipeTimes.js';
+// The one merge of a fresh phase strip against a stored one (issue #1122
+// review) — the strip and its one-line summary move together, or not at all.
+export { reconcileRecipePhases } from './commands/reconcileRecipePhases.js';
+export type { RecipePhaseStrip } from './commands/reconcileRecipePhases.js';
 export { flattenIngredients } from './queries/ingredients.js';
 // The ONE numeric reduction of a `Quantity` (issue #917) — shared by the shopping
 // list and the formula mapping screen so a range cannot mean two amounts. The
@@ -54,6 +58,8 @@ export {
 // #878). Read by the recipe page's ribbon; returns `null` when the steps carry
 // no timers, which is the "no ribbon at all" case.
 export { cookShape, UNNAMED_WAIT_LABEL, OTHER_WAITS_LABEL } from './queries/cookShape.js';
+export { recipePhaseTotals, phaseElapsedMinutes } from './queries/recipePhaseTotals.js';
+export type { RecipePhaseTotals } from './queries/recipePhaseTotals.js';
 export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './queries/cookShape.js';
 // Meals — a recipe built from several other recipes (issue #752). One level deep,
 // nothing aggregated; see the module header.

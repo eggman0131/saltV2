@@ -43,7 +43,7 @@
   // package. They are still sent from here, as ordinary user turns, unchanged.
   import { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from '@salt/domain/prompts';
   import { goBack } from '../../lib/nav.js';
-  import { breadGate } from '../../lib/featureGate.js';
+  import { breadGate, recipePhasesGate } from '../../lib/featureGate.js';
   import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
@@ -87,6 +87,8 @@
   import {
     recipeHeroUrl,
     cookShape,
+    recipePhaseTotals,
+    phaseElapsedMinutes,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
     flattenIngredients,
@@ -496,6 +498,18 @@
   // Every judgement about what counts as a wait and how the waits are named is
   // in the pure domain query; the page only turns minutes into widths.
   const shape = $derived(recipe ? cookShape(recipe) : null);
+
+  // The phase strip (issue #1122), in its plain-text first form. Gated, and the
+  // gate is deliberately BOTH halves: a recipe with no phases stored yet renders
+  // exactly as it does today whether the flag is on or off, which is what makes
+  // this phase invisible to a library that has not been backfilled.
+  //
+  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
+  // once, here, and everything below reads that list — the template never asks the
+  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
+  const phaseTotals = $derived(recipePhaseTotals(phases));
 
   function segmentPercent(segment: CookShapeSegment): number {
     if (!shape || shape.totalMinutes <= 0) return 0;
@@ -1980,8 +1994,14 @@
           </div>
         {/if}
 
-        <!-- Description, facts, tags, and the shape of the cook -->
-        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape}
+        <!-- Description, facts, tags, the phase strip, and the shape of the cook.
+             `phaseTotals.hasPhases` joins the card's gate rather than sitting
+             outside it: a recipe whose only stated fact is its timing still has
+             something to say here, and it is false whenever the key is off
+             (issue #1122). Read through `recipePhaseTotals` rather than
+             `phases.length` — the single funnel docs/recipe-module.md names
+             (issue #1122 review, should-fix 6). -->
+        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape || phaseTotals.hasPhases}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
@@ -2016,6 +2036,48 @@
                   {#each recipe.metadata.tags as tag (tag)}
                     <Chip variant="tag">{tag}</Chip>
                   {/each}
+                </div>
+              {/if}
+              <!-- The phase strip (issue #1122), plain text for now — the drawn
+                   timeline replaces this block in phase 2. It sits ABOVE the #878
+                   ribbon rather than replacing it: while the gate exists the two
+                   coexist, and the ribbon (with the Prep/Cook/Total chips above)
+                   is what everyone outside the test group still sees.
+                   Elapsed per phase is `handsOn + handsOff`, computed here and
+                   never stored — `phaseElapsedMinutes` is the one implementation. -->
+              {#if phaseTotals.hasPhases}
+                <div class="flex flex-col gap-1.5" data-testid="recipe-phases">
+                  {#if recipe.metadata.timingSummary}
+                    <p class="text-xs text-muted-foreground" data-testid="recipe-timing-summary">
+                      {recipe.metadata.timingSummary}
+                    </p>
+                  {/if}
+                  <ol class="flex flex-col gap-1 text-xs text-muted-foreground">
+                    <!-- Unkeyed for the reason the ribbon's segments are: the list is
+                         re-derived whole from the recipe, and two phases may honestly
+                         share a label ("Rest" twice). Position is the identity. -->
+                    {#each phases as phase, i}
+                      <li class="flex flex-wrap items-baseline gap-x-2">
+                        <span class="font-medium text-foreground">{phase.label}</span>
+                        <span class="tabular-nums">{formatMinutes(phaseElapsedMinutes(phase))}</span
+                        >
+                        <span class="tabular-nums"
+                          >{formatMinutes(phase.handsOnMinutes)} hands-on ·
+                          {formatMinutes(phase.handsOffMinutes)} hands-off</span
+                        >
+                      </li>
+                    {/each}
+                  </ol>
+                  <p class="text-xs text-muted-foreground">
+                    <span class="font-medium text-foreground"
+                      >{formatMinutes(phaseTotals.elapsedMinutes)}</span
+                    >
+                    start to finish ·
+                    <span class="font-medium text-foreground"
+                      >{formatMinutes(phaseTotals.handsOnMinutes)}</span
+                    >
+                    hands-on
+                  </p>
                 </div>
               {/if}
               <!-- The shape of the cook (issue #878): how long, how much of it is you,

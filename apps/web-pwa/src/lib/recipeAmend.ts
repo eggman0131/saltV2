@@ -87,6 +87,15 @@ export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt
       totalTimeMinutes: draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes,
       prepTimeMinutes: draft.metadata.prepTimeMinutes ?? existing.metadata.prepTimeMinutes,
       cookTimeMinutes: draft.metadata.cookTimeMinutes ?? existing.metadata.cookTimeMinutes,
+      // The phase strip (issue #1122), on the SAME "a draft that says nothing
+      // keeps what is stored" rule as every line above it. This merge builds
+      // `metadata` field by field rather than spreading, so a key omitted here is
+      // a key silently DELETED from the document on every amend — which is what
+      // would have quietly thrown away a strip a cook had corrected. The richer
+      // "which strip wins" question belongs to the phase-2 editor; this is only
+      // the carry-through that stops an unrelated chat turn erasing one.
+      phases: draft.metadata.phases ?? existing.metadata.phases,
+      timingSummary: draft.metadata.timingSummary ?? existing.metadata.timingSummary,
       tags: draft.metadata.tags.length > 0 ? draft.metadata.tags : existing.metadata.tags,
     },
   };

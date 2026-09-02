@@ -60,6 +60,12 @@ const SEEDED_METADATA = {
   prepTimeMinutes: 15,
   cookTimeMinutes: 30,
   totalTimeMinutes: 45,
+  // Stamped by `emptyRecipe` on every new recipe (issue #1122), so it is part of
+  // the seeded document even though nobody typed it. Its presence here is what
+  // pins `mergeAmendedRecipe` carrying the strip through an amend rather than
+  // dropping the key — this equality is the "identical saved document" assertion.
+  phases: [],
+  timingSummary: null,
   tags: [TAG],
 };
 

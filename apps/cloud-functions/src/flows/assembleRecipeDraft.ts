@@ -6,7 +6,7 @@ import type {
   IngredientDoc,
 } from '@salt/domain/schemas';
 import { RecipeSchema } from '@salt/domain/schemas';
-import { normaliseTags, reconcileRecipeTimes } from '@salt/domain';
+import { normaliseTags, reconcileRecipeTimes, reconcileRecipePhases } from '@salt/domain';
 import { logger } from 'firebase-functions';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
@@ -259,6 +259,13 @@ export async function assembleRecipeDraft(
   // gets raised to the parts' floor.
   const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
 
+  // The phase strip and its one-line summary (issue #1122), merged as ONE fact
+  // rather than two independently-defaulted fields (issue #1122 review, blocking
+  // 2) — `reconcileRecipePhases` is the shared implementation `onRecipeWritten`'s
+  // re-estimate branch also calls, so a fresh strip can never land paired with a
+  // stale summary (or the reverse) on either write path.
+  const phaseStrip = reconcileRecipePhases(raw, baseRecipe?.metadata ?? null);
+
   const draft: RecipeDoc = {
     id: recipeId,
     schemaVersion: 1,
@@ -275,6 +282,12 @@ export async function assembleRecipeDraft(
       totalTimeMinutes: times.totalTimeMinutes,
       prepTimeMinutes: times.prepTimeMinutes,
       cookTimeMinutes: times.cookTimeMinutes,
+      // The phase strip and its summary (issue #1122) — one merged fact, computed
+      // above by `reconcileRecipePhases`. See that function for the edit-mode
+      // carry-through argument (a cook's hand-edit must survive an amend that
+      // returned no phases) and why the summary is never split from the strip.
+      phases: phaseStrip.phases,
+      timingSummary: phaseStrip.timingSummary,
       tags: normaliseTags(raw.tags),
     },
     source,

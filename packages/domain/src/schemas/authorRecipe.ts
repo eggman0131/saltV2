@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MessageSchema } from './chatSession.js';
-import { RecipeSchema } from './recipe.js';
+import { AuthoredRecipePhasesSchema, AuthoredTimingSummarySchema, RecipeSchema } from './recipe.js';
 import { ExtractedIngredientGroupSchema, ExtractedStepSchema } from './extractRecipeFromUrl.js';
 
 // Input to the librarian (authorRecipe) flow: the full conversation that the
@@ -68,6 +68,21 @@ export const LibrarianOutputSchema = z.object({
   totalTimeMinutes: z.number().int().positive().nullable(),
   prepTimeMinutes: z.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  // The recipe's timing as an ordered strip (issue #1122), which is what it will
+  // BE once the three numbers above retire. Shared shape rather than a fourth
+  // hand-written copy: the librarian, both extractors and the re-estimator answer
+  // one question against one definition (`TIME_RULES`), and a per-file constraint
+  // is how three of them come to mean three different things (#785, #952).
+  //
+  // `.optional()` on both so a model that omits them yields no strip rather than
+  // failing the whole import on a field the prompt asks for and it forgot. The
+  // assembler turns absent into an empty list on the way to the document.
+  // `AuthoredRecipePhasesSchema` carries the matching guard for a strip the model
+  // DID return but got wrong (a seventh block, a fractional minute): it degrades
+  // to `[]` rather than failing this parse — load-bearing here specifically,
+  // because the librarian has no retry (issue #1122 review, blocking 3).
+  phases: AuthoredRecipePhasesSchema.optional(),
+  timingSummary: AuthoredTimingSummarySchema.optional(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(ExtractedIngredientGroupSchema),
   steps: z.array(ExtractedStepSchema),

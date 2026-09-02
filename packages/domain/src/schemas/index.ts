@@ -220,7 +220,11 @@ export {
   EstimateRecipeTimesAIOutputSchema,
   EstimateRecipeTimesOutputSchema,
 } from './estimateRecipeTimes.js';
-export type { EstimateRecipeTimesInput, EstimateRecipeTimesOutput } from './estimateRecipeTimes.js';
+export type {
+  EstimateRecipeTimesInput,
+  EstimateRecipeTimesAIOutput,
+  EstimateRecipeTimesOutput,
+} from './estimateRecipeTimes.js';
 
 export {
   CategoriseRecipeInputSchema,
@@ -287,7 +291,16 @@ export type {
 export { isImportError } from './importFailure.js';
 export type { UrlImportFailure, PhotoImportFailure } from './importFailure.js';
 
-export { RecipeKindSchema, RecipeSchema } from './recipe.js';
+export {
+  RecipeKindSchema,
+  RecipePhaseSchema,
+  RecipeSchema,
+  // The way-IN phase gate (issue #1122) — the librarian, both extractors and the
+  // re-estimator constrain their `phases` output against these, and #1202's row
+  // editor needs `MAX_RECIPE_PHASES` to cap "add a phase" against the same bound.
+  AuthoredRecipePhasesSchema,
+  MAX_RECIPE_PHASES,
+} from './recipe.js';
 export type {
   QuantityDoc,
   IngredientDoc,
@@ -296,6 +309,7 @@ export type {
   StepDoc,
   RecipeSourceDoc,
   RecipeKitEntryDoc,
+  RecipePhaseDoc,
   RecipeDoc,
 } from './recipe.js';
 

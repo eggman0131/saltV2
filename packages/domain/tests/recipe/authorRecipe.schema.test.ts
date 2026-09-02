@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { LibrarianOutputSchema, ExtractRecipeAIOutputSchema } from '../../src/schemas/index.js';
+import {
+  LibrarianOutputSchema,
+  ExtractRecipeAIOutputSchema,
+  MAX_RECIPE_PHASES,
+} from '../../src/schemas/index.js';
 
 // The gate the librarian (chat authoring — create, edit and variation) feeds its
 // model output through. It had no test file at all until issue #1123, which is
@@ -95,4 +99,46 @@ describe('LibrarianOutputSchema agrees with ExtractRecipeAIOutputSchema, number 
       });
     }
   }
+});
+
+// The `phases` gate has no retry on this path (issue #1122 review, blocking 3):
+// `authorRecipe.ts` throws straight from a failed `LibrarianOutputSchema` parse,
+// so a strip that fails `AuthoredRecipePhasesSchema` must degrade to no strip
+// rather than take the whole chat-authored recipe down with it.
+describe('LibrarianOutputSchema — a malformed strip degrades, never fails the parse', () => {
+  const validPhase = { label: 'Prep', handsOnMinutes: 10, handsOffMinutes: 0 };
+
+  it('accepts a strip at the cap', () => {
+    const phases = Array.from({ length: MAX_RECIPE_PHASES }, () => validPhase);
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, phases });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.phases).toHaveLength(MAX_RECIPE_PHASES);
+  });
+
+  it('drops a strip one block over the cap, and keeps the rest of the recipe', () => {
+    const phases = Array.from({ length: MAX_RECIPE_PHASES + 1 }, () => validPhase);
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, phases });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.phases).toEqual([]);
+      expect(result.data.title).toBe('Carbonara');
+    }
+  });
+
+  it('drops a strip with a fractional minute, and keeps the three numbers beside it', () => {
+    const phases = [{ label: 'Prep', handsOnMinutes: 7.5, handsOffMinutes: 0 }];
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, phases });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.phases).toEqual([]);
+      expect(result.data.prepTimeMinutes).toBe(10);
+    }
+  });
+
+  it('drops a strip with a negative minute', () => {
+    const phases = [{ label: 'Prep', handsOnMinutes: -1, handsOffMinutes: 0 }];
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, phases });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.phases).toEqual([]);
+  });
 });
