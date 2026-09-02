@@ -155,19 +155,24 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
     await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
 
     // EXACT, not `objectContaining`. The safety property this branch rests on is
-    // that the write is three `metadata.*` LEAF paths plus the stamp — never a
+    // that the write is five `metadata.*` LEAF paths plus the stamp — never a
     // document `set`, and never a whole `metadata` map, because recipes are
     // last-write-wins per WHOLE document and this branch is driven by a sweep of
     // the entire library. `objectContaining` passes a payload that keeps the
-    // three leaves and adds a fourth key beside them, which is most of the way
+    // five leaves and adds a sixth key beside them, which is most of the way
     // back to the clobber the shape was chosen to avoid. Only the clock is
-    // loosened.
+    // loosened. `focaccia()`'s stored metadata carries no phase strip, and the
+    // mock's response carries none either, so `phases`/`timingSummary` resolve
+    // to "nothing to report" here — see onRecipeWritten.phases.test.ts for the
+    // branch that protects a STORED strip.
     expect(mockUpdate).toHaveBeenCalledWith({
       'metadata.prepTimeMinutes': 30,
       'metadata.cookTimeMinutes': 12,
       // 762 must survive — the excess over stored prep+cook (30+12=42) is a
       // real unattended wait, and the model's 45 has no way to know about it.
       'metadata.totalTimeMinutes': 762,
+      'metadata.phases': [],
+      'metadata.timingSummary': null,
       timesEstimatedAt: expect.any(Number),
     });
   });
@@ -187,6 +192,8 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
       'metadata.prepTimeMinutes': 30,
       'metadata.cookTimeMinutes': 12,
       'metadata.totalTimeMinutes': 762,
+      'metadata.phases': [],
+      'metadata.timingSummary': null,
       timesEstimatedAt: expect.any(Number),
     });
   });
@@ -219,6 +226,8 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
       'metadata.prepTimeMinutes': 10,
       'metadata.cookTimeMinutes': 35,
       'metadata.totalTimeMinutes': 45,
+      'metadata.phases': [],
+      'metadata.timingSummary': null,
       timesEstimatedAt: expect.any(Number),
     });
   });

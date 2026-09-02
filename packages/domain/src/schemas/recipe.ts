@@ -130,6 +130,18 @@ export const MAX_RECIPE_PHASES = 6;
  * #1123 one restated: the gates are on the way IN. Whole non-negative minutes and
  * at most six blocks are what a model may return; a stored document that somehow
  * holds seven is still read and still drawn.
+ *
+ * `.catch([])` on a strip that FAILS this gate — a seventh block, a fractional or
+ * negative minute — rather than letting that failure propagate (issue #1122
+ * review, blocking 3). This is a decorative field on every call site that embeds
+ * it (`.optional()` on top, always): the librarian has no retry, so a bad strip
+ * failing the whole `LibrarianOutputSchema` parse used to lose the user's entire
+ * chat-authored recipe over a field invisible to them, and on the estimator path
+ * it discarded the three prep/cook/total numbers the model got right alongside
+ * it. `[]` reads exactly like "the model omitted phases" to every consumer
+ * (`reconcileRecipePhases`, `reconcileEstimatedTimes`) — an over-cap or malformed
+ * strip degrades to no strip, never to no recipe. `MAX_RECIPE_PHASES` stays the
+ * one stated bound; only the failure mode changed.
  */
 export const AuthoredRecipePhasesSchema = z
   .array(
@@ -138,7 +150,8 @@ export const AuthoredRecipePhasesSchema = z
       handsOffMinutes: z.number().int().nonnegative(),
     }),
   )
-  .max(MAX_RECIPE_PHASES);
+  .max(MAX_RECIPE_PHASES)
+  .catch([]);
 
 /** The one-line summary as the authoring paths emit it: a sentence, or null. */
 export const AuthoredTimingSummarySchema = z.string().nullable();

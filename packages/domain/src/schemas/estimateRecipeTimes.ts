@@ -56,6 +56,10 @@ export const EstimateRecipeTimesAIOutputSchema = z.object({
   // Both `.optional()` for the reason the authoring schemas give: a strip the model
   // forgot must leave the recipe unestimated, not throw away the numbers it did
   // return. `reconcileEstimatedTimes` is what turns absent into empty.
+  // `AuthoredRecipePhasesSchema`'s own `.catch([])` is what protects the SAME
+  // three numbers from a strip the model returned but got wrong — the backfill
+  // retries a hard failure, but there is no reason to force that retry over a
+  // decorative field (issue #1122 review, blocking 3).
   phases: AuthoredRecipePhasesSchema.optional(),
   timingSummary: AuthoredTimingSummarySchema.optional(),
 });

@@ -925,4 +925,40 @@ describe('assembleRecipeDraft — the phase strip', () => {
     ]);
     expect(doc.metadata.timingSummary).toBe('Two minutes.');
   });
+
+  // Blocking finding 2 (issue #1122 review, PR #1201): `phases` and
+  // `timingSummary` used to fall back to the base INDEPENDENTLY, so a fresh
+  // strip could be stored under the base's stale sentence. The fix takes both
+  // fields from the SAME source — `raw` when it answered, `base` when it did
+  // not — so this pairing can no longer happen in either direction.
+  it('does not pair a fresh strip with the stale stored summary', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        phases: [{ label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 }],
+        // timingSummary omitted — the model returned a strip but no sentence.
+      }),
+      { source: MANUAL, baseRecipe: baseRecipe() },
+    );
+    expect(doc.metadata.phases).toEqual([
+      { label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 },
+    ]);
+    // NOT baseRecipe().metadata.timingSummary ('Three minutes, all of them
+    // you.') — that sentence describes the OLD strip, not this one.
+    expect(doc.metadata.timingSummary).toBeNull();
+  });
+
+  it('does not pair a fresh summary with the stale stored strip', async () => {
+    const base = baseRecipe();
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        // phases omitted — the model returned a sentence but no strip.
+        timingSummary: 'A completely different timing than the strip below.',
+      }),
+      { source: MANUAL, baseRecipe: base },
+    );
+    // The strip and summary move TOGETHER: no fresh phases means BOTH fields
+    // come from the base, not just the one the model happened to omit.
+    expect(doc.metadata.phases).toEqual(base.metadata.phases);
+    expect(doc.metadata.timingSummary).toBe(base.metadata.timingSummary);
+  });
 });

@@ -13,10 +13,10 @@ import type { RecipePhase } from '../entities/Recipe.js';
 // answer the strip draws. Nothing derived from these numbers is ever written back
 // to Firestore — a stored derivative is the same defect wearing a different name.
 //
-// It also swallows the THREE ways a recipe can have no phases — the key absent
-// (a document written before this shipped), an empty array, and a list of phases
-// that all sum to nothing — into one flag, so no caller has to remember that
-// `metadata.phases` is optional.
+// It also swallows the TWO ways a recipe can have no phases — the key absent (a
+// document written before this shipped) and an empty array — into one flag, so
+// no caller has to remember that `metadata.phases` is optional. A phase list
+// that sums to zero is deliberately NOT a third one: see `hasPhases` below.
 
 /** Elapsed time of one phase. Derived, never stored: two numbers cannot disagree. */
 export function phaseElapsedMinutes(phase: Readonly<RecipePhase>): number {

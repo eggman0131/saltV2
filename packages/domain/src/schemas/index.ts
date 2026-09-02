@@ -291,7 +291,16 @@ export type {
 export { isImportError } from './importFailure.js';
 export type { UrlImportFailure, PhotoImportFailure } from './importFailure.js';
 
-export { RecipeKindSchema, RecipePhaseSchema, RecipeSchema } from './recipe.js';
+export {
+  RecipeKindSchema,
+  RecipePhaseSchema,
+  RecipeSchema,
+  // The way-IN phase gate (issue #1122) — the librarian, both extractors and the
+  // re-estimator constrain their `phases` output against these, and #1202's row
+  // editor needs `MAX_RECIPE_PHASES` to cap "add a phase" against the same bound.
+  AuthoredRecipePhasesSchema,
+  MAX_RECIPE_PHASES,
+} from './recipe.js';
 export type {
   QuantityDoc,
   IngredientDoc,

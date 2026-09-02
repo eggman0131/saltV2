@@ -29,6 +29,10 @@ export { normaliseTags } from './commands/normaliseTags.js';
 // clause that is now the `deriveMissingTotal` argument.
 export { reconcileRecipeTimes } from './commands/reconcileRecipeTimes.js';
 export type { RecipeTimes } from './commands/reconcileRecipeTimes.js';
+// The one merge of a fresh phase strip against a stored one (issue #1122
+// review) — the strip and its one-line summary move together, or not at all.
+export { reconcileRecipePhases } from './commands/reconcileRecipePhases.js';
+export type { RecipePhaseStrip } from './commands/reconcileRecipePhases.js';
 export { flattenIngredients } from './queries/ingredients.js';
 // The ONE numeric reduction of a `Quantity` (issue #917) — shared by the shopping
 // list and the formula mapping screen so a range cannot mean two amounts. The

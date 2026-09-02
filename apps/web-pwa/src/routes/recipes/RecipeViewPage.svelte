@@ -1995,10 +1995,13 @@
         {/if}
 
         <!-- Description, facts, tags, the phase strip, and the shape of the cook.
-             `phases` joins the card's gate rather than sitting outside it: a recipe
-             whose only stated fact is its timing still has something to say here,
-             and the list is empty whenever the key is off (issue #1122). -->
-        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape || phases.length > 0}
+             `phaseTotals.hasPhases` joins the card's gate rather than sitting
+             outside it: a recipe whose only stated fact is its timing still has
+             something to say here, and it is false whenever the key is off
+             (issue #1122). Read through `recipePhaseTotals` rather than
+             `phases.length` — the single funnel docs/recipe-module.md names
+             (issue #1122 review, should-fix 6). -->
+        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape || phaseTotals.hasPhases}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
@@ -2042,7 +2045,7 @@
                    is what everyone outside the test group still sees.
                    Elapsed per phase is `handsOn + handsOff`, computed here and
                    never stored — `phaseElapsedMinutes` is the one implementation. -->
-              {#if phases.length > 0}
+              {#if phaseTotals.hasPhases}
                 <div class="flex flex-col gap-1.5" data-testid="recipe-phases">
                   {#if recipe.metadata.timingSummary}
                     <p class="text-xs text-muted-foreground" data-testid="recipe-timing-summary">

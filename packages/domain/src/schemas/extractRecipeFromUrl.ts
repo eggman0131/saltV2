@@ -104,6 +104,9 @@ export const ExtractRecipeAIOutputSchema = z.object({
   // `.optional()` on both so a model that omits them yields no strip rather than
   // failing the whole import on a field the prompt asks for and it forgot. The
   // assembler turns absent into an empty list on the way to the document.
+  // `AuthoredRecipePhasesSchema` carries the matching guard for a strip the model
+  // DID return but got wrong (a seventh block, a fractional minute): it degrades
+  // to `[]` rather than failing this parse (issue #1122 review, blocking 3).
   phases: AuthoredRecipePhasesSchema.optional(),
   timingSummary: AuthoredTimingSummarySchema.optional(),
   tags: z.array(z.string()),

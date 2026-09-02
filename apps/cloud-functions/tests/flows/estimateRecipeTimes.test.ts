@@ -227,11 +227,14 @@ describe('estimateRecipeTimesFlow', () => {
     });
   });
 
-  // The cap the strip is drawn against (`MAX_RECIPE_PHASES`). A seventh block
-  // fails the trust-boundary parse, which the trigger reads as "not estimated
-  // yet" and the backfill script retries — the same bargain a fractional minute
-  // count makes below.
-  it('rejects a strip longer than six blocks', async () => {
+  // The cap the strip is drawn against (`MAX_RECIPE_PHASES`). Issue #1122
+  // review, blocking 3: a seventh block used to fail the WHOLE trust-boundary
+  // parse, discarding the three prep/cook/total numbers the model got right
+  // alongside it. `AuthoredRecipePhasesSchema`'s `.catch([])` degrades the
+  // strip to empty instead — `reconcileEstimatedTimes` then reads that exactly
+  // like "the model omitted phases" (it already does; see the two tests below),
+  // never as a reason to fail the call.
+  it('degrades a strip longer than six blocks to no strip, keeping the three numbers', async () => {
     respond({
       prepTimeMinutes: 20,
       cookTimeMinutes: 35,
@@ -243,7 +246,32 @@ describe('estimateRecipeTimesFlow', () => {
       })),
       timingSummary: null,
     });
-    await expect(estimateRecipeTimesFlow(input)).rejects.toThrow(/invalid output/);
+    const result = await estimateRecipeTimesFlow(input);
+    expect(result.phases).toEqual([]);
+    expect(result).toMatchObject({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+    });
+  });
+
+  // The other half of blocking 3: a fractional or negative phase minute is the
+  // same class of lapse as the cap, and degrades the same way.
+  it('degrades a strip with a malformed minute to no strip, keeping the three numbers', async () => {
+    respond({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+      phases: [{ label: 'Prep', handsOnMinutes: 7.5, handsOffMinutes: 0 }],
+      timingSummary: null,
+    });
+    const result = await estimateRecipeTimesFlow(input);
+    expect(result.phases).toEqual([]);
+    expect(result).toMatchObject({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+    });
   });
 
   it('throws on an output that fails the trust-boundary parse', async () => {
