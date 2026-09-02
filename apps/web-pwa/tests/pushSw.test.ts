@@ -250,6 +250,9 @@ describe('push-sw — notificationclick', () => {
   });
 
   it('still derives the cook page from sessionId when there is no url', async () => {
+    // The back-compat path, and it is not vestigial: since #1127 the cook timer
+    // sends an explicit `url`, but Cloud Tasks queued before that shipped carry
+    // the old payload and the cook-timer horizon runs to a session's lifetime.
     const navigate = vi.fn(async () => undefined);
     const client: FakeClient = { focus: vi.fn(async () => undefined), navigate };
     const { listeners } = loadSw([client]);
@@ -257,6 +260,22 @@ describe('push-sw — notificationclick', () => {
     listeners.get('notificationclick')!(event);
     await settle();
     expect(navigate).toHaveBeenCalledWith('/#/recipes/recipe-1/cook');
+  });
+
+  it('prefers a cook timer url over the sessionId slice when both are present', async () => {
+    // The shape a cook timer sends after #1127. The two disagree deliberately —
+    // the sent route wins, and the slice is never consulted while a `url` is
+    // there. That precedence is what makes the slice safe to leave in place.
+    const navigate = vi.fn(async () => undefined);
+    const client: FakeClient = { focus: vi.fn(async () => undefined), navigate };
+    const { listeners } = loadSw([client]);
+    const { event, settle } = clickEvent({
+      sessionId: 'recipe-1_uid-1',
+      url: '/#/recipes/recipe-9/cook',
+    });
+    listeners.get('notificationclick')!(event);
+    await settle();
+    expect(navigate).toHaveBeenCalledWith('/#/recipes/recipe-9/cook');
   });
 
   it('routes a batch reminder by its explicit url, never by slicing an id', async () => {

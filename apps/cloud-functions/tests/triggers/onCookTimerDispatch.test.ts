@@ -388,9 +388,31 @@ describe('onCookTimerDispatch', () => {
       type: 'cook-timer',
       tag: `cook::${SESSION_ID}`,
       sessionId: SESSION_ID,
+      url: '/#/recipes/recipe-1/cook',
       title: 'Simmer the sauce',
       body: "Shepherd's pie",
     });
+  });
+
+  it('carries the cook route as an explicit url, taken from the SESSION recipeId', async () => {
+    // Issue #1127. The service worker used to rebuild this route by slicing the
+    // recipe id back out of `sessionId`; the sender has always held
+    // `session.recipeId`, so it sends the route instead. A hash PATH, matching the
+    // three sibling notification kinds — the ABSOLUTE link stays Pushover's.
+    //
+    // Driven off a session whose recipeId does NOT match the sessionId prefix, so
+    // the assertion cannot be satisfied by the old slice: it proves the url comes
+    // from the document rather than from the id.
+    mockCookSessionSnap = { exists: true, data: () => makeSession({ recipeId: 'recipe-9' }) };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['url']).toBe('/#/recipes/recipe-9/cook');
+    // `sessionId` is kept BESIDE it, not replaced: Cloud Tasks queued before this
+    // shipped carry no `url`, and the service worker's slice still feeds off it.
+    expect(payload['sessionId']).toBe(SESSION_ID);
   });
 
   it('BACK-COMPAT: a legacy timer entry (no id/label/duration) still dispatches', async () => {

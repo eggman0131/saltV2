@@ -12,9 +12,10 @@ vi.mock('firebase-functions/firestore', () => ({
 
 const mockLoggerInfo = vi.fn();
 const mockLoggerWarn = vi.fn();
+const mockLoggerError = vi.fn();
 
 vi.mock('firebase-functions', () => ({
-  logger: { info: mockLoggerInfo, warn: mockLoggerWarn, error: vi.fn() },
+  logger: { info: mockLoggerInfo, warn: mockLoggerWarn, error: mockLoggerError },
 }));
 
 // ─── Mock firebase-admin/firestore ───────────────────────────────────────────
@@ -119,8 +120,11 @@ function makeEvent({
   listId = 'list-1',
   itemId = 'item-1',
 }: {
-  before?: ItemData | null;
-  after?: ItemData | null;
+  // `Record<string, unknown>` is allowed alongside the well-formed shape so the
+  // trust-boundary cases below can hand the trigger a document that does not
+  // parse — which is the whole point of validating it.
+  before?: ItemData | Record<string, unknown> | null;
+  after?: ItemData | Record<string, unknown> | null;
   listId?: string;
   itemId?: string;
 }) {
@@ -218,6 +222,77 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
       expect(mockMatchOrCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── The trust boundary (issue #1127, Phase 3) ─────────────────────────────
+  //
+  // The document arrives from Firestore and is validated once, with `safeParse`,
+  // like every other trigger here. A trigger has no caller to hand a Failure to,
+  // so per docs/data-model.md the failure path is: log, return, never throw.
+
+  describe('document validation', () => {
+    it('logs and returns without a write when the document does not parse', async () => {
+      // `rawText` present and the wrong TYPE. The old field-by-field read turned
+      // this into `''` and matched on an empty string; it now stops here.
+      const event = makeEvent({
+        after: { rawText: 42, canonId: null, matchState: 'pending' },
+      });
+
+      await expect((onShoppingListItemWrite as Function)(event)).resolves.toBeUndefined();
+
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        'onShoppingListItemWrite: invalid shoppingList item doc, skipping',
+        expect.objectContaining({ listId: 'list-1', itemId: 'item-1' }),
+      );
+      expect(mockMatchOrCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not throw on a document that is not an object at all', async () => {
+      const event = makeEvent({ after: 'not a document' as unknown as Record<string, unknown> });
+      await expect((onShoppingListItemWrite as Function)(event)).resolves.toBeUndefined();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('still SKIPS a document carrying no matchState field at all', async () => {
+      // The boundary of the change, and the reason `matchState` is still read off
+      // the raw document. `ShoppingListItemSchema` gives it `.catch('pending')`,
+      // so the parsed value for an absent field is 'pending' — which would send
+      // this straight into the matcher. The skip guard is the brake on the
+      // trigger's own write-back, so it must keep seeing what is stored.
+      const event = makeEvent({ after: { rawText: 'milk', canonId: null } });
+      await (onShoppingListItemWrite as Function)(event);
+      expect(mockMatchOrCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('still SKIPS a document whose matchState is an unrecognised state', async () => {
+      // Same reason: `.catch('pending')` would read a fifth state as 'pending'.
+      const event = makeEvent({
+        after: { rawText: 'milk', canonId: null, matchState: 'reticulating' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+      expect(mockMatchOrCreate).not.toHaveBeenCalled();
+    });
+
+    it('reads an absent rawText/notes as blank and an absent canonId as null', async () => {
+      // The schema's defaults reproduce the old fallbacks exactly, which is what
+      // makes the swap safe for the guards above.
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'canon-1' }) },
+      });
+
+      const event = makeEvent({ after: { matchState: 'pending' } });
+      await (onShoppingListItemWrite as Function)(event);
+
+      // canonId absent → null → not a CF own write, so it proceeded; rawText
+      // absent → '' → that is what reached the matcher.
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ rawName: '' }),
+        expect.anything(),
+      );
     });
   });
 
