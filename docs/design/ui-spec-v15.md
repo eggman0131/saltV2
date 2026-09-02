@@ -73,17 +73,22 @@ nothing else: the root stays `flex h-dvh flex-col`, the nav/main row stays
 `BottomNav` is a mobile control and the collapse is a desktop one, so the
 reservation is not the collapse's business (v0.4 §13.3 is unchanged).
 
-The prop is `$bindable(false)` and follows v0.2 §3.6's canonical
-controlled/uncontrolled wiring. Uncontrolled is the intended use and the reason
-the shape was chosen: `apps/web-pwa` passes nothing, and `AppShell` owns the
-state. A consumer that later needs to own it — to persist it, say — binds to it
-with no other change anywhere.
+The prop is a bare `$bindable(false)`, without §3.6's `defaultValue` or
+`onNavCollapsedChange` callback. The precedent is `ListPage.selectionMode`
+(`packages/ui-components/src/templates/ListPage/ListPage.svelte`), which is also
+a bare `$bindable(false)` with no callback — not §3.6's three-part canonical
+wiring. Uncontrolled is the intended use and the reason the shape was chosen:
+`apps/web-pwa` passes nothing, and `AppShell` owns the state. A consumer that
+later needs to own it — to persist it, say — binds to it with no other change
+anywhere.
 
 `SideNav` carries a **stable `id`** on its `<nav>`, exported as `SIDE_NAV_ID`
-from `SideNav.svelte`'s module block. It exists for one reason: the control's
-`aria-controls` must name the element it controls. It is declared beside the
-element that carries it, and read by `TopBar` from there, so the two cannot
-drift. It is not a styling hook and nothing may select on it for layout.
+from `SideNav.types.ts`, not `SideNav.svelte` — a named export from a `.svelte`
+file fails `tsc -p packages/ui-components/tsconfig.test.json`. It exists for one
+reason: the control's `aria-controls` must name the element it controls. It is
+declared beside the element that carries it, and read by `TopBar` from there, so
+the two cannot drift. It is not a styling hook and nothing may select on it for
+layout.
 
 ## 1.4 The control
 
@@ -146,8 +151,13 @@ Nothing, in every case, and that is the design:
   `flex-1`.
 - A two-column page divides it by the fractions its own grid already declares —
   an equal-halves layout splits it evenly, and a `lg:grid-cols-[2fr_1fr]` layout
-  splits it 2:1. A CSS grid distributes new width by its existing fractions on
-  its own, so **no page needs code for this**, and none may add any.
+  splits it 2:1, **provided that `lg:` declaration is not shadowed by a later
+  `split:` declaration on the same element.** Tailwind emits `split:` utilities
+  after `lg:` ones, so at a width matching both media queries `split:` wins on
+  source order regardless of which fractions it names — see the ordering note at
+  `MealPlanWeekPage.svelte:963-971` for a live example of avoiding the collision.
+  A CSS grid distributes new width by its existing fractions on its own, so
+  **no page needs code for this**, and none may add any.
 - Collapsing the nav **cannot** change how many columns a page has. The `split`
   seam is a viewport query; the viewport does not move when the nav does. A page
   that is one column stays one column, wider.
