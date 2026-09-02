@@ -1,4 +1,4 @@
-import { diffRecipe, type Recipe } from '@salt/domain';
+import { diffRecipe, reconcileRecipePhases, type Recipe } from '@salt/domain';
 import type { RecipeDiff } from '@salt/domain';
 import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
 import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
@@ -72,6 +72,21 @@ export interface RecipeAmendment {
  * by the caller so this stays directly testable.
  */
 export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt: string): Recipe {
+  // The phase strip and the sentence written over it (issue #1122) are ONE fact,
+  // so they are decided by the one shared pairing rule — the same call
+  // `assembleRecipeDraft` and `onRecipeWritten`'s re-estimate branch make — and
+  // never by two independent `?? existing` fallbacks like the scalars below
+  // (issue #1203). Merged field by field they came apart exactly where it
+  // mattered: `draft.metadata.phases` is always a defined array, so the fresh
+  // strip always won, while a `timingSummary` the librarian was never asked about
+  // came back `null` and silently restored the stored recipe's OLD sentence
+  // underneath it — a one-block traybake described as taking 2¼ hours.
+  //
+  // This keeps, rather than trades away, the no-loss floor the scalars have: a
+  // draft carrying no strip at all falls back to the stored pair WHOLE, so an
+  // unrelated chat turn still cannot erase a strip a cook corrected by hand.
+  const phaseStrip = reconcileRecipePhases(draft.metadata, existing.metadata);
+
   return {
     ...draft,
     // Identity stays the existing recipe's: this is an edit, not a new dish.
@@ -87,15 +102,15 @@ export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt
       totalTimeMinutes: draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes,
       prepTimeMinutes: draft.metadata.prepTimeMinutes ?? existing.metadata.prepTimeMinutes,
       cookTimeMinutes: draft.metadata.cookTimeMinutes ?? existing.metadata.cookTimeMinutes,
-      // The phase strip (issue #1122), on the SAME "a draft that says nothing
-      // keeps what is stored" rule as every line above it. This merge builds
-      // `metadata` field by field rather than spreading, so a key omitted here is
-      // a key silently DELETED from the document on every amend — which is what
-      // would have quietly thrown away a strip a cook had corrected. The richer
-      // "which strip wins" question belongs to the phase-2 editor; this is only
-      // the carry-through that stops an unrelated chat turn erasing one.
-      phases: draft.metadata.phases ?? existing.metadata.phases,
-      timingSummary: draft.metadata.timingSummary ?? existing.metadata.timingSummary,
+      // The phase strip and its summary (issue #1122), paired above rather than
+      // merged here. This merge builds `metadata` field by field rather than
+      // spreading, so a key omitted here is a key silently DELETED from the
+      // document on every amend — which is what would have quietly thrown away a
+      // strip a cook had corrected. Both keys are written on every amend, as `[]`
+      // and `null` when neither side has a strip: that is what "no strip" is
+      // stored as everywhere else, and Firestore has no `undefined` to write.
+      phases: phaseStrip.phases,
+      timingSummary: phaseStrip.timingSummary,
       tags: draft.metadata.tags.length > 0 ? draft.metadata.tags : existing.metadata.tags,
     },
   };

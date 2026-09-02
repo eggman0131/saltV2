@@ -261,9 +261,21 @@ export async function assembleRecipeDraft(
 
   // The phase strip and its one-line summary (issue #1122), merged as ONE fact
   // rather than two independently-defaulted fields (issue #1122 review, blocking
-  // 2) — `reconcileRecipePhases` is the shared implementation `onRecipeWritten`'s
-  // re-estimate branch also calls, so a fresh strip can never land paired with a
-  // stale summary (or the reverse) on either write path.
+  // 2). `reconcileRecipePhases` is the shared implementation, and its callers are
+  // exactly three — this flow, `onRecipeWritten`'s re-estimate branch, and the
+  // client's `mergeAmendedRecipe` (`apps/web-pwa/src/lib/recipeAmend.ts`). For a
+  // write coming through one of those three, a fresh strip cannot land paired
+  // with a stale summary or the reverse. That list IS the boundary of the claim:
+  // it is a property of routing through this function, not of the collection, so
+  // a fourth writer of `metadata.phases` that pairs the fields itself is outside
+  // it and gets no such guarantee.
+  //
+  // Stated once without that boundary (issue #1203), the sentence was simply
+  // false: `mergeAmendedRecipe` re-split the pair downstream of this flow, and
+  // its output — not this draft — is what a chat amend actually stores. Pinned by
+  // the two pairing tests in `tests/flows/assembleRecipeDraft.test.ts`, the
+  // re-estimate pair in `tests/triggers/onRecipeWritten.phases.test.ts`, and the
+  // amend-merge pairing tests in `apps/web-pwa/tests/recipeAmend.test.ts`.
   const phaseStrip = reconcileRecipePhases(raw, baseRecipe?.metadata ?? null);
 
   const draft: RecipeDoc = {
