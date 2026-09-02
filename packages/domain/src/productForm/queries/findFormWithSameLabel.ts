@@ -34,10 +34,21 @@ import type { ProductForm } from '../entities/ProductForm.js';
 // pure lookup. Without it a bare-noun label ("Zest", "Juice", "Stock") matched
 // across the whole table, and a lime's zest was filed under lemons.
 //
-// A `null` parent means the caller could not name the parent — one about to be
-// minted, or a canon list it failed to read. Nothing stored can sit on a parent
-// that does not exist yet, so that answers null rather than falling back to a
-// table-wide search: an unknown parent must never degrade to "any parent".
+// A `null` parent means only that THIS CALL was not given an id — never that
+// the parent doesn't exist. The caller (`canonicaliseRecipeIngredients.ts`) has
+// two reasons to pass `null`: a parent about to be minted, which genuinely has
+// nothing stored on it yet, and an exact-normalised-name lookup that missed —
+// a canon-list read failure, or a `parentName` the model resolved by synonym,
+// fuzzy match or embedding rather than copying it verbatim from the candidate
+// list. In that second case the parent already exists and a stored form may
+// already be on it, so this function still answers `null` (it has no id to
+// search with), but the caller does not treat that as final: it calls this
+// function again with the AUTHORITATIVE id, once `resolveParentCanonId` has
+// resolved one, before minting anything (issue #1127 review, finding B1 — a
+// duplicate same-labelled form was minted on a parent that already had one,
+// regressing #854). What stays true regardless of why `null` arrived: this
+// function never falls back to a table-wide search for it — an unknown parent
+// must never degrade to "any parent".
 //
 // THE BOUNDARY OF THAT CLAIM, stated because it is not what a reader assumes.
 // Parent scoping here makes the PROPOSAL path parent-safe, and only that path.
@@ -47,9 +58,10 @@ import type { ProductForm } from '../entities/ProductForm.js';
 // parent-blind matching phrase — and both `resolveProductForm` calls in
 // `canonicaliseRecipeIngredients.ts` still cross parents on a bare-noun label:
 // `:165`, the pre-arbitration bind, which fires first and owns the reported
-// symptom, and `:296`, the sibling of this call. A follow-up defect split from
-// #1127 owns them; the measurement is in #1127's Phase-1 deviation comment, and
-// the limit is pinned by the `KNOWN LIMIT` case in
+// symptom, and the sibling `resolveProductForm` call that sits right beside
+// this function's own call, in the same proposal-covering check. Follow-up
+// issue #1180 owns them; the measurement is in #1127's Phase-1 deviation
+// comment, and the limit is pinned by the `KNOWN LIMIT` case in
 // `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`.
 //
 // Match-time only: nothing here is written back. Stored labels stay exactly as

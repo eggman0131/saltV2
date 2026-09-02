@@ -6,7 +6,7 @@
 // the push + notificationclick listeners, so that contract is untouched.
 //
 // Four notification kinds ride this one path, distinguished by `payload.type`:
-//   - 'cook-timer'        (#544) — deep-links via `sessionId`, has an in-app equivalent
+//   - 'cook-timer'        (#544) — deep-links via `url` since #1127, `sessionId` FALLBACK, has an in-app equivalent
 //   - 'shopping-reminder' (#629) — deep-links via `url`, has none
 //   - 'batch-stage'       (#812) — deep-links via `url`, has none
 //   - 'kitchen-timer'     (#842) — deep-links via `url`, has an in-app equivalent

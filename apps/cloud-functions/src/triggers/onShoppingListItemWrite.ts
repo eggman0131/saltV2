@@ -54,6 +54,15 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     const { listId, itemId } = event.params;
     const afterData = after.data() as Record<string, unknown>;
+    // traceContext is TRANSPORT ONLY (apps/cloud-functions/CLAUDE.md §6, and the
+    // field's own schema comment): it must never gate the match, so it is kept
+    // out of the object handed to safeParse below — a malformed value would
+    // otherwise fail the whole parse and abort the write, which is exactly the
+    // "must never throw, must degrade to a root trace" rule this field exists
+    // under. Read raw instead, the same `typeof … === 'string'` pattern
+    // `traceContextFromWrittenDoc` already uses for the same field.
+    const { traceContext: rawTraceContext, ...afterDataForParse } = afterData;
+    const traceContext = typeof rawTraceContext === 'string' ? rawTraceContext : undefined;
 
     // The trigger's trust boundary. This used to be six hand-written `typeof`
     // narrowings; it is now the same `safeParse` every other trigger in this
@@ -65,8 +74,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // defaults reproduce the old fallbacks exactly for an ABSENT field
     // (`rawText`/`notes` → `''`, `canonId` → `null`), while a field that is
     // present and the wrong TYPE now stops the invocation instead of being
-    // silently read as `''` and matched on.
-    const parsed = ShoppingListItemSchema.safeParse(afterData);
+    // silently read as `''` and matched on — `traceContext` excepted, above.
+    const parsed = ShoppingListItemSchema.safeParse(afterDataForParse);
     if (!parsed.success) {
       logger.error('onShoppingListItemWrite: invalid shoppingList item doc, skipping', {
         listId,
@@ -78,12 +87,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const item = parsed.data;
     const rawText = item.rawText;
     const canonId = item.canonId;
-    // Distributed-trace correlation (issue #362, Phase 5). The browser stamped its
-    // action span's W3C traceparent here at "add to shopping list"; we continue
-    // that trace below so the match span nests under the browser action instead of
-    // re-rooting. Absent degrades to a root trace; a malformed (non-string) one
-    // now fails the parse above rather than being dropped silently.
-    const traceContext = item.traceContext;
 
     // CF own write: the trigger wrote back canonId/matchState. matchState is
     // not 'pending' (matched/needs_approval/failed) or canonId is already set.

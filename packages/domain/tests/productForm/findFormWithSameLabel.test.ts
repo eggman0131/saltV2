@@ -102,10 +102,10 @@ describe('findFormWithSameLabel', () => {
   });
 
   it('returns null for an unknown parent rather than searching the whole table', () => {
-    // `null` is what the caller passes when it cannot name the parent — one
-    // about to be minted, or a canon list it failed to read. Nothing stored can
-    // be on a parent that does not exist yet, so an unknown parent must never
-    // degrade to "any parent".
+    // `null` is what the caller passes when this exact-name lookup couldn't
+    // resolve the parent — which is not always because the parent doesn't
+    // exist yet (see this query's header). Either way, an unknown parent must
+    // never degrade to "any parent".
     const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
     expect(findFormWithSameLabel('Zest', null, forms)).toBeNull();
   });
@@ -116,11 +116,26 @@ describe('findFormWithSameLabel', () => {
     // product-form binding parent-safe in general: `resolveProductForm` matches
     // on `[form.label, ...form.matchers]`, so a bare-noun label is itself a
     // global, parent-blind matching phrase — and it is the query the recipe
-    // canonicalisation flow reaches first. A follow-up defect split from #1127
-    // owns that; when it lands this expectation flips, which is the signal to
-    // widen the boundary paragraph in this query's header.
+    // canonicalisation flow reaches first. Follow-up issue #1180 owns that;
+    // when it lands this expectation flips, which is the signal to widen the
+    // boundary paragraph in this query's header.
+    //
+    // WEAKER THAN IT READS (PR #1181 review, note). The only assertion that
+    // actually pins the limit is the `resolveProductForm` one below —
+    // `findFormWithSameLabel` is on #1180's must-not-touch list, so an
+    // assertion against it here could never go red on that follow-up landing,
+    // and this file dropped the earlier one for exactly that reason. Nor does
+    // this test's own typing catch #1180 widening `resolveProductForm` to a
+    // required third (canon-list) parameter: `packages/domain/tsconfig.json`
+    // only includes `src/**/*`, so this file is never typechecked, and a
+    // missing required argument is a compile error, not a runtime one — this
+    // two-arg call goes red only if #1180's implementation happens to throw on
+    // an absent third argument rather than treating it as an empty list. The
+    // CF `KNOWN LIMIT` case in
+    // `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`,
+    // which drives the real flow through the compiled call site, is the pin
+    // that actually fires; this one is a weaker, best-effort second.
     const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
-    expect(findFormWithSameLabel('Zest', 'canon-lime', forms)).toBeNull();
     expect(resolveProductForm('zest of 1 lime', forms)?.parentCanonId).toBe('canon-lemon');
   });
 });

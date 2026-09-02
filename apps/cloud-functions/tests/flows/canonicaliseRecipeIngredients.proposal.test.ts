@@ -425,6 +425,59 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(result[1]!.value!.item.id).toBe(limeId);
   });
 
+  it('re-checks the AUTHORITATIVE parent before minting when the exact-name lookup misses it (#1181 review, finding B1)', async () => {
+    // The proposal's parentName need not be a canon NAME verbatim — the model is
+    // told the candidate list is a preference, not a requirement. "Scallions"
+    // here is a stored SYNONYM of "Spring Onions", not its name, so
+    // `namedParentCanonId`'s exact-normalised-name lookup misses it and the
+    // covering check answers null even though the parent — and a same-labelled
+    // form already on it — exist. Before this fix that null was final:
+    // `resolveParentCanonId` then resolved the SAME parent via the synonym (the
+    // full five-stage matcher, wider than the exact-name lookup) and minted a
+    // second "Green tops" form beside the one already there, regressing #854.
+    seed(
+      'canonItems',
+      'canon-spring-onions',
+      canonDoc('canon-spring-onions', 'Spring Onions', ['scallions']),
+    );
+    seed('productForms', 'green-tops', {
+      id: 'green-tops',
+      schemaVersion: 1,
+      matchers: ['spring onion tops'],
+      parentCanonId: 'canon-spring-onions',
+      label: 'Green tops',
+      yield: { formUnit: 'g', amountPerParent: 20 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Scallions',
+      matcher: 'tops',
+      label: 'Green tops',
+      formUnit: 'g',
+      amountPerParent: 20,
+    });
+
+    // Shares no token-run with the stored form's label or matcher, so it
+    // reaches arbitration instead of being claimed by resolveProductForm first.
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'chopped scallion tops' }],
+    })) as Array<{ kind: string; value?: { decision: string; item: { id: string } } }>;
+
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+
+    // No duplicate form minted — bound to the form already stored on the parent.
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.id).toBe('green-tops');
+
+    expect(result[0]!.kind).toBe('ok');
+    expect(result[0]!.value!.decision).toBe('matched');
+    expect(result[0]!.value!.item.id).toBe('canon-spring-onions');
+  });
+
   it('KNOWN LIMIT — a bare-noun label still crosses parents before arbitration runs', async () => {
     // The boundary of the claim above, pinned rather than asserted away
     // (CLAUDE.md Hard rule 12). #1127 scopes the PROPOSAL path only. It does not
@@ -436,10 +489,10 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     // the ingredient before any proposal is asked for.
     //
     // This is the issue's own headline reproduction, and it is UNCHANGED by
-    // #1127: `arbitrationCalls: 0`, `boundTo: 'canon-lemon'`. A follow-up defect
-    // split from #1127 owns it (measurements in that issue's Phase-1 deviation
-    // comment); fixing it changes how every ingredient in the app resolves to a
-    // form, which is why it is not bolted on here.
+    // #1127: `arbitrationCalls: 0`, `boundTo: 'canon-lemon'`. Follow-up issue
+    // #1180 owns it (measurements in #1127's Phase-1 deviation comment); fixing
+    // it changes how every ingredient in the app resolves to a form, which is
+    // why it is not bolted on here.
     //
     // WHEN THIS TEST GOES RED, the follow-up has landed: delete it and widen the
     // boundary paragraph in `findFormWithSameLabel`'s header, which points here.
