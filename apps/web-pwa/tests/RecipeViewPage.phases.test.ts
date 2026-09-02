@@ -375,4 +375,50 @@ describe('RecipeViewPage — the phase strip', () => {
 
     expect(queryByTestId('recipe-phases')).toBeNull();
   });
+
+  // #1205 review, blocking 1: `cookShape` returns non-null for ANY recipe with a
+  // timed step — the whole bread library this feature targets — so with the key
+  // on, the timeline's "X start to finish · Y hands-on" sentence and the #878
+  // ribbon's identical sentence, built from different numbers, printed as
+  // consecutive paragraphs. Every earlier fixture in this file has `steps: []`,
+  // so `cookShape` returned null and the ribbon never rendered alongside a strip
+  // in a single test — this is the one fixture with a timed step, so the
+  // regression cannot come back silently.
+  const timedStep = {
+    id: 'step-1',
+    text: 'Cover and prove overnight',
+    timer: { durationMinutes: 720, description: 'Prove' },
+    note: null,
+  };
+
+  it("suppresses the #878 ribbon's sentence when the recipe has a strip, even though a timed step gives cookShape a shape", () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [timedStep],
+        metadata: {
+          ...makeRecipe().metadata,
+          prepTimeMinutes: 15,
+          cookTimeMinutes: 30,
+          totalTimeMinutes: 45,
+          phases: PHASES,
+          timingSummary: null,
+        },
+      }),
+    ]);
+    const { getByTestId, queryByTestId } = renderPage();
+
+    // The timeline still states its own account of the timing...
+    expect(getByTestId('recipe-phase-totals').textContent).toContain('start to finish');
+    // ...but the ribbon, which would restate the same sentence from different
+    // numbers (`cookShape` reads the old fields and the timer, not the phases),
+    // must not render at all.
+    expect(queryByTestId('recipe-cook-shape')).toBeNull();
+  });
+
+  it('keeps the #878 ribbon for a recipe with a timed step and no strip, key on', () => {
+    mockRecipes._set([makeRecipe({ steps: [timedStep] })]);
+    const { getByTestId } = renderPage();
+
+    expect(getByTestId('recipe-cook-shape')).toBeTruthy();
+  });
 });

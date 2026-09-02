@@ -238,7 +238,10 @@
   // onto the phase sum is phase 4 of #1122, and it is what makes the start times
   // earlier (#953). Until then a row with a strip states the whole process while
   // its clock still assumes you prepped in advance; that is the migration, and it
-  // is deliberately visible only to the test group.
+  // is deliberately visible only to the test group. The same half-moved boundary
+  // is true of a meal's "Made from" rows: `insertComponentByCookTime` still
+  // orders them by `cookTimeMinutes` while the row now displays the phase sum
+  // (#1205 review, should-fix 4) — moving the ordering is the same phase 4.
   const phasesEnabled = $derived($recipePhasesGate.enabled);
 
   function dishTimeLabel(row: Recipe): string {

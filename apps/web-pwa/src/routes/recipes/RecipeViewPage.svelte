@@ -2080,8 +2080,16 @@
               <!-- The shape of the cook (issue #878): how long, how much of it is you,
                    and where the waiting goes — answered before a single step is read.
                    The bar is decoration and says so; the legend beneath it carries the
-                   whole of the information, so nothing here depends on colour. -->
-              {#if shape}
+                   whole of the information, so nothing here depends on colour.
+
+                   `!phaseTotals.hasPhases` joins the gate (#1205 review, blocking 1):
+                   `shape.totalMinutes`/`handsOnMinutes` come from `cookShape`, which reads
+                   the old prep/cook/total fields and any step timer — a different sum than
+                   `RecipePhaseTimeline`'s `recipe-phase-totals` line above, which reads the
+                   phases. A recipe with a phase strip already stated this sentence once;
+                   printing the ribbon's version too would be #1122's own defect (two
+                   accounts of the same fact) reproduced on the page built to fix it. -->
+              {#if shape && !phaseTotals.hasPhases}
                 <div class="flex flex-col gap-1.5" data-testid="recipe-cook-shape">
                   <p class="text-xs text-muted-foreground">
                     <span class="font-medium text-foreground"

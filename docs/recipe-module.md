@@ -178,8 +178,12 @@ from" rows on the view and edit pages, and the meal cook plan's per-dish line al
 go through it, so a recipe cannot read 45 min on one screen and 13 hr on another.
 It returns `null` with the feature key off and for a recipe with no strip, which is
 what makes a part-backfilled library read correctly everywhere. Note the boundary
-until phase 4: the cook plan's START CLOCK still comes from `scheduleFor` reading
-`cookTimeMinutes`, so only the line moves this phase.
+until phase 4: only the LINE a surface shows moves onto the phase sum this phase —
+the ORDERING beside it does not. The cook plan's START CLOCK still comes from
+`scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are still
+positioned by `insertComponentByCookTime` reading the same field, so with the key
+on a component can display a phase sum while sorting — or starting — as if the old
+field still ran the show (#1205 review, should-fix 4).
 
 The definition the model is given lives in `TIME_RULES`
 (`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
