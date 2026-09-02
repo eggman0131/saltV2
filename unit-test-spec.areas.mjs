@@ -118,11 +118,18 @@ export const violationCeilings = {
   // `subscriptionReportingGuard`); the fourth, `extractProcessStages`, is in
   // `apps/cloud-functions`. That is the must-not-match self-test case in the
   // guard.
+  // UT-B1 44 → 45 and UT-C2 33 → 34 (issue #1122). ONE new file:
+  // `RecipeViewPage.phases.test.ts`, a new suite for the phase strip. It carries
+  // the same twelve-mock preamble every other RecipeViewPage suite carries and
+  // the same `makeRecipe` factory — the page cannot render without them, which is
+  // the one case the UT-B1 note in `scripts/lib/unitTestSpec.mjs` sanctions. The
+  // alternative on offer was to hide the phase tests inside an unrelated suite
+  // that already breaches both, which buys the counter and costs the reader.
   'apps/web-pwa': {
     'UT-A1': 5,
-    'UT-B1': 44,
+    'UT-B1': 45,
     'UT-C1': 0,
-    'UT-C2': 33,
+    'UT-C2': 34,
     'UT-C3': 31,
     'UT-E4': 0,
     'UT-G1': 0,

@@ -483,6 +483,15 @@ async function maybeEstimateTimes(
       'metadata.prepTimeMinutes': finalTimes.prepTimeMinutes,
       'metadata.cookTimeMinutes': finalTimes.cookTimeMinutes,
       'metadata.totalTimeMinutes': finalTimes.totalTimeMinutes,
+      // The phase strip (issue #1122). Written UNCONDITIONALLY, unlike the total
+      // above: `floorTotalAtStoredWait` exists because a stored total can record a
+      // wait the flow's inputs have no route back to, and there is no equivalent
+      // stored signal to protect here — a recipe that had phases and was asked
+      // again asked for a better answer, and a recipe that had none has nothing to
+      // lose. What protects a HAND-EDITED strip is the branch's edge trigger: this
+      // runs only when someone bumped `timesRequestedAt`, never on a plain save.
+      'metadata.phases': finalTimes.phases,
+      'metadata.timingSummary': finalTimes.timingSummary,
       // Stamped in the SAME update as the answer, so "estimated" and "has the
       // new numbers" cannot disagree. The request nonce is left in place rather
       // than deleted — deleting it would read as a nonce change on this write's

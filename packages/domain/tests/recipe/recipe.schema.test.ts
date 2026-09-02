@@ -98,6 +98,54 @@ function messyRecipe(): Recipe {
   };
 }
 
+// The phase strip's read side (issue #1122). Both keys are additive and optional,
+// and these are the assertions that make the "safe on read" claim checkable: the
+// ~60 recipes in production carry neither key and must keep parsing untouched.
+describe('RecipeSchema — the phase strip is additive on read', () => {
+  it('parses a document written before phases existed, and invents nothing', () => {
+    const recipe = messyRecipe();
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.metadata.phases).toBeUndefined();
+    expect(result.data.metadata.timingSummary).toBeUndefined();
+  });
+
+  it('round-trips a stored strip and its summary', () => {
+    const recipe: Recipe = {
+      ...messyRecipe(),
+      metadata: {
+        ...messyRecipe().metadata,
+        phases: [
+          { label: 'Prep', handsOnMinutes: 15, handsOffMinutes: 0 },
+          { label: 'Bake', handsOnMinutes: 2, handsOffMinutes: 30 },
+        ],
+        timingSummary: 'About 17 minutes of you, over three quarters of an hour.',
+      },
+    };
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.metadata).toEqual(recipe.metadata);
+  });
+
+  // The read boundary is deliberately looser than the three authoring schemas —
+  // gates go on the way IN (#1123). A seventh block is a document to render.
+  it('reads a strip of seven rather than dropping the whole recipe', () => {
+    const recipe: Recipe = {
+      ...messyRecipe(),
+      metadata: {
+        ...messyRecipe().metadata,
+        phases: Array.from({ length: 7 }, (_, i) => ({
+          label: `Phase ${i + 1}`,
+          handsOnMinutes: 5,
+          handsOffMinutes: 0,
+        })),
+      },
+    };
+    expect(RecipeSchema.safeParse(recipe).success).toBe(true);
+  });
+});
+
 describe('RecipeSchema', () => {
   it('round-trips a messy recipe unchanged (groups, range, mixed, optional, unparsed)', () => {
     const recipe = messyRecipe();

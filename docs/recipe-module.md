@@ -128,6 +128,40 @@ Key invariants:
   above that, the spoon has stopped being the useful way to read the amount, so
   `displayText` is `null` and the amount reads metric-only.
 
+### The phase strip — what recipe timing BECOMES (issue #1122)
+
+`metadata.phases` is an ordered list of 3–6 `{ label, handsOnMinutes,
+handsOffMinutes }` blocks, plus `metadata.timingSummary`, one sentence. It is the
+replacement for the three fields documented below, not a companion to them: phase 4
+of #1122 removes `prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes`, and
+every timing figure in the app then comes from `recipePhaseTotals` at the point of
+use. Until then both exist and the strip is behind the `recipePhases` feature key.
+
+Four things that are not obvious from the shape:
+
+- **A phase's elapsed time is not stored.** It is `handsOnMinutes +
+handsOffMinutes`, summed by `packages/domain/src/recipe/queries/recipePhaseTotals.ts`
+  wherever it is needed. A third stored number is a third thing that can disagree,
+  which is the defect the whole issue exists to close — so nothing derived from the
+  strip is ever written back.
+- **Nothing may branch on `label`.** It is free text the model wrote, displayed and
+  nothing else — the same discipline CLAUDE.md applies to `recipes.kind`. A fixed
+  vocabulary cannot serve both a loaf and a traybake, which is why there is none.
+- **Overlapping work folds into one phase**, whose hands-on is less than its
+  elapsed. There are no start offsets and no parallel tracks: that would be a
+  scheduling engine, and the view's stated purpose is broad planning.
+- **Both keys are optional on read.** A recipe written before #1122 carries
+  neither, and `recipePhaseTotals` is the one funnel that turns absent, empty and
+  populated into a single answer. Never reach for `metadata.phases.length`.
+
+The definition the model is given lives in `TIME_RULES`
+(`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
+own definitions, so all four authoring paths — librarian, URL import, photo import,
+re-estimator — ask one question against one text. The strip is written by
+`assembleRecipeDraft` on an authoring path and by the `onRecipeWritten` times branch
+on a re-estimate; the assembler preserves a stored strip when an amend returns none,
+which is what lets a cook's hand-edit survive unrelated work.
+
 ### The three time fields — definition and arithmetic (issue #952)
 
 The field set is unchanged (`schemaVersion` stays `1`, no migration); what was

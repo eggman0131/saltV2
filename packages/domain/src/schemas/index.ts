@@ -220,7 +220,11 @@ export {
   EstimateRecipeTimesAIOutputSchema,
   EstimateRecipeTimesOutputSchema,
 } from './estimateRecipeTimes.js';
-export type { EstimateRecipeTimesInput, EstimateRecipeTimesOutput } from './estimateRecipeTimes.js';
+export type {
+  EstimateRecipeTimesInput,
+  EstimateRecipeTimesAIOutput,
+  EstimateRecipeTimesOutput,
+} from './estimateRecipeTimes.js';
 
 export {
   CategoriseRecipeInputSchema,
@@ -287,7 +291,7 @@ export type {
 export { isImportError } from './importFailure.js';
 export type { UrlImportFailure, PhotoImportFailure } from './importFailure.js';
 
-export { RecipeKindSchema, RecipeSchema } from './recipe.js';
+export { RecipeKindSchema, RecipePhaseSchema, RecipeSchema } from './recipe.js';
 export type {
   QuantityDoc,
   IngredientDoc,
@@ -296,6 +300,7 @@ export type {
   StepDoc,
   RecipeSourceDoc,
   RecipeKitEntryDoc,
+  RecipePhaseDoc,
   RecipeDoc,
 } from './recipe.js';
 

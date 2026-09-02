@@ -275,6 +275,16 @@ export async function assembleRecipeDraft(
       totalTimeMinutes: times.totalTimeMinutes,
       prepTimeMinutes: times.prepTimeMinutes,
       cookTimeMinutes: times.cookTimeMinutes,
+      // The phase strip (issue #1122), straight from the authoring path — nothing
+      // to reconcile, because elapsed time is derived where it is read.
+      //
+      // The `||` fallback is the edit-mode carry-through the surrounding fields
+      // make, in the one shape that matters most here: a cook can hand-edit this
+      // list, and an amend that came back with no phases (a chat turn that changed
+      // one ingredient, say) must not silently wipe their correction. A strip the
+      // model DID return wins, because that is the amend doing its job.
+      phases: raw.phases?.length ? raw.phases : (baseRecipe?.metadata.phases ?? []),
+      timingSummary: raw.timingSummary ?? baseRecipe?.metadata.timingSummary ?? null,
       tags: normaliseTags(raw.tags),
     },
     source,

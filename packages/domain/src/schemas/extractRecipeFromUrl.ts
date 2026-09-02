@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RecipeSchema } from './recipe.js';
+import { AuthoredRecipePhasesSchema, AuthoredTimingSummarySchema, RecipeSchema } from './recipe.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phase 1).
 //
@@ -95,6 +95,17 @@ export const ExtractRecipeAIOutputSchema = z.object({
   totalTimeMinutes: z.number().int().positive().nullable(),
   prepTimeMinutes: z.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  // The recipe's timing as an ordered strip (issue #1122), which is what it will
+  // BE once the three numbers above retire. Shared shape rather than a fourth
+  // hand-written copy: the librarian, both extractors and the re-estimator answer
+  // one question against one definition (`TIME_RULES`), and a per-file constraint
+  // is how three of them come to mean three different things (#785, #952).
+  //
+  // `.optional()` on both so a model that omits them yields no strip rather than
+  // failing the whole import on a field the prompt asks for and it forgot. The
+  // assembler turns absent into an empty list on the way to the document.
+  phases: AuthoredRecipePhasesSchema.optional(),
+  timingSummary: AuthoredTimingSummarySchema.optional(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(ExtractedIngredientGroupSchema),
   steps: z.array(ExtractedStepSchema),

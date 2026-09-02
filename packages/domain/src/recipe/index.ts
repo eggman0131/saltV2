@@ -10,7 +10,7 @@ export type {
   IngredientGroup,
 } from './entities/Ingredient.js';
 export type { Step, StepTimer } from './entities/Step.js';
-export type { Recipe, RecipeKind, RecipeMetadata } from './entities/Recipe.js';
+export type { Recipe, RecipeKind, RecipeMetadata, RecipePhase } from './entities/Recipe.js';
 
 export {
   emptyRecipe,
@@ -54,6 +54,8 @@ export {
 // #878). Read by the recipe page's ribbon; returns `null` when the steps carry
 // no timers, which is the "no ribbon at all" case.
 export { cookShape, UNNAMED_WAIT_LABEL, OTHER_WAITS_LABEL } from './queries/cookShape.js';
+export { recipePhaseTotals, phaseElapsedMinutes } from './queries/recipePhaseTotals.js';
+export type { RecipePhaseTotals } from './queries/recipePhaseTotals.js';
 export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './queries/cookShape.js';
 // Meals — a recipe built from several other recipes (issue #752). One level deep,
 // nothing aggregated; see the module header.

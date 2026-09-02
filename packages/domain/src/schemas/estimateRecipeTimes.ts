@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AuthoredRecipePhasesSchema, AuthoredTimingSummarySchema } from './recipe.js';
 
 // Input/output for the estimateRecipeTimes flow (issue #952, phase 2) — "how long
 // does this ACTUALLY take?", asked of a recipe that is already in the library.
@@ -48,6 +49,15 @@ export const EstimateRecipeTimesAIOutputSchema = z.object({
   prepTimeMinutes: z.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.number().int().nonnegative().nullable(),
   totalTimeMinutes: z.number().int().positive().nullable(),
+  // The ordered phase strip (issue #1122), asked for in the SAME call as the three
+  // numbers rather than by a second flow — one model call, one answer, and no way
+  // for a recipe's strip and its total to have been decided by two readings of it.
+  //
+  // Both `.optional()` for the reason the authoring schemas give: a strip the model
+  // forgot must leave the recipe unestimated, not throw away the numbers it did
+  // return. `reconcileEstimatedTimes` is what turns absent into empty.
+  phases: AuthoredRecipePhasesSchema.optional(),
+  timingSummary: AuthoredTimingSummarySchema.optional(),
 });
 
 // The flow's output: the same three fields, reconciled against each other and
@@ -58,6 +68,13 @@ export const EstimateRecipeTimesOutputSchema = z.object({
   prepTimeMinutes: z.number().int().positive().nullable(),
   cookTimeMinutes: z.number().int().positive().nullable(),
   totalTimeMinutes: z.number().int().positive().nullable(),
+  // Passed through untouched by `reconcileEstimatedTimes`: the phases carry their
+  // own arithmetic (elapsed is a sum, computed at the point of use), so there is
+  // nothing here to reconcile and nothing to zero-fold. A phase of 0 hands-on is
+  // an unattended wait, which is a real answer rather than a glitch.
+  phases: AuthoredRecipePhasesSchema,
+  timingSummary: AuthoredTimingSummarySchema,
 });
 
+export type EstimateRecipeTimesAIOutput = z.infer<typeof EstimateRecipeTimesAIOutputSchema>;
 export type EstimateRecipeTimesOutput = z.infer<typeof EstimateRecipeTimesOutputSchema>;
