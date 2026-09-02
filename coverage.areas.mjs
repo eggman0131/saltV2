@@ -298,11 +298,17 @@ export const coverageThresholds = {
     uncoveredLines: 390,
     uncoveredBranches: 368,
   },
+  // Banked by #935: `AppSettingsPage.svelte` had no test at all and now has one
+  // (the role cards' job lists are generated from the registry, and that claim
+  // needed a pin). Rendering the page covers most of it, so all four numbers
+  // moved the right way at once — lines 77.46 → 79.34, branches 65.86 → 67.08,
+  // uncovered lines 2080 → 1915, uncovered branches 1859 → 1799. Measured by
+  // `pnpm test:coverage` on this branch and pasted from the ratchet's own block.
   'apps/web-pwa/src/routes/**': {
-    lines: 77.46,
-    branches: 65.86,
-    uncoveredLines: 2080,
-    uncoveredBranches: 1859,
+    lines: 79.34,
+    branches: 67.08,
+    uncoveredLines: 1915,
+    uncoveredBranches: 1799,
   },
   'apps/web-pwa/src/lib/**': {
     lines: 75.95,

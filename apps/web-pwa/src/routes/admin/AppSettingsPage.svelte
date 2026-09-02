@@ -42,34 +42,43 @@
   // for a single flow that takes precedence over its role's model. Same
   // field/save/reset pattern as the role cards.
 
+  // Each card carries ONE hand-written sentence about what the tier is FOR — the
+  // thing that makes the setting decidable — and nothing about which jobs use
+  // it. The job list is generated below from the registry (issue #935): the
+  // enumeration that used to live in this prose had fallen behind on four of the
+  // five cards, because it was a second copy of something the registry already
+  // knew.
   type RoleMeta = { role: AiModelRole; title: string; description: string };
   const ROLE_META: RoleMeta[] = [
     {
       role: 'fast',
       title: 'Fast model',
       description:
-        'Used by quick text flows that still want solid quality: recipe authoring, equipment identification, and URL recipe import.',
+        'Everyday quality at everyday cost — the workhorse tier, for jobs that read something whole and hand back a short, structured answer.',
     },
     {
       role: 'lite',
       title: 'Lite model',
       description:
-        'Cheap/fast tier for lightweight flows — entry/recipe-ingredient parsing, canon arbitration, equipment entry population, and chat titles — where a small quality trade-off is worth the cost and latency savings.',
+        'The cheapest and quickest tier, for mechanical jobs where the answer is already in the words in front of it and a small quality trade-off is worth the saving.',
     },
     {
       role: 'pro',
       title: 'Pro model',
-      description: 'Used by Chef Chat, where answer quality matters more than latency.',
+      description:
+        'The most capable and the slowest, for jobs where the quality of the judgement is the whole point and the volume is low enough to pay for it.',
     },
     {
       role: 'embedding',
       title: 'Embedding model',
-      description: 'Used to embed text for canon matching and recipe ingredient canonicalisation.',
+      description:
+        'Turns text into a vector so that wording which means the same thing scores as similar. It writes nothing — this is what matching runs on.',
     },
     {
       role: 'image',
       title: 'Image model',
-      description: 'Used to generate canon-item icons.',
+      description:
+        'Draws pictures instead of writing text. The costliest call per use, which is why a picture is generated once and stored rather than re-drawn.',
     },
   ];
 
@@ -158,6 +167,26 @@
     role,
     flows: AI_FLOW_IDS.filter((flowId) => AI_FLOW_ROLES[flowId] === role),
   })).filter((g) => g.flows.length > 0);
+
+  // The jobs on a role, for its card — the same grouping the Advanced section
+  // renders, so the two cannot disagree and neither can fall behind the
+  // registry: adding a key to `AI_FLOW_ROLES` makes the compiler demand a
+  // `FLOW_LABELS` entry (the map is `Record<AiFlowId, string>`), and that entry
+  // is what appears here.
+  //
+  // The boundary of that: this lists the flows in the registry, which is every
+  // job that resolves its model through `resolveModel`/`flowModel`. A CF flow
+  // that hardcoded a model literal instead would run without appearing on any
+  // card, and nothing here would notice — the same boundary the registry's own
+  // completeness note states.
+  //
+  // Joined with a middot rather than a comma because several labels contain one
+  // ("Process stages (bread, ferments, cures)") — with commas the reader cannot
+  // tell where one job ends and the next begins.
+  const jobsFor = (role: AiModelRole): string =>
+    (FLOWS_BY_ROLE.find((g) => g.role === role)?.flows ?? [])
+      .map((flowId) => FLOW_LABELS[flowId])
+      .join(' · ');
 
   const initialFlowDrafts = (): Record<AiFlowId, string> =>
     Object.fromEntries(AI_FLOW_IDS.map((id) => [id, ''])) as Record<AiFlowId, string>;
@@ -319,6 +348,13 @@
         <div class="rounded-lg border p-4" data-testid="app-settings-role-{meta.role}">
           <h2 class="text-base font-medium">{meta.title}</h2>
           <p class="mt-0.5 text-sm text-muted-foreground">{meta.description}</p>
+          <p
+            class="mt-1 text-sm text-muted-foreground"
+            data-testid="app-settings-role-jobs-{meta.role}"
+          >
+            <span class="font-medium">Used by:</span>
+            {jobsFor(meta.role)}
+          </p>
 
           <p class="mt-2 text-sm" data-testid="app-settings-effective-{meta.role}">
             Effective model:
