@@ -18,14 +18,15 @@ import type {
 // summary. Domain purity: no I/O, no store, no dates — the caller supplies both
 // recipes. Machine-derived fields are ignored (see recipeDiff.ts).
 //
-// Item identity (ingredients + steps): match by stable `id` first (the recipe
-// flow preserves ids for unedited items), then fall back to content equality
-// (`rawText`/`text`) for a still-unmatched pair, then to a fuzzy content match
-// for the survivors. The exact-content fallback keeps a genuinely unchanged item
-// — whose id happened to change — from showing as a spurious remove+add, while a
-// REUSED id with different content reads as an edit. A pure reorder with no
-// content change matches on the id/content passes and is therefore omitted. The
-// fuzzy pass (below) reconciles a reworded item that changed BOTH id and content.
+// Item identity (ingredients + steps), in four passes: stable `id` (the recipe
+// flow preserves ids for unedited items), then content equality (`rawText`/
+// `text`), then an exact non-content identity signal (a shared canon item, for
+// ingredients), then a fuzzy content match for the survivors. The exact-content
+// fallback keeps a genuinely unchanged item — whose id happened to change — from
+// showing as a spurious remove+add, while a REUSED id with different content
+// reads as an edit. A pure reorder with no content change matches on the
+// id/content passes and is therefore omitted. Passes 3 and 4 (below) reconcile a
+// reworded item that changed BOTH id and content.
 
 interface Match<T> {
   existing: T;
@@ -38,23 +39,161 @@ interface MatchResult<T> {
   removed: T[];
 }
 
-// ── Fuzzy content matching (Pass 3) ──────────────────────────────────────────
-// A pure, deterministic word-set Jaccard similarity used to pair a reworded item
-// (fresh id AND changed content) with its predecessor. The AI author flow mints a
-// new `crypto.randomUUID()` for every step and for reworded ingredients, so a
-// genuine reword ("120ml hot water" → "120ml water") matches on neither id nor
-// exact content and would otherwise surface as remove+add. Jaccard over word sets
-// is chosen over edit distance because recipe rewording is word-level (words
-// inserted/removed/swapped), not character typos; word-set overlap is order-
-// independent, cheap, and needs no tuning knobs beyond the threshold.
+// ── Reconciling a reworded item (Passes 3 and 4) ─────────────────────────────
+// Passes 1 and 2 (id, then exact content) only fire for items the AI author flow
+// left byte-identical: `assembleRecipeDraft` mints a fresh `crypto.randomUUID()`
+// for every step on every amend, and reuses an ingredient id ONLY on an unchanged
+// `rawText`. So every genuine reword arrives with a fresh id AND changed content,
+// matches neither pass, and would otherwise surface as remove + add. Passes 3 and
+// 4 are what stop that (issue #1137).
 //
-// FUZZY_MATCH_THRESHOLD is deliberately high — this is an approval gate, so a
-// FALSE pairing (labelling a genuinely-new item and a genuinely-deleted item as
-// one edit) actively misleads the reviewer and is worse than leaving a reword as
-// add+remove. 0.5 means the pair shares at least as many words as it differs by:
-// "salt" vs "pepper" scores 0 (stays add+remove); "120ml hot water" vs "120ml
-// water" scores 0.67 (pairs as a change). Pinned by tests in diffRecipe.test.ts.
+// Pass 3 — canon identity. `identityKey` supplies a per-item EXACT signal:
+// `canonId` for ingredients WHEN canonicalisation resolved one — null on a
+// failed canon batch, an individual non-'ok' match, or the manual-entry path
+// (`assembleRecipeDraft.ts:167,199-200`; `recipeService.ts:763,787,798`), so
+// this pass is a bonus when the signal is present, never a guarantee — nothing
+// for steps. Two lines resolved to the same canon item are the same ingredient
+// whatever their wording, so they pair outright with no threshold involved.
+// Applied ONLY when the key is unambiguous — exactly one still-unpaired item on
+// each side carries it — because two lines sharing a canon item inside one
+// recipe say nothing about which pairs with which. An ambiguous key falls
+// through to Pass 4.
+//
+// Pass 4 — fuzzy content. Word-set Jaccard, chosen over edit distance because
+// recipe rewording is word-level (words inserted/removed/swapped), not character
+// typos, and over LCS (`diffWords`) because a reword reorders the phrase: LCS
+// scores 0.000 on the measured garlic pair below. Scoring drops bare numerals,
+// measurement words and size filler first, so metricating a quantity — the
+// commonest house-rules edit, and the one that produced this defect — stops
+// diluting the score: `1 small clove of garlic, grated or minced` → `3 g garlic
+// (about 1 small clove), grated` pairs comfortably once normalised (see the test
+// for the exact figure). When normalisation would empty a side ("1 large"), the
+// raw token sets are scored instead — so an item made entirely of quantity words
+// is still comparable rather than silently unpairable. Normalisation does lower
+// some scores, and is meant to: "200 g flour" vs "200 g sugar" drops 0.5 → 0,
+// which is the point.
+//
+// Normalisation can also SHRINK the identity set enough that plain Jaccard
+// under-scores the commonest reword of all — appending a preparation phrase to a
+// short line. `1 large onion` → `1 large onion, thinly sliced` leaves the
+// existing side's identity set as just {onion}; Jaccard against the 3-word draft
+// set scores 0.333, below threshold — a real regression Jaccard alone cannot
+// avoid, because a short identity set loses proportionally more of itself for
+// every word the other side gains. When one side's identity set is a SUBSET of
+// the other's — a description was added, nothing swapped — the score uses the
+// Sørensen–Dice coefficient instead (2·|A∩B| / (|A|+|B|), which weights the
+// shared words more heavily than Jaccard's union does) and the onion pair clears
+// the threshold. A pair with no containment relationship either way (`hot smoked
+// paprika` vs `hot smoked salmon fillet`) never enters this branch and stays on
+// plain Jaccard, so the existing split is untouched.
+//
+// The assignment is GLOBAL, not greedy in document order: a maximum-cardinality
+// matching over the pairs clearing the threshold, so a draft item arriving first
+// can no longer consume the partner a later one needed more.
+//
+// FUZZY_MATCH_THRESHOLD is deliberately high and is NOT the knob to turn. This is
+// an approval gate, so a FALSE pairing (labelling a genuinely-new item and a
+// genuinely-deleted item as one edit) actively misleads the reviewer and is worse
+// than an honest add + remove. 0.5 means the pair shares at least as many
+// identity words as it differs by: "salt" vs "pepper" scores 0 (stays
+// add + remove); "120ml hot water" vs "120ml water" scores 0.67 (pairs).
+//
+// BOUNDARY — what this does NOT do (CLAUDE.md rule 12), each pinned in
+// diffRecipe.test.ts:
+//   • It maximises the NUMBER of pairs, not their total score, and the result is
+//     not provably optimal by weight. What IS guaranteed: an augmenting path may
+//     only take an edge already held by another draft item when its own score is
+//     AT LEAST AS STRONG as the edge it would displace (`maximiseMatching`'s
+//     `assignedScore` gate) — so cardinality-maximising can no longer break apart
+//     a strictly stronger pair to manufacture a second, weaker one. Ties can
+//     still be resolved either way, and the total is not maximised by weight.
+//   • Word-set overlap cannot separate every reword from every coincidence.
+//     `1 small red onion or a couple of shallots` → `150 g red onion, finely
+//     sliced` scores 0.400 on normalised tokens — IDENTICALLY to the
+//     paprika/salmon non-pair the threshold exists to split. No threshold and no
+//     symmetric word-set metric (Jaccard, Dice, containment) can resolve it; only
+//     Pass 3 can, and only when both lines resolved to the same canon item.
+//   • Passes 3 and 4 pair across ingredient groups — the groups are flattened
+//     before matching, so an item in "For the sauce" can pair with one in "For
+//     the dough". Out of scope here; tracked on #824.
 const FUZZY_MATCH_THRESHOLD = 0.5;
+
+// Words that carry quantity or measure rather than identity. Deliberately short:
+// each entry has to be noise in EVERY recipe, not just in the sample that
+// motivated it. `clove` is a notable omission — dropping it would collapse
+// "ground cloves" and "ground cinnamon" onto a 0.5 false pairing, and the garlic
+// case above already pairs without it.
+const MEASUREMENT_WORDS = new Set([
+  'g',
+  'kg',
+  'mg',
+  'ml',
+  'cl',
+  'dl',
+  'l',
+  'gram',
+  'grams',
+  'gramme',
+  'grammes',
+  'kilo',
+  'kilos',
+  'kilogram',
+  'kilograms',
+  'litre',
+  'litres',
+  'liter',
+  'liters',
+  'millilitre',
+  'millilitres',
+  'milliliter',
+  'milliliters',
+  'tsp',
+  'tsps',
+  'tbsp',
+  'tbsps',
+  'teaspoon',
+  'teaspoons',
+  'tablespoon',
+  'tablespoons',
+  'oz',
+  'lb',
+  'lbs',
+  'ounce',
+  'ounces',
+  'pound',
+  'pounds',
+  'cup',
+  'cups',
+  'sec',
+  'secs',
+  'second',
+  'seconds',
+  'min',
+  'mins',
+  'minute',
+  'minutes',
+  'hr',
+  'hrs',
+  'hour',
+  'hours',
+]);
+
+// Size adjectives and grammatical filler. Same bar: noise everywhere, never the
+// thing being named.
+const FILLER_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'of',
+  'or',
+  'and',
+  'about',
+  'approx',
+  'couple',
+  'small',
+  'medium',
+  'large',
+]);
 
 function tokenize(text: string): string[] {
   return text
@@ -63,27 +202,125 @@ function tokenize(text: string): string[] {
     .filter(Boolean);
 }
 
-// Word-set Jaccard: |A ∩ B| / |A ∪ B|, in [0, 1]. An empty side scores 0 (never a
-// match — an all-punctuation or empty item can't be "clearly the same" as another).
-function jaccardSimilarity(a: string, b: string): number {
-  const aTokens = new Set(tokenize(a));
-  const bTokens = new Set(tokenize(b));
-  if (aTokens.size === 0 || bTokens.size === 0) return 0;
-  let intersection = 0;
-  for (const token of aTokens) {
-    if (bTokens.has(token)) intersection++;
-  }
-  const union = aTokens.size + bTokens.size - intersection;
-  return intersection / union;
+// Drop the tokens that describe how much rather than what. A bare numeral only:
+// `120ml` stays one token (the split above breaks on punctuation, not on a
+// digit/letter boundary) and is left alone, so it still contributes to a pair
+// like "120ml hot water" → "120ml water".
+function isMeasureNoise(token: string): boolean {
+  return /^\p{N}+$/u.test(token) || MEASUREMENT_WORDS.has(token) || FILLER_WORDS.has(token);
 }
 
-// Match two lists by `id`, then reconcile the leftovers by a content key. Stable
-// and order-independent: the summary is item-level, so document order only feeds
-// the reported `position`, never identity.
+// Shared intersection count, used by both jaccard and dice below.
+function intersectionSize(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  let count = 0;
+  for (const token of a) {
+    if (b.has(token)) count++;
+  }
+  return count;
+}
+
+// Word-set Jaccard: |A ∩ B| / |A ∪ B|, in [0, 1].
+function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  const intersection = intersectionSize(a, b);
+  return intersection / (a.size + b.size - intersection);
+}
+
+// Sørensen–Dice: 2·|A ∩ B| / (|A| + |B|), in [0, 1]. Always >= Jaccard for the
+// same pair — used only for the containment case below, where Jaccard
+// under-scores a short set for no longer having a matching number of words.
+function dice(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  return (2 * intersectionSize(a, b)) / (a.size + b.size);
+}
+
+// True when every token of `small` is present in `big` (small.size may equal
+// big.size — an equal pair is a degenerate containment both ways).
+function isSubsetOf(small: ReadonlySet<string>, big: ReadonlySet<string>): boolean {
+  for (const token of small) {
+    if (!big.has(token)) return false;
+  }
+  return true;
+}
+
+// Similarity over identity words, falling back to the raw word sets when
+// normalisation would empty a side. An empty side scores 0 (never a match — an
+// all-punctuation or empty item can't be "clearly the same" as another).
+//
+// When one side's identity set is a SUBSET of the other's, score by Dice
+// instead of Jaccard (see the Pass 4 header above) — Jaccard punishes a short
+// existing line for every word a genuine addition brings in, which is exactly
+// backwards when none of the existing line's words were removed.
+function contentSimilarity(a: string, b: string): number {
+  const aRaw = new Set(tokenize(a));
+  const bRaw = new Set(tokenize(b));
+  if (aRaw.size === 0 || bRaw.size === 0) return 0;
+  const aIdentity = new Set([...aRaw].filter((token) => !isMeasureNoise(token)));
+  const bIdentity = new Set([...bRaw].filter((token) => !isMeasureNoise(token)));
+  if (aIdentity.size === 0 || bIdentity.size === 0) return jaccard(aRaw, bRaw);
+  if (isSubsetOf(aIdentity, bIdentity) || isSubsetOf(bIdentity, aIdentity)) {
+    return dice(aIdentity, bIdentity);
+  }
+  return jaccard(aIdentity, bIdentity);
+}
+
+interface CandidateEdge {
+  index: number;
+  score: number;
+}
+
+// Cardinality-maximising bipartite matching (Kuhn's augmenting-path search)
+// over `candidates[draftIndex] = { index: existingIndex, score }[]`. Returns
+// existingIndex → draftIndex, -1 for unmatched. Deterministic: the caller
+// fixes both the order draft items are offered in and the order of each
+// item's candidate list.
+//
+// An augmenting path may re-route an existing pairing to free up an edge for
+// a new draft item — that is how cardinality gets maximised — but it may only
+// do so when the new edge's score is AT LEAST AS STRONG as the one it would
+// take from the item already holding it (`assignedScore` below). Without this
+// gate the search can strip a draft item of its single strongest edge to
+// manufacture two weaker pairs elsewhere, reporting a confident but wrong
+// attribution — see diffRecipe.test.ts's "does not misattribute a strong pair"
+// case (#1137 review B1). The gate cannot be fooled by chained reassignment:
+// it is re-checked at every recursion depth, against whatever score currently
+// occupies the contested slot at that moment.
+function maximiseMatching(candidates: readonly CandidateEdge[][], existingCount: number): number[] {
+  const assignedTo = new Array<number>(existingCount).fill(-1);
+  const assignedScore = new Array<number>(existingCount).fill(-Infinity);
+  // Both index reads below are in range by construction — `draftIndex` walks
+  // `candidates`, and every `existingIndex` came out of a candidate list the
+  // caller built from `fuzzyExisting.map((_, index) => …)`.
+  const augment = (draftIndex: number, visited: boolean[]): boolean => {
+    for (const edge of candidates[draftIndex]!) {
+      const existingIndex = edge.index;
+      if (visited[existingIndex]) continue;
+      visited[existingIndex] = true;
+      const holder = assignedTo[existingIndex]!;
+      if (holder !== -1 && edge.score < assignedScore[existingIndex]!) continue;
+      if (holder === -1 || augment(holder, visited)) {
+        assignedTo[existingIndex] = draftIndex;
+        assignedScore[existingIndex] = edge.score;
+        return true;
+      }
+    }
+    return false;
+  };
+  // Best-scoring draft item first (the caller pre-sorted `order`), so the
+  // strongest pairs are taken before the search starts rearranging around them.
+  for (let i = 0; i < candidates.length; i++) {
+    augment(i, new Array<boolean>(existingCount).fill(false));
+  }
+  return assignedTo;
+}
+
+// Match two lists by `id`, then reconcile the leftovers by a content key, an
+// exact identity key, and finally content similarity. Deterministic: the summary
+// is item-level, so document order only feeds the reported `position` and the
+// tie-breaks, never identity itself.
 function matchByIdThenContent<T extends { id: string }>(
   existing: readonly T[],
   draft: readonly T[],
   contentKey: (item: T) => string,
+  identityKey: (item: T) => string | null = () => null,
 ): MatchResult<T> {
   const existingById = new Map(existing.map((item) => [item.id, item]));
   const matched: Array<Match<T>> = [];
@@ -123,36 +360,84 @@ function matchByIdThenContent<T extends { id: string }>(
     }
   }
 
-  // Pass 3: fuzzy content match. A survivor here matched neither id (Pass 1) nor
-  // exact content (Pass 2) — the reworded-with-fresh-id case. Greedy and
-  // deterministic: each still-unpaired draft (in document order) takes the
-  // highest-Jaccard still-unpaired existing item, first index winning ties, but
-  // only if it clears FUZZY_MATCH_THRESHOLD. A pure reorder never reaches here
-  // (Pass 2 consumes it), so it cannot be resurrected as a spurious change.
+  // Pass 3: exact non-content identity — a shared canon item for ingredients,
+  // nothing for steps. Only an UNAMBIGUOUS key pairs: exactly one still-unpaired
+  // item on each side carries it. Insertion-ordered maps keep this deterministic.
   const leftoverExisting = unmatchedExisting.filter((item) => !consumedExisting.has(item));
-  const added: T[] = [];
-  const fuzzyConsumed = new Set<T>();
-  for (const draftItem of leftoverDraft) {
-    const draftKey = contentKey(draftItem);
-    let bestCandidate: T | undefined;
-    let bestScore = -1;
-    for (const candidate of leftoverExisting) {
-      if (fuzzyConsumed.has(candidate)) continue;
-      const score = jaccardSimilarity(contentKey(candidate), draftKey);
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidate = candidate;
-      }
+  const bucketByIdentity = (items: readonly T[]): Map<string, T[]> => {
+    const buckets = new Map<string, T[]>();
+    for (const item of items) {
+      const key = identityKey(item);
+      if (key === null) continue;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(item);
+      else buckets.set(key, [item]);
     }
-    if (bestCandidate && bestScore >= FUZZY_MATCH_THRESHOLD) {
-      matched.push({ existing: bestCandidate, draft: draftItem });
-      fuzzyConsumed.add(bestCandidate);
-    } else {
-      added.push(draftItem);
-    }
+    return buckets;
+  };
+  const existingByIdentity = bucketByIdentity(leftoverExisting);
+  const identityConsumed = new Set<T>();
+  for (const [key, drafts] of bucketByIdentity(leftoverDraft)) {
+    if (drafts.length !== 1) continue;
+    const existingCandidates = existingByIdentity.get(key);
+    if (existingCandidates?.length !== 1) continue;
+    matched.push({ existing: existingCandidates[0]!, draft: drafts[0]! });
+    identityConsumed.add(existingCandidates[0]!);
+    identityConsumed.add(drafts[0]!);
   }
 
-  const removed = leftoverExisting.filter((item) => !fuzzyConsumed.has(item));
+  // Pass 4: fuzzy content match. A survivor here matched no id (Pass 1), no exact
+  // content (Pass 2) and no canon item (Pass 3) — the reworded-with-fresh-id case.
+  // A pure reorder never reaches here (Pass 2 consumes it), so it cannot be
+  // resurrected as a spurious change.
+  const fuzzyDraft = leftoverDraft.filter((item) => !identityConsumed.has(item));
+  const fuzzyExisting = leftoverExisting.filter((item) => !identityConsumed.has(item));
+
+  // Candidate edges, per draft item: every existing item clearing the threshold,
+  // strongest first, ties by document order.
+  const scored = fuzzyDraft.map((draftItem) => {
+    const draftKey = contentKey(draftItem);
+    return fuzzyExisting
+      .map((candidate, index) => ({
+        index,
+        score: contentSimilarity(contentKey(candidate), draftKey),
+      }))
+      .filter((edge) => edge.score >= FUZZY_MATCH_THRESHOLD)
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+  });
+  // Offer the draft items strongest-pair-first, ties by document order, so a
+  // confident pairing is made before the search rearranges anything around it.
+  const order = scored
+    .map((edges, index) => ({ index, best: edges[0]?.score ?? -1 }))
+    .sort((a, b) => b.best - a.best || a.index - b.index)
+    .map((entry) => entry.index);
+  const assignedTo = maximiseMatching(
+    order.map((draftIndex) => scored[draftIndex]!),
+    fuzzyExisting.length,
+  );
+
+  // assignedTo is indexed by existing item and holds a position in `order`.
+  const partnerOfDraft = new Map<number, number>();
+  assignedTo.forEach((orderPosition, existingIndex) => {
+    if (orderPosition !== -1) partnerOfDraft.set(order[orderPosition]!, existingIndex);
+  });
+
+  const added: T[] = [];
+  const fuzzyConsumed = new Set<T>();
+  fuzzyDraft.forEach((draftItem, draftIndex) => {
+    const existingIndex = partnerOfDraft.get(draftIndex);
+    if (existingIndex === undefined) {
+      added.push(draftItem);
+      return;
+    }
+    const existingItem = fuzzyExisting[existingIndex]!;
+    matched.push({ existing: existingItem, draft: draftItem });
+    fuzzyConsumed.add(existingItem);
+  });
+
+  const removed = leftoverExisting.filter(
+    (item) => !identityConsumed.has(item) && !fuzzyConsumed.has(item),
+  );
   return { matched, added, removed };
 }
 
@@ -204,10 +489,14 @@ export function diffRecipe(existing: Recipe, draft: Recipe): RecipeDiff {
   // ── Ingredients (flattened across groups; identity = rawText) ───────────────
   const existingIngredients = flatIngredients(existing);
   const draftIngredients = flatIngredients(draft);
+  // `canonId` is machine-derived and therefore never RENDERED (see recipeDiff.ts),
+  // but it is the strongest identity evidence available here: two lines resolved
+  // to the same canon item are the same ingredient however they are worded.
   const ingredientMatch = matchByIdThenContent(
     existingIngredients,
     draftIngredients,
     (item) => item.rawText,
+    (item) => item.canonId,
   );
   const ingredientsAdded: IngredientDiffEntry[] = ingredientMatch.added.map((item) => ({
     id: item.id,

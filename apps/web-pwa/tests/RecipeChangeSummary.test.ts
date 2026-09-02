@@ -155,6 +155,26 @@ describe('RecipeChangeSummary — a card says what kind of change it is', () => 
     expect(within(card).queryByTestId('recipe-change-proposed')).toBeNull();
   });
 
+  it('chips a reworded ingredient "edit" and shows both sides of it', () => {
+    // The third ingredient shape, and the only one with two sides: the same item
+    // reworded keeps its place in the list rather than reading as a delete plus
+    // an add, which is what the flat list it replaced made of it.
+    open({
+      ingredients: {
+        added: [],
+        removed: [],
+        changed: [{ id: 'i1', from: '2 tbsp capers', to: '1 tbsp capers, rinsed' }],
+      },
+    });
+
+    const card = onlyCard();
+    expect(card.textContent?.toLowerCase()).toContain('edit');
+    expect(card.textContent).toContain('2 tbsp capers');
+    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent(
+      '1 tbsp capers, rinsed',
+    );
+  });
+
   it('labels a step card with the step it applies to', () => {
     open({
       steps: {
@@ -165,6 +185,26 @@ describe('RecipeChangeSummary — a card says what kind of change it is', () => 
     });
 
     expect(onlyCard().textContent).toContain('Step 3');
+  });
+
+  it('chips a deleted step "gone", names it, and proposes nothing in its place', () => {
+    // A step the chef wants to DROP is the one change Apply makes that leaves
+    // less than it found, so it has to be as readable as an addition: the label
+    // says which step goes, and there is no proposed side to mistake for a
+    // replacement.
+    open({
+      steps: {
+        added: [],
+        removed: [{ id: 's1', position: 2, text: 'Rest for ten minutes' }],
+        changed: [],
+      },
+    });
+
+    const card = onlyCard();
+    expect(card.textContent).toContain('Step 2');
+    expect(card.textContent?.toLowerCase()).toContain('gone');
+    expect(card.textContent).toContain('Rest for ten minutes');
+    expect(within(card).queryByTestId('recipe-change-proposed')).toBeNull();
   });
 
   it('splits one step into a card per facet it changed', () => {
