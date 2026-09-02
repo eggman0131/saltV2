@@ -134,7 +134,7 @@
     chefChat: 'Chef Chat',
     describeEquipmentSubject: 'Equipment description (pictogram art direction)',
     describeRecipeScene: 'Recipe scene brief (hero art direction)',
-    embedText: 'Embed text (callable)',
+    embedText: 'Embed text',
     estimateRecipeTimes: 'Recipe time re-estimate (prep/cook/total backfill)',
     extractRecipeFromUrl: 'Recipe import from URL',
     extractRecipeFromPhoto: 'Recipe import from photo',
@@ -151,7 +151,6 @@
     parseRecipeIngredients: 'Recipe ingredient parsing',
     populateEquipmentEntry: 'Equipment entry population',
     proposeSchedule: 'Schedule proposal (out of the oven at…)',
-    serverEmbedding: 'Server embedding (canon/recipe vectors)',
   };
 
   // Flow ids grouped by role, so the Advanced section mirrors the role cards.

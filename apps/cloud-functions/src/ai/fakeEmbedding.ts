@@ -2,9 +2,12 @@
 // E2E embedding fake seam (issue #686).
 //
 // The Genkit *embedder* has no `flowModel`-style fake — that seam swaps chat
-// models only — so every site that calls `ai.embed()` short-circuits by hand
-// under FUNCTIONS_AI_FAKE: the single-text flow (`embedText`) and the batch
-// adapter path (`computeEmbeddings`). A real embed call under the flag reaches
+// models only — so the site that calls `ai.embed()` short-circuits by hand
+// under FUNCTIONS_AI_FAKE. That is the single-text flow (`embedText`) and, as
+// of #935, only it: the batch adapter path (`computeEmbeddings`) inherits this
+// seam by delegating to that flow per text rather than embedding inline, so it
+// no longer carries a short-circuit of its own. A real embed call under the
+// flag reaches
 // generativelanguage.googleapis.com with the dummy emulator key, which is a fast
 // 400 in CI and a 20s `withAiTimeout` stall wherever egress is slower — either
 // way a live network dependency inside a suite that is meant to be hermetic.

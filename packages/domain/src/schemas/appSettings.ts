@@ -65,6 +65,27 @@ export const AI_FLOW_ROLES = {
   // cost has to stay far below the picture it directs.
   describeEquipmentSubject: 'fast',
   describeRecipeScene: 'fast',
+  // The one embedding switch there is (issue #935). Text in, vector out — for
+  // canon matching, single item and batch alike: `computeEmbeddings` delegates
+  // to `embedTextFlow` per text rather than resolving its own model.
+  //
+  // `serverEmbedding`, the key that batch path used to resolve, is RETIRED here
+  // — not renamed, and not re-used for anything else. `perFlow` is a free-form
+  // `z.record(z.string(), …)` (below), so a value saved against the old key
+  // still parses and is simply never read again: the risk retiring it carried
+  // was never a parse failure, only an orphaned override quietly moving batch
+  // canon vectors onto a different embedding model from the stored ones.
+  //
+  // The evidence that nothing was orphaned, and its boundary. Staging's
+  // `appSettings/singleton` was read on 2026-09-02 and carries no `perFlow` map
+  // at all — absent, not empty — so it held no override of any kind; and a
+  // staging restore is a full mirror of production that includes `appSettings`
+  // (`docs/data-refresh.md`). That is a mirror read on a date, NOT a read of
+  // production: an override set in production since the last restore would
+  // falsify it. If one ever surfaces, the repair is to set the same value on
+  // `embedText` from /admin/app-settings — the override is recoverable there,
+  // whereas vectors already written under a different model are not comparable
+  // and would need a re-embed.
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   // Multimodal: 1–4 cookbook-page images in, structured recipe JSON out (#649).
@@ -121,7 +142,6 @@ export const AI_FLOW_ROLES = {
   parseEntry: 'lite',
   parseRecipeIngredients: 'lite',
   populateEquipmentEntry: 'lite',
-  serverEmbedding: 'embedding',
 } as const satisfies Record<string, AiModelRole>;
 
 export type AiFlowId = keyof typeof AI_FLOW_ROLES;
