@@ -256,4 +256,39 @@ describe('batched embedding cache', () => {
     // embedMatch was served from the warm cache, never the per-name path.
     expect(computeEmbedding).not.toHaveBeenCalled();
   });
+
+  // The other half of the cache: a batch that FAILS caches the failure against
+  // every name, so embedMatch reports it instead of quietly re-embedding each
+  // name one at a time — which would turn one failed call into N live ones on
+  // exactly the path the batch exists to avoid (issue #187).
+  //
+  // Written for #935: the CF adapter used to cover this branch by accident (its
+  // batch path threw on an unstubbed embed call), and consolidating the two
+  // embedding implementations took that accident away. Incidental coverage of a
+  // domain branch belongs in a domain test.
+  it('caches the failure against every name when the batch call fails', async () => {
+    idCounter = 0;
+    const computeEmbeddings = vi
+      .fn()
+      .mockResolvedValue({ kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } });
+    const computeEmbedding = vi.fn();
+    const embedding: EmbeddingPort = {
+      computeEmbedding,
+      computeEmbeddings,
+      cosineSimilarity: cosine,
+    };
+    const store = makeStore([canonItem({ id: 'o1', name: 'alpha', embedding: eX })]);
+
+    const results = await matchOrCreateBatch(
+      [{ rawName: 'zeta' }, { rawName: 'omega' }],
+      makePorts(store, { embedding }),
+    );
+
+    expect(computeEmbeddings).toHaveBeenCalledOnce();
+    // Not one per name after the batch failed.
+    expect(computeEmbedding).not.toHaveBeenCalled();
+    // Both names still get an answer — embedMatch simply had no vector to work
+    // with, so they fall through to a created item rather than a match.
+    expect(results).toHaveLength(2);
+  });
 });

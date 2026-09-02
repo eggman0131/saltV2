@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   CategoriseRecipeInputSchema,
   CategoriseRecipeAIOutputSchema,
@@ -7,7 +6,7 @@ import {
 import { normaliseTags } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { CATEGORY_TAG_RULES } from './categoryTags.js';
 
 // categoriseRecipe (issue: tighten recipe categories). Given a recipe's content,
@@ -49,8 +48,7 @@ export const categoriseRecipeFlow = ai.defineFlow(
     ].filter((p): p is string => p !== null);
 
     // Flash + temperature:0 — accuracy and cross-recipe consistency over creativity.
-    const modelId = await resolveModel('fast');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('categoriseRecipe');
     const result = await withAiTimeout(
       'categoriseRecipe',
       () =>

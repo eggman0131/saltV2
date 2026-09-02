@@ -101,7 +101,7 @@ export const authorRecipeFlow = ai.defineFlow(
     // because the one flow it runs was the last leg still reaching a live model.
     // Byte-for-byte the production path when the flag is off — see fakeModel.ts,
     // which already names authorRecipe as a structured-output flow.
-    const model = await flowModel('fast', 'authorRecipe');
+    const model = await flowModel('authorRecipe');
     const result = await withAiTimeout(
       'authorRecipe',
       () =>

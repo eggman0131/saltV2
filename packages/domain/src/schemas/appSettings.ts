@@ -32,9 +32,35 @@ export const AI_MODEL_DEFAULTS = {
 // IMPORTANT: these flow-id keys are stable identifiers persisted in the
 // `perFlow` map of the production `appSettings` doc — renaming one orphans any
 // saved override. Add new flows here; do not rename existing ones.
+//
+// COMPLETENESS (issue #935): the CF resolver takes a flow id and nothing else —
+// `resolveModel(flowId: AiFlowId)`, with the role read from this map — so a flow
+// missing from here cannot resolve a model at all: there is no signature that
+// accepts it. That makes the compiler, not a convention, the thing that keeps
+// this list complete and keeps the admin override list from silently omitting a
+// job. The boundary of that guarantee: it binds every FLOW's model and embedder
+// call — every site that goes through `resolveModel`/`flowModel`. It does not
+// reach `apps/cloud-functions/src/ai/testModel.ts`, the admin "test this model"
+// probe, which calls `googleAI.model`/`googleAI.embedder` directly on a model id
+// an admin typed — off-seam by design, since faking or registering it would
+// defeat its purpose. A flow that hardcoded a model literal instead of going
+// through the resolver would also bypass it, and nothing here would notice.
 export const AI_FLOW_ROLES = {
   arbitrateCanon: 'lite',
+  // `lite` (issue #500, registered #935). Same shape and same tier as
+  // arbitrateCanon directly above, and for the same reason: a closed question
+  // over a short candidate list ("is this a non-buyable form of one of these?"),
+  // answered against a rubric rather than by judgement, and driven by every
+  // recipe import — so volume, not depth, is what sets the price.
+  arbitrateProductForm: 'lite',
   authorRecipe: 'fast',
+  // `fast` (registered #935). It reads a whole recipe and returns a handful of
+  // category tags — the identifyRecipeKit/describeRecipeScene shape, not
+  // chefChat's. Not `lite`: the tags are inferred from what the dish IS across
+  // title, ingredients and method rather than copied out of the words in front
+  // of it, and they are what search and filtering run on, so a sloppy tag is
+  // visible to everyone for as long as the recipe lives.
+  categoriseRecipe: 'fast',
   chefChat: 'pro',
   // The cheap text half of the equipment pictogram pair (issue #877): turns a
   // make and model into a brand-free visual brief. `fast` for the same reason
@@ -42,6 +68,30 @@ export const AI_FLOW_ROLES = {
   // cost has to stay far below the picture it directs.
   describeEquipmentSubject: 'fast',
   describeRecipeScene: 'fast',
+  // The one embedding switch there is (issue #935). Text in, vector out — for
+  // canon matching, single item and batch alike: `computeEmbeddings` delegates
+  // to `embedTextFlow` per text rather than resolving its own model.
+  //
+  // `serverEmbedding`, the key that batch path used to resolve, is RETIRED here
+  // — not renamed, and not re-used for anything else. `perFlow` is a free-form
+  // `z.record(z.string(), …)` (below), so a value saved against the old key
+  // still parses and is simply never read again: the risk retiring it carried
+  // was never a parse failure, only an orphaned override quietly moving batch
+  // canon vectors onto a different embedding model from the stored ones.
+  //
+  // The evidence that nothing was orphaned, and its boundary. Staging (project
+  // `s2-stage-ccb22`) was restored from production on 2026-09-01 — a restore is
+  // a full mirror that includes `appSettings` (`docs/data-refresh.md`) — and its
+  // `appSettings/singleton` was read on 2026-09-02: no `perFlow` map at all,
+  // absent rather than empty. Daniel (repo owner) states no per-flow model
+  // override has ever been set on `serverEmbedding` in either environment,
+  // before the restore or since. Together that is a dated as-of, not an
+  // unqualified guarantee: what would falsify it is an override the owner is
+  // not aware of, or one set in production after this note was written. If one
+  // ever surfaces, the repair is to set the same value on `embedText` from
+  // /admin/app-settings — the override is recoverable there, whereas vectors
+  // already written under a different model are not comparable and would need
+  // a re-embed.
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   // Multimodal: 1–4 cookbook-page images in, structured recipe JSON out (#649).
@@ -98,7 +148,6 @@ export const AI_FLOW_ROLES = {
   parseEntry: 'lite',
   parseRecipeIngredients: 'lite',
   populateEquipmentEntry: 'lite',
-  serverEmbedding: 'embedding',
 } as const satisfies Record<string, AiModelRole>;
 
 export type AiFlowId = keyof typeof AI_FLOW_ROLES;

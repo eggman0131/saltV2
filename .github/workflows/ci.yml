@@ -755,7 +755,7 @@ jobs:
       #
       # A hit means a newly-reached flow is missing its fake seam: swap its model
       # for `flowModel(...)` (src/ai/fakeModel.ts) or short-circuit the call the
-      # way embedText / serverEmbedding do (src/ai/fakeEmbedding.ts).
+      # way embedText does (src/ai/fakeEmbedding.ts).
       - name: Assert no live AI calls
         if: always()
         env:

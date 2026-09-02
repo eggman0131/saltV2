@@ -1,5 +1,4 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   ExtractRecipeFromPhotoInputSchema,
   ExtractRecipeFromPhotoAIOutputSchema,
@@ -17,7 +16,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { persistImportedRecipe } from './persistImportedRecipe.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { recipeFieldRules } from './recipeFieldRules.js';
 
 // Import a recipe from photographs of a cookbook page (issue #649, Phase 3).
@@ -91,8 +90,7 @@ export const extractRecipeFromPhotoFlow = ai.defineFlow(
     );
 
     // Flash + temperature:0 — accuracy over creativity, same as the URL import.
-    const extractModelId = await resolveModel('fast', 'extractRecipeFromPhoto');
-    const extractModel = googleAI.model(extractModelId);
+    const extractModel = await flowModel('extractRecipeFromPhoto');
 
     let extracted: ExtractRecipeFromPhotoAIOutput;
     try {

@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   EstimateRecipeTimesInputSchema,
   EstimateRecipeTimesAIOutputSchema,
@@ -10,7 +9,7 @@ import { reconcileRecipeTimes } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { TIME_RULES } from './recipeFieldRules.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 // estimateRecipeTimes (issue #952, phase 2) — "how long does this ACTUALLY take?",
 // asked of a recipe that is ALREADY in the library.
@@ -154,8 +153,7 @@ export const estimateRecipeTimesFlow = ai.defineFlow(
     // categoriseRecipe. Two cooks reading the same recipe should reach the same
     // half-hour, and a backfill that returns a different answer each time it is
     // re-run is not a backfill.
-    const modelId = await resolveModel('fast', 'estimateRecipeTimes');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('estimateRecipeTimes');
     const result = await withAiTimeout(
       'estimateRecipeTimes',
       () =>

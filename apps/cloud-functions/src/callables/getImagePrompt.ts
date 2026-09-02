@@ -88,7 +88,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
       if (!parsed.success) throw missing('No such canon item.');
       return {
         prompt: buildIconPrompt(parsed.data.name.trim()),
-        model: await resolveModel('image', 'generateCanonIcon'),
+        model: await resolveModel('generateCanonIcon'),
         seedFile: CANON_ICON_SEED_FILE,
       };
     }
@@ -99,7 +99,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
       // the form reuses the grocery prompt unchanged, because a form IS a grocery.
       return {
         prompt: buildIconPrompt(parsed.data.label.trim()),
-        model: await resolveModel('image', 'generateCanonIcon'),
+        model: await resolveModel('generateCanonIcon'),
         seedFile: CANON_ICON_SEED_FILE,
       };
     }
@@ -108,7 +108,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
       if (!parsed.success) throw missing('No such kitchen tool.');
       return {
         prompt: buildKitchenToolIconPrompt(parsed.data.label.trim()),
-        model: await resolveModel('image', 'generateKitchenToolIcon'),
+        model: await resolveModel('generateKitchenToolIcon'),
         seedFile: CANON_ICON_SEED_FILE,
       };
     }
@@ -122,7 +122,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
       if (icon.success) {
         return {
           prompt: buildEquipmentIconPrompt(icon.data.briefSourceName, icon.data.subjectBrief),
-          model: await resolveModel('image', 'generateEquipmentIcon'),
+          model: await resolveModel('generateEquipmentIcon'),
           seedFile: CANON_ICON_SEED_FILE,
         };
       }
@@ -135,7 +135,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
       if (!item) throw missing('No such equipment item.');
       return {
         prompt: buildEquipmentIconPrompt(item.name.trim()),
-        model: await resolveModel('image', 'generateEquipmentIcon'),
+        model: await resolveModel('generateEquipmentIcon'),
         seedFile: CANON_ICON_SEED_FILE,
       };
     }
@@ -156,7 +156,7 @@ async function buildFor(family: ImagePromptFamily, id: string): Promise<GetImage
           recipe.imageBrief?.trim() || undefined,
           recipe.kind,
         ),
-        model: await resolveModel('image', 'generateRecipeImage'),
+        model: await resolveModel('generateRecipeImage'),
         seedFile: null,
       };
     }

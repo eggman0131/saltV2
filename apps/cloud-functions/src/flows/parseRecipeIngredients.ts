@@ -22,11 +22,11 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     // take 30–50s on a full ingredient list. Use a higher timeout with no retry:
     // retrying a large legitimate request just doubles the wait for no gain.
     //
-    // Production: googleAI.model(resolveModel('lite', 'parseRecipeIngredients')).
+    // Production: googleAI.model(resolveModel('parseRecipeIngredients')).
     // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
     // deterministic fake model instead; byte-identical otherwise. See
     // ../ai/fakeModel.ts for the cross-process stub contract.
-    const model = await flowModel('lite', 'parseRecipeIngredients');
+    const model = await flowModel('parseRecipeIngredients');
     const result = await withAiTimeout(
       'parseRecipeIngredients',
       () =>

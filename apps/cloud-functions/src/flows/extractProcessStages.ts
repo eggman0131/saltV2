@@ -108,7 +108,7 @@ export const extractProcessStagesFlow = ai.defineFlow(
     // `lite`: mechanical extraction from text already in front of it, the same
     // posture as parseRecipeIngredients. `flowModel` returns the deterministic e2e
     // fake under FUNCTIONS_AI_FAKE.
-    const model = await flowModel('lite', 'extractProcessStages');
+    const model = await flowModel('extractProcessStages');
     const result = await withAiTimeout(
       'extractProcessStages',
       () =>

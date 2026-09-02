@@ -1,13 +1,7 @@
 import { logger } from 'firebase-functions';
-import { googleAI } from '@genkit-ai/google-genai';
 import type { EmbeddingPort } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { embedTextFlow } from '../flows/embedText.js';
-import { withAiTimeout } from './withAiTimeout.js';
-import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
-import { aiFakeEnabled } from '../ai/fakeModel.js';
-import { fakeEmbedding } from '../ai/fakeEmbedding.js';
 
 export function createServerEmbeddingAdapter(): EmbeddingPort {
   return {
@@ -26,27 +20,22 @@ export function createServerEmbeddingAdapter(): EmbeddingPort {
     async computeEmbeddings(
       texts: readonly string[],
     ): Promise<ReadResult<readonly (readonly number[])[], DomainError>> {
-      // E2E fake seam (issue #686). The batch path invokes the embedder directly
-      // rather than through embedTextFlow, so it needs its own short-circuit —
-      // without it every canon batch under FUNCTIONS_AI_FAKE made a live call to
-      // generativelanguage.googleapis.com with the dummy emulator key. Guarding
-      // here (the invocation site) rather than in matchOrCreate's cache means any
-      // future caller of this port inherits it. Unreachable in production.
-      if (aiFakeEnabled()) {
-        return success(texts.map((text) => fakeEmbedding(text)));
-      }
       try {
-        // Free-text admin model (Phase 1) is wider than the SDK's literal-union
-        // embedder param — launder it across the boundary.
-        const embedder = googleAI.embedder(
-          (await resolveModel('embedding', 'serverEmbedding')) as Parameters<
-            typeof googleAI.embedder
-          >[0],
-        );
-        const allEmbeddings = await withAiTimeout('batchEmbedTexts', () =>
-          Promise.all(texts.map((text) => ai.embed({ embedder, content: text }))),
-        );
-        return success(allEmbeddings.map((e) => e[0]!.embedding));
+        // One job, one implementation (issue #935). This used to resolve an
+        // embedder and call `ai.embed` inline, which made "text in, vector out"
+        // two implementations: two registry keys, two fake seams (#686), two
+        // timeout policies. It now runs `embedTextFlow` per text, exactly as
+        // `computeEmbedding` above does, so a batch resolves the same model and
+        // obeys the same budget as a single item — and the e2e short-circuit is
+        // inherited from the flow rather than repeated here.
+        //
+        // Per item rather than per batch is also a better failure mode: one slow
+        // text now times out and retries alone, where the old single
+        // `withAiTimeout('batchEmbedTexts', …)` retried the whole batch. It
+        // costs one Genkit flow span per text instead of one per batch, which
+        // was accepted on the issue.
+        const results = await Promise.all(texts.map((text) => embedTextFlow({ text })));
+        return success(results.map(({ values }) => values));
       } catch (err) {
         logger.error('canonicaliseRecipeIngredients: batch embedding failed', { err });
         return failure({ kind: 'NetworkError', reason: 'transient' });

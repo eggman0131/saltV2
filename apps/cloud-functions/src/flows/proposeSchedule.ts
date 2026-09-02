@@ -226,7 +226,7 @@ export const proposeScheduleFlow = ai.defineFlow(
     // `pro` (see the flow header and AI_FLOW_ROLES): judgement, not transcription.
     // `flowModel` returns the deterministic e2e fake under FUNCTIONS_AI_FAKE, which
     // is what keeps this flow off live Gemini in every e2e run.
-    const model = await flowModel('pro', 'proposeSchedule');
+    const model = await flowModel('proposeSchedule');
     const result = await withAiTimeout(
       'proposeSchedule',
       () =>

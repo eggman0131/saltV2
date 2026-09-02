@@ -14,7 +14,7 @@ export const parseEntryFlow = ai.defineFlow(
   async ({ rawText }) => {
     setActiveSpanName(`parseEntry: ${rawText}`);
     const prompt = buildPrompt(rawText);
-    // Production: googleAI.model(resolveModel('lite', 'parseEntry')).
+    // Production: googleAI.model(resolveModel('parseEntry')).
     // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
     // deterministic fake model instead; byte-identical otherwise. See
     // ../ai/fakeModel.ts for the cross-process stub contract.
@@ -25,7 +25,7 @@ export const parseEntryFlow = ai.defineFlow(
     // on shard 3). Unstubbed the fake throws, and `createServerEntryParseAdapter`
     // catches it into a `NetworkError` exactly as the 400 already did, so the
     // trigger keeps falling back to the deterministic parse — but offline.
-    const model = await flowModel('lite', 'parseEntry');
+    const model = await flowModel('parseEntry');
     // The deadline lives HERE, next to the model call, not at the adapter that
     // invokes the flow (issue #915). `parseEntryFlow` is reachable from more
     // than one place, and a caller-side wrapper only covers the callers that

@@ -17,7 +17,7 @@ export const identifyEquipmentFlow = ai.defineFlow(
     setActiveSpanName(`identifyEquipment: ${rawName}`);
     // Span flushing + error reporting are owned by the makeTracedCallable
     // entrypoint's finally (index.ts, issue #415) — the flow just does its work.
-    const model = await flowModel('fast', 'identifyEquipment');
+    const model = await flowModel('identifyEquipment');
     const result = await withAiTimeout('identifyEquipment', () =>
       ai.generate({
         model,
