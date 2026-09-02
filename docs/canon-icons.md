@@ -178,6 +178,15 @@ canon shape rather than variations on it:
   and a brief is a sentence you can correct where a wrong picture is only a re-roll.
   Only the description is ever shown or editable; the style anchors stay in code.
 
+**The description may also be authored from a photograph (#947).** `describeEquipmentSubject`
+gained a third mode alongside authoring-from-name and revising-from-a-correction:
+**Use a photo** on the item page sends a reference photo of the actual appliance, and
+the flow writes a fresh description from what the photo shows — "Start over, but
+with a picture", discarding whatever was in the box exactly as Start over does. The
+photo is REQUEST-SCOPED: it goes to Gemini as a media prompt part and is never
+written anywhere — no Storage object, no Firestore field, no trace on the item —
+only the sentence it produces persists, and only once **Draw** is pressed.
+
 ## Generation pipeline
 
 Extends the **existing** `onCanonItemWritten` trigger (`apps/cloud-functions/src/index.ts`)

@@ -8,7 +8,7 @@ import {
   callDescribeEquipmentSubject,
 } from '@salt/firebase-sync';
 import type { IdentifyEquipmentResult, PopulateEquipmentEntryResult } from '@salt/firebase-sync';
-import type { EquipmentIconDoc } from '@salt/domain/schemas';
+import type { EquipmentIconDoc, EquipmentReferencePhoto } from '@salt/domain/schemas';
 import {
   addEquipment,
   removeEquipment,
@@ -404,6 +404,24 @@ export async function restartEquipmentBrief(
   name: string,
 ): Promise<ReadResult<string, DomainError>> {
   return callDescribeEquipmentSubject({ name: name.trim() });
+}
+
+/**
+ * Write a fresh description from a photograph of the actual item, discarding
+ * what is in the box (issue #947).
+ *
+ * "Start over, but with a picture": sends the name and the photo, nothing else
+ * — photo mode always authors from scratch, exactly as `restartEquipmentBrief`
+ * does with the name alone. The photo is REQUEST-SCOPED (Rule 3): it goes to
+ * the callable as base64 and is never written anywhere, on this item or on any
+ * document — the durable artefact is the sentence that comes back, same as
+ * every other description here.
+ */
+export async function describeEquipmentFromPhoto(
+  name: string,
+  photo: EquipmentReferencePhoto,
+): Promise<ReadResult<string, DomainError>> {
+  return callDescribeEquipmentSubject({ name: name.trim(), photo });
 }
 
 /** This item's icon document, or null while none has been authored yet. */

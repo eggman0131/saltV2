@@ -236,10 +236,13 @@ export type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from './desc
 export {
   DescribeEquipmentSubjectInputSchema,
   DescribeEquipmentSubjectOutputSchema,
+  EquipmentReferencePhotoSchema,
+  EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH,
 } from './describeEquipmentSubject.js';
 export type {
   DescribeEquipmentSubjectInput,
   DescribeEquipmentSubjectOutput,
+  EquipmentReferencePhoto,
 } from './describeEquipmentSubject.js';
 
 export {

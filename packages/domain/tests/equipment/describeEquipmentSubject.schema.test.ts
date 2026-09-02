@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { DescribeEquipmentSubjectInputSchema } from '../../src/schemas/describeEquipmentSubject.js';
+import {
+  DescribeEquipmentSubjectInputSchema,
+  EquipmentReferencePhotoSchema,
+  EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH,
+} from '../../src/schemas/describeEquipmentSubject.js';
 
 // The wire contract for the describeEquipmentSubject callable (issue #885). It is
 // a trust boundary — the browser's Revise and Start over both post to it — so the
@@ -53,5 +57,55 @@ describe('DescribeEquipmentSubjectInputSchema', () => {
     });
     expect(parsed.success && parsed.data.currentBrief).toBe('a mixer');
     expect(parsed.success && parsed.data.hint).toBe('');
+  });
+
+  // ─── Photo mode (issue #947) ─────────────────────────────────────────────
+  it('accepts a photo alongside the name — what "Use a photo" sends', () => {
+    const parsed = DescribeEquipmentSubjectInputSchema.safeParse({
+      name: 'Kenwood Chef KVC3100S',
+      photo: { base64: 'ZmFrZQ==', contentType: 'image/webp' },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects a photo with an unsupported content type', () => {
+    const parsed = DescribeEquipmentSubjectInputSchema.safeParse({
+      name: 'Kenwood Chef KVC3100S',
+      photo: { base64: 'ZmFrZQ==', contentType: 'image/gif' },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects an empty photo payload', () => {
+    const parsed = DescribeEquipmentSubjectInputSchema.safeParse({
+      name: 'Kenwood Chef KVC3100S',
+      photo: { base64: '', contentType: 'image/webp' },
+    });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe('EquipmentReferencePhotoSchema', () => {
+  it('caps the base64 payload — a trust boundary that cannot rely on client discipline', () => {
+    expect(
+      EquipmentReferencePhotoSchema.safeParse({
+        base64: 'x'.repeat(EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH),
+        contentType: 'image/webp',
+      }).success,
+    ).toBe(true);
+    expect(
+      EquipmentReferencePhotoSchema.safeParse({
+        base64: 'x'.repeat(EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH + 1),
+        contentType: 'image/webp',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts the same content-type enum as the recipe photo path — one convention, not a third', () => {
+    for (const contentType of ['image/webp', 'image/jpeg', 'image/png'] as const) {
+      expect(
+        EquipmentReferencePhotoSchema.safeParse({ base64: 'ZmFrZQ==', contentType }).success,
+      ).toBe(true);
+    }
   });
 });

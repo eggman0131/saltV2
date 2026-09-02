@@ -310,11 +310,28 @@ export const coverageThresholds = {
     uncoveredLines: 798,
     uncoveredBranches: 604,
   },
+  // RE-PINNED 54.58/38.81 → 61.22/46.02 in #947. `EquipmentPhotoDialog.svelte`
+  // landed with real tests from the start (`EquipmentPhotoDialog.test.ts`,
+  // 8 cases covering capture, describe, the not-ready-yet crop, the busy
+  // state and cancel) rather than joining `ImagePromptDialog`/`ImageUploadDialog`
+  // as untested siblings — so the area's ratio rose by more than the
+  // 1.00-point staleness tolerance can absorb, and the header rule says that
+  // earned coverage gets banked, not left to rot as unpinned headroom.
+  // Uncovered LINE count is unchanged at 114 (the new file's own lines are
+  // all covered, so the ratio moved only because the denominator grew).
+  // Uncovered BRANCH count rose 93 → 95: `handleFileChange`'s `|| busy` and
+  // `handleDescribe`'s `|| busy` guards each have an early-return side that
+  // cannot fire through the UI (the file input and the Describe button are
+  // both absent/disabled exactly when `busy` is true) — the same
+  // structurally-unreachable defensive shape `RecipeImportPhotoDialog.svelte`
+  // already carries at its own `useCurrentPage` guard, kept for the same
+  // reason: the type only proves the OTHER two disjuncts, `busy` still has to
+  // be re-checked in case a click and the busy flip land in the same tick.
   'apps/web-pwa/src/components/**': {
-    lines: 54.58,
-    branches: 38.81,
+    lines: 61.22,
+    branches: 46.02,
     uncoveredLines: 114,
-    uncoveredBranches: 93,
+    uncoveredBranches: 95,
   },
 };
 
