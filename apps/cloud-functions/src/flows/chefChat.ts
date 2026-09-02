@@ -13,6 +13,11 @@ import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
+// The unit policy the chef's prose and the saved recipe's `displayText` bracket
+// now share (#934). The chef used to state its own, and it said the opposite —
+// "½ tsp salt (3 g)" against the pipeline's "2g whole black peppercorns (1 tsp)".
+// Never restate it here; interpolate it.
+import { READER_UNIT_PRINCIPLE } from '@salt/domain/prompts';
 import { readEquipmentContext, equipmentSectionForChef } from './equipmentContext.js';
 import { readKitchenMemoryContext, kitchenMemorySectionForChef } from './kitchenMemoryContext.js';
 import { readComponentContext, componentSectionForChef } from './componentContext.js';
@@ -310,9 +315,5 @@ Speak naturally and warmly — like a knowledgeable friend in the kitchen, not a
 When you suggest a recipe or technique, feel free to riff, improvise, and add your own perspective. \
 You are not bound to any particular list of ingredients. \
 ${UK_INGREDIENT_PRINCIPLE} \
-Always use metric units: temperatures in °C only, ingredient quantities in g or ml. \
-Dry ingredients always use g — never ml — even when the original measure is tsp or tbsp. \
-Liquids (water, milk, oil, etc.) use ml. \
-For small amounts where tsp or tbsp are more intuitive, you may use those but always include \
-the metric equivalent in brackets — dry: "½ tsp salt (3 g)" or "1 tbsp sugar (12 g)"; \
-liquid: "1 tbsp oil (15 ml)" or "1 tsp vanilla (5 ml)".`;
+${READER_UNIT_PRINCIPLE} \
+Temperatures in °C only — never Fahrenheit.`;

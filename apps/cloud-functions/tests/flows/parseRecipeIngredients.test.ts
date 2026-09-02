@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { READER_UNIT_PRINCIPLE } from '@salt/domain/prompts';
 
 const mockGenerate = vi.fn();
 const mockUUID = vi.fn();
@@ -587,6 +588,26 @@ describe('parseRecipeIngredients — prompt construction', () => {
     const { system } = mockGenerate.mock.calls[0]![0];
     expect(system).toContain('rawText');
     expect(system).toContain('verbatim');
+  });
+
+  it('states the shared reader-facing unit policy, and the 3 tbsp bound on it (#934)', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: '½ tsp salt' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // Imported, never restated: the chef's prose and this bracket are one policy
+    // now, and reading them from one constant is what stops them disagreeing again.
+    expect(system).toContain(READER_UNIT_PRINCIPLE);
+    // The cap is the issue's one enforced bound — a spoon measure earns a bracket
+    // only up to 3 tbsp, above which nobody counts it out at the bench.
+    expect(system).toContain('but ONLY up');
+    expect(system).toContain('to 3 tbsp');
+    expect(system).toContain('"6 tbsp olive oil" → null');
+    // And the clause that stops the chef's metric-first line losing its spoon: an
+    // already-metric line WITH a bracket keeps it, rather than falling to null.
+    expect(system).toContain('that BRACKET IS the displayText');
+    expect(system).toContain('already in g, kg, ml, or l AND carries no bracketed spoon measure');
   });
 
   it('mandates converting ordinary count/pack ingredients to metric in the system prompt', async () => {

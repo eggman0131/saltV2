@@ -3,6 +3,10 @@ import {
   ParseRecipeIngredientsAIOutputSchema,
   ParseRecipeIngredientsOutputSchema,
 } from '@salt/domain/schemas';
+// The reader-facing unit policy, shared with the chef's prose (#934). It governs
+// `displayText` — the bracket the cook reads — and nothing else here; the
+// `quantity`/`unit` conversion rules below are this flow's own.
+import { READER_UNIT_PRINCIPLE } from '@salt/domain/prompts';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
@@ -172,7 +176,16 @@ const SYSTEM_INSTRUCTIONS = [
   `- displayText: a short human-friendly quantity form shown in parentheses after the metric value`,
   `  (the UI renders weight-first, e.g. "2g whole black peppercorns (1 tsp)" or "150g carrots (about`,
   `  2 medium)").`,
-  `  • For SPOON measures, keep the exact measure verbatim: "½ tsp", "2 tbsp", "1½ tsp".`,
+  `  ${READER_UNIT_PRINCIPLE}`,
+  `  • For SPOON measures, keep the exact measure verbatim: "½ tsp", "2 tbsp", "1½ tsp" — but ONLY up`,
+  `    to 3 tbsp. Above that the spoon has stopped being the useful way to read the amount (nobody`,
+  `    counts out 5 tbsp at the bench), so convert as always and leave displayText NULL:`,
+  `    "6 tbsp olive oil" → null.`,
+  `  • When the line ALREADY reads metric-first with a spoon measure in brackets after it —`,
+  `    "3 g salt (½ tsp)", "15 ml oil (1 tbsp)" — that BRACKET IS the displayText: lift it out`,
+  `    verbatim ("½ tsp", "1 tbsp") and do NOT treat the line as already-metric below. This is the`,
+  `    only way a chat-authored recipe keeps its spoon measure: the chef writes the bracket, the`,
+  `    librarian carries it through into rawText, and this is where it lands.`,
   `  • NEVER put a cup, pint, quart, fluid-ounce, ounce or pound in displayText, even when the source`,
   `    line used one. Convert the amount as always and leave displayText NULL. displayText is read by`,
   `    the cook, and a UK kitchen has teaspoons, tablespoons and scales in grams — it has no cup and no`,
@@ -193,8 +206,9 @@ const SYSTEM_INSTRUCTIONS = [
   `    displayText is the shopper's plain count of whole fruit — "2 limes", "1 lemon",`,
   `    "half an orange" — with NO "about" prefix: the count is exact even though the ml/g`,
   `    yield it converts to is an estimate.`,
-  `  Set to null when the source is already in g, kg, ml, or l, when the source measure is one of the`,
-  `  banned ones above, or when the line states no amount.`,
+  `  Set to null when the source is already in g, kg, ml, or l AND carries no bracketed spoon measure`,
+  `  of its own, when the source measure is one of the banned ones above, when a spoon measure is`,
+  `  larger than 3 tbsp, or when the line states no amount.`,
   ``,
   `## Metric conversion`,
   `Liquids (water, milk, oil, vinegar, stock, juice, cream, etc.) → ml:`,
