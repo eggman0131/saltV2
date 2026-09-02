@@ -900,9 +900,14 @@ describe('assembleRecipeDraft — the phase strip', () => {
     expect(doc.metadata.timingSummary).toBeNull();
   });
 
-  // The load-bearing one. A hand-edited strip must survive an amend that came
-  // back without phases — a chat turn that changed one ingredient, say — or the
-  // cook's correction is silently thrown away by unrelated work.
+  // The load-bearing one: a hand-edited strip must survive an amend whose raw
+  // output carries no phases, exercised directly against that input, or the
+  // cook's correction is silently thrown away by unrelated work. `rawOutput()`
+  // with no phases is not yet what a real librarian turn produces — it is
+  // always asked for 3-6 phases (`PHASE_RULES`) and never shown the stored
+  // strip to answer against (`formatRecipeForPrompt`) — so this pins the
+  // fallback mechanism itself, not (yet) a guarantee that holds on a live chat
+  // amend.
   it('preserves a hand-edited strip through an amend that returned no phases', async () => {
     const base = baseRecipe();
     const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL, baseRecipe: base });

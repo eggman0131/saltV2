@@ -188,10 +188,22 @@ field still ran the show (#1205 review, should-fix 4).
 The definition the model is given lives in `TIME_RULES`
 (`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
 own definitions, so all four authoring paths — librarian, URL import, photo import,
-re-estimator — ask one question against one text. The strip is written by
-`assembleRecipeDraft` on an authoring path and by the `onRecipeWritten` times branch
-on a re-estimate; the assembler preserves a stored strip when an amend returns none,
-which is what lets a cook's hand-edit survive unrelated work.
+re-estimator — ask one question against one text. The strip and its summary are
+paired by one shared function, `reconcileRecipePhases`
+(`packages/domain/src/recipe/commands/`), called by exactly three writers:
+`assembleRecipeDraft` on an authoring path, the `onRecipeWritten` times branch on a
+re-estimate, and the client's `mergeAmendedRecipe`
+(`apps/web-pwa/src/lib/recipeAmend.ts`) on a chat amend — routing the chat amend
+through the shared function rather than a second bespoke merge is issue #1203;
+before it, the client re-split the pair downstream and could pair a fresh strip
+with a stale summary. All three fall back to the stored pair whole when a draft
+returns none, the same no-loss floor the scalar fields have. That IS the boundary
+of the claim, and a chat amend does not clear it today: `PHASE_RULES` instructs
+the model to return 3–6 phases on every call, and `formatRecipeForPrompt` does not
+render the stored `phases`/`timingSummary` for it to preserve, so the librarian
+always returns a freshly invented strip rather than an absent one. A cook's
+hand-edit surviving unrelated chat work is the shape this floor is built for, not
+yet what happens on the amend path.
 
 ### The three time fields — definition and arithmetic (issue #952)
 

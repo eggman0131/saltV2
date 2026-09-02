@@ -39,9 +39,11 @@ export interface RecipePhaseStrip {
  *    hand-corrected or previously-estimated strip is not evidence of nothing,
  *    so it is carried forward untouched rather than erased by unrelated work.
  *
- * Named for what it returns, not for either call site: `assembleRecipeDraft`
- * (chat authoring, both imports, an edit-mode amend) and `onRecipeWritten`'s
- * re-estimate branch both answer the identical question and must agree.
+ * Named for what it returns, not for any one call site. Three ask the identical
+ * question and must agree: `assembleRecipeDraft` (chat authoring, both imports,
+ * an edit-mode amend), `onRecipeWritten`'s re-estimate branch, and the client's
+ * `mergeAmendedRecipe`, which is what an amend actually stores and which used to
+ * re-split the pair downstream of the first (issue #1203).
  */
 export function reconcileRecipePhases(
   raw: Readonly<{
