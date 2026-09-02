@@ -1,5 +1,5 @@
 /**
- * Folding the side navigation away (#1143, Phase 1).
+ * Folding the side navigation away (#1143, Phases 1 and 2).
  *
  * From `lg` up the shell spends 256px of a laptop window on a navigation column.
  * A control at the left of the top bar removes it, and the page takes the space.
@@ -44,6 +44,17 @@ async function mainWidth(page: Page): Promise<number> {
   return box.width;
 }
 
+/** The planner's two columns, measured together. Module scope so the missing-box
+ *  guard is not a conditional inside a test body (playwright/no-conditional-in-test). */
+async function plannerColumnWidths(page: Page): Promise<{ week: number; pane: number }> {
+  const [w, p] = await Promise.all([
+    page.getByTestId('week-column').boundingBox(),
+    page.getByTestId('day-pane').boundingBox(),
+  ]);
+  if (!w || !p) throw new Error('no bounding box for a planner column');
+  return { week: w.width, pane: p.width };
+}
+
 /** The navigation actually on screen. Both navs carry the same accessible name. */
 function visibleNav(page: Page) {
   return page.getByRole('navigation', { name: 'Main navigation' }).filter({ visible: true });
@@ -57,6 +68,9 @@ test.describe('the side navigation folds away', () => {
   test('collapsing hands the page the nav’s 256px, and toggling back returns it', async ({
     page,
   }, testInfo) => {
+    // Sign-in and a hydrate, then pure layout reads — the single-tab tier with
+    // headroom, and every wait below is bound to a real signal (NF-F1/F2).
+    test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email, '/');
 
@@ -102,6 +116,8 @@ test.describe('the side navigation folds away', () => {
   test('the choice survives moving between pages, and a reload forgets it', async ({
     page,
   }, testInfo) => {
+    // Sign-in plus a full reload and rehydrate.
+    test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email, '/');
     await page.getByRole('button', { name: 'Hide navigation' }).click({ timeout: HYDRATE_TIMEOUT });
@@ -122,6 +138,51 @@ test.describe('the side navigation folds away', () => {
     });
     await expect(visibleNav(page)).toHaveCount(1);
   });
+
+  // Phase 2. The planner caps each of its two columns at 540px and centres the
+  // pair, so before this change the reclaimed 256px became centring margin and
+  // the toggle visibly did nothing on this one page. `lg:max-w-none` lifts the
+  // cap above `lg` only — above `lg` there is no crease for the gutter to sit on
+  // — which is why `mealplan-split.spec.ts`, at 755px, cannot see this at all.
+  test('the planner’s two columns take the reclaimed space, and stay equal', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email, '/');
+    await page.goto('/#/mealplan');
+
+    // No seeding: this reads layout boxes and no planner data. Both boxes exist
+    // at this width whether or not a week has been written — the pane renders
+    // its contents conditionally, but the column itself is the layout box.
+    const week = page.getByTestId('week-column');
+    const pane = page.getByTestId('day-pane');
+    await expect(week).toBeVisible({ timeout: HYDRATE_TIMEOUT });
+    await expect(pane).toBeVisible({ timeout: HYDRATE_TIMEOUT });
+
+    const open = await plannerColumnWidths(page);
+    expect(Math.abs(open.week - open.pane)).toBeLessThanOrEqual(EPSILON);
+
+    await page.getByRole('button', { name: 'Hide navigation' }).click();
+    await expect(visibleNav(page)).toHaveCount(0);
+
+    // The settling step: the week column is wider than it was. The gutter is a
+    // fixed 40px, so the 256px divides evenly between two `flex-1` columns.
+    await expect
+      .poll(async () =>
+        Math.abs((await plannerColumnWidths(page)).week - (open.week + SIDE_NAV_WIDTH_PX / 2)),
+      )
+      .toBeLessThanOrEqual(EPSILON);
+
+    // Steady state reached above, so these are bare reads by design (NF-A3): the
+    // pane took the other half, and the two are still equal to a pixel — which is
+    // what keeps the gutter on the crease at every width below this one.
+    const collapsed = await plannerColumnWidths(page);
+    expect(Math.abs(collapsed.pane - (open.pane + SIDE_NAV_WIDTH_PX / 2))).toBeLessThanOrEqual(
+      EPSILON,
+    );
+    expect(Math.abs(collapsed.week - collapsed.pane)).toBeLessThanOrEqual(EPSILON);
+  });
 });
 
 test.describe('below the nav seam there is nothing to collapse', () => {
@@ -130,6 +191,7 @@ test.describe('below the nav seam there is nothing to collapse', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   test('no toggle is on screen at a phone width', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email, '/');
 

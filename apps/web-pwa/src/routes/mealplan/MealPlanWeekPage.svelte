@@ -937,19 +937,33 @@
          the CSS Viewport Segments API, which this device does not report (it says
          it has one segment, so that code path would never run on the only
          hardware this targets).
-         `justify-center` matters only once both columns reach the shared ceiling:
-         on a monitor the pair stops growing and sits centred with even space each
-         side, while "Meal plan" and "Load template" stay exactly where they are on
-         every other page — they are ListPage's header, above this box.
+         `justify-center` matters only between the `split` gate and `lg`, where the
+         540px ceiling below still binds: the pair stops growing and sits centred
+         with even space each side, while "Meal plan" and "Load template" stay
+         exactly where they are on every other page — they are ListPage's header,
+         above this box. Above `lg` the ceiling is lifted (see the two columns
+         below), so both children are unbounded `flex-1` and fill the row; there is
+         no free space left to distribute and `justify-center` is inert. It stays
+         because it is what centres the pair on the fold, which is the size it was
+         written for.
          Wrapping the three existing children in one flex column is layout-neutral
          below the gate: ListPage's content box is already `flex flex-1 flex-col
          min-h-0` with no gap of its own (the spacing is the children's `mt-*`). -->
     <div class="flex min-h-0 flex-1 flex-col split:flex-row split:justify-center split:gap-10">
       <!-- The week, at exactly the size a phone gives it. `max-w-[540px]` is the
-           ceiling it shares with the pane, so on a wide monitor the week does not
-           stretch into something the day cards were never drawn for. -->
+           ceiling it shares with the pane, so between the fold and `lg` the week
+           does not stretch into something the day cards were never drawn for.
+           `lg:max-w-none` lifts that ceiling from `lg` up (#1143, Phase 2). The cap
+           exists to hold the 40px gutter over a Pixel 9 Pro Fold's crease and to
+           keep day cards at phone width; above `lg` there is no crease and no fold,
+           so the reason for it does not apply and the reclaimed width would
+           otherwise become centring margin — most visibly when the side navigation
+           is collapsed, which would then look like a control that does nothing on
+           this one page. Identical argument, and identical shape, to
+           `RecipeViewPage`'s own `lg:` override of its `split:` grid. The pane
+           below lifts it in the same breath, so the two columns stay equal. -->
       <div
-        class="flex min-h-0 flex-1 flex-col split:min-w-0 split:max-w-[540px]"
+        class="flex min-h-0 flex-1 flex-col split:min-w-0 split:max-w-[540px] lg:max-w-none"
         data-testid="week-column"
       >
         <div class="flex items-center justify-between gap-2" data-testid="week-nav">
@@ -1127,9 +1141,13 @@
            box, deliberately: `flex-1` shares free space between CONTENT boxes, so a
            flex child carrying its own border and padding ends up exactly that much
            wider than its bare sibling — and equal halves are what put the gutter on
-           the crease. Chrome on the inner div costs the outer box nothing. -->
+           the crease. Chrome on the inner div costs the outer box nothing.
+           `lg:max-w-none` lifts the shared 540px ceiling from `lg` up, in step with
+           the week column (#1143, Phase 2) — above `lg` there is no crease to hold
+           the gutter over, and lifting only one of the pair would break the equal
+           halves the gutter depends on below it. -->
       <aside
-        class="hidden min-h-0 split:flex split:min-w-0 split:flex-1 split:max-w-[540px] split:flex-col"
+        class="hidden min-h-0 split:flex split:min-w-0 split:flex-1 split:max-w-[540px] split:flex-col lg:max-w-none"
         aria-label="Selected day"
         data-testid="day-pane"
       >
