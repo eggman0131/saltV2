@@ -123,8 +123,10 @@ Key invariants:
   cloves, and equipment-prep lines with no dish amount. The parse prompt is the
   authority on which is which; do not infer it from the ingredient's name. The
   original non-metric measure moves to `displayText`, so "½ tsp" still reads as
-  "½ tsp" — but only up to a 3 tbsp spoon measure (issue #934); above that,
-  `displayText` is null and the spoon form is not kept.
+  "½ tsp" — but only up to a **3 tbsp** spoon-measure cap (the reader-facing
+  `READER_UNIT_PRINCIPLE`, `@salt/domain/prompts/unitPolicy.ts`, issue #934):
+  above that, the spoon has stopped being the useful way to read the amount, so
+  `displayText` is `null` and the amount reads metric-only.
 
 ### The three time fields — definition and arithmetic (issue #952)
 
@@ -616,9 +618,12 @@ Consequences worth knowing before changing it:
 - **A recipe with no chat gets one.** Refresh opens the session it needs, and a
   recipe that already has a conversation gets its Refresh inside that one.
 - **The prompt is the deliverable**, and it lives beside Optimise's in
-  `RecipeViewPage.svelte` rather than in a flow prompt file — both are shortcuts
-  for a sentence you could type by hand, and neither is a capability the server
-  knows about.
+  `packages/domain/src/prompts/recipeChatPrompts.ts` — moved out of
+  `RecipeViewPage.svelte` in #934 because `REFRESH_PROMPT` states the same step
+  policy `stepRules.ts` states, and rule 6 forbids `web-pwa` importing
+  `cloud-functions`. It is still sent from `RecipeViewPage.svelte` as an
+  ordinary user turn, unchanged: both are shortcuts for a sentence you could
+  type by hand, and neither is a capability the server knows about.
 - **Servings and timings are repairs the chef is asked for explicitly.** That is
   the half that fixes real recipes in the library and the half no transcriber
   could ever do.
