@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CANON_ITEM_UNITS } from '@salt/shared-types';
 
 // A product-form mapping: an alternate form of an ingredient (e.g. "lime juice")
 // that resolves to a parent canon item (e.g. the canon "lime") with a yield that
@@ -20,7 +21,7 @@ export const ProductFormSchema = z.object({
   // Yield: how much of `formUnit` a single parent produces. e.g. one lime yields
   // 30 ml of lime juice → { formUnit: 'ml', amountPerParent: 30 }.
   yield: z.object({
-    formUnit: z.enum(['g', 'ml', 'count']),
+    formUnit: z.enum(CANON_ITEM_UNITS),
     amountPerParent: z.number(),
   }),
   // Sync field — parity with canon; stamped on write (LWW, full-doc setDoc).
