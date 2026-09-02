@@ -182,9 +182,11 @@ export function componentSectionForChef(components: readonly RecipeDoc[]): strin
   //
   // The heading carries the ordinal AND the title, the same shape the librarian's
   // section uses: the dishes are in the meal's stored order, which is roughly the
-  // order things start, and both framings tell the model to "PRESERVE the dish
-  // names exactly as they appear here" — so the ordinal-to-name binding is stated
-  // once, explicitly, rather than left to be inferred from the `Title:` line the
+  // order things start. Only the librarian framing tells the model to "PRESERVE
+  // the dish names exactly as they appear here" as an explicit instruction — the
+  // chef framing carries no such sentence — so here it is the repeated heading
+  // itself, not a matching instruction, that states the ordinal-to-name binding
+  // in one line rather than leaving it to be inferred from the `Title:` line the
   // shared rendering opens with.
   //
   // The librarian's rendering below deliberately does NOT converge on this one;

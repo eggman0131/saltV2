@@ -72,10 +72,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
 // chef what is owned and — crucially — that proportionality is a rule, so
 // naming appliances here would only re-open a question the manifest settles.
 //
-// Load 1's step paragraph is the ONLY sentence here that is not this prompt's
-// own: it interpolates ONE_OPERATION_PER_STEP_PRINCIPLE, the same statement
-// STEP_RULES interpolates, so the chat turn and the field list cannot ask for
-// different step splitting. Everything either side of it is unchanged from #890.
+// The step paragraph — "One coherent operation per step" — is the ONLY sentence
+// here that is not this prompt's own: it interpolates ONE_OPERATION_PER_STEP_PRINCIPLE,
+// the same statement STEP_RULES interpolates, so the chat turn and the field list
+// cannot ask for different step splitting. It sits between loads 2 and 3 and
+// belongs to none of the five loads above — the one part of #890's prompt this
+// header never accounted for. Everything else here is unchanged from #890.
 export const REFRESH_PROMPT = `Write this recipe out again from scratch — the same dish, written the way you would write it today for my kitchen.
 
 Give me the complete recipe, not a list of changes: every ingredient and every step, in full, as though I had just asked you for it.

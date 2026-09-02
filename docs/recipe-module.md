@@ -87,7 +87,8 @@ Ingredient {
 ParsedIngredient { quantity: Quantity | null, unit: 'g' | 'ml' | null, item: string,
                    preparation: string[], notes: string | null,
                    displayText: string | null }   // .default(null); the original non-metric measure,
-                                   // e.g. "½ tsp" — kept for display once the amount is metricated
+                                   // e.g. "½ tsp" — kept for display once the amount is metricated,
+                                   // but only up to 3 tbsp; above that it is null (see unitPolicy.ts)
 
 Quantity = { type:'single', value }
          | { type:'range', min, max }
@@ -121,8 +122,9 @@ Key invariants:
   shopper's own unit IS the count — bought-whole discrete proteins, garlic
   cloves, and equipment-prep lines with no dish amount. The parse prompt is the
   authority on which is which; do not infer it from the ingredient's name. The
-  original non-metric measure is not thrown away, it moves to `displayText`, so
-  "½ tsp" still reads as "½ tsp".
+  original non-metric measure moves to `displayText`, so "½ tsp" still reads as
+  "½ tsp" — but only up to a 3 tbsp spoon measure (issue #934); above that,
+  `displayText` is null and the spoon form is not kept.
 
 ### The three time fields — definition and arithmetic (issue #952)
 

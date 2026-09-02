@@ -301,8 +301,10 @@ describe('componentSectionForChef', () => {
   });
 
   it('still binds the ordinal to the dish name in one line', () => {
-    // Both framings tell the model to "PRESERVE the dish names exactly as they
-    // appear here", and the coordination answer refers to dishes by number. The
+    // Only the librarian framing tells the model to "PRESERVE the dish names
+    // exactly as they appear here" as an explicit instruction; the chef framing
+    // does not. Here it is the repeated heading itself that binds the ordinal to
+    // the dish name, and the coordination answer refers to dishes by number. The
     // shared rendering opens with `Title:`; the heading is what joins the two.
     const section = componentSectionForChef([POTATOES, CHICKEN]);
     expect(section).toContain('Dish 1: Roast potatoes\nTitle: Roast potatoes');

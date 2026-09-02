@@ -599,8 +599,10 @@ describe('parseRecipeIngredients — prompt construction', () => {
     // Imported, never restated: the chef's prose and this bracket are one policy
     // now, and reading them from one constant is what stops them disagreeing again.
     expect(system).toContain(READER_UNIT_PRINCIPLE);
-    // The cap is the issue's one enforced bound — a spoon measure earns a bracket
-    // only up to 3 tbsp, above which nobody counts it out at the bench.
+    // The cap is the issue's one bound — asked for here as a prompt instruction,
+    // not enforced as a post-parse clamp (see unitPolicy.ts's header): a spoon
+    // measure earns a bracket only up to 3 tbsp, above which nobody counts it out
+    // at the bench.
     expect(system).toContain('but ONLY up');
     expect(system).toContain('to 3 tbsp');
     expect(system).toContain('"6 tbsp olive oil" → null');

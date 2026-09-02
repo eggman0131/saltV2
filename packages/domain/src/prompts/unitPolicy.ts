@@ -42,4 +42,4 @@
  * `ONE_OPERATION_PER_STEP_PRINCIPLE` — see `stepPolicy.ts`.
  */
 export const READER_UNIT_PRINCIPLE =
-  'Amounts a person reads are metric or a count: grams for anything dry — even when it was measured in spoons — millilitres for a liquid, or a plain count of the thing as it is bought. A volume measure of 3 tbsp or less may be carried alongside the metric value, in brackets AFTER it: "3 g salt (½ tsp)", "15 ml oil (1 tbsp)". The metric value always comes first, never the spoon, and anything above 3 tbsp gets no bracket at all.';
+  'Amounts a person reads are metric or a count: grams for anything dry — even when it was measured in spoons — millilitres for a liquid, or a plain count of the thing as it is bought. A spoon measure of 3 tbsp or less may be carried alongside the metric value, in brackets AFTER it: "3 g salt (½ tsp)", "15 ml oil (1 tbsp)". The metric value always comes first, never the spoon, and anything above 3 tbsp gets no bracket at all.';
