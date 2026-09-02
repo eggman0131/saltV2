@@ -20,10 +20,12 @@ vi.mock('@genkit-ai/google-genai', () => ({
 
 // Bypass the real timer, but keep everything else the module exports (the
 // shared budget constant, the stream guard) — a factory that lists only
-// `withAiTimeout` goes stale the moment the module grows.
+// `withAiTimeout` goes stale the moment the module grows. Wrapped in a spy so
+// photo-mode tests can assert which budget was actually passed.
+const mockWithAiTimeout = vi.fn((_label: string, op: () => unknown) => op());
 vi.mock('../../src/adapters/withAiTimeout.js', async (importActual) => ({
   ...(await importActual<object>()),
-  withAiTimeout: (_label: string, op: () => unknown) => op(),
+  withAiTimeout: mockWithAiTimeout,
 }));
 
 vi.mock('@salt/observability/server', () => ({ setActiveSpanName: vi.fn() }));
@@ -155,5 +157,97 @@ describe('describeEquipmentSubject flow — revision mode', () => {
 
     expect(mockGenerate.mock.calls[0]![0].system).not.toContain('Fold the correction THROUGH');
     expect(mockGenerate.mock.calls[0]![0].prompt).not.toContain('Current brief:');
+  });
+});
+
+// ─── Photo mode (issue #947) ───────────────────────────────────────────────────
+// "You have seen the thing, this lets you show it." A THIRD system prompt, never
+// combined with revision — "Start over, but with a picture" — and the one place
+// the brand ban has to work harder: the badge is right there in the frame.
+const PHOTO = { base64: 'ZmFrZS1waG90by1ieXRlcw==', contentType: 'image/webp' as const };
+
+describe('describeEquipmentSubject flow — photo mode', () => {
+  it('selects the photo prompt, not authoring or revising', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { brief: 'A squat matte-black bean-to-cup machine.' },
+    });
+
+    const result = await (describeEquipmentSubjectFlow as Function)({ name: NAME, photo: PHOTO });
+
+    const call = mockGenerate.mock.calls[0]![0];
+    expect(call.system).toContain('a photograph of the actual item');
+    expect(call.system).not.toContain('Fold the correction THROUGH');
+    expect(result).toEqual({ brief: 'A squat matte-black bean-to-cup machine.' });
+  });
+
+  it('carries both scope constants verbatim, plus the badge-is-visible clause', async () => {
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+
+    await (describeEquipmentSubjectFlow as Function)({ name: NAME, photo: PHOTO });
+
+    const system = mockGenerate.mock.calls[0]![0].system as string;
+    expect(system).toContain('Never mention the brand name');
+    expect(system).toContain('Do NOT write about illustration style');
+    // The extra clause this mode alone needs: the badge IS in frame, so the
+    // prohibition has to say so explicitly rather than assume it never appears.
+    expect(system).toContain('You may SEE it');
+    expect(system).toContain('must not describe, name, transcribe or allude');
+  });
+
+  it('sends the name and a media part built from the photo, as the prompt', async () => {
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+
+    await (describeEquipmentSubjectFlow as Function)({ name: NAME, photo: PHOTO });
+
+    const prompt = mockGenerate.mock.calls[0]![0].prompt as Array<
+      { text: string } | { media: { url: string; contentType: string } }
+    >;
+    expect(prompt[0]).toEqual({ text: expect.stringContaining(`Equipment name: ${NAME}`) });
+    expect(prompt[1]).toEqual({
+      media: { url: `data:image/webp;base64,${PHOTO.base64}`, contentType: 'image/webp' },
+    });
+  });
+
+  it('a photo ALWAYS authors fresh, even if a currentBrief/hint rode along', async () => {
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+
+    await (describeEquipmentSubjectFlow as Function)({
+      name: NAME,
+      photo: PHOTO,
+      currentBrief: CURRENT_BRIEF,
+      hint: "it's matte black",
+    });
+
+    const call = mockGenerate.mock.calls[0]![0];
+    expect(call.system).not.toContain('Fold the correction THROUGH');
+    const prompt = call.prompt as Array<{ text: string }>;
+    const textPart = prompt[0]!;
+    expect(textPart.text).not.toContain('Current brief:');
+    expect(textPart.text).not.toContain('Requested change:');
+  });
+
+  it('runs on the photo budget (60s), not the text budget (55s)', async () => {
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+
+    await (describeEquipmentSubjectFlow as Function)({ name: NAME, photo: PHOTO });
+
+    expect(mockWithAiTimeout).toHaveBeenCalledWith(
+      'describeEquipmentSubject',
+      expect.any(Function),
+      { timeoutMs: 60_000, retries: 0 },
+    );
+  });
+
+  it('text mode keeps a plain string prompt, unaffected by photo mode existing', async () => {
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+
+    await (describeEquipmentSubjectFlow as Function)({ name: NAME });
+
+    expect(typeof mockGenerate.mock.calls[0]![0].prompt).toBe('string');
+    expect(mockWithAiTimeout).toHaveBeenCalledWith(
+      'describeEquipmentSubject',
+      expect.any(Function),
+      { timeoutMs: 55_000, retries: 0 },
+    );
   });
 });

@@ -27,13 +27,16 @@ import { resolveModel } from '../ai/resolveModel.js';
 // gets fixed at the cause instead of being re-rolled.
 //
 // Since #885 it is ALSO a callable, run from the item page's Revise and Start
-// over buttons. Two shapes, one flow: `currentBrief` + `hint` REVISES the
+// over buttons. Three shapes, one flow: `currentBrief` + `hint` REVISES the
 // sentence per the correction; neither authors from scratch, which is what the
-// manifest trigger sends and what "Start over" deliberately sends too. The
-// callable PERSISTS NOTHING — `drawEquipmentIcon` remains the only writer of
-// `subjectBrief` — so iterating the words is free and only the picture costs.
-// Its schemas therefore live in `@salt/domain/schemas` (a callable input is a
-// trust boundary), mirroring describeRecipeScene.
+// manifest trigger sends and what "Start over" deliberately sends too. Since
+// #947, a `photo` authors from scratch as well — "Start over, but with a
+// picture" — because nobody in the make-and-model chain has ever SEEN the item
+// and a photo fixes that at the cause. The callable PERSISTS NOTHING —
+// `drawEquipmentIcon` remains the only writer of `subjectBrief`, and the photo
+// itself is never written anywhere — so iterating the words is free and only the
+// picture costs. Its schemas therefore live in `@salt/domain/schemas` (a
+// callable input is a trust boundary), mirroring describeRecipeScene.
 //
 // ─── SCOPE — the subject half ONLY ──────────────────────────────────────────
 // This flow describes what the THING IS. It must not author house style or
@@ -128,13 +131,71 @@ ${SUBJECT_SCOPE_RULE} That holds even if the correction asks for it.
 Write ONE sentence of plain prose, at most about 45 words, beginning with the kind of thing it is ("a tilt-head stand \
 mixer with…"). A brief, not a spec sheet. Return only the revised brief.`;
 
+// PHOTO MODE (issue #947) — "you have seen the thing, this lets you show it".
+// A third system prompt, not a branch of the other two: authoring works from a
+// make and model the text model may only half-know, and this works from a
+// photograph of the actual item, so the instruction is "describe what you see"
+// rather than "describe what you know". "Start over, but with a picture" — see
+// the flow's mode selection below — so this is never combined with a revision.
+//
+// SCOPE is identical to the other two prompts, via the same two constants: this
+// describes what the thing IS, never house style or the anchors.
+//
+// The brand ban is the harder problem here than anywhere else in this file. A
+// photograph puts the wordmark right in frame — "describe what you see" collides
+// head-on with SUBJECT_TEXT_RULE unless the prompt says explicitly that the badge
+// is visible and must not be transcribed, which is what the extra paragraph below
+// does. It also closes the one gap the two text prompts never had to: a display
+// panel's actual contents are equally off-limits, not just a printed logo.
+const PHOTO_EQUIPMENT_SYSTEM = `You are an illustrator's art director. You are given the name of one piece of \
+kitchen equipment and a photograph of the actual item. Write a short visual brief describing what THIS SPECIFIC item \
+looks like, for an illustrator who will never see the photo — only your words.
+
+Describe what the photograph actually shows, not what the name or model typically looks like. Cover, in this order \
+and only as far as the photo makes clear:
+- the form factor and overall silhouette, and the rough proportions (squat and wide, tall and narrow, and so on)
+- the body colour and finish — cream enamel, brushed stainless, matte black plastic, clear glass
+- the control layout as it reads at a glance: how many dials, knobs, levers or buttons and roughly where they sit
+- the one or two features that identify it — a tilt-back head, a domed lid, a spouted jug, a chrome bowl
+
+The photo will very likely show a brand badge, a wordmark or a display panel somewhere on the item. You may SEE it; \
+you must not describe, name, transcribe or allude to what it says in any way — no naming the brand, no "a logo on \
+the front", no reporting what a screen or a dial's markings read. If the badge or panel is itself a distinctive \
+shape, you may describe THAT shape (a chrome oval plate, a rectangular window) without ever saying what is printed \
+or displayed on it.
+
+If the photo is too dark, blurry, cropped or distant to make something out confidently, describe the typical form of \
+that kind of equipment instead and do NOT invent detail you cannot actually see.
+
+${SUBJECT_TEXT_RULE}
+
+${SUBJECT_SCOPE_RULE}
+
+Write ONE sentence of plain prose, at most about 45 words, beginning with the kind of thing it is ("a tilt-head stand \
+mixer with…"). A brief, not a spec sheet. Return only the brief.`;
+
+// A photo prompt is materially slower than plain text: the model reads image
+// tokens before it writes a word. Mirrors extractRecipeFromPhoto's single
+// multimodal generate call (60s) rather than AI_TEXT_FLOW_TIMEOUT (55s) — NOT
+// that flow's whole PHOTO_IMPORT_TIMEOUT_SECONDS budget, which exists to cover
+// an assemble stage making further AI calls of its own that this flow never
+// makes. Comfortably inside the 90s callable budget the same as the text path.
+// No retry, same reasoning as AI_TEXT_FLOW_TIMEOUT: a human who presses Describe
+// can press it again.
+const PHOTO_EQUIPMENT_TIMEOUT = { timeoutMs: 60_000, retries: 0 } as const;
+
+// The multimodal prompt shape, mirroring extractRecipeFromPhoto.ts: Genkit's
+// media part wants a URL, so the bare base64 + content type are re-formed into a
+// `data:` URI.
+type PromptPart = { text: string } | { media: { url: string; contentType: string } };
+
 export const describeEquipmentSubjectFlow = ai.defineFlow(
   {
     name: 'describeEquipmentSubject',
     inputSchema: DescribeEquipmentSubjectInputSchema,
     outputSchema: DescribeEquipmentSubjectOutputSchema,
   },
-  async ({ name, currentBrief, hint }) => {
+  async ({ name, currentBrief, hint, photo }) => {
     setActiveSpanName(`describeEquipmentSubject: ${name}`);
 
     const trimmedHint = hint?.trim();
@@ -143,37 +204,60 @@ export const describeEquipmentSubjectFlow = ai.defineFlow(
     // it by. With either missing there is nothing to fold through anything, so we
     // author from scratch — which is also, deliberately, what "Start over" sends
     // (neither), so a description edited into a corner can be thrown away for a
-    // fresh reading of the item's name.
-    const revising = Boolean(trimmedBrief && trimmedHint);
+    // fresh reading of the item's name. A photo ALWAYS authors from scratch too
+    // — "Start over, but with a picture" — so it takes revision off the table
+    // even if a stray currentBrief/hint somehow rode along.
+    const revising = !photo && Boolean(trimmedBrief && trimmedHint);
 
-    const promptParts = [
-      // The name stays FIRST on a revision too: the device is the anchor, and the
-      // brief and the correction are the edit applied on top of it.
+    const textParts = [
+      // The name stays FIRST in every mode: the device is the anchor, and the
+      // brief/correction/photo are the edit applied on top of it.
       `Equipment name: ${name}`,
       revising ? `Current brief:\n${trimmedBrief}` : null,
       revising ? `Requested change: ${trimmedHint}` : null,
       // Authoring keeps its original shape: a steer with no brief to revise is
-      // still an additive nudge on a fresh description.
-      !revising && trimmedHint ? `Additional guidance: ${trimmedHint}` : null,
+      // still an additive nudge on a fresh description. Photo mode has no steer.
+      !photo && !revising && trimmedHint ? `Additional guidance: ${trimmedHint}` : null,
     ].filter((p): p is string => p !== null);
 
     const modelId = await resolveModel('fast', 'describeEquipmentSubject');
     const model = googleAI.model(modelId);
+
+    const system = photo
+      ? PHOTO_EQUIPMENT_SYSTEM
+      : revising
+        ? REVISE_EQUIPMENT_SYSTEM
+        : DESCRIBE_EQUIPMENT_SYSTEM;
+
+    // Text-only prompt stays a plain string, unchanged from before this mode
+    // existed. Photo mode alone needs the array-of-parts shape, for the media
+    // part the model actually reads.
+    const prompt: string | PromptPart[] = photo
+      ? [
+          { text: textParts.join('\n\n') },
+          {
+            media: {
+              url: `data:${photo.contentType};base64,${photo.base64}`,
+              contentType: photo.contentType,
+            },
+          },
+        ]
+      : textParts.join('\n\n');
 
     const result = await withAiTimeout(
       'describeEquipmentSubject',
       () =>
         ai.generate({
           model,
-          system: revising ? REVISE_EQUIPMENT_SYSTEM : DESCRIBE_EQUIPMENT_SYSTEM,
-          prompt: promptParts.join('\n\n'),
+          system,
+          prompt,
           output: { schema: DescribeEquipmentSubjectOutputSchema },
         }),
-      // No retry (the shared budget's): the trigger
+      // No retry (the shared budget's, or the photo budget's): the trigger
       // treats a failure as "no brief" and the item simply waits for the next
       // manifest write, and a human pressing a button can press it again —
       // neither gains from burning the budget on an automatic second attempt.
-      AI_TEXT_FLOW_TIMEOUT,
+      photo ? PHOTO_EQUIPMENT_TIMEOUT : AI_TEXT_FLOW_TIMEOUT,
     );
 
     // AI output is a trust boundary — validate before it leaves the flow.

@@ -14,23 +14,24 @@
     TextArea,
     TextField,
   } from '@salt/ui-components';
-  // TYPE-ONLY, so both are fully erased, and the components are pulled in by the
-  // `await import()`s below rather than at module scope (the Leaflet treatment in
-  // routes/admin/LocationMapField.svelte, issue #813).
+  // TYPE-ONLY, so all three are fully erased, and the components are pulled in
+  // by the `await import()`s below rather than at module scope (the Leaflet
+  // treatment in routes/admin/LocationMapField.svelte, issue #813).
   //
   // THIS PAGE IS EAGERLY ROUTED. `/equipment/:id` is a core daily-use view and is
   // a static import in routes/index.ts, unlike the admin pages and the recipe view
-  // that host these same two dialogs — every one of those is `lazy()`. So a plain
+  // that host these same dialogs — every one of those is `lazy()`. So a plain
   // module-scope import here is the one that reaches the boot graph, and it drags
   // `ImageCropper` (and `svelte-easy-crop` behind it) into what every first open
   // and every PWA update must download before painting. It measured 504.75 kB
   // gzipped against the 500 kB ceiling — caught by scripts/check-boot-payload.mjs,
   // which exists for exactly this one-line, no-visible-symptom regression.
   //
-  // Neither dialog can be needed before a button is pressed, so neither is loaded
-  // until one is.
+  // None of the three can be needed before a button is pressed, so none is
+  // loaded until one is.
   import type ImagePromptDialogComponent from '../../components/ImagePromptDialog.svelte';
   import type ImageUploadDialogComponent from '../../components/ImageUploadDialog.svelte';
+  import type EquipmentPhotoDialogComponent from '../../components/EquipmentPhotoDialog.svelte';
   import { push } from 'svelte-spa-router';
   import { CANON_ICON_HIDDEN, equipmentIconAwaitingApproval } from '@salt/domain';
   import { goBack } from '../../lib/nav.js';
@@ -44,6 +45,7 @@
     hideEquipmentIcon,
     reviseEquipmentBrief,
     restartEquipmentBrief,
+    describeEquipmentFromPhoto,
     renameEquipmentItem,
     removeEquipmentItem,
     addEquipmentAccessory,
@@ -55,6 +57,7 @@
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
   import type { DomainError, ReadResult } from '@salt/shared-types';
+  import type { EquipmentReferencePhoto } from '@salt/domain/schemas';
 
   interface Props {
     params: { id: string };
@@ -68,10 +71,12 @@
   // picture, and it opens from the same row of buttons as Draw and Hide.
   let promptOpen = $state(false);
   let uploadOpen = $state(false);
+  let photoOpen = $state(false);
 
   // Loaded once each, on first use, then kept for the life of the page.
   let PromptDialog = $state<typeof ImagePromptDialogComponent | null>(null);
   let UploadDialog = $state<typeof ImageUploadDialogComponent | null>(null);
+  let PhotoDialog = $state<typeof EquipmentPhotoDialogComponent | null>(null);
 
   async function openPromptDialog(): Promise<void> {
     PromptDialog ??= (await import('../../components/ImagePromptDialog.svelte')).default;
@@ -81,6 +86,11 @@
   async function openUploadDialog(): Promise<void> {
     UploadDialog ??= (await import('../../components/ImageUploadDialog.svelte')).default;
     uploadOpen = true;
+  }
+
+  async function openPhotoDialog(): Promise<void> {
+    PhotoDialog ??= (await import('../../components/EquipmentPhotoDialog.svelte')).default;
+    photoOpen = true;
   }
 
   // ─── Pictogram + description review gate (issue #877) ─────────────────────
@@ -186,6 +196,20 @@
     const name = item.name;
     briefSteer = '';
     await runBriefAction(() => restartEquipmentBrief(name));
+  }
+
+  // ─── Use a photo (issue #947) ─────────────────────────────────────────────
+  // "Start over, but with a picture": runBriefAction's third caller, same
+  // busy/error handling as Revise and Start over. The dialog only captures and
+  // crops; this is the one place the describe callable is actually invoked —
+  // `briefBusy` is passed straight through so the dialog can show its own
+  // "Reading the photo…" state instead of a second, disconnected spinner.
+  async function handleDescribeFromPhoto(photo: EquipmentReferencePhoto): Promise<void> {
+    if (!item) return;
+    const name = item.name;
+    briefSteer = '';
+    await runBriefAction(() => describeEquipmentFromPhoto(name, photo));
+    photoOpen = false;
   }
 
   async function handleHideIcon(): Promise<void> {
@@ -526,10 +550,27 @@
               </Button>
             {/if}
             <!--
-              Start over is ALWAYS available and deliberately quieter than the two
-              buttons beside it: it throws away whatever is in the box — including
-              hand edits — for a fresh description written from the item's name.
-              The escape hatch, not a first resort.
+              Use a photo (issue #947) — you have SEEN the appliance, so this lets
+              you show it rather than trust a text model's guess at a make and
+              model. Same footing as Revise and Start over: it rewrites the box,
+              never draws anything, and Draw remains the only spend.
+            -->
+            <Button
+              variant="outline"
+              onclick={openPhotoDialog}
+              disabled={iconBusy || briefBusy}
+              data-testid="equipment-icon-photo-btn"
+            >
+              {#snippet leading()}
+                <Icon name="Camera" size={16} />
+              {/snippet}
+              Use a photo
+            </Button>
+            <!--
+              Start over is ALWAYS available and deliberately quieter than the
+              buttons beside it: it throws away whatever is in the box —
+              including hand edits — for a fresh description written from the
+              item's name. The escape hatch, not a first resort.
             -->
             <button
               type="button"
@@ -841,4 +882,8 @@
     subject={item.name}
     data-testid="equipment-upload-dialog"
   />
+{/if}
+
+{#if item && PhotoDialog}
+  <PhotoDialog bind:open={photoOpen} busy={briefBusy} onDescribe={handleDescribeFromPhoto} />
 {/if}
