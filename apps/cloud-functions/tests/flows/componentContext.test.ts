@@ -19,6 +19,7 @@ vi.mock('firebase-functions', () => ({
 
 const { readComponentContext, componentSectionForChef, componentSectionForLibrarian } =
   await import('../../src/flows/componentContext.js');
+const { formatRecipeForPrompt } = await import('../../src/flows/recipeText.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -37,6 +38,12 @@ function recipe(
     prepTimeMinutes?: number | null;
     totalTimeMinutes?: number | null;
     componentRecipeIds?: string[];
+    // The three fields the chef's own thin rendering used to drop (#934, A5-007).
+    // Optional so every existing fixture is byte-for-byte what it was.
+    tags?: string[];
+    stepTimer?: { durationMinutes: number; description: string };
+    stepNote?: string;
+    notes?: string;
   } = {},
 ) {
   return {
@@ -65,15 +72,15 @@ function recipe(
     steps: (opts.steps ?? []).map((text, i) => ({
       id: `${id}-s${i}`,
       text,
-      timer: null,
-      note: null,
+      timer: i === 0 ? (opts.stepTimer ?? null) : null,
+      note: i === 0 ? (opts.stepNote ?? null) : null,
     })),
     metadata: {
       servings: 4,
       totalTimeMinutes: opts.totalTimeMinutes ?? null,
       prepTimeMinutes: opts.prepTimeMinutes ?? null,
       cookTimeMinutes: opts.cookTimeMinutes ?? null,
-      tags: [],
+      tags: opts.tags ?? [],
     },
     kind: 'recipe' as const,
     componentRecipeIds: opts.componentRecipeIds ?? [],
@@ -82,7 +89,7 @@ function recipe(
     createdBy: '',
     lastEditedBy: '',
     source: { type: 'manual' as const },
-    notes: null,
+    notes: opts.notes ?? null,
     image: null,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
@@ -258,6 +265,50 @@ describe('componentSectionForChef', () => {
     const section = componentSectionForChef([POTATOES, CHICKEN]);
     expect(section).toContain('Dish 1: Roast potatoes');
     expect(section).toContain('Dish 2: Roast chicken');
+  });
+
+  it('renders each dish through formatRecipeForPrompt — tags, step timers and notes included', () => {
+    // Issue #934, finding A5-007. This section used to build its own thinner
+    // rendering: no tags, no step timers, no recipe notes. That is the identical
+    // hole #890 closed one layer up (`recipeText.ts`'s header is its post-mortem),
+    // re-opened one layer down — and it costs the same thing, because a chef shown
+    // no timer on a component dish hands back a meal whose dishes have lost their
+    // timings, silently.
+    //
+    // Asserted against the shared renderer's output rather than against
+    // hand-written strings: if `formatRecipeForPrompt` grows a field, the chef's
+    // dishes get it with no edit here, which is the whole point of converging.
+    const RICH = recipe('rich', 'Braised shin', {
+      description: 'Low and slow.',
+      ingredients: ['1.2 kg beef shin'],
+      steps: ['Brown the shin hard.', 'Braise until it pulls apart.'],
+      cookTimeMinutes: 180,
+      tags: ['slow', 'winter'],
+      stepTimer: { durationMinutes: 180, description: 'Braise the shin' },
+      stepNote: 'Dry the meat first or it will steam.',
+      notes: 'Better on the second day.',
+    });
+
+    const section = componentSectionForChef([RICH]);
+
+    expect(section).toContain(formatRecipeForPrompt(RICH as never));
+    // ...and named individually, because `toContain` of the whole rendering would
+    // still pass if the renderer itself quietly lost one of them.
+    expect(section).toContain('Tags: slow, winter');
+    expect(section).toContain('[timer: 180 min — Braise the shin]');
+    expect(section).toContain('(note: Dry the meat first or it will steam.)');
+    expect(section).toContain('Notes: Better on the second day.');
+  });
+
+  it('still binds the ordinal to the dish name in one line', () => {
+    // Only the librarian framing tells the model to "PRESERVE the dish names
+    // exactly as they appear here" as an explicit instruction; the chef framing
+    // does not. Here it is the repeated heading itself that binds the ordinal to
+    // the dish name, and the coordination answer refers to dishes by number. The
+    // shared rendering opens with `Title:`; the heading is what joins the two.
+    const section = componentSectionForChef([POTATOES, CHICKEN]);
+    expect(section).toContain('Dish 1: Roast potatoes\nTitle: Roast potatoes');
+    expect(section).toContain('Dish 2: Roast chicken\nTitle: Roast chicken');
   });
 
   it('says nothing at all when the recipe is not a meal', () => {

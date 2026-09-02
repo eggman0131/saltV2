@@ -87,7 +87,8 @@ Ingredient {
 ParsedIngredient { quantity: Quantity | null, unit: 'g' | 'ml' | null, item: string,
                    preparation: string[], notes: string | null,
                    displayText: string | null }   // .default(null); the original non-metric measure,
-                                   // e.g. "½ tsp" — kept for display once the amount is metricated
+                                   // e.g. "½ tsp" — kept for display once the amount is metricated,
+                                   // but only up to 3 tbsp; above that it is null (see unitPolicy.ts)
 
 Quantity = { type:'single', value }
          | { type:'range', min, max }
@@ -121,8 +122,11 @@ Key invariants:
   shopper's own unit IS the count — bought-whole discrete proteins, garlic
   cloves, and equipment-prep lines with no dish amount. The parse prompt is the
   authority on which is which; do not infer it from the ingredient's name. The
-  original non-metric measure is not thrown away, it moves to `displayText`, so
-  "½ tsp" still reads as "½ tsp".
+  original non-metric measure moves to `displayText`, so "½ tsp" still reads as
+  "½ tsp" — but only up to a **3 tbsp** spoon-measure cap (the reader-facing
+  `READER_UNIT_PRINCIPLE`, `@salt/domain/prompts/unitPolicy.ts`, issue #934):
+  above that, the spoon has stopped being the useful way to read the amount, so
+  `displayText` is `null` and the amount reads metric-only.
 
 ### The three time fields — definition and arithmetic (issue #952)
 
@@ -614,9 +618,12 @@ Consequences worth knowing before changing it:
 - **A recipe with no chat gets one.** Refresh opens the session it needs, and a
   recipe that already has a conversation gets its Refresh inside that one.
 - **The prompt is the deliverable**, and it lives beside Optimise's in
-  `RecipeViewPage.svelte` rather than in a flow prompt file — both are shortcuts
-  for a sentence you could type by hand, and neither is a capability the server
-  knows about.
+  `packages/domain/src/prompts/recipeChatPrompts.ts` — moved out of
+  `RecipeViewPage.svelte` in #934 because `REFRESH_PROMPT` states the same step
+  policy `stepRules.ts` states, and rule 6 forbids `web-pwa` importing
+  `cloud-functions`. It is still sent from `RecipeViewPage.svelte` as an
+  ordinary user turn, unchanged: both are shortcuts for a sentence you could
+  type by hand, and neither is a capability the server knows about.
 - **Servings and timings are repairs the chef is asked for explicitly.** That is
   the half that fixes real recipes in the library and the half no transcriber
   could ever do.

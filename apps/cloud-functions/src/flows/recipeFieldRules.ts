@@ -137,13 +137,27 @@ ${STEP_RULES}
 // and ingredient-hygiene rules above are unconditional, and without the
 // precedence sentence "preserve the original wording" reads as a licence to keep
 // "1 cup heavy cream" and "salt and pepper".
+//
+// The bracket clause added under 'preserve' (#934) is the other half of the chef
+// flipping to metric-first. The chef now writes "3 g salt (½ tsp)", so a chat line
+// reaches `parseRecipeIngredients` ALREADY IN GRAMS — and that flow correctly
+// emits `displayText: null` for an already-metric source. Left alone, the flip
+// would silently strip the spoon measure from every chat-authored recipe. The
+// bracket has to survive this transcription for the parser to have anything to
+// lift, which is why the two changes could not ship apart. The parser's matching
+// half is its "already reads metric-first with a spoon measure in brackets"
+// bullet; the two are pinned together in
+// `apps/cloud-functions/tests/flows/unitPolicy.test.ts`.
 function rawTextClause(measures: MeasurePolicy): string {
   if (measures === 'metricate') {
     return `rawText (the ingredient line rewritten in British spelling/terms and the units the measure \
 rules above allow — this is what the rest of the pipeline parses, so write a clean natural line e.g. \
 "240ml whole milk", "2 cloves garlic, crushed" or "1 tsp ground cumin")`;
   }
-  return `rawText (preserve the original wording and any tsp/tbsp measures the chef used, EXCEPT \
+  return `rawText (preserve the original wording and any tsp/tbsp measures the chef used — INCLUDING \
+a spoon measure the chef wrote in brackets AFTER a metric amount ("3 g salt (½ tsp)", "15 ml oil \
+(1 tbsp)"): copy that bracket through exactly as written, because a later stage lifts it out as the \
+form the cook reads and dropping it here loses it for good — EXCEPT \
 where the conversion rules above take precedence — always use the measure rules' units (never a cup, \
 pint or ounce, however the chef phrased it), always use the British ingredient NAMES (e.g. "double \
 cream" not "heavy cream"), commit to a single ingredient rather than an either-or choice, and split any \

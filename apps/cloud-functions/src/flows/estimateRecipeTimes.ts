@@ -41,7 +41,12 @@ import { resolveModel } from '../ai/resolveModel.js';
 // claim, because it is easy to overstate from the TIME_RULES import above: a
 // chat-authored recipe and a backfilled one of the same dish are measured
 // against the SAME field definitions, not against one shared estimation policy.
-// Unifying the two is deliberately deferred to its own follow-up issue.
+// Unifying the two is deliberately deferred, and the deferral now has a name:
+// issue #1191, filed out of #934 for the purpose. It is not folded into #934
+// because it is the one item of that sweep whose fix CHANGES WHAT THREE SHIPPED
+// AUTHORING PATHS PRODUCE, is unvalidatable without AI keys, and carries the
+// #785/#784 constraint in a new form — heuristics written for a backfill reading
+// a stored recipe, applied to a path reading a photograph.
 //
 // ─── What it is NOT allowed to do ─────────────────────────────────────────────
 //

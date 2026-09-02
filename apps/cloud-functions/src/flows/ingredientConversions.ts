@@ -5,10 +5,23 @@
 // locale rule lives here once — a single source of truth that cannot drift
 // between the prompts.
 //
-// SCOPE: ingredient NAMES only. Metric/temperature conversion and British spelling
-// of prose live inline in each prompt (chefChat and authorRecipe have their own
-// unit handling; extractRecipeFromUrl keeps its metric + spelling bullets) — those
-// are deliberately NOT part of this constant.
+// SCOPE: ingredient NAMES only. This constant says nothing about units — but as of
+// #934 that no longer means each prompt writes its own. Units are shared too, by
+// TWO constants that are deliberately not one, because they answer at different
+// boundaries:
+//
+//   * READER_UNIT_PRINCIPLE (`@salt/domain/prompts`) — what a PERSON READS.
+//     Interpolated by chefChat's prose and by parseRecipeIngredients' displayText
+//     rule: metric or a count, with a spoon measure of 3 tbsp or less permitted in
+//     brackets after the metric value.
+//   * MEASURE_RULES (`./recipeFieldRules.ts`) — what the librarian and the
+//     extractors write into rawText for the pipeline to parse. It says the
+//     opposite about a spoon measure (leave it verbatim, do not convert), and that
+//     is correct there: parseRecipeIngredients is the stage that converts, and
+//     converting early deletes the bracket instead of moving it.
+//
+// Temperature and British spelling of prose still live inline in each prompt
+// (chefChat states °C; extractRecipeFromUrl keeps its metric + spelling bullets).
 
 // Light, one-line locale principle. Safe to drop into a conversational prompt
 // (chefChat) without stilting it, and reused as the catch-all at the foot of the
