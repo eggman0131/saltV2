@@ -158,4 +158,81 @@ describe('proposalRejectionReason', () => {
       ).toBeNull();
     });
   });
+
+  // Issue #1180, mechanism 2 — the write path.
+  describe('label_omits_parent', () => {
+    it('rejects a bare component word as a label', () => {
+      // The reported defect at its source. `resolveProductForm` matches a form's
+      // LABEL on equal terms with its matchers (#818), so `Zest` stored on Lime
+      // would be a matching phrase naming no parent — it claims every parent's
+      // zest. The matcher here is perfectly good; the label is the problem.
+      expect(
+        proposalRejectionReason(
+          proposal({ parentName: 'Lime', label: 'Zest', matcher: 'lime zest' }),
+        ),
+      ).toBe('label_omits_parent');
+    });
+
+    it('accepts the same proposal once the label names its parent', () => {
+      expect(
+        proposalRejectionReason(
+          proposal({ parentName: 'Lime', label: 'Lime zest', matcher: 'lime zest' }),
+        ),
+      ).toBeNull();
+    });
+
+    it('reports a more specific reason first', () => {
+      // A proposal can be wrong twice. `has_producer` and `self_reference` both
+      // say something about what the form IS; this rule only says its name is
+      // unusable. The specific answer is the one worth logging.
+      expect(
+        proposalRejectionReason(
+          proposal({ parentName: 'Whole Chicken', label: 'Stock', matcher: 'chicken stock' }),
+          ['Stock'],
+        ),
+      ).toBe('has_producer');
+    });
+
+    it('judges nothing when either name normalises away', () => {
+      // Rule 10 in miniature: no evidence, no refusal.
+      expect(proposalRejectionReason(proposal({ parentName: '400', label: 'Zest' }))).toBeNull();
+      expect(proposalRejectionReason(proposal({ parentName: 'Lime', label: '2' }))).toBeNull();
+    });
+
+    // The 16 labels in the live `productForms` table, read from staging
+    // `s2-stage-ccb22` on 2026-09-02 (refreshed wholesale from production on
+    // 2026-08-30), each against its real parent's canon name. Fifteen clear the
+    // rule. This is what makes "the rule would not have blocked the table we
+    // actually have" mechanical rather than asserted (Hard rule 12).
+    it.each([
+      ['Fermented beetroot brine', 'Beetroot'],
+      ['Beef Stock', 'Beef Stock Cube'],
+      ['chicken breast', 'Whole Chicken'],
+      ['Fresh lemon juice', 'Lemon'],
+      ['garlic clove', 'Garlic Bulbs'],
+      ['Cheddar cheese slice', 'Mature Cheddar'],
+      ['Chicken carcass', 'Whole Chicken'],
+      ['Egg yolk', 'Eggs'],
+      ['Chicken Drumstick', 'Whole Chicken'],
+      ['Olive oil from jar', 'Delicatessen Olives'],
+      ['Lime juice', 'Lime'],
+      ['Lemon zest', 'Lemon'],
+      ['Lime zest', 'Lime'],
+      ['Chicken thigh', 'Whole Chicken'],
+      ['Chicken Leg', 'Whole Chicken'],
+    ])('live label %j on parent %j is not rejected', (label, parentName) => {
+      expect(proposalRejectionReason(proposal({ label, parentName }))).toBeNull();
+    });
+
+    it('the one live label it would reject — Active whey on Plain Yogurt', () => {
+      // Correct on this rule's own terms and harmless in fact: the rule gates AI
+      // PROPOSALS only, no stored document is re-validated, and this row was
+      // authored by an admin who knew what they meant. Pinned so the exception
+      // is a measured fact rather than a sentence in a PR body — and so that a
+      // later softening of the rule shows up here as a deliberate change.
+      expect(
+        proposalRejectionReason(proposal({ label: 'Active whey', parentName: 'Plain Yogurt' })),
+      ).toBe('label_omits_parent');
+    });
+  });
 });

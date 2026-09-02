@@ -248,7 +248,12 @@ export async function addCanonItem(
         // is whatever the subscription currently holds; empty (not yet synced)
         // means "no opinion" and the append proceeds as before.
         const updated = appendCanonSynonym(local.candidate.item, rawName, {
-          isDerivedName: (name) => resolveProductForm(name, getProductFormsSnapshot()) !== null,
+          // `localItems` is the canon snapshot this fast path just matched
+          // against, so the contested-phrase rule (issue #1180) sees exactly the
+          // canon the match saw. Empty (not yet synced) leaves that rule inert —
+          // the same "no opinion" degrade the note above describes.
+          isDerivedName: (name) =>
+            resolveProductForm(name, getProductFormsSnapshot(), localItems) !== null,
         });
         if (updated !== local.candidate.item) {
           const written = await commitCanonItemUpdate(updated);

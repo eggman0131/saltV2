@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { confirmProductForm, decideProductFormProposal, resolveProductForm } from '@salt/domain';
-import type { ProductForm } from '@salt/domain';
+import type { CanonNaming, ProductForm } from '@salt/domain';
+// Empty canon list: `resolveProductForm`'s contested-phrase rule (issue #1180)
+// is inert without one, so these cases measure only what they mean to.
+const NO_CANON: readonly CanonNaming[] = [];
+
 import type { ProductFormArbitrationAIOutput } from '../../src/schemas/productFormArbitration.js';
 const pendingForm: ProductForm = {
   id: 'pf-pending',
@@ -30,7 +34,7 @@ describe('a pending form resolves live (used-but-flagged)', () => {
   it('resolveProductForm ignores needs_approval — a pending form still matches', () => {
     // The whole behavioural contract: a needs_approval form is not filtered out of
     // resolution. It binds recipes the moment it is written, before any review.
-    const hit = resolveProductForm('freshly grated nutmeg', [pendingForm]);
+    const hit = resolveProductForm('freshly grated nutmeg', [pendingForm], NO_CANON);
     expect(hit?.id).toBe('pf-pending');
     expect(hit?.needs_approval).toBe(true);
   });

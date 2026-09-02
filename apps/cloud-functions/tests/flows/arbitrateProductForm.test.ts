@@ -62,6 +62,25 @@ describe('arbitrateProductForm — matcher quality (issue #854)', () => {
     );
   });
 
+  it('requires the label to name the parent too', async () => {
+    await (arbitrateProductFormFlow as Function)({
+      ingredientName: 'lime zest',
+      candidates: [],
+    });
+
+    const { prompt } = mockGenerate.mock.calls[0]![0];
+    // Issue #1180. The label is matching input (#818), so a bare component word
+    // in it is the same defect the matcher bullet above already forbids — the
+    // label line just never said so. Rejection is enforced downstream in
+    // `proposalRejectionReason`; the prompt is what stops the model producing
+    // the row in the first place.
+    expect(prompt).toContain('The label MUST name the parent too');
+    expect(prompt).toContain('"Lime zest", never "Zest"');
+    expect(prompt).toContain('"Egg yolk", never "Yolk"');
+    // The original example line is kept, not replaced.
+    expect(prompt).toContain('- label: a short human label, e.g. "Lime juice"');
+  });
+
   it('leaves the component/action classification prompt intact', async () => {
     await (arbitrateProductFormFlow as Function)({
       ingredientName: 'melted butter',

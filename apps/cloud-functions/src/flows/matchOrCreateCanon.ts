@@ -38,8 +38,9 @@ import { reportServerError } from '../observability/reportServerError.js';
 const PRODUCT_FORMS_READ_FAILED = 'productForms read failed — derived-name synonym guard disabled';
 
 /**
- * Reads `productForms` and builds the "is this name a derivation" predicate the
- * synonym guard consults (`appendCanonSynonym`, issue #865/#866).
+ * Reads `productForms` (and, since issue #1180, `canonItems`) and builds the
+ * "is this name a derivation" predicate the synonym guard consults
+ * (`appendCanonSynonym`, issue #865/#866).
  *
  * Returns `undefined` — i.e. "no opinion", today's behaviour — when the read
  * fails or the table is empty. That degrade is required by Rule 10 and is the
@@ -70,7 +71,7 @@ const PRODUCT_FORMS_READ_FAILED = 'productForms read failed — derived-name syn
  *
  * The two states are deliberately NOT folded together any more. An empty table is
  * a normal state (fresh environment, emulator) and stays silent;
- * `resolveProductForm(name, [])` is always `null`, so a present-but-empty
+ * `resolveProductForm(name, [], canon)` is always `null`, so a present-but-empty
  * predicate would answer `false` to everything anyway.
  */
 async function buildDefaultDerivedNamePredicate(
@@ -84,7 +85,18 @@ async function buildDefaultDerivedNamePredicate(
   }
   if (formsResult.value.length === 0) return undefined;
   const forms = formsResult.value;
-  return (name: string) => resolveProductForm(name, forms) !== null;
+  // The canon list `resolveProductForm`'s contested-phrase rule consults (issue
+  // #1180). Read only once there is a non-empty forms table to consult it for,
+  // so the no-forms environments that short-circuit above pay nothing.
+  //
+  // Its own degrade is SILENT and deliberately unlike the forms read's: a failed
+  // canon read leaves the list empty, the contested rule inert, and the
+  // predicate exactly as accurate as it was before #1180 — no guarantee is lost,
+  // so there is no window to announce (Rule 10). A failed FORMS read is
+  // different in kind, which is why it keeps its logger + PostHog pair above.
+  const canonResult = await createFirestoreCanonStore(db).list();
+  const canon = canonResult.kind === 'ok' ? canonResult.value : [];
+  return (name: string) => resolveProductForm(name, forms, canon) !== null;
 }
 
 export async function buildMatchOrCreatePorts(

@@ -97,7 +97,12 @@ export function ingredientMatchIssue(
   // phrase-by-phrase normalising — so it belongs on this side of the call, per
   // the ordering note above.
   if (!forms.some((f) => f.parentCanonId === ing.canonId)) return null;
-  const form = resolveProductForm(ing.parsed.item, forms);
+  // The canon list the contested-phrase rule needs (issue #1180) is already in
+  // hand — `canonById` IS the live canon set, per this function's own contract
+  // above — so no caller of this query gains a parameter. Materialised here
+  // rather than at the top because this is the one branch that reaches it, and
+  // the ordering note above is about how few lines get this far.
+  const form = resolveProductForm(ing.parsed.item, forms, [...canonById.values()]);
   // A form that resolves to some OTHER parent is not this line's bridge — the
   // same guard every other product-form read applies.
   return form !== null && form.parentCanonId === ing.canonId ? null : 'missing_form';

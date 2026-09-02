@@ -39,6 +39,7 @@ import type {
   ProductForm,
   CanonItemUnit,
   FormDemand,
+  CanonNaming,
 } from '@salt/domain';
 import type {
   UrlImportFailureCode,
@@ -934,11 +935,13 @@ function formCountFor(
   ing: Ingredient,
   scale: number,
   forms: readonly ProductForm[],
+  // Pass-through for `resolveProductForm`'s contested-phrase rule (issue #1180).
+  canon: readonly CanonNaming[],
 ): { form: ProductForm; count: number; rawCount: number } | null {
   if (forms.length === 0 || !ing.canonId || ing.parsed === null || ing.parsed.quantity === null) {
     return null;
   }
-  const form = resolveProductForm(ing.parsed.item, forms);
+  const form = resolveProductForm(ing.parsed.item, forms, canon);
   if (!form || form.parentCanonId !== ing.canonId) return null;
   const metricAmount = quantityToNumber(ing.parsed.quantity) * scale;
   const ingUnit: CanonItemUnit = ing.parsed.unit ?? 'count';
@@ -961,7 +964,8 @@ export const PRODUCT_FORM_COUNT_UNIT = 'count';
 export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddRow[] {
   const baseServings = usableServings(recipe.metadata.servings) ?? 1;
   const scale = servings / baseServings;
-  const canonById = canonIndex(getCanonItemsSnapshot());
+  const canonSnapshot = getCanonItemsSnapshot();
+  const canonById = canonIndex(canonSnapshot);
   const liveCanonIds = new Set(canonById.keys());
   // Snapshot the recipe list once so the buy-or-make resolver (Phase 2) is a pure
   // per-row lookup. `findProducingRecipes` is the pure @salt/domain helper; the
@@ -999,7 +1003,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
       // A product-form ingredient carries a parent-count (unit sentinel 'count');
       // otherwise fall back to the scaled metric amount. formCountFor requires a
       // live canon match (parentCanonId === ing.canonId), so it implies `matched`.
-      const fc = matched ? formCountFor(ing, scale, forms) : null;
+      const fc = matched ? formCountFor(ing, scale, forms, canonSnapshot) : null;
       if (fc) {
         formEntries.push({
           rowIndex: rows.length,
