@@ -504,13 +504,12 @@
   // exactly as it does today whether the flag is on or off, which is what makes
   // this phase invisible to a library that has not been backfilled.
   //
-  // `recipePhaseTotals` is the one funnel: `metadata.phases` is optional on the
-  // schema, and `hasPhases` is the only honest answer to "is there a strip".
+  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
+  // once, here, and everything below reads that list — the template never asks the
+  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
   const phasesEnabled = $derived($recipePhasesGate.enabled);
-  const phaseTotals = $derived(recipePhaseTotals(recipe?.metadata.phases));
-  const phases = $derived(
-    phasesEnabled && phaseTotals.hasPhases ? (recipe?.metadata.phases ?? []) : [],
-  );
+  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
+  const phaseTotals = $derived(recipePhaseTotals(phases));
 
   function segmentPercent(segment: CookShapeSegment): number {
     if (!shape || shape.totalMinutes <= 0) return 0;

@@ -53,6 +53,13 @@ const SEEDED_METADATA = {
   prepTimeMinutes: 15,
   cookTimeMinutes: 30,
   totalTimeMinutes: 45,
+  // Not typed by anyone: `emptyRecipe` stamps an empty phase strip on every new
+  // recipe (issue #1122), so the stored document carries both keys from creation.
+  // They are here because this is a whole-`metadata` equality — it is the
+  // assertion that would catch a refresh QUIETLY CLEARING a strip the cook had
+  // corrected, which is the same job it already does for the tags.
+  phases: [],
+  timingSummary: null,
   tags: [TAG],
 };
 
