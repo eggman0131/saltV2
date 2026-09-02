@@ -2707,20 +2707,52 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  there is no OWNED-ITEM picture for an accessory — but `kitIconFor`
                  is not that lookup alone; per that file's header it asks the
                  equipment vocabulary FIRST, then falls through to the kitchen-tool
-                 vocabulary. An accessory row is, by construction, exactly a label
-                 `resolveEquipmentItem` refused — so the tool-vocabulary half is
-                 precisely the half that still has something to draw for it (a
-                 rice spoon draws the generic rice-paddle pictogram; a mixing bowl
-                 accessory draws the generic bowl). Calling the same lookup here
-                 means a genuine miss on BOTH vocabularies still renders no tile —
-                 never a placeholder (#882) — but a tool-vocabulary hit is not
-                 suppressed just because the row is nested (#1179 review finding
-                 B1). `RecipeViewPage.kit.test.ts` pins a real hit alongside the
-                 real miss so this claim stays true.
+                 vocabulary. MOST accessory rows are a label
+                 `resolveEquipmentItem` refused — every bare one, which is how the
+                 library names them today — and for those the tool-vocabulary half
+                 is precisely the half that still has something to draw (a rice
+                 spoon draws the generic rice-paddle pictogram; a mixing bowl
+                 accessory draws the generic bowl). Since #1182 that is no longer
+                 ALL of them: a prefixed accessory ("Magimix Cocotte Slow Cook
+                 Pot") does resolve, to its owning item, so its nested row draws
+                 the SAME equipment picture as the appliance heading it. That
+                 reads correctly — indented and muted under the machine it is part
+                 of — and it is exactly what must not happen on two TOP-LEVEL rows,
+                 which is the defect #1182 fixed in the query. Calling the same
+                 lookup here means a genuine miss on BOTH vocabularies still
+                 renders no tile — never a placeholder (#882) — but a
+                 tool-vocabulary hit is not suppressed just because the row is
+                 nested (#1179 review finding B1). `RecipeViewPage.kit.test.ts`
+                 pins a real hit alongside the real miss so this claim stays true.
 
                  Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
                  rhythm is unbroken and `last:border-b-0` still means the last line
-                 on screen. -->
+                 on screen. That flat structure is a LAYOUT choice, and it is why
+                 the nesting has to be said in words as well (#1182): a screen
+                 reader walking this list is handed siblings, and `pl-12` plus
+                 `text-muted-foreground` are pixels, not structure. The accessory
+                 row's `aria-label` is what carries the relationship — "Rice
+                 Spoon, part of Cosori 5L Rice Cooker" — so the row is announced
+                 as belonging to the appliance above it rather than as an
+                 unrelated peer.
+
+                 `aria-label` rather than a nested `<ul>` or visually-hidden text,
+                 for two reasons: a nested list is the thing that would break
+                 `last:border-b-0` (the last accessory would be last in ITS list,
+                 not on screen), and hidden text inside the row would land in
+                 `textContent`, where several of this page's tests read the row's
+                 words from. It is an ADDITION to the accessible name, never a
+                 replacement: the visible label is its first words, so nothing a
+                 sighted user reads goes missing from what is announced.
+                 `RecipeViewPage.kit.test.ts` asserts it through
+                 `getByRole('listitem', { name })`, never through the class.
+
+                 One template literal, not `aria-label="{a}, part of {b}"`. The
+                 interpolated-attribute form compiles to a concatenation with a
+                 `?? ''` per hole, and both labels are non-optional `string`s in
+                 `RecipeKitEntrySchema` — so those two branches are unreachable,
+                 uncoverable, and cost the routes area exactly the two uncovered
+                 branches that put it over its ratchet ceiling. -->
             {#if kit.length > 0}
               <TabsContent value="equipment">
                 <Card>
@@ -2751,6 +2783,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                           <li
                             class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
                             data-testid="recipe-kit-accessory-row"
+                            aria-label={`${accessory.label}, part of ${group.entry.label}`}
                           >
                             <div class="flex h-10 w-10 shrink-0 items-center justify-center">
                               {#if $kitIcons.kitIconFor(accessory.label)}
