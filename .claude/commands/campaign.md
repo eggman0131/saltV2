@@ -44,7 +44,7 @@ You are unattended, so everything you say is read later, out of order, by someon
 Speak at exactly five moments, and at no others:
 
 1. **Dispatch** — the plan, once: order, what runs concurrently, the ledger number.
-2. **An issue reaching a terminal state** — merged, or parked. One message per issue, after you have confirmed it, not while you are confirming it.
+2. **An issue reaching a terminal state** — merged, or parked. One message per issue, after you have confirmed it, not while you are confirming it. A park additionally goes out as a `PushNotification` — see **Decision envelope**. That is a separate channel, not a sixth moment, and it is the only tool call in this command that is allowed to interrupt Daniel.
 3. **A decision taken outside the envelope** — what you decided and why, in the two or three sentences it actually needs.
 4. **A full stop** — what broke and what a human must do.
 5. **The close** — see **Finish**.
@@ -442,14 +442,20 @@ Running unattended means most of run.md's pause conditions become deadlocks. Res
 - blocking findings still outstanding after round 2;
 - heavy suites that will not run green, or cannot be confirmed to have run.
 
-Parking never stops the queue.
+Parking never stops the queue — but it does have to reach Daniel while there is still a campaign to redirect. A park is the one outcome he might want to act on before the fleet finishes, and the ledger is not somewhere he is looking. So on every park, send one `PushNotification` alongside the ledger update, and lead with the decision rather than the status:
+
+```
+#1140 parked: UX deviation on the equipment tab, needs your call — branch feat/recipe-equipment-tab-1140
+```
+
+Issue number, the one-line reason, the branch; under 200 characters; one per park and **never on a merge** — a notification per landed PR is noise, and a channel that carries noise stops being read, which costs you the one message that mattered. A `not sent` result means he is at the terminal and has already seen it: that is the tool working, not a failure to retry.
 
 **Stop the whole campaign** only for a systemic failure, meaning one of:
 
 - main is red on its own — verify with `gh run list --branch main --limit 1` before believing it;
 - two consecutive merges have gone bad, where bad means either the merge itself failed, or main's post-merge CI went red. Two in a row is not coincidence, and every further merge compounds it.
 
-On a full stop: leave every branch pushed and every worktree intact, write the state into the ledger body, and say plainly what needs a human.
+On a full stop: leave every branch pushed and every worktree intact, write the state into the ledger body, say plainly what needs a human, and send the `PushNotification` above with the systemic reason in place of the issue number. A full stop is the one thing here that is worth waking him for.
 
 ---
 
