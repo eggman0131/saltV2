@@ -63,6 +63,7 @@ export type {
   CreateProductFormInput,
   UpdateProductFormInput,
   FormDemand,
+  CanonNaming,
 } from './productForm/index.js';
 export {
   createProductForm,

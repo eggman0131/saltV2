@@ -28,6 +28,7 @@
   import { prefersReducedMotion } from '../../lib/reducedMotion.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { productForms } from '../../lib/productFormService.js';
+  import { canonItems } from '../../lib/canonService.js';
   import { swipe } from '../../lib/swipe.svelte.js';
   import { revealProgress } from '../../lib/swipe.js';
   import {
@@ -240,7 +241,9 @@
   // When non-null the row reads "Lime ×3" with the original wording underneath.
   function productFormFor(value: ShoppingListItem): ProductForm | null {
     if (value.unit !== 'count' || !value.canonId || value.amount === undefined) return null;
-    const form = resolveProductForm(value.rawText, $productForms);
+    // `$canonItems` feeds the contested-phrase rule (issue #1180); an unsynced
+    // (empty) canon store leaves it inert, i.e. today's answer.
+    const form = resolveProductForm(value.rawText, $productForms, $canonItems);
     return form && form.parentCanonId === value.canonId ? form : null;
   }
 

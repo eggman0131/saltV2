@@ -97,6 +97,9 @@ async function main(): Promise<void> {
   const canonNameById = new Map<string, string>(
     canonSnap.docs.map((d) => [d.id, String(d.get('name') ?? '')]),
   );
+  // The same list, in the shape `resolveProductForm`'s contested-phrase rule
+  // takes (issue #1180). This script must see exactly what the flow sees.
+  const canon = [...canonNameById].map(([id, name]) => ({ id, name }));
 
   // Only the fields resolveProductForm reads. Parsing the full schema would be
   // stricter than this needs to be and would skip a form over an unrelated field.
@@ -118,7 +121,7 @@ async function main(): Promise<void> {
     const synonyms = (doc.get('synonyms') as string[] | undefined) ?? [];
     synonymCount += synonyms.length;
     for (const synonym of synonyms) {
-      const form = resolveProductForm(synonym, forms);
+      const form = resolveProductForm(synonym, forms, canon);
       if (!form) continue;
       removals.push({
         canonId: doc.id,

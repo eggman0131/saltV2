@@ -74,6 +74,31 @@ per ingredient, in order:
    was raw-substring over `matchers` only, so `chicken breast` missed a form whose
    only matcher was `chicken breasts`, and a form labelled "Chicken Legs" could
    never be found by that name.)
+
+   **Since issue #1180, tier 1 also reads the canon list, and a winning phrase can
+   be _refused_.** A phrase is **contested** — and loses — when the ingredient text
+   also names a **different** canon item, on at least one word the phrase does not
+   itself cover. That is what stops a form labelled with a bare component word
+   (`Zest`, `Juice`, `Stock`) claiming every parent's version of the same thing:
+   `Zest` filed under Lemon no longer answers "zest of 1 lime". Two consequences
+   worth having in mind while running this book:
+
+   - **A refused phrase is not an error state.** The ingredient simply falls
+     through to tier 2, which mints the right form on the right parent — so an
+     ingredient you expected tier 1 to bind may legitimately show an
+     `arbitrateProductForm` call in the logs on its first pass.
+   - **An empty canon list disables the rule.** Every caller degrades to an empty
+     list when its canon read fails (Rule 10), which restores exactly the
+     pre-#1180 behaviour rather than refusing everything. If tier 1 starts binding
+     across parents again, suspect the canon read before the rule.
+
+   The words the phrase _does_ cover are excluded deliberately: `100 ml active
+whey` still binds its form despite a canon item called `Whey`, and `cheddar
+cheese slices` still binds despite a canon item called `Cheese`. The 16 live
+   staging forms are checked against this in
+   `packages/domain/tests/productForm/resolveProductForm.test.ts`, which is the
+   fixture to update if this table is reseeded.
+
 2. **Tier 2 — arbitrate** (`arbitrateProductForm`): only runs **if there is ≥1
    existing buyable canon item** to offer as a candidate parent. Decides whether the
    ingredient is a `component` (→ form, minting the parent if needed) vs an

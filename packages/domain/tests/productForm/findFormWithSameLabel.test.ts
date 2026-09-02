@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { findFormWithSameLabel } from '../../src/productForm/queries/findFormWithSameLabel.js';
 import { resolveProductForm } from '../../src/productForm/queries/resolveProductForm.js';
 import type { ProductForm } from '../../src/productForm/entities/ProductForm.js';
+import type { CanonNaming } from '../../src/productForm/queries/resolveProductForm.js';
+// Empty canon list: `resolveProductForm`'s contested-phrase rule (issue #1180)
+// is inert without one, so these cases measure only what they mean to.
+const NO_CANON: readonly CanonNaming[] = [];
 
 // Issue #854. The dedupe check that `resolveProductForm` structurally cannot
 // perform: a proposal BROADER than a stored form's matchers.
@@ -63,7 +67,7 @@ describe('findFormWithSameLabel', () => {
   it('catches the staging duplicate that matcher containment cannot see', () => {
     // The real shape, as stored on staging: one hand-fixed form with narrow
     // matchers, and an AI proposal for the SAME component whose matcher is the
-    // bare generic word. `resolveProductForm(proposal.matcher, forms)` is null —
+    // bare generic word. `resolveProductForm(proposal.matcher, forms, canon)` is null —
     // "juice" does not contain "lime juice" — so the mint site used to write a
     // second `Lime juice` form on the same parent, quietly re-broadening what
     // had just been corrected by hand.
@@ -74,7 +78,7 @@ describe('findFormWithSameLabel', () => {
     });
     const forms = [existing];
 
-    expect(resolveProductForm('juice', forms)).toBeNull();
+    expect(resolveProductForm('juice', forms, NO_CANON)).toBeNull();
     expect(findFormWithSameLabel('Lime juice', 'canon-lime', forms)?.id).toBe('a5a5cfd2');
   });
 
@@ -110,32 +114,28 @@ describe('findFormWithSameLabel', () => {
     expect(findFormWithSameLabel('Zest', null, forms)).toBeNull();
   });
 
-  it('KNOWN LIMIT — resolveProductForm still crosses parents on a bare-noun label', () => {
-    // The boundary of the claim above, pinned rather than left to a header
-    // sentence (CLAUDE.md Hard rule 12). Scoping THIS query does not make
-    // product-form binding parent-safe in general: `resolveProductForm` matches
-    // on `[form.label, ...form.matchers]`, so a bare-noun label is itself a
-    // global, parent-blind matching phrase — and it is the query the recipe
-    // canonicalisation flow reaches first. Follow-up issue #1180 owns that;
-    // when it lands this expectation flips, which is the signal to widen the
-    // boundary paragraph in this query's header.
+  it('is not what stops a bare-noun label crossing parents — that is #1180', () => {
+    // Kept as a signpost, and stated as what it is rather than as a pin. Two
+    // different mechanisms let a `Zest` form on Lemon claim a lime's zest, and
+    // this query only ever answered one of them: the proposal same-label dedupe.
+    // The other is that a form's own label is a matching phrase, which
+    // `resolveProductForm` now handles itself by refusing a CONTESTED phrase
+    // (issue #1180) — with the canon list this file deliberately does not pass.
     //
-    // WEAKER THAN IT READS (PR #1181 review, note). The only assertion that
-    // actually pins the limit is the `resolveProductForm` one below —
-    // `findFormWithSameLabel` is on #1180's must-not-touch list, so an
-    // assertion against it here could never go red on that follow-up landing,
-    // and this file dropped the earlier one for exactly that reason. Nor does
-    // this test's own typing catch #1180 widening `resolveProductForm` to a
-    // required third (canon-list) parameter: `packages/domain/tsconfig.json`
-    // only includes `src/**/*`, so this file is never typechecked, and a
-    // missing required argument is a compile error, not a runtime one — this
-    // two-arg call goes red only if #1180's implementation happens to throw on
-    // an absent third argument rather than treating it as an empty list. The
-    // CF `KNOWN LIMIT` case in
-    // `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`,
-    // which drives the real flow through the compiled call site, is the pin
-    // that actually fires; this one is a weaker, best-effort second.
+    // So NO_CANON here is the point, not an oversight: it shows the pre-#1180
+    // answer surviving exactly where the new rule is inert, and it is why this
+    // assertion cannot go red on a #1180 regression. The tests that do are in
+    // `resolveProductForm.test.ts` and the flow suite in
+    // `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`.
     const forms = [form({ id: 'lemon-zest', label: 'Zest', parentCanonId: 'canon-lemon' })];
-    expect(resolveProductForm('zest of 1 lime', forms)?.parentCanonId).toBe('canon-lemon');
+    expect(resolveProductForm('zest of 1 lime', forms, NO_CANON)?.parentCanonId).toBe(
+      'canon-lemon',
+    );
+    expect(
+      resolveProductForm('zest of 1 lime', forms, [
+        { id: 'canon-lemon', name: 'Lemon' },
+        { id: 'canon-lime', name: 'Lime' },
+      ]),
+    ).toBeNull();
   });
 });

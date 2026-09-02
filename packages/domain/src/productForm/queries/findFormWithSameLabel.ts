@@ -51,20 +51,15 @@ import type { ProductForm } from '../entities/ProductForm.js';
 // must never degrade to "any parent".
 //
 // THE BOUNDARY OF THAT CLAIM, stated because it is not what a reader assumes.
-// Parent scoping here makes the PROPOSAL path parent-safe, and only that path.
-// It does not make product-form binding parent-safe in general:
-// `resolveProductForm` matches on `[form.label, ...form.matchers]`
-// (`resolveProductForm.ts:42`), so a stored form's own label is itself a global,
-// parent-blind matching phrase — and three `resolveProductForm` calls in
-// `canonicaliseRecipeIngredients.ts` still cross parents on a bare-noun label:
-// `:165`, the pre-arbitration bind, which fires first and owns the reported
-// symptom; `:294`, the mid-batch re-resolve that runs before each proposal is
-// even inspected, against a `forms` table the batch's own mints have grown; and
-// the sibling `resolveProductForm` call that sits right beside this function's
-// own call, in the same proposal-covering check. Follow-up issue #1180 owns
-// them; the measurement is in #1127's Phase-1 deviation comment, and the limit
-// is pinned by the `KNOWN LIMIT` case in
-// `apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts`.
+// Parent scoping HERE makes the proposal path's same-label dedupe parent-safe,
+// and only that. It never made product-form binding parent-safe in general —
+// `resolveProductForm` matches on `[form.label, ...form.matchers]`, so a stored
+// form's own label is a matching phrase in its own right, and a bare-noun one
+// named no parent at all. That is a different mechanism with a different fix,
+// and it is now closed at its own site: `resolveProductForm` refuses a phrase
+// CONTESTED by another canon item the ingredient text names (issue #1180). Its
+// own header states what that does and does not guarantee; do not restate it
+// here as an absolute.
 //
 // Match-time only: nothing here is written back. Stored labels stay exactly as
 // they were typed.

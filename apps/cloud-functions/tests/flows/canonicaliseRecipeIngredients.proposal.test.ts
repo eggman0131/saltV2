@@ -478,24 +478,24 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(result[0]!.value!.item.id).toBe('canon-spring-onions');
   });
 
-  it('KNOWN LIMIT — a bare-noun label still crosses parents before arbitration runs', async () => {
-    // The boundary of the claim above, pinned rather than asserted away
-    // (CLAUDE.md Hard rule 12). #1127 scopes the PROPOSAL path only. It does not
-    // reach the pre-arbitration bind at `canonicaliseRecipeIngredients.ts:165`,
-    // because `resolveProductForm` matches on `[form.label, ...form.matchers]`
-    // (`resolveProductForm.ts:42`) — so a bare-noun label like `Zest` is itself a
-    // global, parent-blind matching phrase. `normaliseName('zest of 1 lime')` is
-    // `'zest of lime'`, which contains the token `zest`, so the Lemon form claims
-    // the ingredient before any proposal is asked for.
+  it('a bare-noun label does not claim an ingredient naming a different parent', async () => {
+    // Issue #1180's headline reproduction, at site A — the PRE-ARBITRATION bind,
+    // which fires ~130 lines before anything #1127 changed and is what owned the
+    // reported symptom. `Zest` filed under Lemon is a global, parent-blind
+    // matching phrase, because `resolveProductForm` matches a form's label on
+    // equal terms with its matchers (issue #818, correctly). Before #1180
+    // `normaliseName('zest of 1 lime')` → `'zest of lime'` contains the token
+    // `zest`, the Lemon form claimed the line, `mockProposal` was never called,
+    // and the shopping list said buy lemons.
     //
-    // This is the issue's own headline reproduction, and it is UNCHANGED by
-    // #1127: `arbitrationCalls: 0`, `boundTo: 'canon-lemon'`. Follow-up issue
-    // #1180 owns it (measurements in #1127's Phase-1 deviation comment); fixing
-    // it changes how every ingredient in the app resolves to a form, which is
-    // why it is not bolted on here.
+    // Now the phrase `zest` is CONTESTED: the text also names canon `Lime`, on a
+    // token the phrase does not cover. So no form claims the line, it reaches
+    // arbitration, and the proposal mints on the parent the model actually named.
     //
-    // WHEN THIS TEST GOES RED, the follow-up has landed: delete it and widen the
-    // boundary paragraph in `findFormWithSameLabel`'s header, which points here.
+    // This test is the flow-level half of #1127's own DoD bullet 1, which
+    // #1127's deliverables could not reach. It goes red if the contested rule is
+    // removed, if `candidates` stops being threaded into the site-A call, or if
+    // that call is moved above the canon read that fills `candidates`.
     seed('canonItems', 'canon-lemon', canonDoc('canon-lemon', 'Lemon'));
     seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
     seed('productForms', 'lemon-zest', {
@@ -508,15 +508,68 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
       needs_approval: false,
       updatedAt: '',
     });
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'lime zest',
+      label: 'Lime zest',
+      formUnit: 'g',
+      amountPerParent: 5,
+    });
 
     const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
       items: [{ rawName: 'zest of 1 lime' }],
     })) as Array<{ kind: string; value?: { item: { id: string } } }>;
 
-    // Arbitration never ran, so nothing #1127 changed was consulted at all.
-    expect(mockProposal).not.toHaveBeenCalled();
-    expect(productFormDocs()).toHaveLength(1);
-    expect(result[0]!.value!.item.id).toBe('canon-lemon');
+    // Arbitration ran, and the new form was minted on Lime, not Lemon.
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(2);
+    expect(forms.find((f) => f.label === 'Lime zest')?.parentCanonId).toBe('canon-lime');
+    expect(result[0]!.value!.item.id).toBe('canon-lime');
+  });
+
+  it('site B — a contested proposal matcher no longer counts as already covered', async () => {
+    // The other cross-parent `resolveProductForm` call: the proposal COVERING
+    // check. With the same bare `Zest` on Lemon stored, a `Lime zest` proposal
+    // carrying matcher `lime zest` used to resolve to the Lemon form (`zest`
+    // matches inside `lime zest`), so the flow decided the proposal was already
+    // covered and bound the line to Lemon — minting nothing. Contested now, so
+    // the covering check answers null and the right form is minted on Lime.
+    //
+    // Distinct from the case above: here arbitration is REACHED either way (the
+    // ingredient text shares no phrase with the stored form), and only the
+    // covering check's answer differs.
+    seed('canonItems', 'canon-lemon', canonDoc('canon-lemon', 'Lemon'));
+    seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
+    seed('productForms', 'lemon-zest', {
+      id: 'lemon-zest',
+      schemaVersion: 1,
+      matchers: ['lemon zest'],
+      parentCanonId: 'canon-lemon',
+      label: 'Zest',
+      yield: { formUnit: 'g', amountPerParent: 5 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'lime zest',
+      label: 'Lime zest',
+      formUnit: 'g',
+      amountPerParent: 5,
+    });
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'grated peel of lime' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(2);
+    expect(forms.find((f) => f.label === 'Lime zest')?.parentCanonId).toBe('canon-lime');
+    expect(result[0]!.value!.item.id).toBe('canon-lime');
   });
 
   it('still mints when the proposal names a component no existing form is called', async () => {

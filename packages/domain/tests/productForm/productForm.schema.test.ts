@@ -7,7 +7,11 @@ import {
   setProductFormThumbnail,
   CANON_ICON_HIDDEN,
 } from '@salt/domain';
-import type { ProductForm } from '@salt/domain';
+import type { CanonNaming, ProductForm } from '@salt/domain';
+// Empty canon list: `resolveProductForm`'s contested-phrase rule (issue #1180)
+// is inert without one, so these cases measure only what they mean to.
+const NO_CANON: readonly CanonNaming[] = [];
+
 import { ProductFormSchema } from '@salt/domain/schemas';
 import type { ProductFormIdGenerator } from '../../src/productForm/index.js';
 
@@ -110,20 +114,20 @@ describe('resolveProductForm', () => {
   ];
 
   it('matches on a normalised phrase', () => {
-    expect(resolveProductForm('Fresh Lime Juice', forms)?.id).toBe('pf1');
+    expect(resolveProductForm('Fresh Lime Juice', forms, NO_CANON)?.id).toBe('pf1');
   });
 
   it('longest phrase wins when several match', () => {
     // both "juice" (pf2) and "lime juice" (pf1) match "lime juice"; longest wins
-    expect(resolveProductForm('lime juice', forms)?.id).toBe('pf1');
+    expect(resolveProductForm('lime juice', forms, NO_CANON)?.id).toBe('pf1');
   });
 
   it('matches a form by its label', () => {
-    expect(resolveProductForm('300 ml bottled juice', forms)?.id).toBe('pf2');
+    expect(resolveProductForm('300 ml bottled juice', forms, NO_CANON)?.id).toBe('pf2');
   });
 
   it('returns null when nothing matches', () => {
-    expect(resolveProductForm('flour', forms)).toBeNull();
+    expect(resolveProductForm('flour', forms, NO_CANON)).toBeNull();
   });
 });
 
