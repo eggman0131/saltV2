@@ -147,6 +147,12 @@ mixer with…"). A brief, not a spec sheet. Return only the revised brief.`;
 // is visible and must not be transcribed, which is what the extra paragraph below
 // does. It also closes the one gap the two text prompts never had to: a display
 // panel's actual contents are equally off-limits, not just a printed logo.
+//
+// Length deliberately diverges from the other two prompts (2-4 sentences, ~120
+// words, vs. their one sentence / ~45 words): the text prompts describe from
+// half-known model knowledge, where padding just invents detail, but a photo
+// actually contains four bullet points' worth of real, checkable detail —
+// squeezing it into one sentence was losing most of what the photo was for.
 const PHOTO_EQUIPMENT_SYSTEM = `You are an illustrator's art director. You are given the name of one piece of \
 kitchen equipment and a photograph of the actual item. Write a short visual brief describing what THIS SPECIFIC item \
 looks like, for an illustrator who will never see the photo — only your words.
@@ -171,8 +177,9 @@ ${SUBJECT_TEXT_RULE}
 
 ${SUBJECT_SCOPE_RULE}
 
-Write ONE sentence of plain prose, at most about 45 words, beginning with the kind of thing it is ("a tilt-head stand \
-mixer with…"). A brief, not a spec sheet. Return only the brief.`;
+Write two to four sentences of plain prose, up to about 120 words, beginning with the kind of thing it is ("a \
+tilt-head stand mixer with…"). You have a photo in front of you — use the extra length to actually spell out what it \
+shows, not to pad. Return only the brief.`;
 
 // A photo prompt is materially slower than plain text: the model reads image
 // tokens before it writes a word. Mirrors extractRecipeFromPhoto's single
