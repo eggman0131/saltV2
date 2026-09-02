@@ -227,7 +227,7 @@ export const describeEquipmentSubjectFlow = ai.defineFlow(
       !photo && !revising && trimmedHint ? `Additional guidance: ${trimmedHint}` : null,
     ].filter((p): p is string => p !== null);
 
-    const modelId = await resolveModel('fast', 'describeEquipmentSubject');
+    const modelId = await resolveModel('describeEquipmentSubject');
     const model = googleAI.model(modelId);
 
     const system = photo

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 const { mockGenerate, mockGet, mockDoc, mockCollection, mockFlowModel, aiTimeoutOptions } =
   vi.hoisted(() => {
@@ -235,7 +236,8 @@ describe('proposeSchedule', () => {
 
   it('runs on the better tier — this is judgement, not transcription', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    expect(mockFlowModel).toHaveBeenCalledWith('pro', 'proposeSchedule');
+    expect(mockFlowModel).toHaveBeenCalledWith('proposeSchedule');
+    expect(AI_FLOW_ROLES.proposeSchedule).toBe('pro');
   });
 
   it('caps the thinking budget and warms the temperature', async () => {

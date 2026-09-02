@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 const { mockGenerate, mockGet, mockDoc, mockCollection, mockFlowModel } = vi.hoisted(() => {
   const mockGet = vi.fn();
@@ -131,7 +132,8 @@ describe('generateGuidedPlan', () => {
   it('runs on the `pro` role — cue quality IS the feature', async () => {
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    expect(mockFlowModel).toHaveBeenCalledWith('pro', 'generateGuidedPlan');
+    expect(mockFlowModel).toHaveBeenCalledWith('generateGuidedPlan');
+    expect(AI_FLOW_ROLES.generateGuidedPlan).toBe('pro');
   });
 
   it('shows the model the ingredient and step IDS, and each step timer', async () => {

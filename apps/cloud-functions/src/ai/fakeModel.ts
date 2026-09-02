@@ -2,7 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { googleAI } from '@genkit-ai/google-genai';
 import type { ModelAction } from 'genkit/model';
-import { AI_FLOW_IDS, type AiFlowId, type AiModelRole } from '@salt/domain/schemas';
+import { AI_FLOW_IDS, type AiFlowId } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 import { resolveModel } from './resolveModel.js';
 
@@ -18,7 +18,7 @@ import { resolveModel } from './resolveModel.js';
 //
 //   The real model path is BYTE-FOR-BYTE unchanged when the flag is off — this
 //   module's only entrypoint, `flowModel`, returns exactly the production
-//   `googleAI.model(await resolveModel(role, flowId))` when `FUNCTIONS_AI_FAKE`
+//   `googleAI.model(await resolveModel(flowId))` when `FUNCTIONS_AI_FAKE`
 //   is not '1'. The fake is unreachable in production (the flag is never set
 //   there; only the emulator harness sets it).
 //
@@ -56,9 +56,9 @@ import { resolveModel } from './resolveModel.js';
 //
 // WIRING A FLOW (per later phase)
 //   Replace the flow's model expression
-//       googleAI.model(await resolveModel(role, flowId))
+//       googleAI.model(await resolveModel(flowId))
 //   with
-//       await flowModel(role, flowId)
+//       await flowModel(flowId)
 //   Everything else (system prompt, output schema, withAiTimeout) stays. When
 //   the flag is off this is a no-op; when on, the flow's model reads its stub.
 //   This swaps the MODEL, not the callable boundary — the contract CLAUDE.md
@@ -145,22 +145,25 @@ if (aiFakeEnabled()) {
  * Resolves the model a text-generation flow should pass to `ai.generate()`.
  *
  *   • Flag OFF (production, and emulator without the flag): returns exactly
- *     `googleAI.model(await resolveModel(role, flowId))` — the unchanged
+ *     `googleAI.model(await resolveModel(flowId))` — the unchanged
  *     production path.
  *   • Flag ON (emulator e2e harness): returns the deterministic fake model
  *     (registered at module load) that reads its canned answer from
  *     `_e2e_ai_stubs/{flowId}`.
  *
- * Drop-in replacement for `googleAI.model(await resolveModel(role, flowId))` at
- * a flow's model site. Awaitable in both branches so the call site is identical.
+ * Drop-in replacement for `googleAI.model(await resolveModel(flowId))` at a
+ * flow's model site. Awaitable in both branches so the call site is identical.
+ *
+ * The flow id is the only argument (issue #935) — the role comes from
+ * `AI_FLOW_ROLES`, so a flow that is not in the registry cannot be given a model
+ * here either.
  */
 export async function flowModel(
-  role: AiModelRole,
   flowId: AiFlowId,
 ): Promise<ReturnType<typeof googleAI.model> | ModelAction> {
   if (aiFakeEnabled()) {
     // Registered at module load above; AI_FLOW_IDS covers every flow id.
     return fakeModels.get(flowId)!;
   }
-  return googleAI.model(await resolveModel(role, flowId));
+  return googleAI.model(await resolveModel(flowId));
 }

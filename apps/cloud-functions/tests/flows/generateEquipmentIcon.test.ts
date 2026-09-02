@@ -27,6 +27,7 @@
  * imagery rather than on argument. Update them with the change; never around it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 const mockGenerate = vi.fn();
 
@@ -124,7 +125,8 @@ describe('generateEquipmentIcon flow', () => {
   it('resolves its model under its own registry key', async () => {
     await (generateEquipmentIconFlow as Function)({ name: 'Kenwood Chef KVC3100S' });
 
-    expect(mockResolveModel).toHaveBeenCalledWith('image', 'generateEquipmentIcon');
+    expect(mockResolveModel).toHaveBeenCalledWith('generateEquipmentIcon');
+    expect(AI_FLOW_ROLES.generateEquipmentIcon).toBe('image');
     expect(mockGenerate.mock.calls[0]![0].model).toBe('gemini-2.5-flash-image');
   });
 

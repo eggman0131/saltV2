@@ -3,7 +3,7 @@ import { logger } from 'firebase-functions';
 import {
   AppSettingsSchema,
   AI_MODEL_DEFAULTS,
-  type AiModelRole,
+  AI_FLOW_ROLES,
   type AiFlowId,
   type AppSettings,
 } from '@salt/domain/schemas';
@@ -14,9 +14,17 @@ import {
 // empty, invalid, or unreadable doc resolves every role to its hardcoded
 // production literal, so deleting/corrupting the doc leaves AI fully working.
 //
-// Phase 2 adds an optional per-flow override: when a caller passes its flowId,
-// a non-empty `perFlow[flowId]` entry wins over the role's model. Precedence is
-// per-flow override → role → code default.
+// Phase 2 added an optional per-flow override: a non-empty `perFlow[flowId]`
+// entry wins over the role's model. Precedence is per-flow override → role →
+// code default.
+//
+// Issue #935 made the flow id the ONLY argument, and the role a lookup in
+// `AI_FLOW_ROLES`. Two things follow, and both are the point:
+//   • a flow with no registry entry cannot resolve a model, because there is no
+//     signature that accepts it — so the admin override list on
+//     /admin/app-settings cannot be missing a job that CF actually runs;
+//   • a call site cannot name a role that disagrees with the registry, because
+//     it no longer names one.
 //
 // An in-process TTL cache (180s) keeps per-invocation Firestore reads cheap and
 // bounds propagation latency: an admin change takes effect within ~3 minutes as
@@ -60,21 +68,25 @@ async function loadSettings(): Promise<AppSettings> {
 
 /**
  * Resolves the Gemini model name a flow should use. Precedence:
- *   1. per-flow override — `perFlow[flowId]`, if `flowId` is given and that key
- *      holds a non-empty value;
- *   2. the role's configured model;
- *   3. the role's production default.
+ *   1. per-flow override — `perFlow[flowId]`, when that key holds a non-empty
+ *      value;
+ *   2. the configured model for the flow's role (`AI_FLOW_ROLES[flowId]`);
+ *   3. that role's production default.
  * Returns the bare model id (e.g. `gemini-flash-latest`) — callers wrap it in
- * `googleAI.model(...)` / `googleAI.embedder(...)` as before. Omitting `flowId`
- * preserves the Phase 1 role-only behaviour.
+ * `googleAI.model(...)` / `googleAI.embedder(...)`.
+ *
+ * The flow id is the only argument by design: the role comes from the registry,
+ * so no call site can pass one that disagrees with it, and a flow absent from
+ * the registry does not typecheck here.
  */
-export async function resolveModel(role: AiModelRole, flowId?: AiFlowId): Promise<string> {
+export async function resolveModel(flowId: AiFlowId): Promise<string> {
   const settings = await loadSettings();
   // Per-flow override wins when present and non-empty. The schema already
   // rejects empty override values, but guard anyway so a hand-edited doc can
   // never resolve to an empty model id.
-  const override = flowId ? settings.perFlow?.[flowId] : undefined;
+  const override = settings.perFlow?.[flowId];
   if (override && override.trim()) return override;
+  const role = AI_FLOW_ROLES[flowId];
   // Schema defaults guarantee a non-empty role value, but belt-and-braces fall
   // back to the literal if anything ever slips through.
   return settings[role] || AI_MODEL_DEFAULTS[role];

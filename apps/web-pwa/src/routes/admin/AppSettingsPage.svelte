@@ -128,7 +128,9 @@
   // Human-readable label per flow id; the role is derived from AI_FLOW_ROLES.
   const FLOW_LABELS: Record<AiFlowId, string> = {
     arbitrateCanon: 'Canon arbitration',
+    arbitrateProductForm: 'Product-form arbitration',
     authorRecipe: 'Recipe author (librarian)',
+    categoriseRecipe: 'Recipe categorisation',
     chefChat: 'Chef Chat',
     describeEquipmentSubject: 'Equipment description (pictogram art direction)',
     describeRecipeScene: 'Recipe scene brief (hero art direction)',

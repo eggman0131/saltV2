@@ -149,7 +149,7 @@ export const estimateRecipeTimesFlow = ai.defineFlow(
     // categoriseRecipe. Two cooks reading the same recipe should reach the same
     // half-hour, and a backfill that returns a different answer each time it is
     // re-run is not a backfill.
-    const modelId = await resolveModel('fast', 'estimateRecipeTimes');
+    const modelId = await resolveModel('estimateRecipeTimes');
     const model = googleAI.model(modelId);
     const result = await withAiTimeout(
       'estimateRecipeTimes',

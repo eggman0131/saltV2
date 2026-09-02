@@ -141,7 +141,7 @@ export const identifyRecipeKitFlow = ai.defineFlow(
     // `fast` + temperature 0: the same posture as categoriseRecipe. Two cooks
     // reading the same recipe should reach for the same pans, and a kit list is
     // not a place for invention.
-    const modelId = await resolveModel('fast', 'identifyRecipeKit');
+    const modelId = await resolveModel('identifyRecipeKit');
     const model = googleAI.model(modelId);
     // The manifest rides on the SYSTEM prompt, beneath the naming rules, exactly as
     // it does for the chef and the librarian — it is policy about the kitchen, not

@@ -91,7 +91,7 @@ export const extractRecipeFromPhotoFlow = ai.defineFlow(
     );
 
     // Flash + temperature:0 — accuracy over creativity, same as the URL import.
-    const extractModelId = await resolveModel('fast', 'extractRecipeFromPhoto');
+    const extractModelId = await resolveModel('extractRecipeFromPhoto');
     const extractModel = googleAI.model(extractModelId);
 
     let extracted: ExtractRecipeFromPhotoAIOutput;

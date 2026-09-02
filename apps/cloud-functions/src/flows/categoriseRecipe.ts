@@ -49,7 +49,7 @@ export const categoriseRecipeFlow = ai.defineFlow(
     ].filter((p): p is string => p !== null);
 
     // Flash + temperature:0 — accuracy and cross-recipe consistency over creativity.
-    const modelId = await resolveModel('fast');
+    const modelId = await resolveModel('categoriseRecipe');
     const model = googleAI.model(modelId);
     const result = await withAiTimeout(
       'categoriseRecipe',

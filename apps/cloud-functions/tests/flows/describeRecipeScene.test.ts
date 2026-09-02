@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 // describeRecipeScene: the cheap text step that reads the WHOLE recipe and writes
 // the art-direction brief the hero prompt is built from. Mirrors the
@@ -105,7 +106,8 @@ describe('describeRecipeScene flow', () => {
   it('resolves the fast model with its own flow id (per-flow overrides work)', async () => {
     mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
     await (describeRecipeSceneFlow as Function)(RECIPE);
-    expect(mockResolveModel).toHaveBeenCalledWith('fast', 'describeRecipeScene');
+    expect(mockResolveModel).toHaveBeenCalledWith('describeRecipeScene');
+    expect(AI_FLOW_ROLES.describeRecipeScene).toBe('fast');
   });
 
   it('throws when the model returns an invalid output (AI output is a trust boundary)', async () => {

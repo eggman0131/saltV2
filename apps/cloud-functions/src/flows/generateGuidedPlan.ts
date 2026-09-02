@@ -90,7 +90,7 @@ export const generateGuidedPlanFlow = ai.defineFlow(
     // long-form judgement about a whole dish — the same argument that puts
     // chefChat on `pro`. `flowModel` returns the deterministic e2e fake under
     // FUNCTIONS_AI_FAKE.
-    const model = await flowModel('pro', 'generateGuidedPlan');
+    const model = await flowModel('generateGuidedPlan');
     const result = await withAiTimeout(
       'generateGuidedPlan',
       () =>

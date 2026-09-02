@@ -38,7 +38,7 @@ export const arbitrateProductFormFlow = ai.defineFlow(
     if (aiFakeEnabled()) {
       return { kind: 'none' as const };
     }
-    const model = await resolveModel('lite');
+    const model = await resolveModel('arbitrateProductForm');
     // Below the fake seam on purpose (issue #915): the short-circuit above
     // returns before this line, so the fake path never meets the timer and
     // wiring the seam to `flowModel` later needs no change here.

@@ -115,7 +115,7 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       : buildHtmlPrompt(html, parsed.href);
 
     // Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
-    const extractModelId = await resolveModel('fast', 'extractRecipeFromUrl');
+    const extractModelId = await resolveModel('extractRecipeFromUrl');
     const extractModel = googleAI.model(extractModelId);
     let extracted: ExtractRecipeAIOutput;
     try {

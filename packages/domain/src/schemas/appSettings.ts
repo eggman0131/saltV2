@@ -32,9 +32,32 @@ export const AI_MODEL_DEFAULTS = {
 // IMPORTANT: these flow-id keys are stable identifiers persisted in the
 // `perFlow` map of the production `appSettings` doc — renaming one orphans any
 // saved override. Add new flows here; do not rename existing ones.
+//
+// COMPLETENESS (issue #935): the CF resolver takes a flow id and nothing else —
+// `resolveModel(flowId: AiFlowId)`, with the role read from this map — so a flow
+// missing from here cannot resolve a model at all: there is no signature that
+// accepts it. That makes the compiler, not a convention, the thing that keeps
+// this list complete and keeps the admin override list from silently omitting a
+// job. The boundary of that guarantee: it binds every call that goes through
+// `resolveModel`/`flowModel`, which is every model and embedder call in
+// `apps/cloud-functions/src`; a flow that hardcoded a model literal instead
+// would bypass it, and nothing here would notice.
 export const AI_FLOW_ROLES = {
   arbitrateCanon: 'lite',
+  // `lite` (issue #500, registered #935). Same shape and same tier as
+  // arbitrateCanon directly above, and for the same reason: a closed question
+  // over a short candidate list ("is this a non-buyable form of one of these?"),
+  // answered against a rubric rather than by judgement, and driven by every
+  // recipe import — so volume, not depth, is what sets the price.
+  arbitrateProductForm: 'lite',
   authorRecipe: 'fast',
+  // `fast` (registered #935). It reads a whole recipe and returns a handful of
+  // category tags — the identifyRecipeKit/describeRecipeScene shape, not
+  // chefChat's. Not `lite`: the tags are inferred from what the dish IS across
+  // title, ingredients and method rather than copied out of the words in front
+  // of it, and they are what search and filtering run on, so a sloppy tag is
+  // visible to everyone for as long as the recipe lives.
+  categoriseRecipe: 'fast',
   chefChat: 'pro',
   // The cheap text half of the equipment pictogram pair (issue #877): turns a
   // make and model into a brand-free visual brief. `fast` for the same reason

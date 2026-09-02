@@ -264,7 +264,7 @@ export const chefChatFlow = ai.defineFlow(
       }));
 
       // Pro-tier model for conversational quality (design principle #3, issue #206).
-      const chatModel = await flowModel('pro', 'chefChat');
+      const chatModel = await flowModel('chefChat');
       const { stream, response } = ai.generateStream({
         model: chatModel,
         system: systemPrompt,

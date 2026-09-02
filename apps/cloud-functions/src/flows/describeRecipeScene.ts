@@ -446,7 +446,7 @@ export const describeRecipeSceneFlow = ai.defineFlow(
       revising ? `Requested change: ${hint}` : null,
     ].filter((p): p is string => p !== null);
 
-    const modelId = await resolveModel('fast', 'describeRecipeScene');
+    const modelId = await resolveModel('describeRecipeScene');
     const model = googleAI.model(modelId);
     const result = await withAiTimeout(
       'describeRecipeScene',
