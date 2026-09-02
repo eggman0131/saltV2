@@ -58,16 +58,19 @@ realistic content.
 
 ## What a verified run leaves behind
 
-- `metadata.prepTimeMinutes`, `metadata.cookTimeMinutes`, `metadata.totalTimeMinutes`
-  rewritten, and `timesEstimatedAt` stamped.
+- `metadata.prepTimeMinutes`, `metadata.cookTimeMinutes`, `metadata.totalTimeMinutes`,
+  `metadata.phases` and `metadata.timingSummary` rewritten — the phase strip and its
+  sentence (issue #1122) write unconditionally alongside the three numbers, with no
+  stored-total guard equivalent protecting them — and `timesEstimatedAt` stamped.
 - **Nothing else.** The write is a field-level update on those paths (recipes are
   last-write-wins per whole document), and the flow has no output field for a title, an
   ingredient or a step, so `rawText`, steps, timers, tags, images, `createdBy` and
   `lastEditedBy` are not merely left alone — they are unreachable. `updatedAt` is
   deliberately not touched either: nothing a human authored changed, and moving it would
   reorder every list.
-- A hand-tuned time is overwritten. Accepted in #952: no field distinguishes a
-  hand-tuned number from a generated one, and inventing one was rejected.
+- A hand-tuned time, or a hand-edited phase strip, is overwritten. Accepted in #952 for
+  the numbers, and the same bargain now covers the strip: no field distinguishes a
+  hand-tuned value from a generated one, and inventing one was rejected.
 
 ## Asking again later
 
