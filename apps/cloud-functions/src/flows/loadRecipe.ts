@@ -8,12 +8,20 @@ import { RecipeSchema, type RecipeDoc } from '@salt/domain/schemas';
 // byte-identically, `proposeSchedule` with the fetch as one leg of a Promise.all.
 //
 // Why the duplication mattered enough to remove. The error CODE each of these
-// throws is not cosmetic: `classifyCallableError`
-// (packages/adapters/firebase-sync/src/callableErrors.ts) reads it on the browser
-// side and turns `not-found` and `failed-precondition` into different things the
-// user is told. Three copies of a decision that reaches the user is three chances
-// to answer it differently, and the fourth flow to need a recipe would have
-// copied whichever of the three it happened to see.
+// throws is a decision worth keeping consistent even though it is NOT
+// user-visible today: `classifyCallableError`
+// (packages/adapters/firebase-sync/src/callableErrors.ts) has no `not-found` or
+// `failed-precondition` arm, and none of the three call sites below declares a
+// per-call-site override for either — so both fall to the same default
+// (`StorageError: 'unavailable'`), and `callFunction` never reads
+// `HttpsError.message` at all. Today the two codes (and the two messages below)
+// are CF-side and test-side contract only. They are still worth keeping
+// distinct: it is the true answer at the point the failure happens, it is what a
+// future per-call-site override would key off on day one, and three
+// hand-written copies of that answer is three chances for them to quietly
+// diverge from each other even while nothing downstream reads the difference.
+// The fourth flow to need a recipe would have copied whichever of the three it
+// happened to see.
 //
 // Why it lives in `flows/` and not `adapters/`. The modules under
 // `src/adapters/` are stores: they return data. This one throws `HttpsError`,
@@ -33,20 +41,30 @@ import { RecipeSchema, type RecipeDoc } from '@salt/domain/schemas';
 //
 // A fourth hand-written copy is caught by `tests/loadRecipeGuard.test.ts`. The
 // eleven other sites that read a recipe are deliberately NOT users of this
-// helper — each is non-throwing on purpose (a missing recipe must not cost a
+// helper. Ten are non-throwing on purpose (a missing recipe must not cost a
 // cook-timer notification, an edit-mode author degrades to create mode, a batch
-// read skips a bad document) and each is named in that guard's allowlist.
+// read skips a bad document); the eleventh, `callables/getImagePrompt.ts`, DOES
+// throw but deliberately collapses both codes into a single `not-found` with its
+// own message, as one arm of a six-collection switch whose other five arms do
+// the same. Each is named in that guard's allowlist, with its own reason.
 
 /**
- * What the client is told when the recipe id names nothing.
+ * The `HttpsError` message when the recipe id names nothing.
  *
- * Exported so the guard and the tests assert on the VALUE rather than on a
- * regex over source text (docs/unit-test-spec.md §E, UT-E1): reword the message
- * here and everything that checks it moves with it.
+ * Not currently shown to a user — see the header note above: none of the three
+ * call sites below declares a `not-found` override, so `classifyCallableError`
+ * never reads this string. It is exported (rather than inlined) so the guard and
+ * the tests assert on the VALUE rather than on a regex over source text
+ * (docs/unit-test-spec.md §E, UT-E1): reword the message here and everything
+ * that checks it moves with it.
  */
 export const RECIPE_NOT_FOUND_MESSAGE = "That recipe doesn't exist.";
 
-/** What the client is told when the stored document fails `RecipeSchema`. */
+/**
+ * The `HttpsError` message when the stored document fails `RecipeSchema`. Same
+ * caveat as {@link RECIPE_NOT_FOUND_MESSAGE}: not read by
+ * `classifyCallableError` today, absent a `failed-precondition` override.
+ */
 export const RECIPE_UNREADABLE_MESSAGE = "That recipe can't be read.";
 
 /**

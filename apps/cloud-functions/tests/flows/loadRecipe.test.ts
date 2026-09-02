@@ -73,10 +73,13 @@ describe('requireRecipeFrom', () => {
     expect(recipe.producesCanonId).toBeNull();
   });
 
-  it('throws not-found — with the message the user reads — when the document is absent', () => {
+  it('throws not-found — with its message — when the document is absent', () => {
     // The code AND the string, neither of which the three flow suites ever
-    // asserted. `classifyCallableError` maps the code to what the browser shows,
-    // so both are user-facing contract, not implementation detail.
+    // asserted. `classifyCallableError` has no arm for this code today (both
+    // codes fall to the same default, and no call site passes an override), so
+    // neither reaches the browser yet — but both are still CF-side contract:
+    // the true answer at the point the failure happens, and pinned so a future
+    // override has a stable code and message to key off.
     expect(() => requireRecipeFrom(snapshot(null))).toThrowError(
       expect.objectContaining({
         code: 'not-found',

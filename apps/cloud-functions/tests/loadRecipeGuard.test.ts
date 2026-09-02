@@ -8,12 +8,17 @@
  * rather than a fix: the next flow needing a recipe copies whichever of the
  * copies it happens to see, and the copies drift one edit at a time.
  *
- * What drift would cost. The error CODE is not cosmetic. `classifyCallableError`
- * (packages/adapters/firebase-sync/src/callableErrors.ts) reads it in the browser
- * and turns `not-found` and `failed-precondition` into different things the user
- * is told. A fourth copy answering "is a missing recipe not-found or
- * failed-precondition?" differently is a user-visible inconsistency that no type,
- * no lint rule and no existing test would notice.
+ * What drift would cost. The error CODE is not cosmetic, even though it is not
+ * user-visible today: `classifyCallableError`
+ * (packages/adapters/firebase-sync/src/callableErrors.ts) has no `not-found` or
+ * `failed-precondition` arm, and none of the three flows below declares a
+ * per-call-site override, so both codes currently fall to the same default and
+ * neither message string reaches the browser. A fourth copy answering "is a
+ * missing recipe not-found or failed-precondition?" differently is still an
+ * inconsistency worth catching — it is the true answer at the CF side, it is
+ * what a future per-call-site override would key off, and it is exactly the
+ * kind of drift no type, no lint rule and no existing test would otherwise
+ * notice.
  *
  * Extracting `flows/loadRecipe.ts` does not stop a fourth hand-written copy, so
  * per CLAUDE.md Hard rule 12 the invariant is made mechanical here instead of
@@ -57,9 +62,12 @@
  * ── The allowlist ────────────────────────────────────────────────────────────
  *
  * Eleven other sites in this tree read a recipe and are deliberately NOT users
- * of the helper: each is non-throwing on purpose, and the reason is at the site.
- * Only those that actually trip a matcher need an entry below — an allowlist
- * longer than the offences it excuses is its own kind of stale.
+ * of the helper. Ten are non-throwing on purpose; the eleventh
+ * (`callables/getImagePrompt.ts`) DOES throw, but deliberately collapses both
+ * codes into a single `not-found` rather than distinguishing them — which is why
+ * it is the one entry below. Only sites that actually trip a matcher need an
+ * entry — an allowlist longer than the offences it excuses is its own kind of
+ * stale.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -113,8 +121,15 @@ const PROLOGUE: readonly { readonly what: string; readonly pattern: RegExp }[] =
   { what: 'reads one document by id', pattern: /\.doc\s*\(|\bloadDoc\s*\(/ },
   { what: 'validates it with RecipeSchema', pattern: /\bRecipeSchema\s*\.\s*safeParse\s*\(/ },
   {
+    // Deliberately NOT restricted to the codes `not-found`/`failed-precondition`
+    // — a fourth copy that answers with a DIFFERENT code (and reworded messages)
+    // is exactly the drift this guard exists to catch, and the first three
+    // patterns already narrow the population to "reads a recipe by id and
+    // `RecipeSchema.safeParse`s it", which is not an ordinary shape for a file to
+    // have. See loadRecipeGuard's near-miss tests for why this stays safe against
+    // this tree today.
     what: 'and throws a callable error for the result',
-    pattern: /new\s+HttpsError\s*\(\s*['"](?:not-found|failed-precondition)['"]/,
+    pattern: /\bnew\s+HttpsError\s*\(/,
   },
 ];
 
@@ -221,6 +236,25 @@ describe('cloud-functions: the recipe-load prologue is written once', () => {
       const r = RecipeSchema.safeParse(recipeSnap.data());
       if (!r.success) throw new HttpsError('failed-precondition', 'unreadable');`;
     expect(writesPrologue(parallelCopy)).toBe(true);
+  });
+
+  it('catches a fourth copy that answers with a DIFFERENT code and reworded messages', () => {
+    // The exact drift this guard exists to prevent: a copy that reads a recipe,
+    // validates it with RecipeSchema, and throws for both failures — but neither
+    // code is `not-found`/`failed-precondition` and neither message matches the
+    // exported constants. Before the code alternation was dropped from pattern
+    // four, this shape matched patterns 1–3 and not 4, so `writesPrologue` was
+    // false and this sailed through undetected.
+    const differentCodeCopy = `
+      const snap = await db.collection('recipes').doc(recipeId).get();
+      if (!snap.exists) {
+        throw new HttpsError('invalid-argument', 'No recipe by that id.');
+      }
+      const recipe = RecipeSchema.safeParse(snap.data());
+      if (!recipe.success) {
+        throw new HttpsError('internal', 'Could not read that recipe.');
+      }`;
+    expect(writesPrologue(differentCodeCopy)).toBe(true);
   });
 
   it('does not fire on the near-misses standing in this tree today', () => {
