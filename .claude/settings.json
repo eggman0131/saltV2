@@ -33,7 +33,9 @@
       "Bash(pnpm provenance:check:*)",
       "Bash(pnpm -r build:*)",
       "Bash(pnpm -F:*)",
-      "Bash(pnpm --filter:*)"
+      "Bash(pnpm --filter:*)",
+      "Bash(node scripts/campaign-land.mjs:*)",
+      "Bash(node /Users/daniel/Projects/salt-vscode/scripts/campaign-land.mjs:*)"
     ]
   },
   "hooks": {

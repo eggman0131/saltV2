@@ -35,7 +35,7 @@ The success condition is a clean tree when Daniel comes back: every issue merged
   - **`gh` absent (a cloud session), and it cannot be made present.** `api.github.com` is refused by the session proxy and `gh` itself by the permission classifier. GitHub is reachable only through the GitHub MCP server. `git push` is unaffected — only the API layer is substituted. What changes: CI is waited on by polling `pull_request_read` on a backgrounded timer rather than `gh pr checks --watch`, which makes it the one blocking wait this command has that no longer blocks inside a single call; heavy-suite conclusions come from the workflow-jobs listing rather than `gh run view --json jobs`, with **empty output → park** unchanged; and `issue_read` strips raw angle brackets from the body it returns, so never "correct" an issue on the strength of what it read back. Record the deviation once in the ledger's **Plan** block and never again. Campaign #1064 established all of this the hard way; do not rediscover it.
 - **Waiting is ending your turn, not running a command.** After you dispatch a worker, a reviewer, a fix agent or a conflict resolver there is nothing for you to do until it returns, so stop — a final line and **no tool call**. A tool call is what keeps a turn open, so a no-op "yield" (`echo hold`, `true`, a bare `sleep`) is not waiting; it is polling at API speed, re-sending the whole campaign context every few seconds. You do not need to poll, because you already armed the wake signals: a background `Agent` re-invokes you when it returns, and the watchdog's `sleep` re-invokes you when it exits. Campaign #1046 had this backwards and ran `echo hold` 1,304 times across eight hours — roughly $600 of cache reads to learn nothing, while its own transcript said "polling just burns turns". The only legitimate blocking wait is one that blocks _inside_ a single call, like `gh pr checks <pr> --watch` while a PR's CI runs.
 - **Never open a shell command with `cd`, and never with a variable assignment.** Use `git -C <worktree>` and absolute paths; for a non-git command that needs a directory, `(cd <path> && …)` only when nothing else will do. The permission allowlist matches command strings, so `cd <path> && cat x && sed -n y` and `W=<path>; grep -rn foo $W/src` match none of the `cat`/`sed`/`grep` entries that would have let each part through unprompted — these two shapes are the largest source of permission stops in this command outside the merge queue, and every one of them blocks the fleet on a human. Redirection counts too: prefer `pnpm test | tail -20` to `pnpm test 2>&1 | tail -20`, since the allowlist carries the plain form. This applies to every brief you write, not just your own calls.
-- **The merge gate reads the whole line, so cleanup may ride with the merge.** `~/.claude/hooks/gh-merge-guard.mjs` splits a merge command into segments, verifies each PR against the queue-eligibility rule below, and clears the rest only if every segment is inspection-only or is the worktree-removal / branch-deletion for a branch that same line is merging. So the **Merge queue** recipe's steps 1 and 2 may be one chained call. What it still stops, correctly: `--admin`, a command substitution, an output redirect, anything piped to another shell, a `git branch -D` for a branch the line is not merging, and any command it does not recognise. Do not try to route around a stop — a stop is the gate telling you the line does something it could not read.
+- **There is one command that lands a branch, and you do not compose around it.** `node scripts/campaign-land.mjs <pr>` — see **Merge queue**. It is allowlisted, it applies the queue-eligibility rule itself, and it derives every path and branch name from the PR. A hand-written `gh pr merge` still works and is still gated by `~/.claude/hooks/gh-merge-guard.mjs`, but that gate can only clear a line it recognises in full, and an agent composing fresh shell each time will always eventually write one it does not. That was ten stopped runs. Use the command.
 
 ## Reporting — five moments, and silence in between
 
@@ -370,17 +370,34 @@ in place — Daniel will want them if he's landing these by hand.
 A branch is queue-eligible when: PR out of draft, review closed with no blocking
 findings outstanding, and its should-fix findings recorded in the ledger.
 
-For each eligible branch:
+**Land every branch with exactly this command, and compose nothing around it:**
 
-1. **Remove the worktree and delete the local branch — before enqueueing.** Git
-   refuses to delete a branch that is checked out in a worktree, so
-   `--delete-branch` fails its local half if the worktree still exists. Cleanup
-   first; the branch is pushed, so nothing is lost, and it can be re-added from
-   the remote if the merge fails.
-2. `gh pr merge <pr> --squash --auto --delete-branch`
-   Squash, because `main` is linear and squash-merged — subjects end `(#PR)`. The
-   per-phase history lives in the issue's handoff comments, which is where run.md
-   put it; git does not need a second copy.
+```
+node scripts/campaign-land.mjs <pr> [--note <file>] [--adjudicated <issue>]
+```
+
+It re-applies the eligibility rule above and refuses a PR that fails it; posts
+`--note` as a PR comment if you give one; removes the worktree; deletes the local
+branch; and enqueues the squash merge. It derives the worktree path and the
+branch name from the PR itself, so there is nothing for you to get wrong — and
+cleanup comes first because git refuses to delete a branch that is checked out,
+which would fail `--delete-branch`'s local half. Squash, because `main` is linear
+and squash-merged: subjects end `(#PR)`, and the per-phase history lives in the
+issue's handoff comments where run.md put it. Exit 0 means enqueued; any other
+exit printed the reason and changed nothing.
+
+`--adjudicated <issue>` is the one escape hatch, and it is the **Review**
+section's rule made mechanical: a blocking finding you judged shippable may
+merge, but only against an issue you have already filed and which is open. No
+issue, no merge.
+
+**Do not build a shell line of your own around this, and do not run the merge
+yourself.** Composing those steps by hand is what cost ten consecutive campaign
+runs a permission stop each: every line came out slightly different, so the merge
+gate could not recognise any of them, and each one blocked the fleet on Daniel.
+One command, one allowlist entry, no prompt. If you want a note posted, write the
+file and pass `--note` — never inline prose into a `--body`, where one backtick
+or quote turns the line back into something the gate has to refuse.
 
 Then watch the queue rather than each PR: `gh pr view <pr> --json state,mergedAt`
 per enqueued PR, or the queue itself at
