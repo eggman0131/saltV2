@@ -20,9 +20,9 @@ import { resolveProductForm, type CanonNaming } from './resolveProductForm.js';
  * (issue #1180) and is required for the same reason it is required there. It
  * does NOT subsume this function's parent guard: the two reject different
  * things. The contested rule asks whether the winning phrase distinguishes its
- * parent from another canon item the TEXT names; this guard asks whether the
- * form's parent is the canon item this ingredient was actually MATCHED to.
- * A form can pass one and fail the other.
+ * parent from another canon item the TEXT names beside it; this guard asks
+ * whether the form's parent is the canon item this ingredient was actually
+ * MATCHED to. A form can pass one and fail the other.
  */
 export function resolveIngredientProductForm(
   itemText: string | null | undefined,

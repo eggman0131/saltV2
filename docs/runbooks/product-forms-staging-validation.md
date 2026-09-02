@@ -78,10 +78,11 @@ per ingredient, in order:
    **Since issue #1180, tier 1 also reads the canon list, and a winning phrase can
    be _refused_.** A phrase is **contested** — and loses — when the ingredient text
    also names a **different** canon item, on at least one word the phrase does not
-   itself cover. That is what stops a form labelled with a bare component word
-   (`Zest`, `Juice`, `Stock`) claiming every parent's version of the same thing:
-   `Zest` filed under Lemon no longer answers "zest of 1 lime". Two consequences
-   worth having in mind while running this book:
+   itself cover, **in the same clause of the line**. That is what stops a form
+   labelled with a bare component word (`Zest`, `Juice`, `Stock`) claiming every
+   parent's version of the same thing: `Zest` filed under Lemon no longer answers
+   "zest of 1 lime". Three consequences worth having in mind while running this
+   book:
 
    - **A refused phrase is not an error state.** The ingredient simply falls
      through to tier 2, which mints the right form on the right parent — so an
@@ -91,6 +92,12 @@ per ingredient, in order:
      list when its canon read fails (Rule 10), which restores exactly the
      pre-#1180 behaviour rather than refusing everything. If tier 1 starts binding
      across parents again, suspect the canon read before the rule.
+   - **A line that lists a second product still binds.** The line is cut into
+     clauses at the joiner words `and`, `or`, `with` and `plus`, and only a rival
+     in the same clause contests — so `200 ml beef stock or water` keeps its
+     `Beef Stock` form rather than losing it to the canon item `Water`. The cut
+     is on those words only: a second product introduced by nothing but a comma
+     is still one clause, and still loses the form.
 
    The words the phrase _does_ cover are excluded deliberately: `100 ml active
 whey` still binds its form despite a canon item called `Whey`, and `cheddar

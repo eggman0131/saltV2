@@ -279,6 +279,55 @@ describe('resolveProductForm — a contested phrase loses', () => {
     expect(resolveProductForm('lemon zest of lime', [long, short], CANON)?.id).toBe('short');
   });
 
+  it('does not let a rival in ANOTHER clause of the line contest anything', () => {
+    // An ingredient line is often a list, and the second thing on it is the next
+    // ingredient, not a competing reading of the first. Without this the fix
+    // refused a CORRECT form on every compound line — "beef stock or water" lost
+    // its Beef Stock form to canon `Water` — and the recipe card grew a false
+    // `missing_form` pip, which is issue #855's symptom.
+    const stock = form('stock', 'Beef Stock', ['beef stock'], 'canon-stock-cube');
+    const canon = [
+      { id: 'canon-stock-cube', name: 'Beef Stock Cube' },
+      { id: 'canon-water', name: 'Water' },
+    ];
+    for (const joiner of ['or', 'and', 'with', 'plus']) {
+      expect(resolveProductForm(`200 ml beef stock ${joiner} water`, [stock], canon)?.id).toBe(
+        'stock',
+      );
+    }
+  });
+
+  it('is NOT adjacency — a rival further along the SAME clause still contests', () => {
+    // The distinction the clause rule turns on, and the reason a "must be next to
+    // the phrase" rule was not enough: the reported defect carries its rival two
+    // tokens from the phrase ("zest of 1 lime"), and a real line will happily put
+    // an adjective in between. Neither has a joiner in it, so neither is a list.
+    expect(resolveProductForm('zest of 1 unwaxed lime', [zest], CANON)).toBeNull();
+    expect(resolveProductForm('finely grated zest of 2 unwaxed limes', [zest], CANON)).toBeNull();
+  });
+
+  it('KNOWN LIMIT — a comma cannot cut a clause, because normaliseName ate it', () => {
+    // The boundary of the clause half of the rule, pinned rather than implied.
+    // `normaliseName` deletes punctuation before this function sees a token, so
+    // only joiner WORDS can cut. A line whose second product is introduced by
+    // nothing but a comma stays one clause and still loses its form.
+    expect(resolveProductForm('lime zest, sugar', [zest], CANON)).toBeNull();
+    expect(resolveProductForm('lemon zest, and lime', [zest], CANON)?.id).toBe('lemon-zest');
+  });
+
+  it('does not cut a phrase off from its own words at a joiner it spans', () => {
+    // A matcher may legitimately contain a joiner. The cut is made between
+    // clauses, never inside the phrase that won, so a rival sitting right beside
+    // such a phrase is still in play.
+    const mix = form('mix', 'Salt and pepper', [], 'canon-seasoning');
+    const canon = [
+      { id: 'canon-seasoning', name: 'Seasoning' },
+      { id: 'canon-lime', name: 'Lime' },
+    ];
+    expect(resolveProductForm('salt and pepper', [mix], canon)?.id).toBe('mix');
+    expect(resolveProductForm('lime salt and pepper', [mix], canon)).toBeNull();
+  });
+
   it('ignores a canon item whose name normalises away to nothing', () => {
     // `normaliseName` strips digit and word-number tokens, so a canon item called
     // "2" or "400g" folds to the empty string. It names nothing, so it must
@@ -322,11 +371,17 @@ describe('resolveProductForm — a contested phrase loses', () => {
 // collides with one of their phrases. Staging was refreshed wholesale from
 // production on 2026-08-30, so this is production's table.
 //
-// Its job is to make "the contested rule changes nothing that is live" MECHANICAL
-// rather than asserted in a PR body (Hard rule 12). Measured over these 37 probes
-// — every canon name here plus 20 realistic ingredient phrasings — exactly TWO
-// answers change, and both are named below with why they are safe. Every other
-// row is identical before and after.
+// Its job is to make the rule's effect on live data MECHANICAL rather than
+// asserted in a PR body (Hard rule 12) — and the claim is stated with the corpus
+// it was measured over, because the first version of it was not. Swept against
+// staging on 2026-09-02: all 301 canon names, plus the `parsed.item` and the
+// `rawText` of every ingredient of every live recipe (540 each), 1381 probes.
+// Exactly TWO answers change, both named below with why they are safe.
+//
+// The 20 hand-written phrasings in this block walk the table row by row; they do
+// NOT contain a compound ingredient line, which is the only shape the contested
+// rule can trip on. That shape is pinned in its own block below, with the same
+// live forms and the real canon rows it lists.
 describe('resolveProductForm — live staging table, 2026-09-02', () => {
   const BEETROOT = '924d02cb-3580-4a28-a63f-f9b4df8d4a3a';
   const BEEF_STOCK_CUBE = 'aa65d8cc-8f51-4721-9b40-bb8eb695e0e6';
@@ -385,6 +440,13 @@ describe('resolveProductForm — live staging table, 2026-09-02', () => {
     { id: '800a1385-a54f-4d97-a691-a4528d8a63be', name: 'Chicken Stock' },
     { id: '1acd63b5-6dba-474a-b884-41c0416dbf8e', name: 'Bottled Lime Juice' },
     { id: 'da287ad0-1f2e-4bad-98d4-4dea9709270e', name: 'Bottled Lemon Juice' },
+    // The pantry staples an ingredient line lists alongside something else.
+    { id: '920be4fb-f033-49b2-99bc-48bc4c5d65d8', name: 'Water' },
+    { id: 'fcdd0985-c79a-4dff-bb13-3ec3191803ca', name: 'Salt' },
+    { id: '6992a242-732f-47e0-8d5e-cd019c93328a', name: 'Sugar' },
+    { id: 'c2fe5e46-89d8-4259-8daf-833ff6d51f57', name: 'Ginger' },
+    { id: '5905130c-e813-4efe-a00c-67954116fdb5', name: 'Olive Oil' },
+    { id: 'a7fdfdb4-0810-45be-8168-7845bdaf8e9a', name: 'Soy Sauce' },
   ];
 
   it.each([
@@ -445,12 +507,60 @@ describe('resolveProductForm — live staging table, 2026-09-02', () => {
     // the Lime-juice form (parent Lime) was claiming it on the bare phrase
     // "lime juice" while the word "bottled" named nobody it covered.
     //
-    // No user reaches the old answer. In the recipe flow the exact-canon
-    // precheck settles this text before forms are consulted at all; at the
-    // four display sites the form's parent is not the row's own canon item, so
-    // the parent guard already turned it into null. The change is real, and it
-    // is confined to code paths that were discarding the answer anyway.
+    // No user reaches the old answer, and saying so takes nine read sites, not
+    // the four an earlier draft of this comment counted:
+    //
+    //   - the recipe flow's binding sites, where the exact-canon precheck settles
+    //     both of these texts before forms are consulted at all;
+    //   - SIX parent-guarded read sites — `recipeService`, `ShoppingItemRow`,
+    //     `IngredientMatchSheet`, `matchIssues`, `cookIngredientIcons` and
+    //     `resolveIngredientProductForm` itself — where the form's parent is not
+    //     the row's own canon item, so the guard already turned the old answer
+    //     into null;
+    //   - THREE with NO parent guard, which the earlier draft skipped: the
+    //     `isDerivedName` closures in `canonicaliseRecipeIngredients`,
+    //     `matchOrCreateCanon` and `canonService`, where a changed answer flips
+    //     `appendCanonSynonym` from refusing a synonym to recording one. Both
+    //     changed strings are canon names, so `findExactCanonMatch` settles them
+    //     first — and the 1381-probe sweep turned up no string that is NOT a
+    //     canon name whose answer moves, which is the only way anything could
+    //     reach these three.
     expect(resolveProductForm(text, live, NO_CANON)?.id).toBe(wasFormId);
     expect(resolveProductForm(text, live, canon)).toBeNull();
+  });
+
+  // COMPOUND INGREDIENT LINES — the shape the 20 phrasings above cannot reach,
+  // and the one the contested rule breaks if it is not read clause by clause.
+  // Every line here is an ordinary recipe line, every rival named in it is a live
+  // staging canon row (`Water`, `Salt`, `Sugar`, `Ginger`, `Olive Oil`, `Soy
+  // Sauce`, `Lemon`), and in each of them the rival is the NEXT ingredient rather
+  // than a competing reading of the phrase that won. The parent guard cannot save
+  // these — the form's parent IS the line's own canon item — so a refusal here
+  // costs the shopping rollup entry, the cook icon and the form count, and raises
+  // a false `missing_form` pip: issue #855's symptom, re-created by its fix.
+  it.each([
+    ['200 ml beef stock or water', '33ac24ec'],
+    ['3 garlic cloves, finely chopped with salt', '52ed003a'],
+    ['egg yolk and sugar', '88dd1d36'],
+    ['garlic cloves and ginger', '52ed003a'],
+    ['chicken thighs with lemon', 'fb35624f'],
+    ['2 tbsp lemon juice and olive oil', '4b5bd723'],
+    ['30 ml lime juice and soy sauce', 'db512d77'],
+  ])('keeps form %s on %j, which lists a second product', (text, id) => {
+    expect(resolveProductForm(text, live, NO_CANON)?.id).toBe(id);
+    expect(resolveProductForm(text, live, canon)?.id).toBe(id);
+  });
+
+  it('KNOWN LIMIT — a comma is not a clause break, because it is gone by then', () => {
+    // `normaliseName` deletes punctuation before `resolveProductForm` sees a
+    // token, so the cut can only be made on joiner WORDS. A line that lists its
+    // second product with nothing but a comma is still one clause, and still
+    // loses its form. Stated rather than rounded up (Hard rule 12): swept over
+    // the 1381 live probes this costs nothing — no live `rawText` lists two
+    // products that way — but the synthetic shape does exist.
+    expect(resolveProductForm('30 ml lime juice, soy sauce', live, NO_CANON)?.id).toBe('db512d77');
+    expect(resolveProductForm('30 ml lime juice, soy sauce', live, canon)).toBeNull();
+    // The same line with a joiner word keeps its form.
+    expect(resolveProductForm('30 ml lime juice and soy sauce', live, canon)?.id).toBe('db512d77');
   });
 });
