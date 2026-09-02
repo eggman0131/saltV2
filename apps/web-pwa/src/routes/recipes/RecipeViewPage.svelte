@@ -2727,7 +2727,25 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
                  Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
                  rhythm is unbroken and `last:border-b-0` still means the last line
-                 on screen. -->
+                 on screen. That flat structure is a LAYOUT choice, and it is why
+                 the nesting has to be said in words as well (#1182): a screen
+                 reader walking this list is handed siblings, and `pl-12` plus
+                 `text-muted-foreground` are pixels, not structure. The accessory
+                 row's `aria-label` is what carries the relationship — "Rice
+                 Spoon, part of Cosori 5L Rice Cooker" — so the row is announced
+                 as belonging to the appliance above it rather than as an
+                 unrelated peer.
+
+                 `aria-label` rather than a nested `<ul>` or visually-hidden text,
+                 for two reasons: a nested list is the thing that would break
+                 `last:border-b-0` (the last accessory would be last in ITS list,
+                 not on screen), and hidden text inside the row would land in
+                 `textContent`, where several of this page's tests read the row's
+                 words from. It is an ADDITION to the accessible name, never a
+                 replacement: the visible label is its first words, so nothing a
+                 sighted user reads goes missing from what is announced.
+                 `RecipeViewPage.kit.test.ts` asserts it through
+                 `getByRole('listitem', { name })`, never through the class. -->
             {#if kit.length > 0}
               <TabsContent value="equipment">
                 <Card>
@@ -2758,6 +2776,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                           <li
                             class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
                             data-testid="recipe-kit-accessory-row"
+                            aria-label="{accessory.label}, part of {group.entry.label}"
                           >
                             <div class="flex h-10 w-10 shrink-0 items-center justify-center">
                               {#if $kitIcons.kitIconFor(accessory.label)}
