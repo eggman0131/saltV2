@@ -24,6 +24,9 @@
   import { currentMember } from '../../lib/membersService.js';
   import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
   import { canonIndex, matchMarkersReady } from '../../lib/canonIndex.js';
+  import { recipePhasesGate } from '../../lib/featureGate.js';
+  import { formatMinutes } from '../../lib/durationDisplay.js';
+  import { phaseMinutes } from './recipeTiming.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     KIND_COPY,
@@ -40,6 +43,35 @@
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
+  }
+
+  // ─── How long it takes, on the card and in the sort (issue #1122) ────────────
+  // The phase sum where there is a strip, `totalTimeMinutes` where there is not —
+  // one rule shared with the recipe page, the component rows and the cook plan
+  // (`recipeTiming.ts`), so a recipe cannot read 45 min here and 2 hr there.
+  //
+  // The chip and the sort go through the SAME function on purpose: a list sorted
+  // Quickest by one number and labelled with another is a list that looks broken,
+  // and that was the state the three stored fields left it in.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+
+  function cardMinutes(recipe: Recipe): number | null {
+    return phaseMinutes(recipe, phasesEnabled) ?? recipe.metadata.totalTimeMinutes;
+  }
+
+  // Untimed recipes sort last, exactly as they did when the sort read one field.
+  function quickestMinutes(recipe: Recipe): number {
+    return cardMinutes(recipe) ?? Infinity;
+  }
+
+  // Phases get the app's duration vocabulary; the fallback keeps the raw `n min`
+  // spelling the card has always had, so with the key off the card is unchanged.
+  function cardTimeLabel(recipe: Recipe): string | null {
+    const phase = phaseMinutes(recipe, phasesEnabled);
+    if (phase !== null) return formatMinutes(phase);
+    return recipe.metadata.totalTimeMinutes === null
+      ? null
+      : `${recipe.metadata.totalTimeMinutes} min`;
   }
 
   // ─── Silent match problems (the card pip) ────────────────────────────────────
@@ -202,9 +234,7 @@
           case 'recent':
             return b.createdAt.localeCompare(a.createdAt);
           case 'quickest':
-            return (
-              (a.metadata.totalTimeMinutes ?? Infinity) - (b.metadata.totalTimeMinutes ?? Infinity)
-            );
+            return quickestMinutes(a) - quickestMinutes(b);
           case 'fewest':
             return ingredientCount(a) - ingredientCount(b);
           case 'title':
@@ -710,10 +740,10 @@
                 <div
                   class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                 >
-                  {#if recipe.metadata.totalTimeMinutes !== null}
+                  {#if cardTimeLabel(recipe) !== null}
                     <span class="inline-flex items-center gap-1">
                       <Icon name="Clock" size={12} />
-                      {recipe.metadata.totalTimeMinutes} min
+                      {cardTimeLabel(recipe)}
                     </span>
                   {/if}
                   {#if recipe.metadata.servings !== null}

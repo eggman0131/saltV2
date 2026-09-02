@@ -154,6 +154,37 @@ handsOffMinutes`, summed by `packages/domain/src/recipe/queries/recipePhaseTotal
   neither, and `recipePhaseTotals` is the one funnel that turns absent, empty and
   populated into a single answer. Never reach for `metadata.phases.length`.
 
+### How the strip is DRAWN, and where each screen gets its figure (issue #1122)
+
+`apps/web-pwa/src/routes/recipes/RecipePhaseTimeline.svelte` is the only drawing of
+`metadata.phases` in the app: an ordered block per phase, hands-on solid against
+hands-off pale, with a legend beneath carrying every phase's name, its elapsed time
+and its split in words. The bar is `aria-hidden` decoration and nothing on it
+depends on colour — the same contract the #878 ribbon states, met again for the
+same reason.
+
+**The drawing is not to scale, on purpose.** A hands-off stretch is drawn at most
+`WAIT_CAP_MINUTES` (60) wide and the block is marked as shortened, so an overnight
+prove is a marked gap rather than a bar that squashes everything else to a
+hairline. Hands-on is never capped. The rule and its arithmetic are
+`routes/recipes/phaseTimeline.ts`, split out of the component so it can be tested
+in numbers rather than in pixels; the legend always states the true figure, so the
+compression costs the reader nothing.
+
+**Every other surface asks `routes/recipes/recipeTiming.ts`.** `phaseMinutes` is the
+one place that decides when the strip answers "how long does this take" and when
+the old fields still do — the recipe list's chip and its Quickest sort, the "Made
+from" rows on the view and edit pages, and the meal cook plan's per-dish line all
+go through it, so a recipe cannot read 45 min on one screen and 13 hr on another.
+It returns `null` with the feature key off and for a recipe with no strip, which is
+what makes a part-backfilled library read correctly everywhere. Note the boundary
+until phase 4: only the LINE a surface shows moves onto the phase sum this phase —
+the ORDERING beside it does not. The cook plan's START CLOCK still comes from
+`scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are still
+positioned by `insertComponentByCookTime` reading the same field, so with the key
+on a component can display a phase sum while sorting — or starting — as if the old
+field still ran the show (#1205 review, should-fix 4).
+
 The definition the model is given lives in `TIME_RULES`
 (`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
 own definitions, so all four authoring paths — librarian, URL import, photo import,

@@ -66,6 +66,8 @@
   import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
   import IngredientMatchSheet from './IngredientMatchSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
+  import RecipePhaseTimeline from './RecipePhaseTimeline.svelte';
+  import { phaseMinutes } from './recipeTiming.js';
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
   import { chatsForRecipe } from './recipeChats.js';
@@ -88,7 +90,6 @@
     recipeHeroUrl,
     cookShape,
     recipePhaseTotals,
-    phaseElapsedMinutes,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
     flattenIngredients,
@@ -431,6 +432,35 @@
     readonly testId?: string;
   }
 
+  // The phase strip (issue #1122). Gated, and the gate is deliberately BOTH
+  // halves: a recipe with no phases stored yet renders exactly as it does today
+  // whether the flag is on or off, which is what makes this invisible to a library
+  // that has not been backfilled.
+  //
+  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
+  // once, here, and everything below reads that list — the template never asks the
+  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
+  //
+  // It is declared ABOVE `facts` because `facts` now reads it: the three duration
+  // chips are what the timeline replaces, so a recipe with a strip stops showing
+  // them and one without keeps them. `hasPhases` is the whole of that condition —
+  // it is false with the key off, and false for an un-backfilled recipe, so both
+  // fallbacks are the same fallback.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
+  const phaseTotals = $derived(recipePhaseTotals(phases));
+
+  // A component row's time. The phase sum when the component has a strip, its
+  // stored cook time otherwise — and the fallback keeps the raw `n min` spelling
+  // it has always had, so with the key off this row is byte-for-byte what it was.
+  function componentTimeLabel(component: Recipe): string | null {
+    const minutes = phaseMinutes(component, phasesEnabled);
+    if (minutes !== null) return formatMinutes(minutes);
+    return component.metadata.cookTimeMinutes === null
+      ? null
+      : `${component.metadata.cookTimeMinutes} min`;
+  }
+
   const facts = $derived.by((): RecipeFact[] => {
     if (!recipe) return [];
     const out: RecipeFact[] = [];
@@ -457,28 +487,36 @@
           tone: 'secondary',
         });
       }
-      if (m.prepTimeMinutes !== null) {
-        out.push({
-          key: 'prep',
-          icon: 'Timer',
-          label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
-          tone: 'primary',
-        });
-      }
-      if (m.cookTimeMinutes !== null) {
-        out.push({
-          key: 'cook',
-          icon: 'Flame',
-          label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
-          tone: 'tertiary',
-        });
-      }
-      if (m.totalTimeMinutes !== null) {
-        out.push({
-          key: 'total',
-          icon: 'Clock',
-          label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
-        });
+      // Prep / Cook / Total, or nothing. A recipe with a phase strip has its
+      // timing on the timeline a few lines below — and #1122's whole complaint is
+      // two accounts of the same fact side by side, so these three come off rather
+      // than sitting above it. There is no phase-derived chip in their place: the
+      // timeline states its own total, and a chip repeating it would be the same
+      // defect at a smaller scale.
+      if (!phaseTotals.hasPhases) {
+        if (m.prepTimeMinutes !== null) {
+          out.push({
+            key: 'prep',
+            icon: 'Timer',
+            label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
+            tone: 'primary',
+          });
+        }
+        if (m.cookTimeMinutes !== null) {
+          out.push({
+            key: 'cook',
+            icon: 'Flame',
+            label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
+            tone: 'tertiary',
+          });
+        }
+        if (m.totalTimeMinutes !== null) {
+          out.push({
+            key: 'total',
+            icon: 'Clock',
+            label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
+          });
+        }
       }
     }
     // Provenance is a fact about the document rather than about the dish, and it
@@ -498,18 +536,6 @@
   // Every judgement about what counts as a wait and how the waits are named is
   // in the pure domain query; the page only turns minutes into widths.
   const shape = $derived(recipe ? cookShape(recipe) : null);
-
-  // The phase strip (issue #1122), in its plain-text first form. Gated, and the
-  // gate is deliberately BOTH halves: a recipe with no phases stored yet renders
-  // exactly as it does today whether the flag is on or off, which is what makes
-  // this phase invisible to a library that has not been backfilled.
-  //
-  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
-  // once, here, and everything below reads that list — the template never asks the
-  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
-  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
-  const phaseTotals = $derived(recipePhaseTotals(phases));
 
   function segmentPercent(segment: CookShapeSegment): number {
     if (!shape || shape.totalMinutes <= 0) return 0;
@@ -2038,53 +2064,32 @@
                   {/each}
                 </div>
               {/if}
-              <!-- The phase strip (issue #1122), plain text for now — the drawn
-                   timeline replaces this block in phase 2. It sits ABOVE the #878
+              <!-- The planning timeline (issue #1122). It sits ABOVE the #878
                    ribbon rather than replacing it: while the gate exists the two
-                   coexist, and the ribbon (with the Prep/Cook/Total chips above)
-                   is what everyone outside the test group still sees.
-                   Elapsed per phase is `handsOn + handsOff`, computed here and
-                   never stored — `phaseElapsedMinutes` is the one implementation. -->
+                   coexist, and the ribbon is what everyone outside the test group
+                   still sees. The ribbon and its Prep/Cook/Total chips go in phase
+                   4, together with the three fields they read.
+                   Everything drawn and every figure shown is derived inside the
+                   component from this list — nothing is passed in pre-summed. -->
               {#if phaseTotals.hasPhases}
-                <div class="flex flex-col gap-1.5" data-testid="recipe-phases">
-                  {#if recipe.metadata.timingSummary}
-                    <p class="text-xs text-muted-foreground" data-testid="recipe-timing-summary">
-                      {recipe.metadata.timingSummary}
-                    </p>
-                  {/if}
-                  <ol class="flex flex-col gap-1 text-xs text-muted-foreground">
-                    <!-- Unkeyed for the reason the ribbon's segments are: the list is
-                         re-derived whole from the recipe, and two phases may honestly
-                         share a label ("Rest" twice). Position is the identity. -->
-                    {#each phases as phase, i}
-                      <li class="flex flex-wrap items-baseline gap-x-2">
-                        <span class="font-medium text-foreground">{phase.label}</span>
-                        <span class="tabular-nums">{formatMinutes(phaseElapsedMinutes(phase))}</span
-                        >
-                        <span class="tabular-nums"
-                          >{formatMinutes(phase.handsOnMinutes)} hands-on ·
-                          {formatMinutes(phase.handsOffMinutes)} hands-off</span
-                        >
-                      </li>
-                    {/each}
-                  </ol>
-                  <p class="text-xs text-muted-foreground">
-                    <span class="font-medium text-foreground"
-                      >{formatMinutes(phaseTotals.elapsedMinutes)}</span
-                    >
-                    start to finish ·
-                    <span class="font-medium text-foreground"
-                      >{formatMinutes(phaseTotals.handsOnMinutes)}</span
-                    >
-                    hands-on
-                  </p>
-                </div>
+                <RecipePhaseTimeline
+                  {phases}
+                  timingSummary={recipe.metadata.timingSummary ?? null}
+                />
               {/if}
               <!-- The shape of the cook (issue #878): how long, how much of it is you,
                    and where the waiting goes — answered before a single step is read.
                    The bar is decoration and says so; the legend beneath it carries the
-                   whole of the information, so nothing here depends on colour. -->
-              {#if shape}
+                   whole of the information, so nothing here depends on colour.
+
+                   `!phaseTotals.hasPhases` joins the gate (#1205 review, blocking 1):
+                   `shape.totalMinutes`/`handsOnMinutes` come from `cookShape`, which reads
+                   the old prep/cook/total fields and any step timer — a different sum than
+                   `RecipePhaseTimeline`'s `recipe-phase-totals` line above, which reads the
+                   phases. A recipe with a phase strip already stated this sentence once;
+                   printing the ribbon's version too would be #1122's own defect (two
+                   accounts of the same fact) reproduced on the page built to fix it. -->
+              {#if shape && !phaseTotals.hasPhases}
                 <div class="flex flex-col gap-1.5" data-testid="recipe-cook-shape">
                   <p class="text-xs text-muted-foreground">
                     <span class="font-medium text-foreground"
@@ -2256,13 +2261,13 @@
                         </span>
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="truncate text-sm font-medium">{component.title}</span>
-                          {#if component.metadata.cookTimeMinutes !== null}
+                          {#if componentTimeLabel(component) !== null}
                             <span
                               class="inline-flex items-center gap-1 text-xs text-muted-foreground"
                               data-testid="recipe-component-cook-time"
                             >
                               <Icon name="Clock" size={12} />
-                              {component.metadata.cookTimeMinutes} min
+                              {componentTimeLabel(component)}
                             </span>
                           {/if}
                         </span>
