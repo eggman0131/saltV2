@@ -141,9 +141,15 @@ test.describe('the side navigation folds away', () => {
 
   // Phase 2. The planner caps each of its two columns at 540px and centres the
   // pair, so before this change the reclaimed 256px became centring margin and
-  // the toggle visibly did nothing on this one page. `lg:max-w-none` lifts the
-  // cap above `lg` only — above `lg` there is no crease for the gutter to sit on
-  // — which is why `mealplan-split.spec.ts`, at 755px, cannot see this at all.
+  // the toggle visibly did nothing on this one page. The cap is now `max-lg:`-
+  // scoped, so it stops at `lg` — above `lg` there is no crease for the gutter to
+  // sit on — which is why `mealplan-split.spec.ts`, at 755px, cannot see this.
+  //
+  // This assertion is also the pin for HOW the cap is scoped. It first went red
+  // against an `lg:max-w-none` override, which reads correct and does nothing:
+  // Tailwind emits the `split:` utilities after the `lg:` ones at equal
+  // specificity, so at a width matching both, the `split:` rule wins on source
+  // order. Anything that reinstates a later-losing override brings it back red.
   test('the planner’s two columns take the reclaimed space, and stay equal', async ({
     page,
   }, testInfo) => {

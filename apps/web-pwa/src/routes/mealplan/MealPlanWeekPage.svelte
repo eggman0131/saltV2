@@ -941,8 +941,8 @@
          540px ceiling below still binds: the pair stops growing and sits centred
          with even space each side, while "Meal plan" and "Load template" stay
          exactly where they are on every other page — they are ListPage's header,
-         above this box. Above `lg` the ceiling is lifted (see the two columns
-         below), so both children are unbounded `flex-1` and fill the row; there is
+         above this box. Above `lg` the ceiling no longer applies (see the two
+         columns below), so both are unbounded `flex-1` and fill the row; there is
          no free space left to distribute and `justify-center` is inert. It stays
          because it is what centres the pair on the fold, which is the size it was
          written for.
@@ -953,17 +953,24 @@
       <!-- The week, at exactly the size a phone gives it. `max-w-[540px]` is the
            ceiling it shares with the pane, so between the fold and `lg` the week
            does not stretch into something the day cards were never drawn for.
-           `lg:max-w-none` lifts that ceiling from `lg` up (#1143, Phase 2). The cap
-           exists to hold the 40px gutter over a Pixel 9 Pro Fold's crease and to
-           keep day cards at phone width; above `lg` there is no crease and no fold,
-           so the reason for it does not apply and the reclaimed width would
-           otherwise become centring margin — most visibly when the side navigation
-           is collapsed, which would then look like a control that does nothing on
-           this one page. Identical argument, and identical shape, to
-           `RecipeViewPage`'s own `lg:` override of its `split:` grid. The pane
-           below lifts it in the same breath, so the two columns stay equal. -->
+           `max-lg:` stops that ceiling at `lg` (#1143, Phase 2). The cap exists to
+           hold the 40px gutter over a Pixel 9 Pro Fold's crease and to keep day
+           cards at phone width; above `lg` there is no crease and no fold, so the
+           reason for it does not apply and the reclaimed width would otherwise
+           become centring margin — most visibly when the side navigation is
+           collapsed, which would then look like a control that does nothing on this
+           one page.
+           It is spelled as a NARROWED `split:` rather than as a separate
+           `lg:max-w-none` override, and that is not a style preference. Tailwind
+           emits the `split:` utilities AFTER the `lg:` ones, and both are
+           single-class selectors, so at a width matching both media queries the
+           `split:` rule wins on source order — an `lg:` override of a `split:`
+           class is silently dead. That is not a new breakpoint: `max-lg` is the
+           standard `lg` seam read from the other side, and below `lg` this compiles
+           to exactly the media query it compiled to before, which is why
+           `mealplan-split.spec.ts` at 755px cannot see the change. -->
       <div
-        class="flex min-h-0 flex-1 flex-col split:min-w-0 split:max-w-[540px] lg:max-w-none"
+        class="flex min-h-0 flex-1 flex-col split:min-w-0 split:max-lg:max-w-[540px]"
         data-testid="week-column"
       >
         <div class="flex items-center justify-between gap-2" data-testid="week-nav">
@@ -1142,12 +1149,13 @@
            flex child carrying its own border and padding ends up exactly that much
            wider than its bare sibling — and equal halves are what put the gutter on
            the crease. Chrome on the inner div costs the outer box nothing.
-           `lg:max-w-none` lifts the shared 540px ceiling from `lg` up, in step with
-           the week column (#1143, Phase 2) — above `lg` there is no crease to hold
-           the gutter over, and lifting only one of the pair would break the equal
-           halves the gutter depends on below it. -->
+           `max-lg:` stops the shared 540px ceiling at `lg`, in step with the week
+           column (#1143, Phase 2) — above `lg` there is no crease to hold the gutter
+           over, and narrowing only one of the pair would break the equal halves the
+           gutter depends on below it. See the week column for why the ceiling is
+           narrowed in place rather than overridden by a later `lg:` class. -->
       <aside
-        class="hidden min-h-0 split:flex split:min-w-0 split:flex-1 split:max-w-[540px] split:flex-col lg:max-w-none"
+        class="hidden min-h-0 split:flex split:min-w-0 split:flex-1 split:flex-col split:max-lg:max-w-[540px]"
         aria-label="Selected day"
         data-testid="day-pane"
       >
