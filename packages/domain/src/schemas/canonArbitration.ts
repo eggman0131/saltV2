@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SHOPPING_BEHAVIORS, CANON_ITEM_UNITS } from '@salt/shared-types';
 
 export const ArbitrationRequestSchema = z.object({
   normalisedName: z.string(),
@@ -18,15 +19,17 @@ export const ArbitrationRequestSchema = z.object({
 // flow output can no longer drift from the port contract behind an `as unknown`
 // cast. `prompt`/`rawResponse` are optional telemetry the flow always populates
 // but consumers treat as best-effort (`?? ''`). `shoppingBehavior`/`unit` mirror
-// `ShoppingBehavior`/`CanonItemUnit` from `@salt/shared-types`.
+// `ShoppingBehavior`/`CanonItemUnit`, derived from the `SHOPPING_BEHAVIORS`/
+// `CANON_ITEM_UNITS` tuples in `@salt/shared-types`, which every `z.enum` below
+// draws from directly.
 export const ArbitrationResultSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('match'),
     itemId: z.string(),
     confidence: z.number(),
-    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    shoppingBehavior: z.enum(SHOPPING_BEHAVIORS),
     largeQuantityThreshold: z.number().optional(),
-    unit: z.enum(['g', 'ml', 'count']).optional(),
+    unit: z.enum(CANON_ITEM_UNITS).optional(),
     reasoning: z.string().optional(),
     prompt: z.string().optional(),
     rawResponse: z.string().optional(),
@@ -35,9 +38,9 @@ export const ArbitrationResultSchema = z.discriminatedUnion('kind', [
     kind: z.literal('new'),
     canonName: z.string(),
     aisleId: z.string().nullable(),
-    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    shoppingBehavior: z.enum(SHOPPING_BEHAVIORS),
     largeQuantityThreshold: z.number().optional(),
-    unit: z.enum(['g', 'ml', 'count']).optional(),
+    unit: z.enum(CANON_ITEM_UNITS).optional(),
     reasoning: z.string().optional(),
     prompt: z.string().optional(),
     rawResponse: z.string().optional(),
@@ -58,8 +61,8 @@ export const CanonArbitrationAIOutputSchema = z.object({
   match_id: z.string().nullable(),
   canonical_name: z.string().nullable(),
   aisle_name: z.string().nullable(),
-  shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+  shoppingBehavior: z.enum(SHOPPING_BEHAVIORS),
   largeQuantityThreshold: z.number().nullable(),
-  unit: z.enum(['g', 'ml', 'count']).nullable(),
+  unit: z.enum(CANON_ITEM_UNITS).nullable(),
   reasoning: z.string(),
 });

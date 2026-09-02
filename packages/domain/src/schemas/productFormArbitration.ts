@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CANON_ITEM_UNITS } from '@salt/shared-types';
 
 // Product-form arbitration (issue #500, Phase 3). When a recipe ingredient does
 // NOT resolve to an existing product form and does NOT match a buyable canon item
@@ -46,7 +47,7 @@ export const ProductFormArbitrationAIOutputSchema = z.object({
   // Human-facing label for the form.
   label: z.string().nullable(),
   // Yield: how much of form_unit ONE parent produces.
-  form_unit: z.enum(['g', 'ml', 'count']).nullable(),
+  form_unit: z.enum(CANON_ITEM_UNITS).nullable(),
   amount_per_parent: z.number().nullable(),
   reasoning: z.string(),
 });
@@ -64,7 +65,7 @@ export const ProductFormProposalSchema = z.discriminatedUnion('kind', [
     parentName: z.string(),
     matcher: z.string(),
     label: z.string(),
-    formUnit: z.enum(['g', 'ml', 'count']),
+    formUnit: z.enum(CANON_ITEM_UNITS),
     amountPerParent: z.number(),
   }),
   z.object({ kind: z.literal('none') }),
