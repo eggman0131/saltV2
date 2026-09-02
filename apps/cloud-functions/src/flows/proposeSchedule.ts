@@ -7,7 +7,6 @@ import {
   ProposeScheduleAIOutputSchema,
   ProposeScheduleOutputSchema,
   PROPOSE_SCHEDULE_AI_TIMEOUT_MS,
-  RecipeSchema,
   type ComponentAdjustment,
   type Formula,
   type ProcessStage,
@@ -20,6 +19,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { STAGE_KIND_RULES } from './extractProcessStages.js';
+import { requireRecipeFrom } from './loadRecipe.js';
 
 // proposeSchedule (issue #812, phase 2 of epic #778). The PROPOSAL tier: takes a
 // formula's reference process and a time the household wants to eat, and returns a
@@ -201,14 +201,10 @@ export const proposeScheduleFlow = ai.defineFlow(
       db.collection('formulas').doc(recipeId).get(),
     ]);
 
-    if (!recipeSnap.exists) {
-      throw new HttpsError('not-found', "That recipe doesn't exist.");
-    }
-    // Both are trust boundaries (Firestore reads), so both are validated.
-    const recipe = RecipeSchema.safeParse(recipeSnap.data());
-    if (!recipe.success) {
-      throw new HttpsError('failed-precondition', "That recipe can't be read.");
-    }
+    // Both are trust boundaries (Firestore reads), so both are validated — the
+    // recipe's half by the helper the sibling flows share, the formula's here
+    // because only this flow reads one.
+    const recipe = requireRecipeFrom(recipeSnap);
     if (!formulaSnap.exists) {
       throw new HttpsError('failed-precondition', "That recipe doesn't have a formula yet.");
     }
@@ -238,7 +234,7 @@ export const proposeScheduleFlow = ai.defineFlow(
           model,
           system: PROPOSE_SCHEDULE_SYSTEM,
           prompt: promptFor(
-            recipe.data,
+            recipe,
             formula.data,
             process,
             targetEndAtLocal,
@@ -289,7 +285,7 @@ export const proposeScheduleFlow = ai.defineFlow(
     // an uncited stage renders as an addition in the review, which is honest — we
     // cannot say what it came from.
     const stageIds = new Set(process.map((stage) => stage.id));
-    const stepIds = new Set(recipe.data.steps.map((step) => step.id));
+    const stepIds = new Set(recipe.steps.map((step) => step.id));
     const stages = parsed.data.stages.map((stage) => ({
       ...stage,
       sourceStageId:

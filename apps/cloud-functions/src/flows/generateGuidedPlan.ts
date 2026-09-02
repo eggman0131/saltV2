@@ -1,15 +1,13 @@
-import { getFirestore } from 'firebase-admin/firestore';
-import { HttpsError } from 'firebase-functions/https';
 import {
   GenerateGuidedPlanInputSchema,
   GenerateGuidedPlanAIOutputSchema,
   GenerateGuidedPlanOutputSchema,
-  RecipeSchema,
   type RecipeDoc,
 } from '@salt/domain/schemas';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
+import { requireRecipe } from './loadRecipe.js';
 import { GUIDED_PREP_RULES, GUIDED_STEP_NOTE_RULES } from './stepRules.js';
 
 // generateGuidedPlan (issue #751, Phase 1). Writes the GUIDED PLAN for one recipe:
@@ -84,16 +82,7 @@ export const generateGuidedPlanFlow = ai.defineFlow(
     outputSchema: GenerateGuidedPlanOutputSchema,
   },
   async ({ recipeId }) => {
-    const db = getFirestore();
-    const snap = await db.collection('recipes').doc(recipeId).get();
-    if (!snap.exists) {
-      throw new HttpsError('not-found', "That recipe doesn't exist.");
-    }
-    // A trust boundary (a Firestore read), so it is validated like every other.
-    const recipe = RecipeSchema.safeParse(snap.data());
-    if (!recipe.success) {
-      throw new HttpsError('failed-precondition', "That recipe can't be read.");
-    }
+    const recipe = await requireRecipe(recipeId);
 
     // The `pro` role, and deliberately so: cue quality IS the feature. A wrong
     // sensory cue is worse than no cue (it tells the cook to wait for something
@@ -108,7 +97,7 @@ export const generateGuidedPlanFlow = ai.defineFlow(
         ai.generate({
           model,
           system: GUIDED_PLAN_SYSTEM,
-          prompt: promptFor(recipe.data),
+          prompt: promptFor(recipe),
           output: { schema: GenerateGuidedPlanAIOutputSchema },
           // Not zero: a cue is a description of a pan, and temperature 0 writes
           // the same four stock phrases for every dish. Low enough that it stays
@@ -129,7 +118,7 @@ export const generateGuidedPlanFlow = ai.defineFlow(
     // ids verbatim, and a hallucinated one would render as nothing in the editor
     // anyway — but silently carrying it into the document makes every later reader
     // handle it, and a note the cook can never see is not worth storing.
-    const stepIds = new Set(recipe.data.steps.map((s) => s.id));
+    const stepIds = new Set(recipe.steps.map((s) => s.id));
     return {
       prep: parsed.data.prep,
       stepNotes: parsed.data.stepNotes.filter((note) => stepIds.has(note.stepId)),
