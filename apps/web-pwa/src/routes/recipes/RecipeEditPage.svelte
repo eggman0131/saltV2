@@ -58,7 +58,6 @@
     takeImportedDraft,
   } from '../../lib/recipeService.js';
   import { MAX_RECIPE_PHASES, RecipeKindSchema } from '@salt/domain/schemas';
-  import { recipePhasesGate } from '../../lib/featureGate.js';
   import { componentTimeLabel } from './recipeTiming.js';
   import { canonItems } from '../../lib/canonService.js';
   import { members } from '../../lib/membersService.js';
@@ -357,10 +356,6 @@
   // elsewhere resolves to nothing and is skipped, so the row never breaks; one
   // level only, so a component's own components are neither shown nor read.
   const componentRecipes = $derived(resolveComponents(draft, $recipes));
-
-  // The one gate derivation on this page — the component rows' time label and the
-  // phase editor below both read it (issue #1122).
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
 
   function addComponent(id: string): void {
     if (!id) return;
@@ -810,10 +805,10 @@
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col">
                   <span class="truncate text-sm font-medium">{component.title}</span>
-                  {#if componentTimeLabel(component, phasesEnabled) !== null}
+                  {#if componentTimeLabel(component) !== null}
                     <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Icon name="Clock" size={12} />
-                      {componentTimeLabel(component, phasesEnabled)}
+                      {componentTimeLabel(component)}
                     </span>
                   {/if}
                 </span>
@@ -1166,47 +1161,48 @@
             onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
           />
-          <!-- The three numbers the phase strip replaces (issue #1122). With the
-               key ON they are gone from the screen entirely — not disabled, not
-               relabelled — and their STORED values are left exactly as they are;
-               the flows keep emitting them and phase 4 is what deletes them. -->
-          {#if !phasesEnabled}
-            <TextField
-              label="Prep (min)"
-              inputmode="numeric"
-              value={draft.metadata.prepTimeMinutes === null
-                ? ''
-                : String(draft.metadata.prepTimeMinutes)}
-              onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-prep-input"
-            />
-            <TextField
-              label="Cook (min)"
-              inputmode="numeric"
-              value={draft.metadata.cookTimeMinutes === null
-                ? ''
-                : String(draft.metadata.cookTimeMinutes)}
-              onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-cook-input"
-            />
-            <TextField
-              label="Total (min)"
-              inputmode="numeric"
-              value={draft.metadata.totalTimeMinutes === null
-                ? ''
-                : String(draft.metadata.totalTimeMinutes)}
-              onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-total-input"
-            />
-          {/if}
+          <!-- Kept alongside the phase editor, not moved beside it in a redesigned
+               layout: `scheduleFor` and `insertComponentByCookTime` (in
+               packages/domain) still read `cookTimeMinutes`, so a hand-authored
+               recipe needs a way to set it until issue #1213's phase 3 moves those
+               readers onto `recipePhaseTotals()`. Removing these three boxes is
+               that phase's job, not this one's (PR #1231 review). -->
+          <TextField
+            label="Prep (min)"
+            inputmode="numeric"
+            value={draft.metadata.prepTimeMinutes === null
+              ? ''
+              : String(draft.metadata.prepTimeMinutes)}
+            onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-prep-input"
+          />
+          <TextField
+            label="Cook (min)"
+            inputmode="numeric"
+            value={draft.metadata.cookTimeMinutes === null
+              ? ''
+              : String(draft.metadata.cookTimeMinutes)}
+            onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-cook-input"
+          />
+          <TextField
+            label="Total (min)"
+            inputmode="numeric"
+            value={draft.metadata.totalTimeMinutes === null
+              ? ''
+              : String(draft.metadata.totalTimeMinutes)}
+            onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-total-input"
+          />
         </div>
       {/if}
 
       <!-- Timing, as the cook actually experiences it: the phases in the order
            they happen, each with how long it lasts and how much of that is you at
-           the counter (issue #1212). Gated with the timeline it feeds; with the
-           key off this whole section is absent, and nothing above hints at it. -->
-      {#if showCooking && phasesEnabled}
+           the counter (issue #1212). Ungated as of issue #1213, and the only
+           timing control shown for cook duration itself — Prep/Cook/Total above
+           still cover what `scheduleFor` and the "Made from" ordering read. -->
+      {#if showCooking}
         <section class="flex flex-col gap-3" data-testid="recipe-phase-editor">
           <div class="flex items-center justify-between">
             <p class="text-sm font-medium">Timing</p>

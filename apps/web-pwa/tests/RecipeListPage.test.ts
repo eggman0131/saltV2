@@ -153,7 +153,14 @@ const APPLE = makeRecipe({
   id: 'apple',
   title: 'Apple Pie',
   tags: ['dessert', 'baking'],
-  totalTimeMinutes: 90,
+  // The chip reads the phase strip and nothing else (issue #1213). The stored
+  // total stays on the fixture, wrong on purpose, so a fallback creeping back
+  // would be visible.
+  phases: [
+    { label: 'Pastry', handsOnMinutes: 25, handsOffMinutes: 5 },
+    { label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 55 },
+  ],
+  totalTimeMinutes: 20,
   servings: 8,
   ingredientCount: 5,
   image: { url: 'http://img.test/apple.jpg', source: 'ai' },
@@ -268,7 +275,9 @@ describe('RecipeListPage', () => {
     render(RecipeListPage);
 
     const card = screen.getByTestId('recipe-list-item');
-    expect(card.textContent).toContain('90 min');
+    // The strip's sum, in the app's duration vocabulary — not the stored 20.
+    expect(card.textContent).toContain('1 hr 30 min');
+    expect(card.textContent).not.toContain('20 min');
     expect(card.textContent).toContain('8'); // servings
     expect(card.textContent).toContain('5'); // ingredient count
   });
@@ -1485,7 +1494,10 @@ function timed(id: string, title: string, over: Partial<Parameters<typeof makeRe
 }
 
 describe('RecipeListPage — how long it takes', () => {
-  it('labels the card from the phase sum, and from the stored total without one', () => {
+  // Issue #1213 removed the `?? totalTimeMinutes` fallback under the chip. Both
+  // fixtures store a total of 20; only the one with a strip gets a chip, which is
+  // the mechanical half of "the list shows no total time for anyone".
+  it('labels the card from the phase sum, and shows nothing without one', () => {
     seed([
       timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
       timed('plain', 'Plain Dish', { totalTimeMinutes: 20 }),
@@ -1495,11 +1507,10 @@ describe('RecipeListPage — how long it takes', () => {
     const cards = screen.getAllByTestId('recipe-list-item');
     expect(normalized(cards[0]!)).toContain('1 hr 5 min');
     expect(normalized(cards[0]!)).not.toContain('20 min');
-    // No strip: the raw spelling the card has always had, unchanged.
-    expect(normalized(cards[1]!)).toContain('20 min');
+    expect(normalized(cards[1]!)).not.toContain('min');
   });
 
-  it('shows no time chip at all for a recipe with neither', () => {
+  it('shows no time chip at all for a recipe with no strip', () => {
     seed([timed('bare', 'Bare Dish')]);
     render(RecipeListPage);
 
@@ -1507,15 +1518,18 @@ describe('RecipeListPage — how long it takes', () => {
   });
 
   // The chip and the sort go through one function, and this is what says so: the
-  // 65-minute strip sorts BEHIND the 30-minute recipe even though the field it
-  // used to sort on says 20.
+  // 65-minute strip sorts BEHIND the 30-minute strip even though the stored field
+  // the sort used to read says 20. `Half Hour` carries no stored total at all, so
+  // the ordering can only have come from its strip.
   // `fireEvent`, not `userEvent`: the popover primitive marks the page inert while
   // it opens, and user-event refuses to click through `pointer-events: none`.
   it('orders Quickest by the same figure the card shows', async () => {
     seed([
       timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
-      timed('half', 'Half Hour', { totalTimeMinutes: 30 }),
-      timed('untimed', 'Untimed Dish'),
+      timed('half', 'Half Hour', {
+        phases: [{ label: 'Simmer', handsOnMinutes: 5, handsOffMinutes: 25 }],
+      }),
+      timed('untimed', 'Untimed Dish', { totalTimeMinutes: 5 }),
     ]);
     render(RecipeListPage);
 

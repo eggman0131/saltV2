@@ -310,6 +310,11 @@ describe('diffRecipe', () => {
     expect(diff.hasChanges).toBe(true);
   });
 
+  // Kept — this is not the phase-5 deletion the field comment above describes —
+  // because `recipeAmend.ts` still merges these three fields, so the review gate
+  // still needs to say when one of them moved (PR #1231 review, blocking finding
+  // 2). Coverage of the rendered card for a time-only diff lives in
+  // `RecipeChangeSummary.test.ts`.
   it('detects each time-field change independently', () => {
     const before = withMetadata(recipe(), {
       totalTimeMinutes: 40,

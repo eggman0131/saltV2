@@ -132,10 +132,12 @@ Key invariants:
 
 `metadata.phases` is an ordered list of 3–6 `{ label, handsOnMinutes,
 handsOffMinutes }` blocks, plus `metadata.timingSummary`, one sentence. It is the
-replacement for the three fields documented below, not a companion to them: phase 4
-of #1122 removes `prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes`, and
-every timing figure in the app then comes from `recipePhaseTotals` at the point of
-use. Until then both exist and the strip is behind the `recipePhases` feature key.
+replacement for the three fields documented below, not a companion to them: issue
+#1213 phases 1–2 already show the strip to everyone, with no feature key and no
+fallback to the three fields — every timing figure the app draws now comes from
+`recipePhaseTotals` at the point of use. The three fields themselves are still on
+the schema and still written by every authoring path; deleting them is a later
+#1213 phase, and `RecipeMetadataSchema`'s keys are #1211, untouched throughout.
 
 Four things that are not obvious from the shape:
 
@@ -172,18 +174,20 @@ in numbers rather than in pixels; the legend always states the true figure, so t
 compression costs the reader nothing.
 
 **Every other surface asks `routes/recipes/recipeTiming.ts`.** `phaseMinutes` is the
-one place that decides when the strip answers "how long does this take" and when
-the old fields still do — the recipe list's chip and its Quickest sort, the "Made
-from" rows on the view and edit pages, and the meal cook plan's per-dish line all
-go through it, so a recipe cannot read 45 min on one screen and 13 hr on another.
-It returns `null` with the feature key off and for a recipe with no strip, which is
-what makes a part-backfilled library read correctly everywhere. Note the boundary
-until phase 4: only the LINE a surface shows moves onto the phase sum this phase —
-the ORDERING beside it does not. The cook plan's START CLOCK still comes from
-`scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are still
-positioned by `insertComponentByCookTime` reading the same field, so with the key
-on a component can display a phase sum while sorting — or starting — as if the old
-field still ran the show (#1205 review, should-fix 4).
+one place that decides what a recipe's timing is — the recipe list's chip and its
+Quickest sort, the "Made from" rows on the view and edit pages, and the meal cook
+plan's per-dish line all go through it, so a recipe cannot read 45 min on one
+screen and 13 hr on another. Issue #1213 removed the old-field fallback along with
+the feature key and the `phasesEnabled` argument that threaded it: `phaseMinutes`
+now takes only the recipe, and returns `null` for a recipe with no strip — in
+practice only placeholders and outings, which never showed a timing anyway. Note
+the boundary that is still open: only the LINE a surface shows has moved onto the
+phase sum — the ORDERING beside it has not. The cook plan's START CLOCK still comes
+from `scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are
+still positioned by `insertComponentByCookTime` reading the same field, so a
+component can display a phase sum while sorting — or starting — as if the old field
+still ran the show (#1205 review, should-fix 4; closing this is #1213 phase 3, and
+carries `breaking-change`).
 
 The definition the model is given lives in `TIME_RULES`
 (`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
@@ -209,11 +213,13 @@ yet what happens on the amend path.
 
 The model writes the strip and is usually right; when it is not, the cook has the
 pen. `RecipeEditPage.svelte` replaces the three "Prep / Cook / Total" boxes with
-the phase list itself when the key is on — one row per phase, a free-text label and
-its two minute figures, with add / remove / move-up / move-down, built on the same
-plain row editor the method steps use. Servings stays in both key states; the three
-numbers keep their STORED values and are simply off screen, because the authoring
-flows still emit them until #1122's phase 4 deletes them.
+the phase list itself — one row per phase, a free-text label and its two minute
+figures, with add / remove / move-up / move-down, built on the same plain row
+editor the method steps use. Issue #1213 retired the feature key that used to
+gate this, and the three boxes it once hid behind along with it: the three
+numbers keep their STORED values, read by nothing on this page, because the
+authoring flows still emit them and #1211 is what eventually deletes the fields
+themselves.
 
 Three things about the editor that the code alone does not say:
 
@@ -233,8 +239,10 @@ as BOTH SIDES WHOLE rather than a per-phase breakdown, and `RecipeChangeSummary`
 renders it as a single "Timing" card: the strip is one fact — a sequence — and a
 reorder drawn as six row edits would bury the one question the gate is asked.
 **A pure reorder IS reported**, deliberately unlike a reordered ingredient or step,
-because the order of a phase list is the order you do the work in. With the key off
-the summary renders the same three time cards it always did.
+because the order of a phase list is the order you do the work in. Issue #1213
+retired the key-off path entirely: `diffRecipe` no longer reports a
+`prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes` change at all, so the
+Timing card is now the only thing this gate can say about a recipe's timing.
 
 The card shows only the half that actually moved. `RecipeDiff` carries changed
 fields and nothing else, so an unchanged strip is not available to draw — filling
@@ -293,11 +301,15 @@ Two decisions worth keeping:
   use ours has a "quickest first" sort that means nothing. Ingredients, steps and
   servings stay verbatim.
 
-Nothing downstream changed. `cookShape` still derives the displayed hands-on figure
-as `total − timer waits` (it is the second source of truth this issue deliberately
-did **not** create), and the cook plan still starts a dish at
+Nothing downstream changed. The cook plan still starts a dish at
 `serve − cookTimeMinutes` — the decisions recorded below at _The cook plan_. That
 start clock excludes prep on purpose and is tracked separately as #953.
+
+The #878 cook-shape ribbon and `cookShape` itself — which had derived the
+displayed hands-on figure as `total − timer waits`, a second source of truth this
+issue deliberately did not create — are both deleted as of issue #1213. Every
+recipe now carries a real phase strip, so there is nothing left for a ribbon
+guessed from step timers to say that the strip does not already say better.
 
 ### Schema extensions (times, issue #952 phase 2)
 

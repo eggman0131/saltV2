@@ -161,6 +161,10 @@ const CHICKEN = makeComponent({
     prepTimeMinutes: 10,
     cookTimeMinutes: 90,
     totalTimeMinutes: 100,
+    // The row's time comes from the strip and nothing else (issue #1213). The
+    // three stored numbers stay on the fixture, deliberately disagreeing, so a
+    // fallback creeping back would be visible here.
+    phases: [{ label: 'Roast', handsOnMinutes: 10, handsOffMinutes: 80 }],
     tags: [],
   },
   image: { url: 'https://example.com/chicken.webp', source: 'ai' },
@@ -230,11 +234,11 @@ describe('RecipeViewPage — the dishes a meal is made of', () => {
     );
     expect(screen.getByTestId('recipe-component-thumb-fallback')).toBeInTheDocument();
 
-    // Cook time, and only where there is one to state — gravy has none.
+    // The dish's time, and only where there is one to state — gravy has no strip.
     const cookTimes = screen
       .getAllByTestId('recipe-component-cook-time')
       .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim());
-    expect(cookTimes).toEqual(['90 min']);
+    expect(cookTimes).toEqual(['1 hr 30 min']);
   });
 
   it('keeps the stored order rather than re-sorting by cook time', () => {

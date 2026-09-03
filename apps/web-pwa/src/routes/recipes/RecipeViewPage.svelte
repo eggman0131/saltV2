@@ -43,7 +43,7 @@
   // package. They are still sent from here, as ordinary user turns, unchanged.
   import { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from '@salt/domain/prompts';
   import { goBack } from '../../lib/nav.js';
-  import { breadGate, recipePhasesGate } from '../../lib/featureGate.js';
+  import { breadGate } from '../../lib/featureGate.js';
   import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
@@ -88,7 +88,6 @@
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     recipeHeroUrl,
-    cookShape,
     recipePhaseTotals,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
@@ -102,10 +101,8 @@
     kitByStep as groupKitByStep,
     groupKitByEquipment,
     looksScalable,
-    OTHER_WAITS_LABEL,
     resolveComponents,
     takesIngredients,
-    type CookShapeSegment,
     type IngredientGroup,
     memberFirstName,
     type Ingredient,
@@ -396,31 +393,26 @@
   // beside it would be a guess (ui-spec-v09 §8.23.8). So: facts on a tinted
   // ground with an icon, tags as quiet outlines with none, on their own rows.
   //
-  // The durations run through `formatMinutes`, which is the end of `Cook 360 min`.
-  //
   // ── What the tint means here ────────────────────────────────────────────────
   // `Chip`'s `tone` is named for a palette role and says nothing about what the
   // hue means (ui-spec-v09 §8.23.9) — deciding that is this page's job, and this
-  // is where it is written down. The question a fact row is scanned for is never
-  // "what are the numbers", it is "what KIND of numbers are these", so the tint
-  // splits the row by what each fact measures:
+  // is where it is written down. The tint splits the row by what each fact
+  // measures:
   //
   //   sage      what comes OUT of it — Makes, Serves. The palette's "fresh /
   //             organic" accent (design.md), and already this page's colour for
   //             a part of something: the ingredient group headings below, and a
   //             matched pictogram tile.
-  //   teal      time that is YOU — Prep. The same hue the cook-shape ribbon
-  //             directly beneath paints its hands-on segment in, which is the
-  //             one relationship on this card worth being able to see twice.
-  //   terracotta  time on HEAT — Cook. design.md's warm, high-energy accent.
-  //   neutral   everything that is not one of those three kinds: Total (the sum
-  //             of the other two, not a fourth kind) and who added the recipe (a
-  //             fact about the document rather than about the dish).
+  //   neutral   anything that is not that: who added the recipe, which is a fact
+  //             about the document rather than about the dish.
   //
-  // Three tints and a default, not six: a row where every chip is a different
-  // colour teaches the reader that the colour carries nothing. And nothing is
-  // carried by colour ALONE — every chip says its own kind in words, so the tint
-  // only lets the row be scanned instead of read (ui-spec-v02 §7).
+  // The row used to carry three durations on three further tints; issue #1213
+  // retired them and the phase timeline below states the timing instead. One tint
+  // and a default is not an impoverished version of that scheme — a row where
+  // every chip is a different colour teaches the reader that the colour carries
+  // nothing. And nothing is carried by colour ALONE — every chip says its own kind
+  // in words, so the tint only lets the row be scanned instead of read
+  // (ui-spec-v02 §7).
   interface RecipeFact {
     readonly key: string;
     /** Absent only for the one fact with no honest glyph — see `attribution` below. */
@@ -432,22 +424,18 @@
     readonly testId?: string;
   }
 
-  // The phase strip (issue #1122). Gated, and the gate is deliberately BOTH
-  // halves: a recipe with no phases stored yet renders exactly as it does today
-  // whether the flag is on or off, which is what makes this invisible to a library
-  // that has not been backfilled.
+  // The phase strip (issue #1122), ungated as of issue #1213 — the strip is now
+  // the whole of a recipe's timing on this page and there is nothing left to fall
+  // back to.
   //
-  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
-  // once, here, and everything below reads that list — the template never asks the
-  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
+  // `metadata.phases` is optional on the schema, so it is resolved to a list once,
+  // here, and everything below reads that list — the template never asks the recipe
+  // for it again. `recipePhaseTotals` then sums exactly what is drawn, and it is the
+  // only permitted source of a duration (docs/recipe-module.md's single funnel).
   //
-  // It is declared ABOVE `facts` because `facts` now reads it: the three duration
-  // chips are what the timeline replaces, so a recipe with a strip stops showing
-  // them and one without keeps them. `hasPhases` is the whole of that condition —
-  // it is false with the key off, and false for an un-backfilled recipe, so both
-  // fallbacks are the same fallback.
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
-  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
+  // It is declared ABOVE `facts` because the card's gate reads it: a recipe whose
+  // only stated fact is its timing still has something to say in that card.
+  const phases = $derived(recipe?.metadata.phases ?? []);
   const phaseTotals = $derived(recipePhaseTotals(phases));
 
   const facts = $derived.by((): RecipeFact[] => {
@@ -476,37 +464,10 @@
           tone: 'secondary',
         });
       }
-      // Prep / Cook / Total, or nothing. A recipe with a phase strip has its
-      // timing on the timeline a few lines below — and #1122's whole complaint is
-      // two accounts of the same fact side by side, so these three come off rather
-      // than sitting above it. There is no phase-derived chip in their place: the
-      // timeline states its own total, and a chip repeating it would be the same
-      // defect at a smaller scale.
-      if (!phaseTotals.hasPhases) {
-        if (m.prepTimeMinutes !== null) {
-          out.push({
-            key: 'prep',
-            icon: 'Timer',
-            label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
-            tone: 'primary',
-          });
-        }
-        if (m.cookTimeMinutes !== null) {
-          out.push({
-            key: 'cook',
-            icon: 'Flame',
-            label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
-            tone: 'tertiary',
-          });
-        }
-        if (m.totalTimeMinutes !== null) {
-          out.push({
-            key: 'total',
-            icon: 'Clock',
-            label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
-          });
-        }
-      }
+      // No timing chip of any kind. Prep / Cook / Total were retired here by issue
+      // #1213, and nothing phase-derived takes their place: the timeline a few lines
+      // below states its own total, and a chip repeating it is #1122's own complaint
+      // — two accounts of the same fact side by side — at a smaller scale.
     }
     // Provenance is a fact about the document rather than about the dish, and it
     // is the one fact with no honest glyph — `Users` is already Serves, and a
@@ -520,46 +481,11 @@
     return out;
   });
 
-  // ─── The shape of the cook (issue #878) ─────────────────────────────────────
-  // `null` when no step carries a timer — the ribbon is then absent, not empty.
-  // Every judgement about what counts as a wait and how the waits are named is
-  // in the pure domain query; the page only turns minutes into widths.
-  const shape = $derived(recipe ? cookShape(recipe) : null);
-
-  function segmentPercent(segment: CookShapeSegment): number {
-    if (!shape || shape.totalMinutes <= 0) return 0;
-    return (segment.minutes / shape.totalMinutes) * 100;
-  }
-
-  // The waits are PEERS, and the first cut of this ribbon painted them as one
-  // hue stepped down in opacity (`bg-secondary` at 100/70/50/35). Two problems,
-  // and they compound: 70% and 50% of one green on one card are not two colours
-  // anybody can tell apart, and stepping opacity says the segments are RANKED
-  // when the only thing separating them is which one the author wrote first.
-  //
-  // So: distinct hues, and the tint family exists to be exactly this — a set of
-  // pale grounds whose whole job is keying peers to each other (ui-spec-v09
-  // §8.23.9). Sage, terracotta, teal, in that order, matching nothing about the
-  // wait itself because there is nothing to match; the legend beneath carries
-  // every word, and the colour only ties a stripe to its line.
-  const WAIT_TINTS = ['bg-secondary-tint', 'bg-tertiary-tint', 'bg-primary-tint'];
-
-  function segmentTint(segment: CookShapeSegment, index: number): string {
-    // The one segment that is NOT a peer, and the one the ribbon exists to show:
-    // solid primary against three pale waits, so "how much of this is me" is
-    // answered before the legend is read.
-    if (segment.kind === 'hands-on') return 'bg-primary';
-    // The unnamed remainder is not a fourth wait — it is the leftovers of the
-    // ones that did not make the cut (`OTHER_WAITS_LABEL`, domain), so it takes
-    // the neutral hairline grey rather than spending a hue on "everything else".
-    // Keyed off the label the domain assigns rather than off position, because
-    // what makes it the remainder is what it IS, not where it landed.
-    if (segment.label === OTHER_WAITS_LABEL) return 'bg-border';
-    // `index` counts from the start of the whole ribbon; hands-on, when present,
-    // is always first, so subtracting it keeps the wait tints starting at sage.
-    const waitIndex = shape && shape.handsOnMinutes > 0 ? index - 1 : index;
-    return WAIT_TINTS[Math.min(waitIndex, WAIT_TINTS.length - 1)]!;
-  }
+  // The #878 cook-shape ribbon was deleted here by issue #1213, along with
+  // `cookShape` itself. It drew whatever minutes somebody had happened to attach a
+  // step timer to, which is the defect that started #1122 — a recipe whose method
+  // says "bring a large pan of water to the boil" reported twelve minutes. Every
+  // recipe now carries a real phase strip, so there is nothing left for it to say.
 
   // ─── Canon live-id set (for dangling-match derivation) ───────────────────────
   const liveCanonIds = $derived(new Set($canonItems.map((c) => c.id)));
@@ -2009,14 +1935,13 @@
           </div>
         {/if}
 
-        <!-- Description, facts, tags, the phase strip, and the shape of the cook.
+        <!-- Description, facts, tags and the phase strip.
              `phaseTotals.hasPhases` joins the card's gate rather than sitting
              outside it: a recipe whose only stated fact is its timing still has
-             something to say here, and it is false whenever the key is off
-             (issue #1122). Read through `recipePhaseTotals` rather than
-             `phases.length` — the single funnel docs/recipe-module.md names
-             (issue #1122 review, should-fix 6). -->
-        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape || phaseTotals.hasPhases}
+             something to say here (issue #1122). Read through `recipePhaseTotals`
+             rather than `phases.length` — the single funnel docs/recipe-module.md
+             names (issue #1122 review, should-fix 6). -->
+        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || phaseTotals.hasPhases}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
@@ -2053,11 +1978,9 @@
                   {/each}
                 </div>
               {/if}
-              <!-- The planning timeline (issue #1122). It sits ABOVE the #878
-                   ribbon rather than replacing it: while the gate exists the two
-                   coexist, and the ribbon is what everyone outside the test group
-                   still sees. The ribbon and its Prep/Cook/Total chips go in phase
-                   4, together with the three fields they read.
+              <!-- The planning timeline (issue #1122), and as of #1213 the only
+                   timing graphic on this page — the #878 ribbon it used to sit above
+                   is gone, along with the Prep/Cook/Total chips.
                    Everything drawn and every figure shown is derived inside the
                    component from this list — nothing is passed in pre-summed. -->
               {#if phaseTotals.hasPhases}
@@ -2065,58 +1988,6 @@
                   {phases}
                   timingSummary={recipe.metadata.timingSummary ?? null}
                 />
-              {/if}
-              <!-- The shape of the cook (issue #878): how long, how much of it is you,
-                   and where the waiting goes — answered before a single step is read.
-                   The bar is decoration and says so; the legend beneath it carries the
-                   whole of the information, so nothing here depends on colour.
-
-                   `!phaseTotals.hasPhases` joins the gate (#1205 review, blocking 1):
-                   `shape.totalMinutes`/`handsOnMinutes` come from `cookShape`, which reads
-                   the old prep/cook/total fields and any step timer — a different sum than
-                   `RecipePhaseTimeline`'s `recipe-phase-totals` line above, which reads the
-                   phases. A recipe with a phase strip already stated this sentence once;
-                   printing the ribbon's version too would be #1122's own defect (two
-                   accounts of the same fact) reproduced on the page built to fix it. -->
-              {#if shape && !phaseTotals.hasPhases}
-                <div class="flex flex-col gap-1.5" data-testid="recipe-cook-shape">
-                  <p class="text-xs text-muted-foreground">
-                    <span class="font-medium text-foreground"
-                      >{formatMinutes(shape.totalMinutes)}</span
-                    >
-                    start to finish ·
-                    <span class="font-medium text-foreground"
-                      >{formatMinutes(shape.handsOnMinutes)}</span
-                    >
-                    hands-on
-                  </p>
-                  <div class="flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                    <!-- Unkeyed on purpose: the array is re-derived whole whenever the
-                         recipe changes, and a key built from the label could collide —
-                         a timer described "Hands-on" would clash with the hands-on
-                         segment, and one described "Other waiting" with the remainder. -->
-                    {#each shape.segments as segment, i}
-                      <!-- `min-w-0.5` so a forty-minute segment of a twenty-two-hour cook
-                           is still a mark on the bar rather than nothing at all. -->
-                      <span
-                        class="{segmentTint(segment, i)} min-w-0.5"
-                        style="width: {segmentPercent(segment)}%"
-                      ></span>
-                    {/each}
-                  </div>
-                  <ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    {#each shape.segments as segment, i}
-                      <li class="flex items-center gap-1.5">
-                        <span
-                          class="{segmentTint(segment, i)} size-2 shrink-0 rounded-full"
-                          aria-hidden="true"
-                        ></span>
-                        {segment.label}
-                        <span class="tabular-nums">{formatMinutes(segment.minutes)}</span>
-                      </li>
-                    {/each}
-                  </ul>
-                </div>
               {/if}
               {#if sourceUrl}
                 <a
@@ -2250,13 +2121,13 @@
                         </span>
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="truncate text-sm font-medium">{component.title}</span>
-                          {#if componentTimeLabel(component, phasesEnabled) !== null}
+                          {#if componentTimeLabel(component) !== null}
                             <span
                               class="inline-flex items-center gap-1 text-xs text-muted-foreground"
                               data-testid="recipe-component-cook-time"
                             >
                               <Icon name="Clock" size={12} />
-                              {componentTimeLabel(component, phasesEnabled)}
+                              {componentTimeLabel(component)}
                             </span>
                           {/if}
                         </span>
@@ -2616,9 +2487,13 @@
                           {#if handsOff || step.timer}
                             <div class="flex flex-wrap items-center gap-1.5">
                               {#if handsOff}
-                                <!-- Sage, the colour the cook-shape ribbon above already
-                                     uses for a wait, so the two agree about what a wait
-                                     looks like on this page. -->
+                                <!-- Sage: the quiet end of the palette, for the one step
+                                     marker telling you to walk away rather than to do
+                                     something, paired against the terracotta timer chip
+                                     beside it, which is the opposite instruction. (The
+                                     #878 ribbon keyed its waits to this hue; it went with
+                                     issue #1213, and the phase timeline that replaced it
+                                     draws its hands-off time on the teal tint.) -->
                                 <span
                                   class="inline-flex items-center rounded-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-secondary-container-foreground"
                                   data-testid="recipe-view-step-handsoff">Hands-off</span

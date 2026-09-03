@@ -496,6 +496,9 @@ function diffMetadata(existing: Recipe, draft: Recipe): RecipeMetadataDiff {
   const metadata: RecipeMetadataDiff = {};
   const servings = numberChange(e.servings, d.servings);
   if (servings) metadata.servings = servings;
+  // Reported until issue #1213's phase 5 stops the flows that still write these
+  // three — `recipeAmend.ts` still merges them, so an amend that only touches
+  // timing must still yield a card and an Apply button (PR #1231 review).
   const total = numberChange(e.totalTimeMinutes, d.totalTimeMinutes);
   if (total) metadata.totalTimeMinutes = total;
   const prep = numberChange(e.prepTimeMinutes, d.prepTimeMinutes);

@@ -231,8 +231,6 @@ export {
   isPlannable,
   isAuthorable,
   takesComponents,
-  cookShape,
-  OTHER_WAITS_LABEL,
   // The one place a recipe's phases are added up (issue #1122). Every timing
   // figure in the app is this sum at the point of use; none is stored.
   recipePhaseTotals,
@@ -255,7 +253,6 @@ export {
   PLACEHOLDER_MOODS,
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
-export type { CookShapeSegment } from './recipe/index.js';
 export type { RecipePhaseTotals } from './recipe/index.js';
 export type { KitEquipmentGroup } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';

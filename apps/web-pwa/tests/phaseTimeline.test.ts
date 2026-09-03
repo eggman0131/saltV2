@@ -150,28 +150,27 @@ function recipeWith(phases: readonly RecipePhase[] | undefined): Recipe {
   };
 }
 
-describe('phaseMinutes — when the phases answer, and when the old fields do', () => {
-  it('sums the strip when there is one and the key is on', () => {
-    expect(phaseMinutes(recipeWith(BREAD), true)).toBe(867);
+describe('phaseMinutes — the strip answers, or nothing does', () => {
+  it('sums the strip when there is one', () => {
+    expect(phaseMinutes(recipeWith(BREAD))).toBe(867);
   });
 
-  // The claim every surface's "with the key off, exactly as it is today" rests
-  // on, pinned here once rather than asserted five times in prose.
-  it('answers null with the key off, however good the stored strip is', () => {
-    expect(phaseMinutes(recipeWith(BREAD), false)).toBeNull();
-  });
-
+  // Issue #1213 deleted the `phasesEnabled` argument and every per-surface
+  // fallback. These fixtures all carry prep 20 / cook 40 / total 60, so a
+  // fallback creeping back in would show up here as a number instead of a null
+  // — which is the mechanical half of "no screen shows a prep, cook or total
+  // time", pinned once rather than asserted on five surfaces in prose.
   it('answers null for a recipe written before the strip existed', () => {
-    expect(phaseMinutes(recipeWith(undefined), true)).toBeNull();
+    expect(phaseMinutes(recipeWith(undefined))).toBeNull();
   });
 
   it('answers null for a stored strip that is empty', () => {
-    expect(phaseMinutes(recipeWith([]), true)).toBeNull();
+    expect(phaseMinutes(recipeWith([]))).toBeNull();
   });
 
-  // A cook who zeroed every phase has still stated a timing, and falling back
-  // here would put `60 min` on screen beside a timeline that says nothing.
+  // A cook who zeroed every phase has still stated a timing of nothing, which is
+  // not the same as an unknown.
   it('answers zero — not null — for a strip a cook has zeroed by hand', () => {
-    expect(phaseMinutes(recipeWith([phase('Assemble', 0, 0)]), true)).toBe(0);
+    expect(phaseMinutes(recipeWith([phase('Assemble', 0, 0)]))).toBe(0);
   });
 });
