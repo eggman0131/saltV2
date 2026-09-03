@@ -95,6 +95,34 @@ async function clearEmulator(): Promise<void> {
   }
 }
 
+/**
+ * A well-formed stored row, as every writer in the app produces one.
+ *
+ * Both the seeded document and the event payload go through it. Since #1114
+ * `ShoppingListItemSchema` REQUIRES all eleven non-additive fields, and the
+ * trigger's first act is to `safeParse` the `after` document — so a partial
+ * literal here would be refused at that trust boundary, the trigger would log
+ * and return, and every assertion below about a write-back would fail while
+ * every `not.toHaveBeenCalled` would pass for the wrong reason.
+ */
+function completeItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const now = new Date().toISOString();
+  return {
+    id: 'emulator-item',
+    rawText: 'heinz baked beans',
+    notes: '',
+    sources: [{ kind: 'manual' }],
+    canonId: null,
+    matchState: 'pending',
+    checked: false,
+    needsCheck: false,
+    schemaVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 function makeEvent({
   before,
   after,
@@ -110,9 +138,11 @@ function makeEvent({
     params: { listId, itemId },
     data: {
       before: before
-        ? { exists: true, data: () => before }
+        ? { exists: true, data: () => completeItem(before) }
         : { exists: false, data: () => undefined },
-      after: after ? { exists: true, data: () => after } : { exists: false, data: () => undefined },
+      after: after
+        ? { exists: true, data: () => completeItem(after) }
+        : { exists: false, data: () => undefined },
     },
   };
 }
@@ -151,17 +181,7 @@ describe('onShoppingListItemWrite — Firestore emulator', () => {
       .doc('emulator-item');
 
     // Write initial pending item directly.
-    await docRef.set({
-      id: 'emulator-item',
-      rawText: 'heinz baked beans',
-      notes: '',
-      canonId: null,
-      matchState: 'pending',
-      checked: false,
-      schemaVersion: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    await docRef.set(completeItem({ rawText: 'heinz baked beans' }));
 
     const event = makeEvent({
       before: null,
@@ -195,17 +215,7 @@ describe('onShoppingListItemWrite — Firestore emulator', () => {
       .collection('items')
       .doc('emulator-item');
 
-    await docRef.set({
-      id: 'emulator-item',
-      rawText: 'obscure ingredient',
-      notes: '',
-      canonId: null,
-      matchState: 'pending',
-      checked: false,
-      schemaVersion: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    await docRef.set(completeItem({ rawText: 'obscure ingredient' }));
 
     const event = makeEvent({
       before: null,
@@ -232,14 +242,7 @@ describe('onShoppingListItemWrite — Firestore emulator', () => {
       .collection('items')
       .doc('emulator-item');
 
-    await docRef.set({
-      rawText: 'thing',
-      canonId: null,
-      matchState: 'pending',
-      schemaVersion: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    await docRef.set(completeItem({ rawText: 'thing' }));
 
     const event = makeEvent({
       before: null,
@@ -260,14 +263,7 @@ describe('onShoppingListItemWrite — Firestore emulator', () => {
       .collection('items')
       .doc('emulator-item');
 
-    const initial = {
-      rawText: 'milk',
-      canonId: null,
-      matchState: 'pending',
-      notes: '',
-      schemaVersion: 1,
-      updatedAt: new Date().toISOString(),
-    };
+    const initial = completeItem({ rawText: 'milk' });
     await docRef.set(initial);
 
     const event = makeEvent({
