@@ -114,10 +114,11 @@ export const RecipePhaseSchema = z.object({
 /**
  * How many phases a strip may carry.
  *
- * Six, and the argument is `cookShape`'s: a strip is read at a glance, and a
- * seventh block stops being a glance. A dish with eleven distinguishable stages
- * has eleven stages whether or not we draw them; what it does not have is eleven
- * things worth knowing before you start.
+ * Six, and the argument is the one the #878 cook-shape ribbon was drawn on before
+ * #1213 deleted it: a strip is read at a glance, and a seventh block stops being a
+ * glance. A dish with eleven distinguishable stages has eleven stages whether or
+ * not we draw them; what it does not have is eleven things worth knowing before
+ * you start.
  */
 export const MAX_RECIPE_PHASES = 6;
 
