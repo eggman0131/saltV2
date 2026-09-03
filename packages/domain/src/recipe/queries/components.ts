@@ -1,4 +1,5 @@
 import type { Recipe } from '../entities/Recipe.js';
+import { recipePhaseTotals } from './recipePhaseTotals.js';
 
 // Meals — a dinner built from several dishes (issue #752).
 //
@@ -71,19 +72,34 @@ export function canBeComponentOf(ownerId: string, candidateId: string): boolean 
   return ownerId !== candidateId;
 }
 
-// Where a newly attached component lands. Longest-cooking-first, because that is
-// the order you start things in: the bird goes in before the potatoes.
+// Where a newly attached component lands. Longest-first, because that is the
+// order you start things in: the bird goes in before the potatoes.
 //
-// COOK time, not total time — prep is done ahead and in any order, so it says
-// nothing about when a dish has to begin. `cookTimeMinutes` is nullable and a
-// component with no cook time sorts to the TOP, where it reads as "start this when
-// you like" rather than being buried under everything that does declare a time.
+// THE WHOLE PROCESS, START TO SERVE — the sum of the dish's phases, not the time
+// on heat (issues #953, #1122). This reverses what stood here while the app
+// carried three stored time numbers: the order was taken from `cookTimeMinutes`
+// on the argument that prep is done ahead and in any order, which is a guess the
+// app no longer has to make. `scheduleFor` works the meal's start clock back from
+// the SAME figure, and the two must keep agreeing or the order you are told to
+// start things in and the times you are told to start them at would tell
+// different stories. That agreement is pinned by
+// `packages/domain/tests/cookSession/scheduleFor.test.ts` rather than by these
+// two comments.
+//
+// A component with no phases sorts to the TOP, where it reads as "start this when
+// you like" rather than being buried under everything that does state a timing —
+// the same answer `scheduleFor` gives it, `startAtMs: null`.
 //
 // POSITIONAL ONLY: the existing array is never re-sorted. The stored order is the
 // user's drag order, and a later attach must not silently undo an afternoon of
 // arranging. An id already in `ids` that no longer resolves keeps its place and
-// costs nothing — it is treated as having no cook time, exactly like the display
+// costs nothing — it is treated as having no timing, exactly like the display
 // path treats it as absent.
+//
+// THE NAME NOW UNDERSTATES WHAT IT READS and is kept deliberately: renaming it
+// changes no behaviour and would touch every call site and fixture in the middle
+// of a campaign that is already rewriting this ground. Read the rule above, not
+// the identifier.
 export function insertComponentByCookTime(
   ownerId: string,
   ids: readonly string[],
@@ -93,12 +109,16 @@ export function insertComponentByCookTime(
   if (!canBeComponentOf(ownerId, newId)) return [...ids];
   if (ids.includes(newId)) return [...ids];
 
-  // Sort key, descending: a higher rank cooks for longer and therefore starts
-  // earlier. "No cook time" is Infinity so it leads, and a dangling id shares that
+  // Sort key, descending: a higher rank takes longer and therefore starts
+  // earlier. "No phases" is Infinity so it leads, and a dangling id shares that
   // answer rather than throwing.
+  //
+  // `hasPhases` rather than `elapsedMinutes > 0`, the same test `scheduleFor`
+  // makes: a strip a cook has zeroed by hand is a stated timing of nothing and
+  // sorts LAST, whereas a dish with no strip at all is unknown and leads.
   const rankOf = (id: string): number => {
-    const minutes = allRecipes.find((r) => r.id === id)?.metadata.cookTimeMinutes ?? null;
-    return minutes === null ? Infinity : minutes;
+    const totals = recipePhaseTotals(allRecipes.find((r) => r.id === id)?.metadata.phases);
+    return totals.hasPhases ? totals.elapsedMinutes : Infinity;
   };
 
   const newRank = rankOf(newId);

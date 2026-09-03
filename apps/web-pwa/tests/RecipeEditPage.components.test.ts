@@ -69,14 +69,22 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
   };
 }
 
-function withCookTime(recipe: Recipe, cookTimeMinutes: number | null): Recipe {
-  return { ...recipe, metadata: { ...recipe.metadata, cookTimeMinutes } };
+/** A dish taking `minutes` of elapsed time, stated as one phase (issue #1213). */
+function takingMinutes(recipe: Recipe, minutes: number | null): Recipe {
+  return {
+    ...recipe,
+    metadata: {
+      ...recipe.metadata,
+      phases:
+        minutes === null ? [] : [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: minutes }],
+    },
+  };
 }
 
 const ROAST = makeRecipe({ id: MEAL_ID, title: 'Sunday roast' });
-const CHICKEN = withCookTime(makeRecipe({ id: 'chicken', title: 'Roast chicken' }), 90);
-const POTATOES = withCookTime(makeRecipe({ id: 'potatoes', title: 'Roast potatoes' }), 45);
-const GRAVY = withCookTime(makeRecipe({ id: 'gravy', title: 'Onion gravy' }), 20);
+const CHICKEN = takingMinutes(makeRecipe({ id: 'chicken', title: 'Roast chicken' }), 90);
+const POTATOES = takingMinutes(makeRecipe({ id: 'potatoes', title: 'Roast potatoes' }), 45);
+const GRAVY = takingMinutes(makeRecipe({ id: 'gravy', title: 'Onion gravy' }), 20);
 const TAKEAWAY = makeRecipe({ id: 'takeaway', title: 'Takeaway — Indian', kind: 'outing' });
 const PLACEHOLDER = makeRecipe({ id: 'stock-photo', title: 'A good dinner', kind: 'placeholder' });
 
@@ -141,7 +149,7 @@ describe('RecipeEditPage — building a meal out of recipes', () => {
     expect(options).toEqual(['Roast chicken', 'Roast potatoes', 'Onion gravy']);
   });
 
-  it('attaches longest-cooking first, whatever order you pick them in', async () => {
+  it('attaches longest first, whatever order you pick them in', async () => {
     mockRecipes._set(LIBRARY);
     await openEditor();
 
@@ -260,12 +268,9 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
     expect(row.querySelector('img')).toBeNull();
   });
 
-  // Issue #1122: the row shows the phase sum where the dish has a strip and its
-  // stored cook time where it does not — the same rule the view page's rows use.
-  // The feature key reads on throughout the unit suite (no PostHog key, nothing
-  // can be gated), so the fallback here is the no-strip case, which is also
-  // byte-for-byte what the key-off case renders.
-  it("shows a component's phase sum, falling back to its stored cook time", async () => {
+  // Issues #1122, #1213: the row shows the phase sum, and nothing under it — the
+  // same rule the view page's rows use, out of the one shared `recipeTiming.ts`.
+  it("shows a component's phase sum, and no time at all without one", async () => {
     const gravyWithPhases = {
       ...GRAVY,
       metadata: {
@@ -276,16 +281,18 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
         ],
       },
     };
+    const untimed = takingMinutes(makeRecipe({ id: 'salad', title: 'Green salad' }), null);
     mockRecipes._set([
-      { ...ROAST, componentRecipeIds: ['gravy', 'potatoes'] },
+      { ...ROAST, componentRecipeIds: ['gravy', 'potatoes', 'salad'] },
       gravyWithPhases,
       POTATOES,
+      untimed,
     ]);
     await openEditor();
 
     const rows = screen.getAllByTestId('recipe-component-row').map((r) => r.textContent ?? '');
     expect(rows.find((t) => t.includes('Onion gravy'))).toContain('40 min');
-    expect(rows.find((t) => t.includes('Onion gravy'))).not.toContain('20 min');
     expect(rows.find((t) => t.includes('Roast potatoes'))).toContain('45 min');
+    expect(rows.find((t) => t.includes('Green salad'))).not.toContain('min');
   });
 });

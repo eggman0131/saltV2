@@ -75,8 +75,8 @@ test.describe('recipes — hand-editing the phase strip', () => {
     await expect(page.getByRole('heading', { name: /new recipe/i })).toBeVisible();
     await page.getByTestId('recipe-title-input').fill(DISH);
 
-    // The swap, on the half of it e2e can see: the strip is offered and the three
-    // numbers it replaces are not on the page at all.
+    // The strip is the only way to time a recipe: the three number boxes it
+    // replaced were deleted with the fields behind them (#1213).
     await expect(page.getByTestId('recipe-phase-editor')).toBeVisible();
     await expect(page.getByTestId('recipe-prep-input')).toHaveCount(0);
     await expect(page.getByTestId('recipe-cook-input')).toHaveCount(0);

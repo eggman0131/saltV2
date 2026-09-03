@@ -24,11 +24,6 @@ export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 // flows are different apps that cannot import each other, so the rule that
 // decides what a typed or generated tag becomes lives here.
 export { normaliseTags } from './commands/normaliseTags.js';
-// The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
-// flows and the re-estimate trigger each had a copy, identical apart from the
-// clause that is now the `deriveMissingTotal` argument.
-export { reconcileRecipeTimes } from './commands/reconcileRecipeTimes.js';
-export type { RecipeTimes } from './commands/reconcileRecipeTimes.js';
 // The one merge of a fresh phase strip against a stored one (issue #1122
 // review) — the strip and its one-line summary move together, or not at all.
 export { reconcileRecipePhases } from './commands/reconcileRecipePhases.js';
@@ -54,13 +49,12 @@ export {
   isAuthorable,
   takesComponents,
 } from './queries/capabilities.js';
-// The shape of a cook — elapsed vs hands-on, and where the waiting goes (issue
-// #878). Read by the recipe page's ribbon; returns `null` when the steps carry
-// no timers, which is the "no ribbon at all" case.
-export { cookShape, UNNAMED_WAIT_LABEL, OTHER_WAITS_LABEL } from './queries/cookShape.js';
+// The one place a recipe's phases are added up (issue #1122). It replaced the
+// #878 cook-shape ribbon, which could only see minutes somebody had happened to
+// attach a step timer to; every timing figure in the app is now this sum at the
+// point of use, and none of it is stored.
 export { recipePhaseTotals, phaseElapsedMinutes } from './queries/recipePhaseTotals.js';
 export type { RecipePhaseTotals } from './queries/recipePhaseTotals.js';
-export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './queries/cookShape.js';
 // Meals — a recipe built from several other recipes (issue #752). One level deep,
 // nothing aggregated; see the module header.
 export {

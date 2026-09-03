@@ -105,11 +105,16 @@ describe('mergeAmendedRecipe — a metadata field the librarian omitted is prese
     expect(merged.metadata.servings).toBe(4);
   });
 
-  it('keeps all three times the draft left null', () => {
+  // Issue #1213: the three retired numbers are NOT carried over. Nothing reads
+  // them, the librarian is no longer asked for them, and this merge is a
+  // full-document write — so preserving a stored value would keep a number alive
+  // that no screen and no flow can show. The pair below is what carries a
+  // recipe's timing through an amend.
+  it('writes the three retired times as null rather than carrying them over', () => {
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);
-    expect(merged.metadata.totalTimeMinutes).toBe(45);
-    expect(merged.metadata.prepTimeMinutes).toBe(15);
-    expect(merged.metadata.cookTimeMinutes).toBe(30);
+    expect(merged.metadata.totalTimeMinutes).toBeNull();
+    expect(merged.metadata.prepTimeMinutes).toBeNull();
+    expect(merged.metadata.cookTimeMinutes).toBeNull();
   });
 
   it('keeps the tag list the draft returned empty', () => {
@@ -122,19 +127,25 @@ describe('mergeAmendedRecipe — a metadata field the librarian omitted is prese
 });
 
 describe('mergeAmendedRecipe — a metadata value the librarian DID return wins', () => {
-  it('takes the draft servings and times', () => {
+  it('takes the draft servings', () => {
+    const draft = draftWithoutMetadata({ servings: 6 });
+    const merged = mergeAmendedRecipe(existingRecipe(), draft, NOW);
+    expect(merged.metadata).toMatchObject({ servings: 6 });
+  });
+
+  // The retired keys stay on the schema until #1211, so a draft that still
+  // carries values for them must not put them on the document either.
+  it('ignores the retired time numbers even when the draft states them', () => {
     const draft = draftWithoutMetadata({
-      servings: 6,
       totalTimeMinutes: 60,
       prepTimeMinutes: 20,
       cookTimeMinutes: 40,
     });
     const merged = mergeAmendedRecipe(existingRecipe(), draft, NOW);
     expect(merged.metadata).toMatchObject({
-      servings: 6,
-      totalTimeMinutes: 60,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 40,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
     });
   });
 
@@ -150,7 +161,6 @@ describe('mergeAmendedRecipe — a metadata value the librarian DID return wins'
   it('preserves each field independently — one returned value does not carry the rest', () => {
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata({ servings: 6 }), NOW);
     expect(merged.metadata.servings).toBe(6);
-    expect(merged.metadata.totalTimeMinutes).toBe(45);
     expect(merged.metadata.tags).toEqual(['midweek', 'one-pan']);
   });
 });

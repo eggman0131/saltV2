@@ -58,7 +58,6 @@
     takeImportedDraft,
   } from '../../lib/recipeService.js';
   import { MAX_RECIPE_PHASES, RecipeKindSchema } from '@salt/domain/schemas';
-  import { recipePhasesGate } from '../../lib/featureGate.js';
   import { componentTimeLabel } from './recipeTiming.js';
   import { canonItems } from '../../lib/canonService.js';
   import { members } from '../../lib/membersService.js';
@@ -206,9 +205,9 @@
   // Servings only (issue #1123). A 0 typed here is not an answer — it is what
   // "not stated" means, and `null` is this field's existing sentinel for that,
   // which every consumer already handles (the chip hides, the scaler falls back
-  // to a base of 1). Deliberately NOT folded into `parseNumberOrNull`: the three
-  // time fields share that helper and `prepTimeMinutes: 0` / `cookTimeMinutes: 0`
-  // are real answers there (issue #739).
+  // to a base of 1). Deliberately NOT folded into `parseNumberOrNull`, which the
+  // phase rows also use: 0 hands-on minutes is a real answer there — it is what
+  // an unattended wait looks like.
   function positiveOrNull(value: number | null): number | null {
     return value !== null && value > 0 ? value : null;
   }
@@ -357,10 +356,6 @@
   // elsewhere resolves to nothing and is skipped, so the row never breaks; one
   // level only, so a component's own components are neither shown nor read.
   const componentRecipes = $derived(resolveComponents(draft, $recipes));
-
-  // The one gate derivation on this page — the component rows' time label and the
-  // phase editor below both read it (issue #1122).
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
 
   function addComponent(id: string): void {
     if (!id) return;
@@ -810,10 +805,10 @@
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col">
                   <span class="truncate text-sm font-medium">{component.title}</span>
-                  {#if componentTimeLabel(component, phasesEnabled) !== null}
+                  {#if componentTimeLabel(component) !== null}
                     <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Icon name="Clock" size={12} />
-                      {componentTimeLabel(component, phasesEnabled)}
+                      {componentTimeLabel(component)}
                     </span>
                   {/if}
                 </span>
@@ -1154,9 +1149,9 @@
     <!-- Metadata -->
     <section class="flex flex-col gap-3">
       <p class="text-sm font-medium">Details</p>
-      <!-- Servings and timings only where they mean something. Source URL and
-           "makes…" below stay: a takeaway can still have a menu page it came
-           from. -->
+      <!-- Servings only where it means something (the phase editor below is the
+           rest of the timing). Source URL and "makes…" below stay: a takeaway can
+           still have a menu page it came from. -->
       {#if showCooking}
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <TextField
@@ -1166,47 +1161,14 @@
             onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
           />
-          <!-- The three numbers the phase strip replaces (issue #1122). With the
-               key ON they are gone from the screen entirely — not disabled, not
-               relabelled — and their STORED values are left exactly as they are;
-               the flows keep emitting them and phase 4 is what deletes them. -->
-          {#if !phasesEnabled}
-            <TextField
-              label="Prep (min)"
-              inputmode="numeric"
-              value={draft.metadata.prepTimeMinutes === null
-                ? ''
-                : String(draft.metadata.prepTimeMinutes)}
-              onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-prep-input"
-            />
-            <TextField
-              label="Cook (min)"
-              inputmode="numeric"
-              value={draft.metadata.cookTimeMinutes === null
-                ? ''
-                : String(draft.metadata.cookTimeMinutes)}
-              onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-cook-input"
-            />
-            <TextField
-              label="Total (min)"
-              inputmode="numeric"
-              value={draft.metadata.totalTimeMinutes === null
-                ? ''
-                : String(draft.metadata.totalTimeMinutes)}
-              onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
-              data-testid="recipe-total-input"
-            />
-          {/if}
         </div>
       {/if}
 
       <!-- Timing, as the cook actually experiences it: the phases in the order
            they happen, each with how long it lasts and how much of that is you at
-           the counter (issue #1212). Gated with the timeline it feeds; with the
-           key off this whole section is absent, and nothing above hints at it. -->
-      {#if showCooking && phasesEnabled}
+           the counter (issue #1212). Since #1213 it is the ONLY way to state a
+           recipe's timing — the three number boxes it replaced are gone. -->
+      {#if showCooking}
         <section class="flex flex-col gap-3" data-testid="recipe-phase-editor">
           <div class="flex items-center justify-between">
             <p class="text-sm font-medium">Timing</p>

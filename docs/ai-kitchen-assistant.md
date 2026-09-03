@@ -63,7 +63,11 @@ foundation (#179).
   is almost never written down: "mash the potatoes" needs a masher the recipe
   never names) is the second; `estimateRecipeTimes` (issue #952 phase 2 — how long
   a recipe already in the library actually takes, re-asked against the definition
-  in `recipeFieldRules.ts` rather than restating it) is the third. It is
+  in `recipeFieldRules.ts` rather than restating it) is the third. Since #1213 it
+  returns ONLY the phase strip and its one-line summary — `metadata.phases` and
+  `metadata.timingSummary`, the two field paths the trigger writes; the three
+  prep/cook/total numbers it used to return, and the `total >= prep + cook`
+  reconciliation over them, are gone with the fields. It is
   edge-triggered on a `timesRequestedAt` nonce rather than on create, unlike the
   other two — the authoring paths already answer this question, so a fourth means
   adding a flow, not a field.

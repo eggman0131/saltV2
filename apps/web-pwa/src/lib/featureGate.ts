@@ -32,7 +32,7 @@ import {
  * a typo is a compile error instead of a feature that silently stays hidden
  * forever (a misspelled flag reads as "off" and looks exactly like a working gate).
  */
-export type FeatureKey = 'bread' | 'recipePhases';
+export type FeatureKey = 'bread';
 
 // Feature key → PostHog flag key. Separate from the union so the flag can be
 // renamed in PostHog without touching every call site, and so the app's word for
@@ -42,16 +42,13 @@ export type FeatureKey = 'bread' | 'recipePhases';
 // `@salt/observability` (issue #1054) because the server half of the same gate
 // asks about the same flag from an app this one cannot import.
 //
-// `recipePhases` is the exception that proves the rule, and its literal is
-// deliberately local (issue #1122). `BREAD_FLAG_KEY` lives in @salt/observability
-// because the bread gate has a SERVER half — `onBatchWritten` asks about the same
-// flag from an app web-pwa cannot import — and a shared key is what stops the two
-// spellings drifting. The phase timeline is browser-only: nothing in
-// cloud-functions consults it, so a shared constant would be an export with no
-// second reader. Give it one, and it moves.
+// `BREAD_FLAG_KEY` lives in @salt/observability because the bread gate has a
+// SERVER half — `onBatchWritten` asks about the same flag from an app web-pwa
+// cannot import — and a shared key is what stops the two spellings drifting. A
+// browser-only gate keeps its literal here instead, because a shared constant
+// with one reader is an export nothing needs.
 const FLAG_KEY: Record<FeatureKey, string> = {
   bread: BREAD_FLAG_KEY,
-  recipePhases: 'recipe-phases',
 };
 
 export interface FeatureGate {
@@ -106,13 +103,3 @@ export function featureGate(feature: FeatureKey): Readable<FeatureGate> {
 
 /** Bread — formulas, batches and everything epic #778 is still building. */
 export const breadGate = featureGate('bread');
-
-/**
- * Recipe phases — the named phase strip and the planning timeline (issue #1122).
- *
- * Off, everything about recipe timing is exactly as it was: the Prep / Cook /
- * Total chips, the list's sort and chip, the edit page's three number inputs. On,
- * the phases replace them. It comes off in phase 4, together with the three
- * numbers it replaces.
- */
-export const recipePhasesGate = featureGate('recipePhases');

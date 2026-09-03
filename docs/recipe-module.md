@@ -103,8 +103,12 @@ RecipeKitEntry { label: string, stepIds: string[] }   // a LABEL, never a `kitch
                                    // "Schema extensions (kit)". stepIds is plural: a pan used at
                                    // steps 3-7 stays on the hob the whole time
 
-RecipeMetadata { servings, totalTimeMinutes, prepTimeMinutes, cookTimeMinutes: number | null,
+RecipeMetadata { servings: number | null,
+                 phases: RecipePhase[], timingSummary: string | null,   // the recipe's timing
+                 totalTimeMinutes, prepTimeMinutes, cookTimeMinutes: number | null,  // RETIRED, see below
                  tags: string[] }
+
+RecipePhase { label: string, handsOnMinutes: number, handsOffMinutes: number }
 
 RecipeSource { type:'url'|'book'|'manual', url?, book?:{ title, author, page } }
 ```
@@ -131,11 +135,14 @@ Key invariants:
 ### The phase strip — what recipe timing BECOMES (issue #1122)
 
 `metadata.phases` is an ordered list of 3–6 `{ label, handsOnMinutes,
-handsOffMinutes }` blocks, plus `metadata.timingSummary`, one sentence. It is the
-replacement for the three fields documented below, not a companion to them: phase 4
-of #1122 removes `prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes`, and
-every timing figure in the app then comes from `recipePhaseTotals` at the point of
-use. Until then both exist and the strip is behind the `recipePhases` feature key.
+handsOffMinutes }` blocks, plus `metadata.timingSummary`, one sentence. It is
+**the whole of a recipe's timing** since #1213: every timing figure in the app —
+the list chip, the Quickest sort, the component rows on both pages, the meal cook
+plan's per-dish line and its start clock — comes from `recipePhaseTotals` at the
+point of use, and there is no feature key any more. `prepTimeMinutes` /
+`cookTimeMinutes` / `totalTimeMinutes` are still **declared** on
+`RecipeMetadataSchema` and still parsed; nothing reads them, every writer sets
+them to `null`, and #1211 removes the declarations.
 
 Four things that are not obvious from the shape:
 
@@ -176,18 +183,16 @@ one place that decides when the strip answers "how long does this take" and when
 the old fields still do — the recipe list's chip and its Quickest sort, the "Made
 from" rows on the view and edit pages, and the meal cook plan's per-dish line all
 go through it, so a recipe cannot read 45 min on one screen and 13 hr on another.
-It returns `null` with the feature key off and for a recipe with no strip, which is
-what makes a part-backfilled library read correctly everywhere. Note the boundary
-until phase 4: only the LINE a surface shows moves onto the phase sum this phase —
-the ORDERING beside it does not. The cook plan's START CLOCK still comes from
-`scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are still
-positioned by `insertComponentByCookTime` reading the same field, so with the key
-on a component can display a phase sum while sorting — or starting — as if the old
-field still ran the show (#1205 review, should-fix 4).
+It returns `null` for a recipe with no strip, which is the surface showing no time
+at all. Since #1213 there is nothing under it: the fallbacks to whichever of the
+three old fields each surface had always shown are gone, and so is the
+`phasesEnabled` argument. The ORDERING and the START CLOCK read the same figure —
+`insertComponentByCookTime` and `scheduleFor` both go through `recipePhaseTotals`,
+pinned together by `packages/domain/tests/cookSession/scheduleFor.test.ts`.
 
 The definition the model is given lives in `TIME_RULES`
-(`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
-own definitions, so all four authoring paths — librarian, URL import, photo import,
+(`apps/cloud-functions/src/flows/recipeFieldRules.ts`), which since #1213 is the
+phase rules and nothing else, so all four authoring paths — librarian, URL import, photo import,
 re-estimator — ask one question against one text. The strip and its summary are
 paired by one shared function, `reconcileRecipePhases`
 (`packages/domain/src/recipe/commands/`), called by exactly three writers:
@@ -233,8 +238,11 @@ as BOTH SIDES WHOLE rather than a per-phase breakdown, and `RecipeChangeSummary`
 renders it as a single "Timing" card: the strip is one fact — a sequence — and a
 reorder drawn as six row edits would bury the one question the gate is asked.
 **A pure reorder IS reported**, deliberately unlike a reordered ingredient or step,
-because the order of a phase list is the order you do the work in. With the key off
-the summary renders the same three time cards it always did.
+because the order of a phase list is the order you do the work in. The three time
+cards that stood beside it are gone with the fields (#1213), and
+`RecipeMetadataDiff` no longer carries the keys at all. The card also declines to
+draw a pair whose two rendered sides read the same string (#1217) — a change to
+the document that a reviewer cannot see is a live Apply over nothing.
 
 The card shows only the half that actually moved. `RecipeDiff` carries changed
 fields and nothing else, so an unchanged strip is not available to draw — filling
@@ -248,56 +256,34 @@ component row is the same row on two screens and the two copies were byte-for-by
 identical, where the list chip and the cook-plan line genuinely say different
 things and keep their own words.
 
-### The three time fields — definition and arithmetic (issue #952)
+### The three time fields — retired (issues #952, #1122, #1213)
 
-The field set is unchanged (`schemaVersion` stays `1`, no migration); what was
-missing was any statement of what the numbers **mean**. Every authoring path used
-to receive one line of guidance — "integers in minutes, or null" — which is a type,
-not a definition, so the model fell back on published-recipe convention. That
-convention is the optimistic one: a food writer's "prep: 5 minutes" starts from an
-already-weighed counter and stops before the washing up.
+`prepTimeMinutes`, `cookTimeMinutes` and `totalTimeMinutes` were the app's account
+of a recipe's timing until #1213. They are now declared, parsed and **read by
+nothing**; #1211 removes the declarations. `schemaVersion` stays `1` and no
+migration was needed — every writer sets them to `null`, and recipes are
+last-write-wins per whole document, so a stored value clears on the next save.
 
-The definition, now stated in `recipeFieldRules.ts` and therefore identical on all
-three paths (librarian, URL import, photo import):
+What is worth carrying forward, because it is why the strip is shaped as it is:
 
-- **`prepTimeMinutes`** — every minute the cook actively spends that is not time on
-  heat: fetching the ingredients and equipment out, weighing and measuring, the
-  knife work, and clearing down afterwards. Estimated for a cook who starts with
-  nothing out and finishes with a clean kitchen.
-- **`cookTimeMinutes`** — time the food spends cooking. On the hob, in the oven,
-  under the grill.
-- **`totalTimeMinutes`** — wall-clock from starting to serving, **including**
-  unattended waits that are neither prep nor cook: marinating, proving, chilling,
-  resting. This is why a total may legitimately be many times prep + cook.
-- **`totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes`**, always.
-
-Two decisions worth keeping:
-
-- **The arithmetic rule is both asked for and enforced.** `recipeFieldRules.ts`
-  states it to the model; `reconcileRecipeTimes` (`domain/recipe/commands/`)
-  re-imposes it on the numbers, deriving a missing total from the parts and raising
-  a stated total that is below them. It lives in the domain because both write
-  paths need it and had a copy each (issue #1116): `assembleRecipeDraft` calls it
-  for the authoring flows, `reconcileEstimatedTimes` for the re-estimate trigger.
-  They differ on one input — both parts known, no total stated — and that
-  difference is the function's `deriveMissingTotal` argument, argued at each call
-  site and pinned by a single test asserting both answers. Asking alone is not enough — the library holds recipes stored with
-  `prep: 10, cook: 35, total: 35` — and enforcing alone is not either, because the
-  repaired number is only as honest as the parts it is built from. Note the repair
-  raises a floor and never caps a ceiling, so an overnight prove keeps its 762.
+- **A type is not a definition.** Until #952 the model's whole guidance was
+  "integers in minutes, or null", so it fell back on published-recipe convention:
+  a food writer's "prep: 5 minutes" starts from an already-weighed counter and
+  stops before the washing up. Every recipe in the library read optimistic.
+  `TIME_RULES` is what fixed that, and the phase rules are its descendant.
+- **`total >= prep + cook` needed both asking AND enforcing**, because three
+  independently-stated numbers can contradict each other. That is exactly the
+  defect the strip closes by construction: elapsed time is `handsOn + handsOff`,
+  computed where it is read, so there is no second number to disagree.
+  `reconcileRecipeTimes` — the one shared implementation of that arithmetic — was
+  deleted with the fields, along with the clause in `TIME_RULES` that asked for it.
 - **An import re-estimates the times; it never rewrites the content.** The JSON-LD
-  prompt's faithfulness rule used to name "times" alongside ingredients and steps,
-  which made a URL import inherit the publisher's optimistic number by explicit
-  instruction. It now exempts the three time fields and nothing else. The rationale
-  is comparability: a library where half the recipes use blog convention and half
-  use ours has a "quickest first" sort that means nothing. Ingredients, steps and
-  servings stay verbatim.
-
-Nothing downstream changed. `cookShape` still derives the displayed hands-on figure
-as `total − timer waits` (it is the second source of truth this issue deliberately
-did **not** create), and the cook plan still starts a dish at
-`serve − cookTimeMinutes` — the decisions recorded below at _The cook plan_. That
-start clock excludes prep on purpose and is tracked separately as #953.
+  prompt's faithfulness rule exempts timing and nothing else, for comparability: a
+  library where half the recipes use blog convention and half use ours has a
+  "quickest first" sort that means nothing. A scraped page's own prep/cook/total
+  are still parsed by `jsonLdRecipe.ts` and still handed to the model as labelled
+  EVIDENCE ("as stated by the page") — and then thrown away, because there is no
+  field left to store them in. Ingredients, steps and servings stay verbatim.
 
 ### Schema extensions (times, issue #952 phase 2)
 
@@ -321,8 +307,8 @@ deploy → dry-run → apply → verify procedure.
   paths already ask this question against the `recipeFieldRules.ts` definition, so
   a just-authored recipe already has the best answer the codebase can give;
   re-asking on create would buy a second AI call per recipe forever.
-- **The write is three `metadata.*TimeMinutes` field paths plus the stamp, never a
-  document `set`.** Recipes are last-write-wins per whole document, and this
+- **The write is two `metadata.*` field paths — `phases` and `timingSummary` —
+  plus the stamp, never a document `set`.** Recipes are last-write-wins per whole document, and this
   branch is driven by a script sweeping the whole library, so a coarser write
   would be a library-wide chance to clobber a concurrent edit. The
   `estimateRecipeTimes` flow has no output field for a title, an ingredient or a
@@ -332,11 +318,11 @@ deploy → dry-run → apply → verify procedure.
 - **`isCookable(recipe.kind)` gates the call**, same as the kit branch — an outing
   or a placeholder has nothing to time.
 - **It shares the field DEFINITIONS, not the estimation policy.** The flow
-  interpolates `TIME_RULES` from `recipeFieldRules.ts` — the same field-meaning
-  text quoted above — so a backfilled recipe and a freshly-authored one are judged
-  against the same statement of what `prepTimeMinutes`/`cookTimeMinutes`/
-  `totalTimeMinutes` **mean**. It is precise to stop there: the flow's own
-  `## How to estimate` block (scale prep with servings, a step timer is a floor,
+  interpolates `TIME_RULES` from `recipeFieldRules.ts` — the same phase-definition
+  text — so a backfilled recipe and a freshly-authored one are judged against the
+  same statement of what a phase, and hands-on time, **mean**. It is precise to
+  stop there: the flow's own
+  `## How to estimate` block (scale the knife work with the servings, a step timer is a floor,
   heat vs. unattended wait, overlapping work counts once, "a competent home cook
   doing only this", round to a human number) is a separate, flow-local set of
   heuristics for turning that definition into three numbers, and it is **not**
@@ -563,12 +549,21 @@ Decisions worth not relitigating:
   `false` for `outing` and `placeholder`. The picker's candidate list is gated on
   `isCookable` instead — a component is a dish you MAKE, which is the same two
   kinds read from the other side.
-- **Attach order is cook time, longest first** (`insertComponentByCookTime`) —
-  the order you start things in. `cookTimeMinutes`, **not** `totalTimeMinutes`:
-  prep is done ahead and in any order, so it says nothing about when a dish has to
-  begin. A component with no cook time sorts to the **top** ("start when you
-  like"). Insertion is **positional only** and never re-sorts the existing array:
-  the stored order is the user's drag order, and a later attach must not undo it.
+- **Attach order is the whole process, longest first** (`insertComponentByCookTime`)
+  — the order you start things in. This REVERSES the rule recorded here until
+  #1213, which read `cookTimeMinutes` on the argument that prep is done ahead and
+  in any order and therefore says nothing about when a dish begins. That argument
+  existed because the app had to guess whether the prep had happened; with a phase
+  strip it does not guess, and the strip beside the row is what shows which of the
+  elapsed time is unattended. The figure is `recipePhaseTotals().elapsedMinutes` —
+  the SAME figure `scheduleFor` works the start clock back from, which is what
+  stops the running order and the clock times telling different stories
+  (`packages/domain/tests/cookSession/scheduleFor.test.ts` pins the agreement).
+  The function's NAME is now an understatement and is kept deliberately: renaming
+  it changes no behaviour and would touch every call site and fixture. A component
+  with no phases sorts to the **top** ("start when you like"). Insertion is
+  **positional only** and never re-sorts the existing array: the stored order is
+  the user's drag order, and a later attach must not undo it.
 - **Meals is a section of the recipes list, not a kind of entry.** `sectionOf`
   (`apps/web-pwa/src/routes/recipes/recipeKind.ts`) returns the Meals section for
   anything with components, so an entry appears exactly once — under Meals _and_
@@ -598,7 +593,17 @@ evening: the meal and its dishes in running order, each with a start clock time
 and a live countdown, plus every timer in the meal in one cancellable list. One
 schema field carries it — `serveAt` on `CookSessionSchema` — and one pure helper
 computes it: `scheduleFor(rows, serveAtMs)` in `domain/src/cookSession/`, which is
-`start = serve − cookTimeMinutes`, per row and nothing else.
+`start = serve − recipePhaseTotals(phases).elapsedMinutes`, per row and nothing
+else.
+
+**This REVERSES the decision recorded here until #1213, and it closes #953.** The
+clock used to work back from `cookTimeMinutes` alone, which quietly assumed the
+chopping and weighing had happened at some earlier point in the day. #953 offered
+three answers — say the assumption out loud, change the arithmetic to
+`serve − (cook + prep)`, or make it the cook's choice per meal — and all three
+existed only because the app had to guess. With phases it does not: it works back
+from the real elapsed time. **Start times on existing plans moved earlier**, which
+is the visible behaviour change the household sees.
 
 Decisions worth not relitigating:
 
@@ -628,8 +633,10 @@ Decisions worth not relitigating:
   evening.
 - **The meal is a row only when it has steps of its own.** A pure bundle has
   nothing to start, and a row you cannot act on is noise.
-- **A dish with no `cookTimeMinutes` stays in the plan**, reading "start when you
-  like". Dropping it would hide a dish for the crime of an incomplete recipe.
+- **A dish with no phases stays in the plan**, reading "start when you like".
+  Dropping it would hide a dish for the crime of an incomplete recipe. `hasPhases`,
+  not `elapsedMinutes > 0`: a strip a cook has zeroed by hand is a stated timing of
+  nothing, and that dish starts AT serve time.
 
 Two bounds recorded rather than fixed: the timer list inherits the
 five-session cap on `myCookSessions` (raising it is a shared personal-view

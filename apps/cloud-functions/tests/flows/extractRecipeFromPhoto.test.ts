@@ -79,9 +79,11 @@ const AI_OUTPUT = {
   ],
   steps: [{ text: 'Brown the mince.', timerMinutes: null, timerLabel: null, note: null }],
   servings: 4,
-  totalTimeMinutes: null,
-  prepTimeMinutes: 20,
-  cookTimeMinutes: 180,
+  phases: [
+    { label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 },
+    { label: 'Simmer', handsOnMinutes: 0, handsOffMinutes: 180 },
+  ],
+  timingSummary: null,
   tags: ['italian', 'main'],
   notes: null,
   book: { title: 'The Silver Spoon', author: null, page: 212 },
@@ -177,9 +179,12 @@ describe('extractRecipeFromPhoto — the draft it assembles', () => {
     expect(recipe.source).toEqual({ type: 'book' });
   });
 
-  it('derives a total time from prep + cook, as a printed page rarely states one', async () => {
+  it('stores the phase strip and no prep/cook/total, whatever the page stated (#1213)', async () => {
     const recipe = await invoke({ images: [PAGE_ONE] });
-    expect(recipe.metadata.totalTimeMinutes).toBe(200);
+    expect(recipe.metadata.phases).toHaveLength(2);
+    expect(recipe.metadata.totalTimeMinutes).toBeNull();
+    expect(recipe.metadata.prepTimeMinutes).toBeNull();
+    expect(recipe.metadata.cookTimeMinutes).toBeNull();
   });
 
   it('keeps the book’s own ingredient grouping', async () => {

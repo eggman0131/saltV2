@@ -310,7 +310,11 @@ describe('diffRecipe', () => {
     expect(diff.hasChanges).toBe(true);
   });
 
-  it('detects each time-field change independently', () => {
+  // Issue #1213: the three stored time numbers are read by nothing, so a
+  // proposal that moves one has nothing to show a reviewer and is not reported.
+  // `phases` and `timingSummary` are the recipe's timing, and they are covered by
+  // the phase-strip block further down.
+  it('reports nothing when only the retired prep/cook/total numbers moved', () => {
     const before = withMetadata(recipe(), {
       totalTimeMinutes: 40,
       prepTimeMinutes: 10,
@@ -322,9 +326,8 @@ describe('diffRecipe', () => {
       cookTimeMinutes: 45,
     });
     const diff = diffRecipe(before, after);
-    expect(diff.metadata.totalTimeMinutes).toEqual({ from: 40, to: 55 });
-    expect(diff.metadata.cookTimeMinutes).toEqual({ from: 30, to: 45 });
-    expect(diff.metadata.prepTimeMinutes).toBeUndefined();
+    expect(diff.metadata).toEqual({});
+    expect(diff.hasChanges).toBe(false);
   });
 
   it('detects a null → number metadata change', () => {

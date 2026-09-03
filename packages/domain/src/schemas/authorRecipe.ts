@@ -65,9 +65,14 @@ export const LibrarianOutputSchema = z.object({
   // the extractor's copy before changing either. 0 does not survive to the
   // stored recipe in any case: assembleRecipeDraft folds it back to null once it
   // has reconciled the total.
-  totalTimeMinutes: z.number().int().positive().nullable(),
-  prepTimeMinutes: z.number().int().nonnegative().nullable(),
-  cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  // The three numbers the phase strip replaced (issues #1122, #1213). The prompt
+  // no longer asks for them and nothing reads them, so they are `.optional()`:
+  // required-nullable, the moment the prompt stopped asking, would have failed
+  // `.safeParse` on every authoring call at the trust boundary. Absent reads as
+  // null. The declarations themselves go with `RecipeMetadataSchema`'s in #1211.
+  totalTimeMinutes: z.number().int().positive().nullable().optional(),
+  prepTimeMinutes: z.number().int().nonnegative().nullable().optional(),
+  cookTimeMinutes: z.number().int().nonnegative().nullable().optional(),
   // The recipe's timing as an ordered strip (issue #1122), which is what it will
   // BE once the three numbers above retire. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer

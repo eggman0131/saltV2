@@ -23,7 +23,6 @@ const {
   mockDefaultListId,
   mockSessions,
   mockEquipment,
-  mockPhasesGate,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
   return {
@@ -34,22 +33,19 @@ const {
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
     mockEquipment: makeStore<unknown>(null),
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: true,
-      settled: true,
-    }),
   };
 });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: mockPhasesGate,
   // Bread stays on, which is what the real (unkeyed) gate answers — this suite is
   // not about bread and nothing here should change what it shows.
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
-  featureGate: () => mockPhasesGate,
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  }),
   isFeatureEnabled: () => true,
 }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
@@ -178,7 +174,6 @@ beforeEach(() => {
   mockIsLoading._set(false);
   mockRecipes._set([]);
   mockGuidedPlan._set(null);
-  mockPhasesGate._set({ enabled: true, settled: true });
 });
 
 function renderPage() {
@@ -293,7 +288,7 @@ describe('RecipeViewPage — the phase strip', () => {
   // The swap the timeline pays for (#1122's whole complaint is two accounts of the
   // same fact side by side). Nothing replaces the chips: the timeline states its
   // own total a few lines below, and a chip repeating it is the same defect again.
-  it('drops the Prep / Cook / Total chips when the recipe has a strip', () => {
+  it('shows no Prep / Cook / Total chip beside a strip', () => {
     mockRecipes._set([withThreeFields(PHASES)]);
     const { getByTestId, container } = renderPage();
 
@@ -305,32 +300,17 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(container.textContent).toContain('Serves 4');
   });
 
-  it('keeps the three chips for a recipe with no strip, key on', () => {
+  // Issue #1213: the chips are gone with the fields behind them, so a stored
+  // value that survived the migration must not put one back on screen. This is
+  // the fixture that would have drawn all three before the gate came off.
+  it('shows no chip for a recipe that still carries the three stored numbers and no strip', () => {
     mockRecipes._set([withThreeFields(undefined)]);
     const { container } = renderPage();
 
-    expect(container.textContent).toContain('Prep 15 min');
-    expect(container.textContent).toContain('Cook 30 min');
-    expect(container.textContent).toContain('Total 45 min');
-  });
-
-  it('keeps the three chips with the key off, however good the stored strip is', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set([withThreeFields(PHASES)]);
-    const { container } = renderPage();
-
-    expect(container.textContent).toContain('Prep 15 min');
-    expect(container.textContent).toContain('Cook 30 min');
-    expect(container.textContent).toContain('Total 45 min');
-  });
-
-  it('renders nothing when the key is off, however good the stored strip is', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set([withPhases()]);
-    const { queryByTestId } = renderPage();
-
-    expect(queryByTestId('recipe-phases')).toBeNull();
-    expect(queryByTestId('recipe-timing-summary')).toBeNull();
+    expect(container.textContent).not.toContain('Prep 15 min');
+    expect(container.textContent).not.toContain('Cook 30 min');
+    expect(container.textContent).not.toContain('Total 45 min');
+    expect(container.textContent).toContain('Serves 4');
   });
 
   // The migration case, and the reason `phases` is optional on the schema: a
@@ -342,9 +322,8 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(queryByTestId('recipe-phases')).toBeNull();
   });
 
-  // The "Made from" row (issue #752) reads the same rule as everything else: the
-  // phase sum when the dish has a strip, its stored cook time otherwise — and the
-  // fallback keeps the raw `n min` spelling it has always had.
+  // The "Made from" row (issue #752) reads the same rule as everything else, out
+  // of the one shared `recipeTiming.ts`: the phase sum, and nothing under it.
   it("shows a component's phase sum on the Made from row", () => {
     mockRecipes._set(meal(dish({ cookTimeMinutes: 20, phases: PHASES, timingSummary: null })));
     const { getByTestId } = renderPage();
@@ -352,19 +331,11 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(getByTestId('recipe-component-cook-time').textContent).toContain('2 hr 22 min');
   });
 
-  it("falls back to a component's stored cook time when it has no strip", () => {
+  it('shows no time on the row when the component has no strip', () => {
     mockRecipes._set(meal(dish({ cookTimeMinutes: 20 })));
-    const { getByTestId } = renderPage();
+    const { queryByTestId } = renderPage();
 
-    expect(getByTestId('recipe-component-cook-time').textContent).toContain('20 min');
-  });
-
-  it("ignores a component's strip with the key off", () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set(meal(dish({ cookTimeMinutes: 20, phases: PHASES, timingSummary: null })));
-    const { getByTestId } = renderPage();
-
-    expect(getByTestId('recipe-component-cook-time').textContent).toContain('20 min');
+    expect(queryByTestId('recipe-component-cook-time')).toBeNull();
   });
 
   it('renders nothing for a recipe whose stored strip is empty', () => {
@@ -376,14 +347,12 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(queryByTestId('recipe-phases')).toBeNull();
   });
 
-  // #1205 review, blocking 1: `cookShape` returns non-null for ANY recipe with a
-  // timed step — the whole bread library this feature targets — so with the key
-  // on, the timeline's "X start to finish · Y hands-on" sentence and the #878
-  // ribbon's identical sentence, built from different numbers, printed as
-  // consecutive paragraphs. Every earlier fixture in this file has `steps: []`,
-  // so `cookShape` returned null and the ribbon never rendered alongside a strip
-  // in a single test — this is the one fixture with a timed step, so the
-  // regression cannot come back silently.
+  // Issue #1213 deleted the #878 cook-shape ribbon. It was built from whichever
+  // steps happened to carry a countdown — the original defect #1122 was raised
+  // against — and printing it beside the strip was two accounts of one fact. Its
+  // suppression condition ("only when the recipe has no strip") is now always
+  // true, so what is pinned is its absence, on the one fixture that used to draw
+  // it: a recipe with a timed step and no strip at all.
   const timedStep = {
     id: 'step-1',
     text: 'Cover and prove overnight',
@@ -391,34 +360,21 @@ describe('RecipeViewPage — the phase strip', () => {
     note: null,
   };
 
-  it("suppresses the #878 ribbon's sentence when the recipe has a strip, even though a timed step gives cookShape a shape", () => {
+  it('draws no cook-shape ribbon, for a recipe with a strip or without one', () => {
+    mockRecipes._set([makeRecipe({ steps: [timedStep] })]);
+    expect(renderPage().queryByTestId('recipe-cook-shape')).toBeNull();
+    cleanup();
+
     mockRecipes._set([
       makeRecipe({
         steps: [timedStep],
-        metadata: {
-          ...makeRecipe().metadata,
-          prepTimeMinutes: 15,
-          cookTimeMinutes: 30,
-          totalTimeMinutes: 45,
-          phases: PHASES,
-          timingSummary: null,
-        },
+        metadata: { ...makeRecipe().metadata, phases: PHASES, timingSummary: null },
       }),
     ]);
     const { getByTestId, queryByTestId } = renderPage();
-
-    // The timeline still states its own account of the timing...
+    // The timeline is the page's only timing graphic, and it still states its own
+    // account of the timing.
     expect(getByTestId('recipe-phase-totals').textContent).toContain('start to finish');
-    // ...but the ribbon, which would restate the same sentence from different
-    // numbers (`cookShape` reads the old fields and the timer, not the phases),
-    // must not render at all.
     expect(queryByTestId('recipe-cook-shape')).toBeNull();
-  });
-
-  it('keeps the #878 ribbon for a recipe with a timed step and no strip, key on', () => {
-    mockRecipes._set([makeRecipe({ steps: [timedStep] })]);
-    const { getByTestId } = renderPage();
-
-    expect(getByTestId('recipe-cook-shape')).toBeTruthy();
   });
 });

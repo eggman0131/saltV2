@@ -21,9 +21,15 @@ export function formatRecipeForPrompt(r: RecipeDoc): string {
 
   const meta: string[] = [];
   if (r.metadata.servings != null) meta.push(`servings: ${r.metadata.servings}`);
-  if (r.metadata.prepTimeMinutes != null) meta.push(`prep: ${r.metadata.prepTimeMinutes} min`);
-  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
-  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
+  // Timing is the phase strip (issues #1122, #1213), rendered as the ordered
+  // blocks themselves rather than as a total: the model is asked to AMEND a strip
+  // and needs to see the one it is amending. Elapsed is derived where it is read
+  // and never printed here, for the same reason it is never stored — a second
+  // representation is a second thing that can disagree.
+  for (const phase of r.metadata.phases ?? []) {
+    meta.push(`${phase.label}: ${phase.handsOnMinutes} min hands-on, \
+${phase.handsOffMinutes} min hands-off`);
+  }
   if (meta.length > 0) parts.push(meta.join(', '));
   if (r.metadata.tags.length > 0) parts.push(`Tags: ${r.metadata.tags.join(', ')}`);
 

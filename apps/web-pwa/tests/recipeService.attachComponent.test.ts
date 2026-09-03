@@ -49,7 +49,9 @@ function nsId(id: string): string {
 
 function recipe(
   id: string,
-  opts: { cookTimeMinutes?: number | null; componentRecipeIds?: string[] } = {},
+  /** `elapsedMinutes` is stated as one unattended phase — the strip is a dish's
+   *  whole timing since #1213, and what the attach order reads. */
+  opts: { elapsedMinutes?: number | null; componentRecipeIds?: string[] } = {},
 ): Recipe {
   return {
     kit: [],
@@ -65,8 +67,13 @@ function recipe(
     metadata: {
       servings: null,
       prepTimeMinutes: null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
+      cookTimeMinutes: null,
       totalTimeMinutes: null,
+      phases:
+        opts.elapsedMinutes == null
+          ? []
+          : [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: opts.elapsedMinutes }],
+      timingSummary: null,
       tags: [],
     },
     source: null,
@@ -107,7 +114,7 @@ describe('attachComponentToMeal', () => {
   it('attaches the dish to the meal and persists the whole document', async () => {
     const mealId = nsId('roast');
     const dishId = nsId('gravy');
-    seedRecipes([recipe(mealId), recipe(dishId, { cookTimeMinutes: 20 })]);
+    seedRecipes([recipe(mealId), recipe(dishId, { elapsedMinutes: 20 })]);
 
     const result = await attachComponentToMeal(mealId, dishId);
 
@@ -119,16 +126,16 @@ describe('attachComponentToMeal', () => {
   });
 
   it('puts the dish where the domain says, not on the end', async () => {
-    // Longest-cooking-first is `insertComponentByCookTime`'s policy and it stays
-    // there: the bird goes in before the potatoes, so a 90-minute dish attached
-    // to a meal that already holds a 20-minute one lands FIRST.
+    // Longest-first is `insertComponentByCookTime`'s policy and it stays there:
+    // the bird goes in before the potatoes, so a 90-minute dish attached to a
+    // meal that already holds a 20-minute one lands FIRST.
     const mealId = nsId('roast');
     const gravy = nsId('gravy');
     const chicken = nsId('chicken');
     seedRecipes([
       recipe(mealId, { componentRecipeIds: [gravy] }),
-      recipe(gravy, { cookTimeMinutes: 20 }),
-      recipe(chicken, { cookTimeMinutes: 90 }),
+      recipe(gravy, { elapsedMinutes: 20 }),
+      recipe(chicken, { elapsedMinutes: 90 }),
     ]);
 
     await attachComponentToMeal(mealId, chicken);
@@ -141,7 +148,7 @@ describe('attachComponentToMeal', () => {
     // gate, so re-saving an editor that still carries it must not double up.
     const mealId = nsId('roast');
     const dishId = nsId('gravy');
-    seedRecipes([recipe(mealId), recipe(dishId, { cookTimeMinutes: 20 })]);
+    seedRecipes([recipe(mealId), recipe(dishId, { elapsedMinutes: 20 })]);
 
     await attachComponentToMeal(mealId, dishId);
     const second = await attachComponentToMeal(mealId, dishId);

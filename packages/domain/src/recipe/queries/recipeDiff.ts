@@ -39,7 +39,7 @@ export interface NullableStringChange {
   to: string | null;
 }
 
-// A change on a nullable numeric metadata field (servings + the time fields).
+// A change on a nullable numeric metadata field (servings).
 export interface NullableNumberChange {
   from: number | null;
   to: number | null;
@@ -127,9 +127,6 @@ export interface RecipePhasesChange {
 // faithful account of what moved and the summary decides how to say it.
 export interface RecipeMetadataDiff {
   servings?: NullableNumberChange;
-  totalTimeMinutes?: NullableNumberChange;
-  prepTimeMinutes?: NullableNumberChange;
-  cookTimeMinutes?: NullableNumberChange;
   phases?: RecipePhasesChange;
   timingSummary?: NullableStringChange;
 }

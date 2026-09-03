@@ -34,9 +34,8 @@ function recipe(
     description?: string | null;
     ingredients?: string[];
     steps?: string[];
-    cookTimeMinutes?: number | null;
-    prepTimeMinutes?: number | null;
-    totalTimeMinutes?: number | null;
+    /** The dish's phase strip, which since #1213 is the whole of its timing. */
+    phases?: { label: string; handsOnMinutes: number; handsOffMinutes: number }[];
     componentRecipeIds?: string[];
     // The three fields the chef's own thin rendering used to drop (#934, A5-007).
     // Optional so every existing fixture is byte-for-byte what it was.
@@ -77,9 +76,11 @@ function recipe(
     })),
     metadata: {
       servings: 4,
-      totalTimeMinutes: opts.totalTimeMinutes ?? null,
-      prepTimeMinutes: opts.prepTimeMinutes ?? null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      phases: opts.phases ?? [],
+      timingSummary: null,
       tags: opts.tags ?? [],
     },
     kind: 'recipe' as const,
@@ -100,9 +101,12 @@ const CHICKEN = recipe('chicken', 'Roast chicken', {
   description: 'A whole bird, hot oven then rested.',
   ingredients: ['1 whole chicken, 1.6 kg', '30 g butter, softened'],
   steps: ['Heat the oven to 200 °C.', 'Roast for 90 minutes, then rest for 20.'],
-  cookTimeMinutes: 90,
-  prepTimeMinutes: 15,
-  totalTimeMinutes: 125,
+  // 15 min of knife work, 90 min in the oven, 20 min resting = 125 elapsed.
+  phases: [
+    { label: 'Prep', handsOnMinutes: 15, handsOffMinutes: 0 },
+    { label: 'Roast', handsOnMinutes: 0, handsOffMinutes: 90 },
+    { label: 'Rest', handsOnMinutes: 0, handsOffMinutes: 20 },
+  ],
 });
 
 const POTATOES = recipe('potatoes', 'Roast potatoes', {
@@ -112,8 +116,10 @@ const POTATOES = recipe('potatoes', 'Roast potatoes', {
   description: 'Parboiled and roughed up before roasting.',
   ingredients: ['1.5 kg Maris Piper potatoes', '4 tbsp goose fat'],
   steps: ['Parboil for 8 minutes and rough up the edges.', 'Roast for 50 minutes at 200 °C.'],
-  cookTimeMinutes: 50,
-  totalTimeMinutes: 70,
+  phases: [
+    { label: 'Parboil', handsOnMinutes: 5, handsOffMinutes: 15 },
+    { label: 'Roast', handsOnMinutes: 0, handsOffMinutes: 50 },
+  ],
 });
 
 /**
@@ -245,7 +251,8 @@ describe('componentSectionForChef', () => {
     expect(section).toContain('1 whole chicken, 1.6 kg');
     expect(section).toContain('Roast for 90 minutes, then rest for 20.');
     expect(section).toContain('1.5 kg Maris Piper potatoes');
-    expect(section).toContain('cook: 90 min');
+    // The chef sees the full recipe rendering, phase strip included (#1213).
+    expect(section).toContain('Roast: 0 min hands-on, 90 min hands-off');
   });
 
   it('asks for the two things the cards cannot tell the user themselves', () => {
@@ -282,7 +289,7 @@ describe('componentSectionForChef', () => {
       description: 'Low and slow.',
       ingredients: ['1.2 kg beef shin'],
       steps: ['Brown the shin hard.', 'Braise until it pulls apart.'],
-      cookTimeMinutes: 180,
+      phases: [{ label: 'Braise', handsOnMinutes: 10, handsOffMinutes: 180 }],
       tags: ['slow', 'winter'],
       stepTimer: { durationMinutes: 180, description: 'Braise the shin' },
       stepNote: 'Dry the meat first or it will steam.',
@@ -326,13 +333,16 @@ describe('componentSectionForLibrarian', () => {
     expect(section).toContain('PRESERVE the dish names');
   });
 
-  it('shows names, descriptions and times', () => {
+  it('shows names, descriptions and how long each dish takes', () => {
     const section = componentSectionForLibrarian([CHICKEN]);
 
     expect(section).toContain('Dish 1: Roast chicken');
     expect(section).toContain('A whole bird, hot oven then rested.');
-    expect(section).toContain('cook: 90 min');
-    expect(section).toContain('total: 125 min');
+    // The elapsed sum, and the hands-on figure beside it: the meal's method is a
+    // timing plan, and what the librarian needs about another dish is how long it
+    // occupies the evening (issue #1213).
+    expect(section).toContain('125 min start to finish');
+    expect(section).toContain('15 min hands-on');
   });
 
   it('NEVER shows a component ingredient or step — the guard is structural, not a prompt clause', () => {
@@ -350,9 +360,10 @@ describe('componentSectionForLibrarian', () => {
     expect(section).not.toContain('Method:');
   });
 
-  it('omits prep time — prep is done ahead and says nothing about when a dish starts', () => {
+  it('never renders the strip itself — the librarian needs the span, not the blocks', () => {
     const section = componentSectionForLibrarian([CHICKEN]);
-    expect(section).not.toContain('prep:');
+    expect(section).not.toContain('Roast:');
+    expect(section).not.toContain('hands-off');
   });
 
   it('says nothing at all when the recipe is not a meal', () => {

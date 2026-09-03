@@ -3,8 +3,9 @@
  *
  * One journey, because the phase has one promise: open the plan from the meal,
  * name a serve time, and every dish gets a start clock time worked back from it so
- * they all finish together. The bird goes in at 17:30, the potatoes at 18:10, the
- * gravy at 18:50, for a 19:00 serve.
+ * they all finish together. The bird goes in at 17:05, the potatoes at 18:00, the
+ * gravy at 18:45, for a 19:00 serve — the WHOLE process each time, start to serve
+ * (#1213 moved these earlier; they used to be worked back from time on heat alone).
  *
  * What needs a real browser here is the ROUND TRIP the unit tests cannot do: the
  * entry point on the recipe page, the route, the serve time landing in Firestore
@@ -41,12 +42,34 @@ test.use({ viewport: { width: 393, height: 851 } });
 const MEAL_ID = 'meal-roast';
 const MEAL_TITLE = 'Sunday roast';
 
-// Cook times chosen so the three start times are the issue's own worked example
-// and land on the quarter hours the picker offers.
+// Phase strips chosen so the three start times are the issue's own worked example
+// and land on the quarter hours the picker offers. Since #1213 the clock works
+// back from ELAPSED time — every phase, hands-on and hands-off — so each dish
+// carries knife work as well as time on heat, and `startsAt` is the serve time
+// less the whole of it. Under the old rule the bird would have started at 17:30
+// on its 90 minutes in the oven alone; it starts at 17:05 now.
 const DISHES = [
-  { id: 'meal-chicken', title: 'Roast chicken', cookTimeMinutes: 90, startsAt: '17:30' },
-  { id: 'meal-potatoes', title: 'Roast potatoes', cookTimeMinutes: 50, startsAt: '18:10' },
-  { id: 'meal-gravy', title: 'Onion gravy', cookTimeMinutes: 10, startsAt: '18:50' },
+  {
+    id: 'meal-chicken',
+    title: 'Roast chicken',
+    handsOnMinutes: 25,
+    handsOffMinutes: 90,
+    startsAt: '17:05',
+  },
+  {
+    id: 'meal-potatoes',
+    title: 'Roast potatoes',
+    handsOnMinutes: 10,
+    handsOffMinutes: 50,
+    startsAt: '18:00',
+  },
+  {
+    id: 'meal-gravy',
+    title: 'Onion gravy',
+    handsOnMinutes: 5,
+    handsOffMinutes: 10,
+    startsAt: '18:45',
+  },
 ] as const;
 
 const SERVE_AT = '19:00';
@@ -54,7 +77,11 @@ const SERVE_AT = '19:00';
 function recipe(
   id: string,
   title: string,
-  opts: { cookTimeMinutes?: number | null; componentRecipeIds?: string[] } = {},
+  opts: {
+    handsOnMinutes?: number;
+    handsOffMinutes?: number;
+    componentRecipeIds?: string[];
+  } = {},
 ): Recipe {
   return {
     id,
@@ -68,7 +95,15 @@ function recipe(
       servings: 4,
       totalTimeMinutes: null,
       prepTimeMinutes: null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
+      cookTimeMinutes: null,
+      phases:
+        opts.handsOffMinutes === undefined
+          ? []
+          : [
+              { label: 'Prep', handsOnMinutes: opts.handsOnMinutes ?? 0, handsOffMinutes: 0 },
+              { label: 'Cook', handsOnMinutes: 0, handsOffMinutes: opts.handsOffMinutes },
+            ],
+      timingSummary: null,
       tags: [],
     },
     source: null,
@@ -87,7 +122,13 @@ function recipe(
 /** The meal and its three dishes, seeded through the real persistence path. */
 async function seedTheRoast(page: Page): Promise<void> {
   for (const dish of DISHES) {
-    await seedRecipe(page, recipe(dish.id, dish.title, { cookTimeMinutes: dish.cookTimeMinutes }));
+    await seedRecipe(
+      page,
+      recipe(dish.id, dish.title, {
+        handsOnMinutes: dish.handsOnMinutes,
+        handsOffMinutes: dish.handsOffMinutes,
+      }),
+    );
   }
   await seedRecipe(
     page,

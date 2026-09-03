@@ -19,15 +19,11 @@ import type { Recipe, RecipePhase } from '@salt/domain';
 //  3. THE CAP IS INBOUND ONLY (#1123). A stored strip of seven renders all seven
 //     and stays editable; the cap only stops this editor adding an eighth.
 
-const { mockRecipes, mockCanonItems, mockPhasesGate } = await vi.hoisted(async () => {
+const { mockRecipes, mockCanonItems } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: true,
-      settled: true,
-    }),
   };
 });
 
@@ -44,14 +40,13 @@ vi.mock('../src/lib/recipeService.js', () => ({
   takeImportedDraft: vi.fn().mockReturnValue(null),
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
-// The real gate reads uninitialised observability and therefore always answers
-// "on", which would make the key-off assertions below untestable.
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: mockPhasesGate,
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
-  featureGate: () => mockPhasesGate,
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  }),
   isFeatureEnabled: () => true,
 }));
 
@@ -119,12 +114,11 @@ afterEach(() => {
   document.body.innerHTML = '';
   mockCanonItems._set([]);
   mockRecipes._set([]);
-  mockPhasesGate._set({ enabled: true, settled: true });
   vi.clearAllMocks();
 });
 
-describe('RecipeEditPage — the phase editor, key on', () => {
-  it('replaces the three time boxes with the strip, and keeps Servings', () => {
+describe('RecipeEditPage — the phase editor', () => {
+  it('is the only timing control on the page, beside Servings', () => {
     renderEditor([MIX]);
 
     expect(screen.getByTestId('recipe-servings-input')).toBeInTheDocument();
@@ -256,32 +250,18 @@ describe('RecipeEditPage — the phase editor, key on', () => {
   });
 });
 
-describe('RecipeEditPage — the phase editor, key off', () => {
-  it('shows the three time boxes and no trace of the strip', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
+// Issue #1213 deleted the three time boxes and the key that used to hide the
+// strip, so there is no second timing state left to test. What survives from the
+// key-off suite is the one claim that was never about the gate: a stored strip
+// only ever changes because a cook edited it here.
+describe('RecipeEditPage — the strip is only ever changed by hand', () => {
+  it('saves a stored strip byte-for-byte when nothing about it was touched', async () => {
     renderEditor([MIX, PROVE]);
 
-    expect(screen.getByTestId('recipe-servings-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-prep-input')).toHaveValue('15');
-    expect(screen.getByTestId('recipe-cook-input')).toHaveValue('30');
-    expect(screen.getByTestId('recipe-total-input')).toHaveValue('45');
-
-    // Nothing may hint that a feature is withheld (featureGate.ts): no section,
-    // no heading, no disabled control.
-    expect(screen.queryByTestId('recipe-phase-editor')).toBeNull();
-    expect(screen.queryByTestId('recipe-add-phase-btn')).toBeNull();
-    expect(rows()).toHaveLength(0);
-    expect(screen.queryByText('Timing')).toBeNull();
-  });
-
-  it('leaves a stored strip untouched when it is not on screen to edit', async () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    renderEditor([MIX, PROVE]);
-
-    await typeInto(screen.getByTestId('recipe-prep-input'), '25');
+    await typeInto(screen.getByTestId('recipe-servings-input'), '6');
 
     const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(25);
+    expect(saved.metadata.servings).toBe(6);
     expect(saved.metadata.phases).toEqual([MIX, PROVE]);
   });
 });

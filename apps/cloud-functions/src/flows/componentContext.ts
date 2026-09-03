@@ -40,6 +40,7 @@
 
 import type { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
+import { recipePhaseTotals } from '@salt/domain';
 import { RecipeSchema } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import { formatRecipeForPrompt } from './recipeText.js';
@@ -94,16 +95,19 @@ export async function readComponentContext(
  * and how long it takes. NEVER its ingredients and NEVER its steps — see the
  * header comment for why that omission is structural rather than stylistic.
  *
- * Cook time earns its place because the meal's own method is a timing plan; prep
- * time does not, because prep is done ahead and in any order.
+ * The dish's ELAPSED time earns its place because the meal's own method is a
+ * timing plan and the coordination is the whole question being asked (issues
+ * #1122, #1213). It is the sum of the phases at the point of use — the strip
+ * itself is not rendered here, because what the librarian needs about another
+ * dish is how long it occupies the evening, not how its blocks are arranged.
  */
 function renderComponentForLibrarian(r: RecipeDoc, ordinal: number): string {
   const parts = [`Dish ${ordinal}: ${r.title}`];
   if (r.description) parts.push(`Description: ${r.description}`);
-  const meta: string[] = [];
-  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
-  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
-  if (meta.length > 0) parts.push(meta.join(', '));
+  const totals = recipePhaseTotals(r.metadata.phases);
+  if (totals.hasPhases)
+    parts.push(`${totals.elapsedMinutes} min start to finish, \
+${totals.handsOnMinutes} min hands-on`);
   return parts.join('\n');
 }
 

@@ -135,9 +135,14 @@ beforeEach(() => {
       steps: [{ id: 'cs1', text: CHICKEN_STEP, timer: null, note: null }],
       metadata: {
         servings: 4,
-        totalTimeMinutes: 125,
-        prepTimeMinutes: 15,
-        cookTimeMinutes: 90,
+        totalTimeMinutes: null,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        phases: [
+          { label: 'Prep', handsOnMinutes: 15, handsOffMinutes: 0 },
+          { label: 'Roast', handsOnMinutes: 0, handsOffMinutes: 90 },
+        ],
+        timingSummary: null,
         tags: [],
       },
     }),
@@ -148,9 +153,14 @@ beforeEach(() => {
       ingredients: group('potatoes', [POTATO_INGREDIENT]),
       metadata: {
         servings: 4,
-        totalTimeMinutes: 70,
-        prepTimeMinutes: 10,
-        cookTimeMinutes: 50,
+        totalTimeMinutes: null,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        phases: [
+          { label: 'Prep', handsOnMinutes: 10, handsOffMinutes: 0 },
+          { label: 'Roast', handsOnMinutes: 0, handsOffMinutes: 50 },
+        ],
+        timingSummary: null,
         tags: [],
       },
     }),
@@ -184,7 +194,7 @@ describe('chefChat — meal components', () => {
     expect(system).toContain(CHICKEN_INGREDIENT);
     expect(system).toContain(CHICKEN_STEP);
     expect(system).toContain(POTATO_INGREDIENT);
-    expect(system).toContain('cook: 90 min');
+    expect(system).toContain('Roast: 0 min hands-on, 90 min hands-off');
   });
 
   it("carries each dish's tags, step timers and notes through to the prompt (#934)", async () => {

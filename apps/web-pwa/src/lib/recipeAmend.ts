@@ -109,9 +109,15 @@ export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt
     source: existing.source,
     metadata: {
       servings: draft.metadata.servings ?? existing.metadata.servings,
-      totalTimeMinutes: draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes,
-      prepTimeMinutes: draft.metadata.prepTimeMinutes ?? existing.metadata.prepTimeMinutes,
-      cookTimeMinutes: draft.metadata.cookTimeMinutes ?? existing.metadata.cookTimeMinutes,
+      // The three numbers the phase strip replaced (issues #1122, #1213). Written
+      // as literal nulls, not carried over: nothing reads them, the librarian is
+      // no longer asked for them, and this merge is a full-document write — so
+      // preserving a stale value here would keep a number alive that no screen
+      // and no flow can ever show. `RecipeMetadataSchema` still declares the three
+      // keys and #1211 is what removes the declarations.
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
       // The phase strip and its summary (issue #1122), paired above rather than
       // merged here. This merge builds `metadata` field by field rather than
       // spreading, so a key omitted here is a key silently DELETED from the

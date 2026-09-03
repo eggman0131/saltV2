@@ -2,25 +2,13 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/svelte';
 import type { RecipeDiff, RecipePhase } from '@salt/domain';
 
-// The phase gate (issue #1212). The real module reads uninitialised observability
-// and therefore always answers "on", so both halves of the swap — three time
-// cards off, one Timing card on — need it driven from here.
-const { mockPhasesGate } = await vi.hoisted(async () => {
-  const { makeStore } = await import('./support/testStore.js');
-  return {
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: false,
-      settled: true,
-    }),
-  };
-});
-
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: mockPhasesGate,
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
-  featureGate: () => mockPhasesGate,
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  }),
   isFeatureEnabled: () => true,
 }));
 
@@ -34,7 +22,6 @@ import RecipeChangeSummary from '../src/routes/recipes/RecipeChangeSummary.svelt
 
 afterEach(() => {
   cleanup();
-  mockPhasesGate._set({ enabled: false, settled: true });
 });
 
 const EMPTY: RecipeDiff = {
@@ -85,13 +72,13 @@ describe('RecipeChangeSummary — how a change is drawn follows from the change'
   });
 
   it('renders an unset numeric field as a one-line value, not as an absence', () => {
-    // "none → 15 min" is a value change, not a creation: a number that is unset
-    // still has a readable one-line rendering, so it stays an ordinary edit.
-    open({ metadata: { prepTimeMinutes: { from: null, to: 15 } } });
+    // "none → 6" is a value change, not a creation: a number that is unset still
+    // has a readable one-line rendering, so it stays an ordinary edit.
+    open({ metadata: { servings: { from: null, to: 6 } } });
 
     const card = onlyCard();
     expect(card.textContent).toContain('none');
-    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent('15 min');
+    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent('6');
   });
 
   it('marks only the words that moved in an adjusted sentence', () => {
@@ -393,12 +380,11 @@ describe('RecipeChangeSummary — the sheet contract is unchanged', () => {
 // The gate's whole point: a chat proposal that rewrites the phase strip, or that
 // quietly deletes the sentence over it, must be on screen BEFORE it is written.
 // Until `diffRecipe` reported the pair, neither was.
-describe('RecipeChangeSummary — the phase strip, key on', () => {
+describe('RecipeChangeSummary — the phase strip', () => {
   const MIX: RecipePhase = { label: 'Mix & knead', handsOnMinutes: 20, handsOffMinutes: 0 };
   const PROVE: RecipePhase = { label: 'First rise', handsOnMinutes: 0, handsOffMinutes: 90 };
 
   function openWithPhases(metadata: RecipeDiff['metadata']): void {
-    mockPhasesGate._set({ enabled: true, settled: true });
     open({ metadata });
   }
 
@@ -442,13 +428,11 @@ describe('RecipeChangeSummary — the phase strip, key on', () => {
     expect(card.textContent).not.toContain(' — ');
   });
 
-  it('replaces the three time cards — no Prep or Cook number anywhere', () => {
-    openWithPhases({
-      phases: { from: [MIX], to: [PROVE] },
-      prepTimeMinutes: { from: 10, to: 20 },
-      cookTimeMinutes: { from: 30, to: 40 },
-      totalTimeMinutes: { from: 40, to: 60 },
-    });
+  // Issue #1213. The three time cards are gone with the fields behind them, and
+  // `RecipeMetadataDiff` no longer carries the keys at all — so the only way this
+  // could regress is a new timing card, not a resurrected old one.
+  it('is the whole of the timing section — no Prep or Cook card beside it', () => {
+    openWithPhases({ phases: { from: [MIX], to: [PROVE] } });
 
     const cards = screen.getAllByRole('listitem');
     expect(cards).toHaveLength(1);
@@ -504,66 +488,25 @@ describe('RecipeChangeSummary — the phase strip, key on', () => {
   });
 });
 
-describe('RecipeChangeSummary — the phase strip, key off', () => {
-  it('reads exactly as it does today: three time cards, no Timing card', () => {
-    open({
-      metadata: {
-        phases: { from: [], to: [{ label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 }] },
-        timingSummary: { from: null, to: 'Mostly hands-off.' },
-        prepTimeMinutes: { from: 10, to: 20 },
-      },
-    });
-
-    const cards = screen.getAllByRole('listitem');
-    expect(cards).toHaveLength(1);
-    expect(cards[0]!.textContent).toContain('Prep time');
-    expect(screen.queryByText('Timing')).toBeNull();
-  });
-});
-
 // ── The sheet matches what it drew (issue #1216) ────────────────────────────
 //
 // `diffRecipe` reports a metadata change whenever `phases` or `timingSummary`
-// moved, in both key states — but the Timing card is gated on the key, and
-// its key-off counterpart (Prep/Cook/Total) does not cover a phases-only
-// move either. `hasChanges` and "is there a card to look at" are two
-// different questions, and the sheet must answer from the second one: a
-// review gate that offers Apply next to zero cards would let a write through
-// with nothing shown for the reviewer to approve.
+// moved, but the Timing card declines to draw a pair whose two rendered sides
+// read the same (#1217). `hasChanges` and "is there a card to look at" are two
+// different questions, and the sheet must answer from the second one: a review
+// gate that offers Apply next to zero cards would let a write through with
+// nothing shown for the reviewer to approve.
 describe('RecipeChangeSummary — the sheet matches what it drew, not what diffRecipe reported', () => {
-  it('key off: a diff that only moves the phase strip has no card to draw, so it reads as no changes', () => {
-    // `recipeAmend.ts` never shows the librarian the stored strip, so it
-    // re-invents one on essentially every amend — this is the ordinary case,
-    // not a corner one. With the key off there is no Timing card and no
-    // Prep/Cook/Total movement, so nothing should be offered to apply.
-    open({
-      metadata: {
-        phases: { from: [], to: [{ label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 }] },
-      },
-    });
+  it('a diff whose timing moved but reads identically has no card to draw, so it reads as no changes', () => {
+    // `recipeAmend.ts` never shows the librarian the stored strip, so a stored
+    // `timingSummary` going null → "" is the ordinary case, not a corner one.
+    // Both sides render `no summary`, so there is nothing to offer for approval.
+    open({ metadata: { timingSummary: { from: null, to: '' } } });
 
     expect(screen.getByTestId('recipe-change-summary-none')).toHaveTextContent('No changes.');
     expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
     expect(screen.queryByTestId('recipe-change-group-metadata')).toBeNull();
     expect(screen.getByTestId('recipe-change-discard')).toHaveTextContent('Close');
-  });
-
-  it('key on: a diff that only moves Prep/Cook/Total time has no card to draw, so it reads as no changes', () => {
-    // The flows still emit these three fields and `mergeAmendedRecipe` still
-    // writes them; with the key on the Timing card ignores them entirely, so
-    // a diff carrying only these three must not offer Apply.
-    mockPhasesGate._set({ enabled: true, settled: true });
-    open({
-      metadata: {
-        prepTimeMinutes: { from: 10, to: 20 },
-        cookTimeMinutes: { from: 30, to: 40 },
-        totalTimeMinutes: { from: 40, to: 60 },
-      },
-    });
-
-    expect(screen.getByTestId('recipe-change-summary-none')).toHaveTextContent('No changes.');
-    expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
-    expect(screen.queryByTestId('recipe-change-group-metadata')).toBeNull();
   });
 });
 
@@ -573,7 +516,6 @@ describe('RecipeChangeSummary — the Timing card, a hands-on/hands-off shift', 
     // Same label, same elapsed total (45 min either side) — the split is the
     // ONLY thing that changed, and it is the figure the whole feature exists
     // to surface ("how much of that is you at the counter").
-    mockPhasesGate._set({ enabled: true, settled: true });
     open({
       metadata: {
         phases: {

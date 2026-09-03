@@ -158,9 +158,14 @@ const CHICKEN = makeComponent({
   title: 'Roast chicken',
   metadata: {
     servings: 4,
-    prepTimeMinutes: 10,
-    cookTimeMinutes: 90,
-    totalTimeMinutes: 100,
+    prepTimeMinutes: null,
+    cookTimeMinutes: null,
+    totalTimeMinutes: null,
+    phases: [
+      { label: 'Prep', handsOnMinutes: 10, handsOffMinutes: 0 },
+      { label: 'Roast', handsOnMinutes: 0, handsOffMinutes: 80 },
+    ],
+    timingSummary: null,
     tags: [],
   },
   image: { url: 'https://example.com/chicken.webp', source: 'ai' },
@@ -170,11 +175,14 @@ const CHICKEN = makeComponent({
 const GRAVY = makeComponent({
   id: 'gravy',
   title: 'Onion gravy',
+  // No strip at all, which is the row that shows no time (issue #1213).
   metadata: {
     servings: 4,
-    prepTimeMinutes: 5,
+    prepTimeMinutes: null,
     cookTimeMinutes: null,
-    totalTimeMinutes: 5,
+    totalTimeMinutes: null,
+    phases: [],
+    timingSummary: null,
     tags: [],
   },
   image: null,
@@ -216,7 +224,7 @@ describe('RecipeViewPage — the dishes a meal is made of', () => {
     expect(screen.queryByTestId('recipe-components')).toBeNull();
   });
 
-  it('lists the components in stored order, with hero, title and cook time', () => {
+  it('lists the components in stored order, with hero, title and how long it takes', () => {
     mockRecipes._set([makeEntry({ componentRecipeIds: ['chicken', 'gravy'] }), CHICKEN, GRAVY]);
     renderPage();
 
@@ -230,14 +238,15 @@ describe('RecipeViewPage — the dishes a meal is made of', () => {
     );
     expect(screen.getByTestId('recipe-component-thumb-fallback')).toBeInTheDocument();
 
-    // Cook time, and only where there is one to state — gravy has none.
+    // How long it takes, and only where there is a strip to state it — gravy has
+    // none (issue #1213).
     const cookTimes = screen
       .getAllByTestId('recipe-component-cook-time')
       .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim());
-    expect(cookTimes).toEqual(['90 min']);
+    expect(cookTimes).toEqual(['1 hr 30 min']);
   });
 
-  it('keeps the stored order rather than re-sorting by cook time', () => {
+  it('keeps the stored order rather than re-sorting by how long each takes', () => {
     // The stored order is the cook's own running order; the page renders it, it
     // does not have an opinion about it.
     mockRecipes._set([makeEntry({ componentRecipeIds: ['gravy', 'chicken'] }), CHICKEN, GRAVY]);

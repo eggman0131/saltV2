@@ -10,13 +10,13 @@
  * recipes' figures come back from Firestore and render side by side on the list,
  * and that the timeline draws a block per phase on the recipe page rather than
  * merely existing in the DOM. The width arithmetic itself is pinned in
- * `tests/phaseTimeline.test.ts`, and the gate resolution with it — asserting a
- * key-off rendering here is impossible by design: an e2e build has no PostHog key,
- * so nothing can be gated (`isObservabilityFeatureEnabled`) and the feature always
- * reads on.
+ * `tests/phaseTimeline.test.ts`.
  *
- * Recipes are bridge-seeded (NF-C4): there is no editor for phases until phase 2
- * of this issue, so a hand-built strip is the only way to get one.
+ * Since #1213 there is no feature key and no fallback: a recipe with no strip
+ * shows no timing at all, which is what the pasta asserts here.
+ *
+ * Recipes are bridge-seeded (NF-C4): a hand-built strip is the shortest way to get
+ * a stored one. The editor path is covered by `recipe-phase-editor.spec.ts`.
  */
 import type { Recipe, RecipePhase } from '@salt/domain';
 import { expect, test } from './fixtures/test';
@@ -51,13 +51,15 @@ function recipe(id: string, title: string, phases?: RecipePhase[]): Recipe {
     steps: [],
     metadata: {
       servings: 2,
-      // The old fields the strip replaces. The loaf's are deliberately WRONG
-      // against its phases, so nothing below can pass by reading them.
+      // The retired fields, seeded WRONG against the loaf's phases on purpose:
+      // nothing below can pass by reading one, and a real production document
+      // still carries whatever it was last written with (#1211 removes the keys).
       totalTimeMinutes: 45,
       prepTimeMinutes: 15,
       cookTimeMinutes: 30,
+      timingSummary: phases === undefined ? null : 'Half an hour of you, overnight.',
+      phases: phases ?? [],
       tags: [],
-      ...(phases === undefined ? {} : { phases, timingSummary: 'Half an hour of you, overnight.' }),
     },
     source: null,
     notes: null,
@@ -83,15 +85,17 @@ test.describe('recipes — the planning timeline', () => {
     await seedRecipe(page, recipe(LOAF_ID, 'Overnight loaf', LOAF_PHASES));
     await seedRecipe(page, recipe(PASTA_ID, 'Ten minute pasta'));
 
-    // ── The list: two recipes, two sources of truth ──────────────────────────
+    // ── The list: the strip answers, and nothing answers under it ────────────
     await page.goto('/#/recipes');
     const loafCard = page.getByTestId('recipe-list-item').filter({ hasText: 'Overnight loaf' });
     await expect(loafCard).toContainText('13 hr', { timeout: SYNC_TIMEOUT });
-    // Not the stored 45, which is still on the document and now unread.
+    // Not the stored 45, which is still on the document and read by nothing.
     await expect(loafCard).not.toContainText('45 min');
+    // And the pasta, which carries the same stored 45 and no strip, shows no time
+    // at all rather than falling back to it (#1213).
     await expect(
       page.getByTestId('recipe-list-item').filter({ hasText: 'Ten minute pasta' }),
-    ).toContainText('45 min');
+    ).not.toContainText('45 min');
 
     // ── The recipe page: the strip is drawn, and the chips are gone ──────────
     await page.goto(`/#/recipes/${LOAF_ID}`);
@@ -117,9 +121,14 @@ test.describe('recipes — the planning timeline', () => {
     await expect(page.getByText('Cook 30 min')).toHaveCount(0);
     await expect(page.getByText('Total 45 min')).toHaveCount(0);
 
-    // ── And the un-backfilled recipe still reads exactly as it did ───────────
+    // ── And a recipe with no strip states no timing at all ───────────────────
+    // There is no fallback left under `recipePhaseTotals` (#1213), so the stored
+    // 45 this document still carries reaches no screen.
     await page.goto(`/#/recipes/${PASTA_ID}`);
-    await expect(page.getByText('Total 45 min')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByRole('heading', { name: 'Ten minute pasta' })).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
     await expect(page.getByTestId('recipe-phases')).toHaveCount(0);
+    await expect(page.getByText('Total 45 min')).toHaveCount(0);
   });
 });

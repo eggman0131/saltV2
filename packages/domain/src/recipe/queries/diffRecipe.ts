@@ -496,16 +496,11 @@ function diffMetadata(existing: Recipe, draft: Recipe): RecipeMetadataDiff {
   const metadata: RecipeMetadataDiff = {};
   const servings = numberChange(e.servings, d.servings);
   if (servings) metadata.servings = servings;
-  const total = numberChange(e.totalTimeMinutes, d.totalTimeMinutes);
-  if (total) metadata.totalTimeMinutes = total;
-  const prep = numberChange(e.prepTimeMinutes, d.prepTimeMinutes);
-  if (prep) metadata.prepTimeMinutes = prep;
-  const cook = numberChange(e.cookTimeMinutes, d.cookTimeMinutes);
-  if (cook) metadata.cookTimeMinutes = cook;
-  // The phase strip and its sentence (issue #1212). Reported for the same reason
-  // the three numbers above are: this is the only place the review gate can see
-  // that a proposal rewrote the timing — or, since #1203 let an amend clear it,
-  // that a proposal deleted the sentence.
+  // The phase strip and its sentence (issue #1212), which since #1213 are the
+  // WHOLE of a recipe's timing — the three prep/cook/total numbers this used to
+  // diff beside them are read by nothing and are no longer reported. This is the
+  // only place the review gate can see that a proposal rewrote the timing, or,
+  // since #1203 let an amend clear it, that a proposal deleted the sentence.
   const phases = phasesChange(e.phases, d.phases);
   if (phases) metadata.phases = phases;
   const summary = nullableStringChange(e.timingSummary ?? null, d.timingSummary ?? null);

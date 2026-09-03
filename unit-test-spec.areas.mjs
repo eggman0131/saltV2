@@ -136,18 +136,21 @@ export const violationCeilings = {
     'UT-G3': 0,
     'UT-G4': 0,
   },
-  // UT-A1 2 → 3 and UT-B1 30 → 31 (issue #1122). ONE new file:
-  // `onRecipeWritten.phases.test.ts`, guarding the fix for the review finding
-  // that the re-estimate branch could destroy a stored phase strip with an
-  // answer that omitted one. It carries the same twelve-mock preamble its
-  // sibling `onRecipeWritten.timesFloor.test.ts` already carries — the trigger
-  // cannot run without stubbing Firestore, Storage and the sibling image/kit
-  // flows — and every assertion is `toHaveBeenCalledWith`/`objectContaining`
-  // against the actual merged `phases`/`timingSummary` payload, so UT-A1's
-  // regex is catching an argument-checked write assertion, not a vacuous one.
-  // Same shape as the `apps/web-pwa` note above, and the same reasoning.
+  // UT-A1 3 → 2 (issue #1213). `onRecipeWritten.timesFloor.test.ts` was renamed
+  // to `onRecipeWritten.times.test.ts` and its floor suite replaced, and the
+  // rewrite added a `Object.keys(...)` assertion on the update payload, so the
+  // file no longer matches "every assertion is toHaveBeenCalled*". The two that
+  // remain are `genkit.test.ts` and `onRecipeWritten.phases.test.ts`, the latter
+  // guarding the fix for #1122's review finding that the re-estimate branch could
+  // destroy a stored phase strip with an answer that omitted one. It carries the
+  // same twelve-mock preamble the trigger's other suites do — the trigger cannot
+  // run without stubbing Firestore, Storage and the sibling image/kit flows — and
+  // every assertion is `toHaveBeenCalledWith`/`objectContaining` against the
+  // actual merged `phases`/`timingSummary` payload, so UT-A1's regex is catching
+  // an argument-checked write assertion, not a vacuous one. Same shape as the
+  // `apps/web-pwa` note above, and the same reasoning.
   'apps/cloud-functions': {
-    'UT-A1': 3,
+    'UT-A1': 2,
     'UT-B1': 31,
     'UT-C2': 4,
     'UT-E4': 0,

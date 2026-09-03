@@ -49,7 +49,6 @@
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
-  import { recipePhasesGate } from '../../lib/featureGate.js';
   import { phaseMinutes } from './recipeTiming.js';
   import { kindOf } from './recipeKind.js';
   import { quarterHourOptions } from '../../lib/timeOptions.js';
@@ -229,24 +228,20 @@
     return now >= startAt;
   }
 
-  // What this dish takes, on its plan row (issue #1122): the phase sum when the
-  // dish has a strip, its stored cook time otherwise. Same rule as the recipe
-  // page, the component rows and the list chip (`recipeTiming.ts`).
+  // What this dish takes, on its plan row (issues #1122, #1213): the sum of its
+  // phases, the same rule as the recipe page, the component rows and the list
+  // chip (`recipeTiming.ts`).
   //
-  // ONLY THE LINE THE ROW SHOWS. The START CLOCK beside it still comes from
-  // `scheduleFor`, which still works back from `cookTimeMinutes` — moving that
-  // onto the phase sum is phase 4 of #1122, and it is what makes the start times
-  // earlier (#953). Until then a row with a strip states the whole process while
-  // its clock still assumes you prepped in advance; that is the migration, and it
-  // is deliberately visible only to the test group. The same half-moved boundary
-  // is true of a meal's "Made from" rows: `insertComponentByCookTime` still
-  // orders them by `cookTimeMinutes` while the row now displays the phase sum
-  // (#1205 review, should-fix 4) — moving the ordering is the same phase 4.
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
-
+  // THE LINE AND THE CLOCK BESIDE IT NOW READ THE SAME FIGURE. `scheduleFor`
+  // works the start clock back from that same phase sum, and
+  // `insertComponentByCookTime` orders the "Made from" rows on it, so the row's
+  // stated duration, the running order and the start time cannot disagree — the
+  // half-moved boundary this comment used to describe is closed (#953). Start
+  // times are earlier than they were, because they no longer assume you did the
+  // chopping at some earlier point in the day.
   function dishTimeLabel(row: Recipe): string {
-    const minutes = phaseMinutes(row, phasesEnabled) ?? row.metadata.cookTimeMinutes;
-    return minutes === null ? 'No cook time' : formatMinutes(minutes);
+    const minutes = phaseMinutes(row);
+    return minutes === null ? 'No timing yet' : formatMinutes(minutes);
   }
 
   /** "in 40 min" / "in 1 h 20 min", rounded up so a countdown never reads "in 0 min". */

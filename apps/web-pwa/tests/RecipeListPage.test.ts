@@ -85,7 +85,13 @@ function makeRecipe(over: {
   id: string;
   title: string;
   tags: string[];
-  totalTimeMinutes: number | null;
+  /**
+   * How long the recipe takes, stated as one unattended phase — since #1213 the
+   * strip is the whole of a recipe's timing, and the card, the Quickest sort and
+   * every other surface read the phase sum. `phases` below overrides it where a
+   * fixture needs a real multi-block strip.
+   */
+  elapsedMinutes: number | null;
   servings: number | null;
   ingredientCount: number;
   image: Recipe['image'];
@@ -98,8 +104,7 @@ function makeRecipe(over: {
   // real production value for anything written before the field existed.
   createdBy?: string;
   lastEditedBy?: string;
-  // The phase strip (issue #1122). Absent on almost every fixture here, which is
-  // the state the whole library is in until the backfill runs.
+  /** An explicit multi-block strip, in place of the single block above. */
   phases?: RecipePhase[];
 }): Recipe {
   return {
@@ -129,9 +134,14 @@ function makeRecipe(over: {
       servings: over.servings,
       prepTimeMinutes: null,
       cookTimeMinutes: null,
-      totalTimeMinutes: over.totalTimeMinutes,
+      totalTimeMinutes: null,
+      timingSummary: null,
       tags: over.tags,
-      ...(over.phases === undefined ? {} : { phases: over.phases }),
+      phases:
+        over.phases ??
+        (over.elapsedMinutes === null
+          ? []
+          : [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: over.elapsedMinutes }]),
     },
     source: null,
     notes: null,
@@ -153,7 +163,7 @@ const APPLE = makeRecipe({
   id: 'apple',
   title: 'Apple Pie',
   tags: ['dessert', 'baking'],
-  totalTimeMinutes: 90,
+  elapsedMinutes: 90,
   servings: 8,
   ingredientCount: 5,
   image: { url: 'http://img.test/apple.jpg', source: 'ai' },
@@ -163,7 +173,7 @@ const BANANA = makeRecipe({
   id: 'banana',
   title: 'Banana Bread',
   tags: ['baking', 'quick'],
-  totalTimeMinutes: 60,
+  elapsedMinutes: 60,
   servings: 6,
   ingredientCount: 3,
   image: null, // → fallback tile
@@ -173,7 +183,7 @@ const CARROT = makeRecipe({
   id: 'carrot',
   title: 'Carrot Soup',
   tags: ['soup', 'quick'],
-  totalTimeMinutes: 30,
+  elapsedMinutes: 30,
   servings: 4,
   ingredientCount: 4,
   image: { url: 'http://img.test/carrot.jpg', source: 'ai' },
@@ -241,7 +251,7 @@ describe('RecipeListPage', () => {
       id: 'peach',
       title: 'Peach Cobbler',
       tags: ['dessert'],
-      totalTimeMinutes: 45,
+      elapsedMinutes: 45,
       servings: 6,
       ingredientCount: 4,
       image: { url: 'http://img.test/peach.jpg', source: 'ai' },
@@ -268,7 +278,9 @@ describe('RecipeListPage', () => {
     render(RecipeListPage);
 
     const card = screen.getByTestId('recipe-list-item');
-    expect(card.textContent).toContain('90 min');
+    // The app's duration vocabulary, from the phase sum (#1213) — not the raw
+    // `n min` the stored total used to be printed as.
+    expect(card.textContent).toContain('1 hr 30 min');
     expect(card.textContent).toContain('8'); // servings
     expect(card.textContent).toContain('5'); // ingredient count
   });
@@ -337,7 +349,7 @@ describe('RecipeListPage', () => {
       id: 'many',
       title: 'Kitchen Sink',
       tags: Array.from({ length: 12 }, (_, i) => `tag${String(i).padStart(2, '0')}`),
-      totalTimeMinutes: 20,
+      elapsedMinutes: 20,
       servings: 2,
       ingredientCount: 2,
       image: null,
@@ -387,7 +399,7 @@ const TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'Takeaway — Indian',
   tags: ['friday', 'quick'],
-  totalTimeMinutes: null,
+  elapsedMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -398,7 +410,7 @@ const PICNIC = makeRecipe({
   kind: 'outing',
   title: 'Picnic food',
   tags: ['summer'],
-  totalTimeMinutes: null,
+  elapsedMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -410,7 +422,7 @@ const NEGRONI = makeRecipe({
   kind: 'cocktail',
   title: 'Negroni',
   tags: ['aperitivo'],
-  totalTimeMinutes: 5,
+  elapsedMinutes: 5,
   servings: 1,
   ingredientCount: 3,
   image: null,
@@ -425,7 +437,7 @@ const SUNDAY_ROAST = makeRecipe({
   id: 'roast',
   title: 'Sunday roast',
   tags: ['sunday'],
-  totalTimeMinutes: 120,
+  elapsedMinutes: 120,
   servings: 4,
   ingredientCount: 4,
   image: null,
@@ -437,7 +449,7 @@ const NEGRONI_WITH_SYRUP = makeRecipe({
   kind: 'cocktail',
   title: 'Negroni with house syrup',
   tags: ['aperitivo'],
-  totalTimeMinutes: 5,
+  elapsedMinutes: 5,
   servings: 1,
   ingredientCount: 3,
   image: null,
@@ -788,7 +800,7 @@ const MY_PIE = makeRecipe({
   id: 'my-pie',
   title: 'My Pie',
   tags: ['dessert', 'quick'],
-  totalTimeMinutes: 40,
+  elapsedMinutes: 40,
   servings: 4,
   ingredientCount: 3,
   image: null,
@@ -801,7 +813,7 @@ const THEIR_BREAD = makeRecipe({
   id: 'their-bread',
   title: 'Their Bread',
   tags: ['baking'],
-  totalTimeMinutes: 180,
+  elapsedMinutes: 180,
   servings: 8,
   ingredientCount: 5,
   image: null,
@@ -814,7 +826,7 @@ const THEIR_SOUP = makeRecipe({
   id: 'their-soup',
   title: 'Their Soup',
   tags: ['quick'],
-  totalTimeMinutes: 25,
+  elapsedMinutes: 25,
   servings: 2,
   ingredientCount: 4,
   image: null,
@@ -827,7 +839,7 @@ const MY_TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'My Takeaway',
   tags: ['friday'],
-  totalTimeMinutes: null,
+  elapsedMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -840,7 +852,7 @@ const THEIR_TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'Their Takeaway',
   tags: ['friday'],
-  totalTimeMinutes: null,
+  elapsedMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -1023,7 +1035,7 @@ describe('RecipeListPage — authorship filters', () => {
         id: 'hers',
         title: 'Hers',
         tags: [],
-        totalTimeMinutes: null,
+        elapsedMinutes: null,
         servings: null,
         ingredientCount: 1,
         image: null,
@@ -1035,7 +1047,7 @@ describe('RecipeListPage — authorship filters', () => {
         id: 'the-other-kates',
         title: 'The Other Kates',
         tags: [],
-        totalTimeMinutes: null,
+        elapsedMinutes: null,
         servings: null,
         ingredientCount: 1,
         image: null,
@@ -1231,7 +1243,7 @@ describe('RecipeListPage — silent match problems', () => {
       id: 'r-citrus',
       title: 'Margarita',
       tags: [],
-      totalTimeMinutes: null,
+      elapsedMinutes: null,
       servings: null,
       ingredientCount: 1,
       image: null,
@@ -1419,7 +1431,7 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
       id: 'hero-rule',
       title: 'Hero Rule',
       tags: [],
-      totalTimeMinutes: null,
+      elapsedMinutes: null,
       servings: null,
       ingredientCount: 0,
       image: { url, source: 'ai' },
@@ -1441,7 +1453,7 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
         id: 'hero-none',
         title: 'Hero None',
         tags: [],
-        totalTimeMinutes: null,
+        elapsedMinutes: null,
         servings: null,
         ingredientCount: 0,
         image: null,
@@ -1455,15 +1467,11 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
   });
 });
 
-// ─── Timing on the card, and in the sort (issue #1122) ────────────────────────
+// ─── Timing on the card, and in the sort (issues #1122, #1213) ───────────────
 // The list is the surface where the two accounts of a recipe's timing were most
 // obviously the same fact twice: a card labelled from `totalTimeMinutes` and a
-// Quickest sort ordering by it. Both now read the phase sum where there is one.
-//
-// The feature key reads ON throughout the unit suite — with no PostHog key
-// nothing can be gated (`isObservabilityFeatureEnabled`) — so the fixtures
-// without a strip are the key-off rendering as well as the un-backfilled one.
-// The key-off resolution itself is pinned in `tests/phaseTimeline.test.ts`.
+// Quickest sort ordering by it. Both read the phase sum now, out of one shared
+// function (`recipeTiming.ts`), with no stored field under either.
 
 const STRIP_65 = [
   { label: 'Parboil', handsOnMinutes: 5, handsOffMinutes: 10 },
@@ -1475,7 +1483,7 @@ function timed(id: string, title: string, over: Partial<Parameters<typeof makeRe
     id,
     title,
     tags: [],
-    totalTimeMinutes: null,
+    elapsedMinutes: null,
     servings: null,
     ingredientCount: 0,
     image: null,
@@ -1485,17 +1493,15 @@ function timed(id: string, title: string, over: Partial<Parameters<typeof makeRe
 }
 
 describe('RecipeListPage — how long it takes', () => {
-  it('labels the card from the phase sum, and from the stored total without one', () => {
+  it('labels the card from the phase sum', () => {
     seed([
-      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
-      timed('plain', 'Plain Dish', { totalTimeMinutes: 20 }),
+      timed('phased', 'Phased Dish', { phases: STRIP_65 }),
+      timed('plain', 'Plain Dish', { elapsedMinutes: 20 }),
     ]);
     render(RecipeListPage);
 
     const cards = screen.getAllByTestId('recipe-list-item');
     expect(normalized(cards[0]!)).toContain('1 hr 5 min');
-    expect(normalized(cards[0]!)).not.toContain('20 min');
-    // No strip: the raw spelling the card has always had, unchanged.
     expect(normalized(cards[1]!)).toContain('20 min');
   });
 
@@ -1507,14 +1513,14 @@ describe('RecipeListPage — how long it takes', () => {
   });
 
   // The chip and the sort go through one function, and this is what says so: the
-  // 65-minute strip sorts BEHIND the 30-minute recipe even though the field it
-  // used to sort on says 20.
+  // 65-minute strip sorts BEHIND the 30-minute recipe, and an untimed dish sorts
+  // last however the list is ordered.
   // `fireEvent`, not `userEvent`: the popover primitive marks the page inert while
   // it opens, and user-event refuses to click through `pointer-events: none`.
   it('orders Quickest by the same figure the card shows', async () => {
     seed([
-      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
-      timed('half', 'Half Hour', { totalTimeMinutes: 30 }),
+      timed('phased', 'Phased Dish', { phases: STRIP_65 }),
+      timed('half', 'Half Hour', { elapsedMinutes: 30 }),
       timed('untimed', 'Untimed Dish'),
     ]);
     render(RecipeListPage);

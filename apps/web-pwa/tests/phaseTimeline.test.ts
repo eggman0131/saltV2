@@ -132,28 +132,23 @@ function recipeWith(phases: readonly RecipePhase[] | undefined): Recipe {
   };
 }
 
-describe('phaseMinutes — when the phases answer, and when the old fields do', () => {
-  it('sums the strip when there is one and the key is on', () => {
-    expect(phaseMinutes(recipeWith(BREAD), true)).toBe(867);
-  });
-
-  // The claim every surface's "with the key off, exactly as it is today" rests
-  // on, pinned here once rather than asserted five times in prose.
-  it('answers null with the key off, however good the stored strip is', () => {
-    expect(phaseMinutes(recipeWith(BREAD), false)).toBeNull();
+describe('phaseMinutes — the one answer every timing surface shows', () => {
+  it('sums the strip when there is one', () => {
+    expect(phaseMinutes(recipeWith(BREAD))).toBe(867);
   });
 
   it('answers null for a recipe written before the strip existed', () => {
-    expect(phaseMinutes(recipeWith(undefined), true)).toBeNull();
+    expect(phaseMinutes(recipeWith(undefined))).toBeNull();
   });
 
   it('answers null for a stored strip that is empty', () => {
-    expect(phaseMinutes(recipeWith([]), true)).toBeNull();
+    expect(phaseMinutes(recipeWith([]))).toBeNull();
   });
 
-  // A cook who zeroed every phase has still stated a timing, and falling back
-  // here would put `60 min` on screen beside a timeline that says nothing.
+  // A cook who zeroed every phase has still stated a timing. There is no old
+  // field left to fall back to (issue #1213), so the distinction that matters is
+  // "stated nothing" versus "does not say" — 0 versus null.
   it('answers zero — not null — for a strip a cook has zeroed by hand', () => {
-    expect(phaseMinutes(recipeWith([phase('Assemble', 0, 0)]), true)).toBe(0);
+    expect(phaseMinutes(recipeWith([phase('Assemble', 0, 0)]))).toBe(0);
   });
 });

@@ -108,9 +108,14 @@ const RECIPE = {
   ],
   metadata: {
     servings: 6,
-    totalTimeMinutes: 210,
-    prepTimeMinutes: 30,
-    cookTimeMinutes: 180,
+    totalTimeMinutes: null,
+    prepTimeMinutes: null,
+    cookTimeMinutes: null,
+    phases: [
+      { label: 'Prep', handsOnMinutes: 30, handsOffMinutes: 0 },
+      { label: 'Braise', handsOnMinutes: 0, handsOffMinutes: 180 },
+    ],
+    timingSummary: 'Half an hour of you, three and a half hours in all.',
     tags: ['slow', 'winter'],
   },
   componentRecipeIds: [],
@@ -141,11 +146,16 @@ async function systemPromptFor(recipeId: string): Promise<string> {
 }
 
 describe('chefChat — the chef reads the whole recipe, not a summary of it', () => {
-  it('shows the servings and every stated time', async () => {
+  it('shows the servings and the phase strip, block by block', async () => {
     const system = await systemPromptFor('r1');
     // One line, because that is how the renderer writes it — asserted whole so a
-    // reordering that drops a field cannot pass on four separate substrings.
-    expect(system).toContain('servings: 6, prep: 30 min, cook: 180 min, total: 210 min');
+    // reordering that drops a field cannot pass on separate substrings. The strip
+    // is rendered as its blocks rather than as an elapsed total (issue #1213):
+    // the chef is asked to amend the strip and needs to see the one it is
+    // amending, and elapsed is derived where it is read, never printed.
+    expect(system).toContain(
+      'servings: 6, Prep: 30 min hands-on, 0 min hands-off, Braise: 0 min hands-on, 180 min hands-off',
+    );
   });
 
   it('shows a step timer with its label, so a re-author can hand it back', async () => {

@@ -411,15 +411,15 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook`);
   });
 
-  it('shows the Ingredients and Method cards and the timings', () => {
+  it('shows the Ingredients and Method cards and the Serves chip', () => {
     renderPage();
 
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
     expect(screen.getByText('Method')).toBeInTheDocument();
     expect(screen.getByText('Serves 4')).toBeInTheDocument();
-    expect(screen.getByText('Prep 10 min')).toBeInTheDocument();
-    expect(screen.getByText('Cook 20 min')).toBeInTheDocument();
-    expect(screen.getByText('Total 30 min')).toBeInTheDocument();
+    // Timing lives on the phase timeline now, not in a chip beside Serves
+    // (issue #1213); this fixture states none, so there is nothing to draw.
+    expect(screen.queryByText(/^(Prep|Cook|Total) /)).toBeNull();
   });
 });
 

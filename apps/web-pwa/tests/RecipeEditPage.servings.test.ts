@@ -32,13 +32,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
   takeImportedDraft: vi.fn().mockReturnValue(null),
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
-// The phase editor replaces the three time boxes when its key is ON (issue
-// #1212), and the real gate reads uninitialised observability as on. This suite
-// is about the three boxes, so it pins the key OFF.
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: {
-    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: false, settled: true }), () => {}),
-  },
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
@@ -70,6 +64,8 @@ function makeRecipe(): Recipe {
       prepTimeMinutes: null,
       cookTimeMinutes: null,
       totalTimeMinutes: null,
+      phases: [{ label: 'Cook', handsOnMinutes: 15, handsOffMinutes: 5 }],
+      timingSummary: null,
       tags: [],
     },
     source: null,
@@ -121,15 +117,15 @@ describe('RecipeEditPage — Servings', () => {
     expect((await savedRecipe()).metadata.servings).toBe(6);
   });
 
-  it('leaves the time fields alone — 0 prep and 0 cook are real answers (#739)', async () => {
+  // #739's asymmetry survives the fields it was written about (#1213): a 0 typed
+  // into Servings is "not stated", and a 0 typed into a phase's hands-on box is
+  // a real answer — an unattended wait. `positiveOrNull` is still Servings-only.
+  it('leaves a phase minute of 0 alone — an unattended block is a real answer', async () => {
     mockRecipes._set([makeRecipe()]);
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
 
-    await typeInto('recipe-prep-input', '0');
-    await typeInto('recipe-cook-input', '0');
+    await typeInto('recipe-phase-hands-on-input', '0');
 
-    const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(0);
-    expect(saved.metadata.cookTimeMinutes).toBe(0);
+    expect((await savedRecipe()).metadata.phases?.[0]?.handsOnMinutes).toBe(0);
   });
 });

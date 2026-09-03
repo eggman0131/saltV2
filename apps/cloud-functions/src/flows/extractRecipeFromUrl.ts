@@ -217,9 +217,15 @@ function buildJsonLdPrompt(
   lines.push(`Title: ${recipe.title}`);
   if (recipe.description !== null) lines.push(`Description: ${recipe.description}`);
   if (recipe.servings !== null) lines.push(`Servings: ${recipe.servings}`);
-  // Labelled as the PAGE's numbers, not ours. The faithfulness rule now exempts
-  // the times (issue #952), and a bare "Prep time (minutes): 5" reads like a
-  // field to copy across; "as stated by the page" reads like the hint it is.
+  // Labelled as the PAGE's numbers, not ours. The faithfulness rule exempts the
+  // times (issue #952), and a bare "Prep time (minutes): 5" reads like a field to
+  // copy across; "as stated by the page" reads like the hint it is.
+  //
+  // These are EVIDENCE and nothing more (issue #1213). The app has no prep, cook
+  // or total field left to copy them into: they are given so the model's phase
+  // strip is informed by what the source claimed, and then thrown away. Deleting
+  // them would throw away the only timing the page states, which is exactly the
+  // evidence a scraped recipe is richest in.
   if (recipe.totalTimeMinutes !== null)
     lines.push(`Total time as stated by the page (minutes): ${recipe.totalTimeMinutes}`);
   if (recipe.prepTimeMinutes !== null)
