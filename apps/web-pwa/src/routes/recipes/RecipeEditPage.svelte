@@ -1161,17 +1161,47 @@
             onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
           />
-          <!-- The Prep / Cook / Total number boxes stood here until issue #1213.
-               The phase editor below is now the only timing control on this page;
-               their STORED values are left exactly as they are, read by nothing,
-               and #1211 removes the fields themselves. -->
+          <!-- Kept alongside the phase editor, not moved beside it in a redesigned
+               layout: `scheduleFor` and `insertComponentByCookTime` (in
+               packages/domain) still read `cookTimeMinutes`, so a hand-authored
+               recipe needs a way to set it until issue #1213's phase 3 moves those
+               readers onto `recipePhaseTotals()`. Removing these three boxes is
+               that phase's job, not this one's (PR #1231 review). -->
+          <TextField
+            label="Prep (min)"
+            inputmode="numeric"
+            value={draft.metadata.prepTimeMinutes === null
+              ? ''
+              : String(draft.metadata.prepTimeMinutes)}
+            onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-prep-input"
+          />
+          <TextField
+            label="Cook (min)"
+            inputmode="numeric"
+            value={draft.metadata.cookTimeMinutes === null
+              ? ''
+              : String(draft.metadata.cookTimeMinutes)}
+            onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-cook-input"
+          />
+          <TextField
+            label="Total (min)"
+            inputmode="numeric"
+            value={draft.metadata.totalTimeMinutes === null
+              ? ''
+              : String(draft.metadata.totalTimeMinutes)}
+            onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-total-input"
+          />
         </div>
       {/if}
 
       <!-- Timing, as the cook actually experiences it: the phases in the order
            they happen, each with how long it lasts and how much of that is you at
            the counter (issue #1212). Ungated as of issue #1213, and the only
-           timing control on this page. -->
+           timing control shown for cook duration itself — Prep/Cook/Total above
+           still cover what `scheduleFor` and the "Made from" ordering read. -->
       {#if showCooking}
         <section class="flex flex-col gap-3" data-testid="recipe-phase-editor">
           <div class="flex items-center justify-between">

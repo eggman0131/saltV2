@@ -115,16 +115,15 @@ describe('RecipeEditPage — Servings', () => {
     expect((await savedRecipe()).metadata.servings).toBe(6);
   });
 
-  // #739's rule was that 0 is a real answer for a duration, not an absence. The
-  // three time boxes went with issue #1213, so the rule now lives on the phase
-  // editor's own minute fields (`RecipeEditPage.phases.test.ts`). What is left
-  // here is that Servings still has no timing control beside it.
-  it('offers no Prep, Cook or Total box beside Servings', () => {
+  it('leaves the time fields alone — 0 prep and 0 cook are real answers (#739)', async () => {
     mockRecipes._set([makeRecipe()]);
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
 
-    expect(screen.queryByTestId('recipe-prep-input')).toBeNull();
-    expect(screen.queryByTestId('recipe-cook-input')).toBeNull();
-    expect(screen.queryByTestId('recipe-total-input')).toBeNull();
+    await typeInto('recipe-prep-input', '0');
+    await typeInto('recipe-cook-input', '0');
+
+    const saved = await savedRecipe();
+    expect(saved.metadata.prepTimeMinutes).toBe(0);
+    expect(saved.metadata.cookTimeMinutes).toBe(0);
   });
 });

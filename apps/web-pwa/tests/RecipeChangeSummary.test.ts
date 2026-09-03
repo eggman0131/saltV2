@@ -72,13 +72,13 @@ describe('RecipeChangeSummary — how a change is drawn follows from the change'
   });
 
   it('renders an unset numeric field as a one-line value, not as an absence', () => {
-    // "none → 6" is a value change, not a creation: a number that is unset still
-    // has a readable one-line rendering, so it stays an ordinary edit.
-    open({ metadata: { servings: { from: null, to: 6 } } });
+    // "none → 15 min" is a value change, not a creation: a number that is unset
+    // still has a readable one-line rendering, so it stays an ordinary edit.
+    open({ metadata: { prepTimeMinutes: { from: null, to: 15 } } });
 
     const card = onlyCard();
     expect(card.textContent).toContain('none');
-    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent('6');
+    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent('15 min');
   });
 
   it('marks only the words that moved in an adjusted sentence', () => {
@@ -428,10 +428,12 @@ describe('RecipeChangeSummary — the phase strip', () => {
     expect(card.textContent).not.toContain(' — ');
   });
 
-  // The three time cards are gone (issue #1213): `diffRecipe` no longer reports
-  // the fields, and this component no longer has a branch that could draw them.
-  // `packages/domain/tests/recipe/diffRecipe.test.ts` pins the reporting half.
-  it('draws a Timing card and no Prep, Cook or Total card', () => {
+  // A diff that moves ONLY the strip draws no Prep/Cook/Total card, because
+  // `diffRecipe` reports those three only when they themselves moved — not
+  // because this component declines to draw them (it does, see the "still
+  // live" describe block below; that coexistence is deliberate until issue
+  // #1213's phase 5, PR #1231 review).
+  it('draws a Timing card and no Prep, Cook or Total card, when only the strip moved', () => {
     openWithPhases({ phases: { from: [MIX], to: [PROVE] } });
 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
@@ -504,6 +506,31 @@ describe('RecipeChangeSummary — the sheet matches what it drew, not what diffR
     expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
     expect(screen.queryByTestId('recipe-change-group-metadata')).toBeNull();
     expect(screen.getByTestId('recipe-change-discard')).toHaveTextContent('Close');
+  });
+});
+
+// PR #1231 review, blocking finding 2. `recipeAmend.ts` still merges
+// prepTimeMinutes/cookTimeMinutes/totalTimeMinutes into the applied recipe —
+// issue #1213's phase 5 is what stops that, and it has not landed — so a diff
+// whose only movement is those three fields must still produce a card and a
+// live Apply. Before this pinning test the sheet asserted "the chef proposed
+// no changes" for exactly this diff, with no way to approve or refuse it.
+describe('RecipeChangeSummary — a time-only diff is still a change (PR #1231 review)', () => {
+  it('draws a card and offers Apply when only Prep/Cook/Total moved', () => {
+    open({
+      metadata: {
+        prepTimeMinutes: { from: 10, to: 20 },
+        cookTimeMinutes: { from: 30, to: 40 },
+        totalTimeMinutes: { from: 40, to: 60 },
+      },
+    });
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByText('Prep time')).toBeInTheDocument();
+    expect(screen.getByText('Cook time')).toBeInTheDocument();
+    expect(screen.getByText('Total time')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-change-apply')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-change-summary-none')).toBeNull();
   });
 });
 
