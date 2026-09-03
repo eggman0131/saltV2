@@ -334,10 +334,20 @@ export const coverageThresholds = {
     uncoveredLines: 1915,
     uncoveredBranches: 1799,
   },
+  // RE-PINNED in #1233, and it is the dedup shape this file's header and
+  // `scripts/check-coverage-ratchet.mjs` both name (the #1113 precedent): the
+  // BRANCH RATIO FELL while nothing became less tested. `recipeAmend.ts` stopped
+  // merging `prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes`, which
+  // removed three fully-covered `??` branches from the denominator — so
+  // 67.82 → 67.71 with the UNCOVERED BRANCH COUNT UNCHANGED AT 604, which is the
+  // invariant that makes the lower ratio correct rather than a regression. The
+  // line side moved the right way in the same edit and is banked: 75.95 → 76.06,
+  // uncovered lines 798 → 795. All four measured by `pnpm test:coverage` on this
+  // branch and pasted from the ratchet's own block.
   'apps/web-pwa/src/lib/**': {
-    lines: 75.95,
-    branches: 67.82,
-    uncoveredLines: 798,
+    lines: 76.06,
+    branches: 67.71,
+    uncoveredLines: 795,
     uncoveredBranches: 604,
   },
   // RE-PINNED 54.58/38.81 → 61.22/46.02 in #947. `EquipmentPhotoDialog.svelte`
