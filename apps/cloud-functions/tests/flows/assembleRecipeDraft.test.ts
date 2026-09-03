@@ -761,8 +761,9 @@ describe('assembleRecipeDraft — total time', () => {
 
   it('repairs a stated total that is less than its own parts', async () => {
     // The real Paneer Makhanwala shape from the staging library: prep 10, cook
-    // 35, total 35 — arithmetically impossible, and not cosmetic, because
-    // cookShape derives the displayed hands-on figure as `total − timer waits`.
+    // 35, total 35 — arithmetically impossible. (The displayed figure it used to
+    // corrupt came from `cookShape`, deleted by issue #1213; `reconcileRecipeTimes`
+    // and this repair go with it in that issue's Phase 5.)
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
       { source: MANUAL },

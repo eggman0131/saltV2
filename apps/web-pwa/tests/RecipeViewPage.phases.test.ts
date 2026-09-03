@@ -3,17 +3,14 @@ import { render, cleanup } from '@testing-library/svelte';
 import type { Recipe, RecipePhase } from '@salt/domain';
 
 // The planning timeline on the recipe page (issue #1122). What these pin is the
-// GATE, the three states of `metadata.phases`, and the swap the timeline pays for:
-// a recipe with a strip stops showing Prep / Cook / Total, and one without keeps
-// them. That is what makes "phases 1-3 are invisible" a checkable claim rather
-// than a hope.
+// two states of `metadata.phases` and the swap the timeline paid for: Prep / Cook
+// / Total are gone from this page for everyone, with no flag and no fallback
+// (issue #1213), and so is the #878 ribbon that used to sit beside the strip.
 //
 // The width arithmetic is NOT here — it is `tests/phaseTimeline.test.ts`, against
 // the pure module, where a cap can be asserted in numbers instead of in pixels.
 //
-// The mock preamble is the one every RecipeViewPage suite carries; only the
-// feature gate is extra, because the real module reads uninitialised observability
-// and therefore always answers "on".
+// The mock preamble is the one every RecipeViewPage suite carries.
 
 const {
   mockRecipes,
@@ -23,7 +20,6 @@ const {
   mockDefaultListId,
   mockSessions,
   mockEquipment,
-  mockPhasesGate,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
   return {
@@ -34,22 +30,19 @@ const {
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
     mockEquipment: makeStore<unknown>(null),
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: true,
-      settled: true,
-    }),
   };
 });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: mockPhasesGate,
   // Bread stays on, which is what the real (unkeyed) gate answers — this suite is
   // not about bread and nothing here should change what it shows.
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
-  featureGate: () => mockPhasesGate,
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  }),
   isFeatureEnabled: () => true,
 }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
@@ -178,7 +171,6 @@ beforeEach(() => {
   mockIsLoading._set(false);
   mockRecipes._set([]);
   mockGuidedPlan._set(null);
-  mockPhasesGate._set({ enabled: true, settled: true });
 });
 
 function renderPage() {
@@ -305,32 +297,19 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(container.textContent).toContain('Serves 4');
   });
 
-  it('keeps the three chips for a recipe with no strip, key on', () => {
+  // The fallback is GONE, not merely unreached (issue #1213). A recipe that still
+  // carries all three stored numbers and no strip shows none of them — which is
+  // what makes "no screen shows a prep, cook or total time" checkable rather than
+  // a claim about which fixtures happen to exist.
+  it('shows no Prep / Cook / Total chip even for a recipe with no strip at all', () => {
     mockRecipes._set([withThreeFields(undefined)]);
-    const { container } = renderPage();
+    const { container, queryByTestId } = renderPage();
 
-    expect(container.textContent).toContain('Prep 15 min');
-    expect(container.textContent).toContain('Cook 30 min');
-    expect(container.textContent).toContain('Total 45 min');
-  });
-
-  it('keeps the three chips with the key off, however good the stored strip is', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set([withThreeFields(PHASES)]);
-    const { container } = renderPage();
-
-    expect(container.textContent).toContain('Prep 15 min');
-    expect(container.textContent).toContain('Cook 30 min');
-    expect(container.textContent).toContain('Total 45 min');
-  });
-
-  it('renders nothing when the key is off, however good the stored strip is', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set([withPhases()]);
-    const { queryByTestId } = renderPage();
-
+    expect(container.textContent).not.toContain('Prep 15 min');
+    expect(container.textContent).not.toContain('Cook 30 min');
+    expect(container.textContent).not.toContain('Total 45 min');
     expect(queryByTestId('recipe-phases')).toBeNull();
-    expect(queryByTestId('recipe-timing-summary')).toBeNull();
+    expect(container.textContent).toContain('Serves 4');
   });
 
   // The migration case, and the reason `phases` is optional on the schema: a
@@ -359,14 +338,6 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(getByTestId('recipe-component-cook-time').textContent).toContain('20 min');
   });
 
-  it("ignores a component's strip with the key off", () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
-    mockRecipes._set(meal(dish({ cookTimeMinutes: 20, phases: PHASES, timingSummary: null })));
-    const { getByTestId } = renderPage();
-
-    expect(getByTestId('recipe-component-cook-time').textContent).toContain('20 min');
-  });
-
   it('renders nothing for a recipe whose stored strip is empty', () => {
     mockRecipes._set([
       makeRecipe({ metadata: { ...makeRecipe().metadata, phases: [], timingSummary: null } }),
@@ -376,14 +347,13 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(queryByTestId('recipe-phases')).toBeNull();
   });
 
-  // #1205 review, blocking 1: `cookShape` returns non-null for ANY recipe with a
-  // timed step — the whole bread library this feature targets — so with the key
-  // on, the timeline's "X start to finish · Y hands-on" sentence and the #878
-  // ribbon's identical sentence, built from different numbers, printed as
-  // consecutive paragraphs. Every earlier fixture in this file has `steps: []`,
-  // so `cookShape` returned null and the ribbon never rendered alongside a strip
-  // in a single test — this is the one fixture with a timed step, so the
-  // regression cannot come back silently.
+  // The #878 ribbon is DELETED, not suppressed (issue #1213). `cookShape` returned
+  // non-null for any recipe with a timed step — the whole bread library this
+  // feature targets — so while both existed the timeline's "X start to finish · Y
+  // hands-on" sentence and the ribbon's identical sentence, built from different
+  // numbers, printed as consecutive paragraphs. This fixture is the one with a
+  // timed step and NO strip: the case the ribbon's own suppression condition let
+  // through, so if the ribbon ever came back this is where it would show.
   const timedStep = {
     id: 'step-1',
     text: 'Cover and prove overnight',
@@ -391,34 +361,23 @@ describe('RecipeViewPage — the phase strip', () => {
     note: null,
   };
 
-  it("suppresses the #878 ribbon's sentence when the recipe has a strip, even though a timed step gives cookShape a shape", () => {
+  it('draws no #878 ribbon, for a recipe with a timed step and no strip', () => {
+    mockRecipes._set([makeRecipe({ steps: [timedStep] })]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('recipe-cook-shape')).toBeNull();
+  });
+
+  it('draws no #878 ribbon beside a strip either', () => {
     mockRecipes._set([
       makeRecipe({
         steps: [timedStep],
-        metadata: {
-          ...makeRecipe().metadata,
-          prepTimeMinutes: 15,
-          cookTimeMinutes: 30,
-          totalTimeMinutes: 45,
-          phases: PHASES,
-          timingSummary: null,
-        },
+        metadata: { ...makeRecipe().metadata, phases: PHASES, timingSummary: null },
       }),
     ]);
     const { getByTestId, queryByTestId } = renderPage();
 
-    // The timeline still states its own account of the timing...
     expect(getByTestId('recipe-phase-totals').textContent).toContain('start to finish');
-    // ...but the ribbon, which would restate the same sentence from different
-    // numbers (`cookShape` reads the old fields and the timer, not the phases),
-    // must not render at all.
     expect(queryByTestId('recipe-cook-shape')).toBeNull();
-  });
-
-  it('keeps the #878 ribbon for a recipe with a timed step and no strip, key on', () => {
-    mockRecipes._set([makeRecipe({ steps: [timedStep] })]);
-    const { getByTestId } = renderPage();
-
-    expect(getByTestId('recipe-cook-shape')).toBeTruthy();
   });
 });

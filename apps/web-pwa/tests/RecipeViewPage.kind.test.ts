@@ -411,15 +411,18 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook`);
   });
 
-  it('shows the Ingredients and Method cards and the timings', () => {
+  // Serves is the whole of the cooking fact row now. Prep / Cook / Total were
+  // retired by issue #1213 and the phase timeline states the timing instead; this
+  // fixture stores all three and must show none of them.
+  it('shows the Ingredients and Method cards and the Serves chip', () => {
     renderPage();
 
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
     expect(screen.getByText('Method')).toBeInTheDocument();
     expect(screen.getByText('Serves 4')).toBeInTheDocument();
-    expect(screen.getByText('Prep 10 min')).toBeInTheDocument();
-    expect(screen.getByText('Cook 20 min')).toBeInTheDocument();
-    expect(screen.getByText('Total 30 min')).toBeInTheDocument();
+    expect(screen.queryByText('Prep 10 min')).toBeNull();
+    expect(screen.queryByText('Cook 20 min')).toBeNull();
+    expect(screen.queryByText('Total 30 min')).toBeNull();
   });
 });
 
@@ -463,13 +466,10 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     expect(screen.queryByText('No steps.')).toBeNull();
   });
 
-  it('drops the Serves / Prep / Cook / Total chips', () => {
+  it('drops the Serves chip', () => {
     renderPage();
 
     expect(screen.queryByText('Serves 4')).toBeNull();
-    expect(screen.queryByText('Prep 10 min')).toBeNull();
-    expect(screen.queryByText('Cook 20 min')).toBeNull();
-    expect(screen.queryByText('Total 30 min')).toBeNull();
   });
 
   it('keeps Duplicate, Edit and Delete, so the ⋮ menu never opens onto nothing', async () => {

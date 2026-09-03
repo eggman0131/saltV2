@@ -24,7 +24,6 @@ const {
   mockSessions,
   mockEquipment,
   mockBreadGate,
-  mockPhasesGate,
 } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
   return {
@@ -38,10 +37,6 @@ const {
     mockEquipment: makeStore<{ items: readonly { name: string }[] } | null>({ items: [] }),
     mockBreadGate: makeStore<{ enabled: boolean; settled: boolean }>({
       enabled: true,
-      settled: true,
-    }),
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: false,
       settled: true,
     }),
   };
@@ -86,10 +81,6 @@ vi.mock('../src/lib/formulaService.js', () => ({
 // the gated case has to say so explicitly.
 vi.mock('../src/lib/featureGate.js', () => ({
   breadGate: mockBreadGate,
-  // Off, so this suite keeps asserting the page exactly as it is today (issue
-  // #1122): the phase strip is a different feature behind a different key, and
-  // mocking it "on" here would put an unrelated block on the page these tests read.
-  recipePhasesGate: mockPhasesGate,
   featureGate: () => mockBreadGate,
   isFeatureEnabled: () => true,
 }));

@@ -127,9 +127,6 @@ export interface RecipePhasesChange {
 // faithful account of what moved and the summary decides how to say it.
 export interface RecipeMetadataDiff {
   servings?: NullableNumberChange;
-  totalTimeMinutes?: NullableNumberChange;
-  prepTimeMinutes?: NullableNumberChange;
-  cookTimeMinutes?: NullableNumberChange;
   phases?: RecipePhasesChange;
   timingSummary?: NullableStringChange;
 }

@@ -13,7 +13,6 @@
   import type { DiffPart, RecipePhase } from '@salt/domain';
   import type { NullableStringChange, RecipeDiff } from '@salt/domain';
   import type { StepTimerDoc } from '@salt/domain/schemas';
-  import { recipePhasesGate } from '../../lib/featureGate.js';
 
   // Review-and-approve gate for an AI-chef recipe edit. Renders the pure
   // `RecipeDiff` produced by `diffRecipe` as a DIFF: one card per change,
@@ -112,10 +111,6 @@
       : `${t.durationMinutes} min`;
   }
 
-  function timeValue(n: number | null): string {
-    return n === null ? 'none' : `${n} min`;
-  }
-
   function servingsValue(n: number | null): string {
     return n === null ? 'none' : String(n);
   }
@@ -136,18 +131,6 @@
     const kind: ChangeKind = from === null ? 'new' : to === null ? 'gone' : 'edit';
     return makeCard(key, label, kind, from, to);
   }
-
-  // Metadata field → readable label. Times get "min" via timeValue; servings is bare.
-  const timeLabels: Record<'prepTimeMinutes' | 'cookTimeMinutes' | 'totalTimeMinutes', string> = {
-    prepTimeMinutes: 'Prep time',
-    cookTimeMinutes: 'Cook time',
-    totalTimeMinutes: 'Total time',
-  };
-
-  // The phase strip replaces the three time cards when its key is on (issue
-  // #1212) — the same swap the recipe page makes, so nobody sees a Prep or Cook
-  // number on one screen and a strip on the other.
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
 
   // The strip, as ONE readable value. Per-phase add/remove/change cards were
   // rejected deliberately: a reorder would read as six edits and bury the single
@@ -276,37 +259,31 @@
           servingsValue(m.servings.to),
         ),
       );
-    if (phasesEnabled) {
-      // One "Timing" card, present when either half of the pair moved. The three
-      // numbers are not drawn at all with the key on — showing a Prep time beside
-      // a phase breakdown is the split definition #1122 exists to end.
-      const phases = m.phases;
-      const summary = m.timingSummary;
-      if (phases || summary) {
-        const before = timingSide(phases ? phases.from : null, summary ? summary.from : undefined);
-        const after = timingSide(phases ? phases.to : null, summary ? summary.to : undefined);
-        // `diffRecipe` reports a field that moved; this card can only report what
-        // a reviewer can SEE move. `timingSide` deliberately collapses null, ""
-        // and whitespace to the one literal `no summary` (and trims a real
-        // sentence), so a stored `timingSummary` going null → "" is a change to
-        // the document and no change at all on screen — a card asserting movement
-        // while printing the same string in both columns, over a live Apply
-        // (#1217). Identical sides therefore yield no card, exactly as
-        // `textOrNull` declines to draw a prose field moving null ↔ "".
-        //
-        // The rule is stated on the RENDERED strings rather than on blankness so
-        // it cannot be outflanked by a second identical-looking pair: printing
-        // hands-on beside elapsed (#1216) exists to make sure a real strip change
-        // never lands here, and if a future rendering loses a distinction, this
-        // drops the unreadable card instead of showing it.
-        if (before !== after) cards.push(makeCard('timing', 'Timing', 'edit', before, after));
-      }
-    } else {
-      for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'] as const) {
-        const c = m[key];
-        if (c)
-          cards.push(makeCard(key, timeLabels[key], 'edit', timeValue(c.from), timeValue(c.to)));
-      }
+    // One "Timing" card, present when either half of the pair moved. There are no
+    // Prep / Cook / Total cards to draw beside it any more (issue #1213) — showing
+    // a Prep time next to a phase breakdown was the split definition #1122 exists
+    // to end, and `diffRecipe` no longer reports those three fields at all.
+    const phases = m.phases;
+    const summary = m.timingSummary;
+    if (phases || summary) {
+      const before = timingSide(phases ? phases.from : null, summary ? summary.from : undefined);
+      const after = timingSide(phases ? phases.to : null, summary ? summary.to : undefined);
+      // `diffRecipe` reports a field that moved; this card can only report what
+      // a reviewer can SEE move. `timingSide` deliberately collapses null, ""
+      // and whitespace to the one literal `no summary` (and trims a real
+      // sentence), so a stored `timingSummary` going null → "" is a change to
+      // the document and no change at all on screen — a card asserting movement
+      // while printing the same string in both columns, over a live Apply
+      // (#1217). Identical sides therefore yield no card, exactly as
+      // `textOrNull` declines to draw a prose field moving null ↔ "".
+      //
+      // The rule is stated on the RENDERED strings rather than on blankness so
+      // it cannot be outflanked by a second identical-looking pair: printing
+      // hands-on beside elapsed (#1216) exists to make sure a real strip change
+      // never lands here, and if a future rendering loses a distinction, this
+      // drops the unreadable card instead of showing it. Its known weakness is
+      // #1228.
+      if (before !== after) cards.push(makeCard('timing', 'Timing', 'edit', before, after));
     }
     return cards;
   });
@@ -332,13 +309,12 @@
 
   // Whether the sheet has anything to show at all. Deliberately NOT
   // `diff?.hasChanges`: `diffRecipe` reports a change whenever a field moved,
-  // but a section renders only what THIS component chose to draw from it (the
-  // Timing card gated on `phasesEnabled`, its key-on/key-off counterparts
-  // covering disjoint fields) — the two can disagree in both key states, and
-  // when they do, `hasChanges` alone would draw the "here's what will change"
-  // sheet with a live Apply button over zero cards (#1216). Deciding from the
-  // cards actually built keeps this exact everywhere `diff.hasChanges` used to
-  // be read below.
+  // but a section renders only what THIS component chose to draw from it — the
+  // Timing card declines to draw a pair whose two sides render identically — so
+  // the two can disagree, and when they do, `hasChanges` alone would draw the
+  // "here's what will change" sheet with a live Apply button over zero cards
+  // (#1216). Deciding from the cards actually built keeps this exact everywhere
+  // `diff.hasChanges` used to be read below.
   const hasAnyCards = $derived(
     !!diff && (hasBasics || hasIngredients || hasSteps || hasMetadata || hasTags),
   );

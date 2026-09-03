@@ -310,7 +310,12 @@ describe('diffRecipe', () => {
     expect(diff.hasChanges).toBe(true);
   });
 
-  it('detects each time-field change independently', () => {
+  // Issue #1213 retired the three time fields from every screen, and this is the
+  // mechanical half of "the review card shows no Prep, Cook or Total row": the
+  // diff does not carry them, so no consumer can draw one. Asserted on the keys
+  // rather than through the type, because the type no longer declares them and a
+  // property access would not compile.
+  it('reports no prep, cook or total time change, however far those fields moved', () => {
     const before = withMetadata(recipe(), {
       totalTimeMinutes: 40,
       prepTimeMinutes: 10,
@@ -318,13 +323,12 @@ describe('diffRecipe', () => {
     });
     const after = withMetadata(recipe(), {
       totalTimeMinutes: 55,
-      prepTimeMinutes: 10,
+      prepTimeMinutes: 25,
       cookTimeMinutes: 45,
     });
     const diff = diffRecipe(before, after);
-    expect(diff.metadata.totalTimeMinutes).toEqual({ from: 40, to: 55 });
-    expect(diff.metadata.cookTimeMinutes).toEqual({ from: 30, to: 45 });
-    expect(diff.metadata.prepTimeMinutes).toBeUndefined();
+    expect(Object.keys(diff.metadata)).toEqual([]);
+    expect(diff.hasChanges).toBe(false);
   });
 
   it('detects a null → number metadata change', () => {
