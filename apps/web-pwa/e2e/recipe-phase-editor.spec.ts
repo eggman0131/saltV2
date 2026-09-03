@@ -16,8 +16,10 @@
  * `isObservabilityFeatureEnabled` reads every gate as ON and a key-OFF assertion
  * is impossible here by design — the edit page's three Prep / Cook / Total boxes
  * with the key off are pinned in `tests/RecipeEditPage.phases.test.ts` instead.
- * What this spec CAN assert about the gate is the on-state half: with the key on
- * those three boxes are not on the page.
+ * What this spec CAN assert about the gate is the on-state half: with the key on,
+ * the phase editor is offered alongside those three boxes, not in place of them —
+ * they still feed `scheduleFor` and `insertComponentByCookTime` until #1213's
+ * phase 3/5 retires them (PR #1231 review).
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
@@ -75,12 +77,14 @@ test.describe('recipes — hand-editing the phase strip', () => {
     await expect(page.getByRole('heading', { name: /new recipe/i })).toBeVisible();
     await page.getByTestId('recipe-title-input').fill(DISH);
 
-    // The swap, on the half of it e2e can see: the strip is offered and the three
-    // numbers it replaces are not on the page at all.
+    // The phase editor is offered alongside the legacy Prep/Cook/Total boxes —
+    // at this point in #1213's phase order those three still feed
+    // `scheduleFor` and `insertComponentByCookTime` (PR #1231 review), so their
+    // removal is phase 3/5's job, not this one's. Both surfaces coexist.
     await expect(page.getByTestId('recipe-phase-editor')).toBeVisible();
-    await expect(page.getByTestId('recipe-prep-input')).toHaveCount(0);
-    await expect(page.getByTestId('recipe-cook-input')).toHaveCount(0);
-    await expect(page.getByTestId('recipe-total-input')).toHaveCount(0);
+    await expect(page.getByTestId('recipe-prep-input')).toBeVisible();
+    await expect(page.getByTestId('recipe-cook-input')).toBeVisible();
+    await expect(page.getByTestId('recipe-total-input')).toBeVisible();
 
     for (let i = 0; i < TYPED.length; i += 1) {
       await page.getByTestId('recipe-add-phase-btn').click();
