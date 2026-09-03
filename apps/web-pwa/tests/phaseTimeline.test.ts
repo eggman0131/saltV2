@@ -97,6 +97,24 @@ describe('phaseTimelineBlocks — what the strip draws', () => {
     ]);
   });
 
+  // #1208 bullet 4. Three of the legend's four figures per row come through this
+  // file's private `drawable` clamp; the fourth, `elapsedMinutes`, comes through
+  // domain's `phaseElapsedMinutes` and its own unexported `safeMinutes`. The two
+  // clamps are identical today and nothing but this test says they must stay so —
+  // a drift shows up on screen as a legend row that does not add up.
+  it('gives a legend row that adds up, for every value the schema admits', () => {
+    const blocks = phaseTimelineBlocks([
+      phase('Not a number', Number.NaN, 10),
+      phase('Endless', 5, Number.POSITIVE_INFINITY),
+      phase('Negative', -5, 20),
+      phase('Zeroed by hand', 0, 0),
+      phase('Ordinary', 15, 90),
+    ]);
+    for (const block of blocks) {
+      expect(block.elapsedMinutes).toBe(block.handsOnMinutes + block.handsOffMinutes);
+    }
+  });
+
   it('has nothing to draw for an empty strip', () => {
     expect(phaseTimelineBlocks([])).toEqual([]);
   });
