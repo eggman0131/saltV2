@@ -18,11 +18,11 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
     // Span flushing + error reporting are owned by the makeTracedCallable
     // entrypoint's finally (index.ts, issue #415) — the flow just does its work.
     //
-    // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
+    // Production: googleAI.model(resolveModel('populateEquipmentEntry')).
     // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
     // deterministic fake model instead; byte-identical otherwise. See
     // ../ai/fakeModel.ts for the cross-process stub contract.
-    const model = await flowModel('lite', 'populateEquipmentEntry');
+    const model = await flowModel('populateEquipmentEntry');
     const result = await withAiTimeout('populateEquipmentEntry', () =>
       ai.generate({
         model,

@@ -9,7 +9,7 @@ import {
   type RecipeDoc,
   type EstimateRecipeTimesOutput,
 } from '@salt/domain/schemas';
-import { componentDisplayLines, isCookable } from '@salt/domain';
+import { componentDisplayLines, isCookable, reconcileRecipePhases } from '@salt/domain';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
 import { identifyRecipeKitFlow } from '../flows/identifyRecipeKit.js';
@@ -479,10 +479,25 @@ async function maybeEstimateTimes(
     // Floor the total at a stored wait (blocking 1 above) before it is written —
     // prep/cook pass through unchanged.
     const finalTimes = floorTotalAtStoredWait(recipe.metadata, times);
+    // The phase strip and its summary (issue #1122 review, blocking 1) — merged
+    // against the STORED strip by the same `reconcileRecipePhases` function
+    // `assembleRecipeDraft` calls, so the two write paths answer "the model
+    // returned nothing" identically. The branch's edge trigger (runs only when
+    // someone bumped `timesRequestedAt`, never on a plain save) is what protects a
+    // hand-edited strip from a routine save; this guard is what protects it from
+    // THIS write when the model's answer omitted `phases` — a real case, not a
+    // hypothetical one: a recipe already estimated once (Phase 1, Phase 3
+    // backfill, or a hand correction) that gets asked again and gets three good
+    // numbers back with no strip must keep the strip it had, not lose it while
+    // `timesEstimatedAt` is stamped in the same write so the backfill never
+    // revisits it.
+    const phaseStrip = reconcileRecipePhases(finalTimes, recipe.metadata);
     await getFirestore().collection('recipes').doc(id).update({
       'metadata.prepTimeMinutes': finalTimes.prepTimeMinutes,
       'metadata.cookTimeMinutes': finalTimes.cookTimeMinutes,
       'metadata.totalTimeMinutes': finalTimes.totalTimeMinutes,
+      'metadata.phases': phaseStrip.phases,
+      'metadata.timingSummary': phaseStrip.timingSummary,
       // Stamped in the SAME update as the answer, so "estimated" and "has the
       // new numbers" cannot disagree. The request nonce is left in place rather
       // than deleted — deleting it would read as a nonce change on this write's

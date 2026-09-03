@@ -1,15 +1,13 @@
-import { getFirestore } from 'firebase-admin/firestore';
-import { HttpsError } from 'firebase-functions/https';
 import {
   ExtractProcessStagesInputSchema,
   ExtractProcessStagesAIOutputSchema,
   ExtractProcessStagesOutputSchema,
-  RecipeSchema,
   type RecipeDoc,
 } from '@salt/domain/schemas';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
+import { requireRecipe } from './loadRecipe.js';
 
 // extractProcessStages (issue #806, phase 2 of epic #778). Reads a recipe's method
 // and returns the ORDERED STAGES it describes — mix, bulk ferment, shape, final
@@ -105,28 +103,19 @@ export const extractProcessStagesFlow = ai.defineFlow(
     outputSchema: ExtractProcessStagesOutputSchema,
   },
   async ({ recipeId }) => {
-    const db = getFirestore();
-    const snap = await db.collection('recipes').doc(recipeId).get();
-    if (!snap.exists) {
-      throw new HttpsError('not-found', "That recipe doesn't exist.");
-    }
-    // A trust boundary (a Firestore read), so it is validated like every other.
-    const recipe = RecipeSchema.safeParse(snap.data());
-    if (!recipe.success) {
-      throw new HttpsError('failed-precondition', "That recipe can't be read.");
-    }
+    const recipe = await requireRecipe(recipeId);
 
     // `lite`: mechanical extraction from text already in front of it, the same
     // posture as parseRecipeIngredients. `flowModel` returns the deterministic e2e
     // fake under FUNCTIONS_AI_FAKE.
-    const model = await flowModel('lite', 'extractProcessStages');
+    const model = await flowModel('extractProcessStages');
     const result = await withAiTimeout(
       'extractProcessStages',
       () =>
         ai.generate({
           model,
           system: EXTRACT_PROCESS_STAGES_SYSTEM,
-          prompt: promptFor(recipe.data),
+          prompt: promptFor(recipe),
           output: { schema: ExtractProcessStagesAIOutputSchema },
           // Zero, and unlike the guided plan that is right here: there is one
           // correct transcription of a method into stages, and every degree of
@@ -150,7 +139,7 @@ export const extractProcessStagesFlow = ai.defineFlow(
     // here is an optional one-way back-reference and a bulk ferment is still a bulk
     // ferment without it. Throwing away a real wait stage because the model mistyped
     // an id is exactly the loss this feature exists to prevent.
-    const stepIds = new Set(recipe.data.steps.map((s) => s.id));
+    const stepIds = new Set(recipe.steps.map((s) => s.id));
     const stages = parsed.data.stages.map((stage) =>
       stage.stepId !== null && !stepIds.has(stage.stepId) ? { ...stage, stepId: null } : stage,
     );

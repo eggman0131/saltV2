@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen, within } from '@testing-library/svelte';
+import { render, cleanup, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 
-// The "You'll need" strip (issue #882). The property under test is the one the
-// whole design rests on: the recipe stores WORDS, and the picture is looked up
-// from those words at render time. A label the drawn vocabulary does not know
-// renders its words with NO picture — never a near match, never a generic tile —
-// which is what lets the vocabulary grow later without a recipe being rewritten,
-// and what makes the icon kill-switch cost pictures and nothing else.
+// The Equipment tab (issue #882's "You'll need" strip, moved into a third tab by
+// #1140). The property under test is the one the whole design rests on: the recipe
+// stores WORDS, and the picture is looked up from those words at render time. A
+// label the drawn vocabulary does not know renders its words with NO picture —
+// never a near match, never a generic tile — which is what lets the vocabulary grow
+// later without a recipe being rewritten, and what makes the icon kill-switch cost
+// pictures and nothing else. The move changed the container and the test ids
+// (`recipe-kit-list` / `recipe-kit-row`); it changed none of that contract.
 
 const {
   mockRecipes,
@@ -212,18 +214,65 @@ function renderPage() {
   return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
 }
 
+/** Every line in the Equipment panel, head rows and accessory rows alike, in order. */
 function kitLabels(): string[] {
-  return screen.queryAllByTestId('recipe-kit-chip').map((el) => el.textContent?.trim() ?? '');
+  return screen
+    .queryAllByTestId(/^recipe-kit-(row|accessory-row)$/)
+    .map((el) => el.textContent?.trim() ?? '');
 }
 
-describe('RecipeViewPage — the "You\'ll need" strip', () => {
-  it('shows no card at all when the recipe has no kit', () => {
-    // An empty "You'll need" heading reads as a recipe that failed rather than one
-    // nobody has asked about yet — the same reasoning the body tab strip uses.
+/**
+ * Select the Equipment tab and wait for it.
+ *
+ * Only the accessibility-tree cases below need this. Both panels stay mounted
+ * while hidden (ui-spec-v10 §8.28.3), which is why every `data-testid` query in
+ * this file finds its row without switching — but a hidden panel is out of the
+ * accessibility tree by design, so a `getByRole` query would find nothing there
+ * and say nothing about what a screen reader on this tab is handed.
+ */
+async function openEquipmentTab(): Promise<void> {
+  await fireEvent.click(screen.getAllByRole('tab')[2]!);
+  await waitFor(() => {
+    expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+  });
+}
+
+/** The tab strip's labels, with the `count` the trigger appends stripped off. */
+function tabNames(): string[] {
+  return screen
+    .queryAllByRole('tab')
+    .map((el) => (el.textContent ?? '').replace(/\d+\s*$/, '').trim());
+}
+
+describe('RecipeViewPage — the Equipment tab', () => {
+  it('shows no Equipment tab or panel at all when the recipe has no kit', () => {
+    // A panel headed "Equipment" over nothing reads as a recipe that failed rather
+    // than one nobody has asked about yet — the same reasoning the body tab strip
+    // already uses for a kind with no ingredients.
     mockRecipes._set([makeEntry()]);
     renderPage();
 
-    expect(screen.queryByTestId('recipe-kit-strip')).toBeNull();
+    expect(screen.queryByTestId('recipe-kit-list')).toBeNull();
+    expect(tabNames()).toEqual(['Ingredients', 'Method']);
+  });
+
+  it('offers Equipment as a third tab, counting its rows', () => {
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'large saucepan', stepIds: ['step-1'] },
+          { label: 'colander', stepIds: ['step-1'] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(tabNames()).toEqual(['Ingredients', 'Method', 'Equipment']);
+    // The count is the `TabsTrigger` prop (ui-spec-v10 §8.28.4), rendered inside
+    // the button so it joins the tab's accessible name — not text this page
+    // interpolates into the label itself.
+    const equipmentTab = screen.getAllByRole('tab')[2]!;
+    expect(equipmentTab.textContent).toContain('2');
   });
 
   it('lists every piece of kit, in stored order', () => {
@@ -312,7 +361,8 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     // and the framing normalisation (`contentMax: 108`, ~52% of the box height for
     // a landscape tool) turned that into ~15 × 9 px of frying pan — smaller than
     // the words beside it. 40px is ui-spec-v04 §14.6.1's size for every in-list
-    // pictogram, and ui-spec-v12 §8.30 is the container that can hold one.
+    // pictogram, and the list this became in #1140 is exactly the surface that
+    // size is for — the same tile the ingredients beside it draw.
     setTools([
       tool({
         id: 'frying-pan',
@@ -323,7 +373,7 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     mockRecipes._set([makeEntry({ kit: [{ label: 'large frying pan', stepIds: [] }] })]);
     renderPage();
 
-    const strip = screen.getByTestId('recipe-kit-strip');
+    const strip = screen.getByTestId('recipe-kit-list');
     const tile = within(strip).getByTestId('canon-icon');
     expect(tile.getAttribute('style')).toContain('width: 40px');
     expect(tile.getAttribute('style')).toContain('height: 40px');
@@ -444,30 +494,344 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
     expect(screen.queryByTestId('canon-icon')).toBeNull();
   });
 
-  it('renders each entry as a static pill — read, not pressed', () => {
-    // ui-spec-v12 §8.30.6, carrying ui-spec-v09 §8.23.8's rule across from the
-    // `fact` chip this replaced: the pill is a span, so it is not reachable by Tab
-    // and is not announced as a control. The strip states what the dish needs; it
-    // does not offer anything to do about it.
+  it('renders each entry as a plain list row — read, not pressed', () => {
+    // Carried across from the `PictogramPill` this replaced (ui-spec-v12 §8.30.6,
+    // itself carrying ui-spec-v09 §8.23.8): the row is an `<li>` with no control in
+    // it, so it is not reachable by Tab and is not announced as something to press.
+    // The list states what the dish needs; it does not offer anything to do about it.
     mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
     renderPage();
 
-    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
-    expect(chip.tagName).toBe('SPAN');
+    const row = screen.getAllByTestId('recipe-kit-row')[0]!;
+    expect(row.tagName).toBe('LI');
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(row.querySelector('a, button, input, [tabindex]')).toBeNull();
   });
 
-  it('keeps each pill from stretching or overflowing the flex-wrap strip (§8.30.3)', () => {
-    // The strip's own row is `flex flex-wrap`, so — unlike a plain block
-    // parent — the pill's `inline-flex` alone does not stop it stretching or
-    // shrinking; the caller must add `shrink-0 max-w-full`, the same class the
-    // per-step kit list applies via its `<li>` (issue #1050 finding 1).
+  it('reserves the icon gutter on a miss, so every name starts at one left edge', () => {
+    // The list is read the way the ingredients beside it are read — you run your eye
+    // down a straight column of names. The ingredients list buys that with a bare
+    // `CanonIcon` tile on every row; kit cannot, because #882's contract is that an
+    // unknown label draws NO picture rather than a placeholder that reads as a broken
+    // image. So the gutter is a fixed 40px box that is simply empty on a miss: both
+    // rows below start their text at the same x, and only one of them has a tile.
+    setTools([tool({ id: 'saucepan', label: 'large saucepan' })]);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'large saucepan', stepIds: [] },
+          { label: 'tagine', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    const [drawn, undrawn] = screen.getAllByTestId('recipe-kit-row');
+    expect(within(drawn!).queryByTestId('canon-icon')).not.toBeNull();
+    expect(within(undrawn!).queryByTestId('canon-icon')).toBeNull();
+    for (const row of [drawn!, undrawn!]) {
+      const gutter = row.firstElementChild!;
+      const classes = gutter.className.split(/\s+/);
+      expect(classes).toContain('h-10');
+      expect(classes).toContain('w-10');
+      expect(classes).toContain('shrink-0');
+    }
+  });
+
+  it('falls back to Ingredients when the kit empties while Equipment is selected', async () => {
+    // The trigger and the panel both disappear with the kit, and `bodyTab` is
+    // plain `$state` — so without the reset the strip would be left with nothing
+    // selected and the whole body blank. Rare (an editor save that clears the kit,
+    // a Redo kit that comes back with nothing) and cheap to be right about.
     mockRecipes._set([makeEntry({ kit: [{ label: 'colander', stepIds: [] }] })]);
     renderPage();
 
-    const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
-    const classes = chip.className.split(/\s+/);
-    expect(classes).toContain('shrink-0');
-    expect(classes).toContain('max-w-full');
+    await fireEvent.click(screen.getAllByRole('tab')[2]!);
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab')[2]).toHaveAttribute('aria-selected', 'true');
+    });
+
+    mockRecipes._set([makeEntry({ kit: [] })]);
+
+    await waitFor(() => {
+      expect(tabNames()).toEqual(['Ingredients', 'Method']);
+    });
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+// ─── Accessories under their appliance (issue #1140) ───────────────────────────
+// The grouping RULE is proved in `packages/domain`
+// (`tests/recipe/groupKitByEquipment.test.ts`, including the two guards). What this
+// block proves is that the page actually calls it and draws the answer — a rule the
+// page forgets to call is worth nothing — and that an accessory row is what the
+// design says it is: indented, drawn through the shared `$kitIcons` lookup, and
+// (since #1182) announced as belonging to the appliance above it.
+
+describe('RecipeViewPage — accessories under their appliance', () => {
+  it('indents an accessory named beside its appliance, with no picture', () => {
+    // Staging's real kit: `['sieve', 'Cosori 5L Rice Cooker', 'Rice Spoon']`.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+      ],
+    });
+    mockEquipmentIcons._set(
+      new Map([['eq-cosori', { thumbnail: 'https://example.com/eq/cosori.webp' }]]),
+    );
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'sieve', stepIds: [] },
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['sieve', 'Cosori 5L Rice Cooker', 'Rice Spoon']);
+
+    const accessory = screen.getByTestId('recipe-kit-accessory-row');
+    expect(accessory.textContent?.trim()).toBe('Rice Spoon');
+    // No tool-vocabulary entry is pushed in this case, so `$kitIcons.kitIconFor`
+    // genuinely has nothing to draw — a real miss on both vocabularies, not a
+    // suppression. See the next test for the case where it DOES draw.
+    expect(within(accessory).queryByTestId('canon-icon')).toBeNull();
+    expect(accessory.className.split(/\s+/)).toContain('pl-12');
+  });
+
+  it('draws the tool-vocabulary picture on an accessory row when it has one', () => {
+    // #1179 review finding B1. A BARE accessory label — every one the library
+    // writes today, and the case here — is exactly a label `resolveEquipmentItem`
+    // refused, so it is precisely the row the tool vocabulary's fall-through
+    // exists for (staging: "Rice Spoon" draws
+    // `rice-paddle`, "Thermo Bowl" / "Chopper Bowl" / "Stainless Steel Bowl" all
+    // draw `bowl`). The row must not suppress a picture the shared `$kitIcons`
+    // lookup would otherwise give it.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+      ],
+    });
+    setTools([tool({ id: 'rice-paddle', label: 'rice spoon' })]);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    const accessory = screen.getByTestId('recipe-kit-accessory-row');
+    expect(within(accessory).queryByTestId('canon-icon')).not.toBeNull();
+  });
+
+  it('leaves an accessory named without its appliance as an ordinary top-level row', () => {
+    // Staging's Baked Camembert: a sheet pan and an oven rack, no Anova anywhere.
+    // Hauling out a steam oven the recipe never asked for is the wrong answer.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-anova',
+          name: 'Anova Precision Oven',
+          accessories: [
+            { id: 'acc-pan', name: 'Oven Sheet Pan', owned: true, included: true },
+            { id: 'acc-rack', name: 'Wire Oven Rack', owned: true, included: true },
+          ],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'small frying pan', stepIds: [] },
+          { label: 'Oven Sheet Pan', stepIds: [] },
+          { label: 'Wire Oven Rack', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['small frying pan', 'Oven Sheet Pan', 'Wire Oven Rack']);
+    expect(screen.queryByTestId('recipe-kit-accessory-row')).toBeNull();
+    expect(screen.queryByText(/Anova/)).toBeNull();
+  });
+
+  it('stays flat while the manifest has not loaded', () => {
+    // A cold load paints before the manifest lands, and the accessory→appliance link
+    // lives entirely in the manifest. Flat is the correct reading of "nothing is
+    // known to be owned yet" — and the list regroups itself when the store fills,
+    // because it is `$derived` off it.
+    mockEquipment._set(null);
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['Cosori 5L Rice Cooker', 'Rice Spoon']);
+    expect(screen.queryByTestId('recipe-kit-accessory-row')).toBeNull();
+  });
+
+  it('keeps the tab count equal to the number of lines once rows are grouped', () => {
+    // `count={kit.length}` is only honest while every entry renders exactly once.
+    // Three entries, one of them nested, is still a count of three.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-ninja',
+          name: 'Ninja Foodi 3-in-1 Hand Blender, Mixer & Chopper CI100UK',
+          accessories: [
+            { id: 'acc-att', name: 'Hand Blender Attachment', owned: true, included: true },
+          ],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'tall glass jar', stepIds: [] },
+          { label: 'Ninja Foodi 3-in-1 Hand Blender, Mixer & Chopper CI100UK', stepIds: [] },
+          { label: 'Hand Blender Attachment', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(screen.getAllByTestId('recipe-kit-accessory-row')).toHaveLength(1);
+    expect(kitLabels()).toHaveLength(3);
+    expect(screen.getAllByRole('tab')[2]!.textContent).toContain('3');
+  });
+
+  // ── The relationship, for someone who cannot see the indent (issue #1182) ──
+  // Everything above this line asserts pixels: `pl-12`, a muted colour, a tile.
+  // None of it reaches the accessibility tree, where the two rows were siblings in
+  // one `<ul>` with nothing said about them — "Cosori 5L Rice Cooker", "Rice
+  // Spoon", read as peers. These cases are deliberately written through
+  // `getByRole('listitem', { name })` and never through the test id or the class,
+  // because asserting on `pl-12` is exactly the thing that is not announced.
+
+  it('names the appliance in the accessory row accessible name, not only in its indent', async () => {
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+    await openEquipmentTab();
+
+    // The relationship is IN the name, so this query resolves only if it is.
+    const accessory = screen.getByRole('listitem', {
+      name: 'Rice Spoon, part of Cosori 5L Rice Cooker',
+    });
+    expect(accessory).toBe(screen.getByTestId('recipe-kit-accessory-row'));
+
+    // And the addition is one-way: exactly ONE row in the panel is announced as
+    // belonging to another, so the appliance has not started claiming to be part
+    // of anything. (`listitem` takes its name from the author only, never from its
+    // contents, so there is no name to query the head row BY — which is precisely
+    // why the flat list said nothing about either row before this.)
+    expect(screen.getAllByRole('listitem', { name: /part of/ })).toHaveLength(1);
+  });
+
+  it('names each accessory own appliance when two appliances are in one kit', async () => {
+    // The way a name built at the call site goes wrong is by naming the WRONG
+    // parent — the first group, or the last one — which a single-group case cannot
+    // catch. Two groups, and each accessory must name the row above IT.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-cosori',
+          name: 'Cosori 5L Rice Cooker',
+          accessories: [{ id: 'acc-spoon', name: 'Rice Spoon', owned: true, included: true }],
+        },
+        {
+          id: 'eq-anova',
+          name: 'Anova Precision Oven',
+          accessories: [{ id: 'acc-pan', name: 'Oven Sheet Pan', owned: true, included: true }],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Cosori 5L Rice Cooker', stepIds: [] },
+          { label: 'Rice Spoon', stepIds: [] },
+          { label: 'Anova Precision Oven', stepIds: [] },
+          { label: 'Oven Sheet Pan', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+    await openEquipmentTab();
+
+    expect(
+      screen
+        .getAllByTestId('recipe-kit-accessory-row')
+        .map((row) => row.getAttribute('aria-label')),
+    ).toEqual([
+      'Rice Spoon, part of Cosori 5L Rice Cooker',
+      'Oven Sheet Pan, part of Anova Precision Oven',
+    ]);
+    expect(
+      screen.getByRole('listitem', { name: 'Oven Sheet Pan, part of Anova Precision Oven' }),
+    ).toBeTruthy();
+  });
+
+  it('says nothing extra on a row that is not nested', async () => {
+    // The counterpart claim: the announcement is what marks a row as nested, so a
+    // top-level row must not carry one. Staging's Baked Camembert again — an
+    // accessory whose appliance is absent is an ordinary row, and is announced as
+    // one.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-anova',
+          name: 'Anova Precision Oven',
+          accessories: [{ id: 'acc-pan', name: 'Oven Sheet Pan', owned: true, included: true }],
+        },
+      ],
+    });
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'small frying pan', stepIds: [] },
+          { label: 'Oven Sheet Pan', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+    await openEquipmentTab();
+
+    expect(kitLabels()).toEqual(['small frying pan', 'Oven Sheet Pan']);
+    expect(screen.queryByRole('listitem', { name: /part of/ })).toBeNull();
   });
 });
 
@@ -564,8 +928,8 @@ describe('RecipeViewPage — kit under a method step', () => {
   });
 
   it('draws NOTHING under a step for a kit entry naming no step', () => {
-    // It still belongs on the "You'll need" strip — the strip lists what the dish
-    // needs, and "used at no particular step" is not an answer the method can give.
+    // It still belongs on the Equipment tab — the tab lists what the dish needs,
+    // and "used at no particular step" is not an answer the method can give.
     mockRecipes._set([
       makeEntry({ steps: steps('Serve.'), kit: [{ label: 'oven glove', stepIds: [] }] }),
     ]);

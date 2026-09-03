@@ -304,6 +304,40 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     expect(getAllByTestId('cook-plan-row-cook-time')[1]).toHaveTextContent('No cook time');
   });
 
+  // Issue #1122. The LINE moves onto the phase sum; the START CLOCK beside it does
+  // not — `scheduleFor` still works back from `cookTimeMinutes` until phase 4, and
+  // this asserts that boundary rather than assuming it. The feature key reads on
+  // here, as it does everywhere in the unit suite: with no PostHog key nothing can
+  // be gated (`isObservabilityFeatureEnabled`).
+  it("shows a dish's phase sum on its plan row, leaving the start clock alone", () => {
+    const potatoes = withCookTime('potatoes', 'Roast potatoes', 30);
+    mockRecipes._set([
+      dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['chicken', 'potatoes'] }),
+      withCookTime('chicken', 'Roast chicken', 90),
+      {
+        ...potatoes,
+        metadata: {
+          ...potatoes.metadata,
+          phases: [
+            { label: 'Parboil', handsOnMinutes: 5, handsOffMinutes: 10 },
+            { label: 'Roast', handsOnMinutes: 5, handsOffMinutes: 45 },
+          ],
+        },
+      },
+    ]);
+    mockCookSession._set(session({ serveAt: '2026-08-16T19:00:00.000Z' }));
+
+    const { getAllByTestId } = renderPage();
+    const rows = getAllByTestId('cook-plan-row-title').map((n) => n.textContent?.trim());
+    const potatoIndex = rows.indexOf('Roast potatoes');
+    expect(getAllByTestId('cook-plan-row-cook-time')[potatoIndex]).toHaveTextContent('1 hr 5 min');
+    // 19:00 less the 30 minutes `scheduleFor` still reads, not the 65 above it.
+    const expected = CLOCK.format(new Date('2026-08-16T18:30:00.000Z'));
+    expect(getAllByTestId('cook-plan-row-start')[potatoIndex]).toHaveTextContent(
+      `start ${expected}`,
+    );
+  });
+
   it('calls out the dish whose moment has arrived, and counts the rest down', () => {
     // Serve in an hour: the 90-minute bird is already late, the 30-minute potatoes
     // are half an hour off. Anchored to the real clock so the page's own ticker

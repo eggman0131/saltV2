@@ -82,6 +82,50 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 - Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
 }
 
+// The PHASES half of the same definition (issue #1122), and it lives inside
+// TIME_RULES rather than beside it for exactly the reason TIME_RULES itself was
+// exported: every authoring path — both extractors, the librarian and the
+// re-estimator — must ask for phases against ONE text. A second copy anywhere is
+// the #785 twin, and this time it would leave half the library's timelines drawn
+// to one definition of "hands-on" and half to another.
+//
+// The three numbers above are still asked for and still stored while this ships
+// (issue #1122 phase 1); phase 4 removes them and leaves this block alone.
+//
+// TWO numbers per phase, never a third. Elapsed time is derived from them, and
+// asking the model for it as well is asking for a number that can contradict the
+// two it was added to.
+//
+// OVERLAP is the sharpened half. "Counts ONCE" already sat in the estimator's own
+// heuristics; what it never said was WHERE the overlapped work goes, which is why
+// a pan of water coming to the boil landed nowhere at all. It goes in the phase
+// that contains it, as hands-off minutes, and the attended work happening across
+// it is that same phase's hands-on minutes.
+const PHASE_RULES = `- phases: the recipe's timing as an ORDERED list of 3–6 named blocks, in the order the \
+cook does them, covering the whole process from walking into the kitchen to the dish being ready. \
+Name each one for what it IS in a couple of words — "Mix & knead", "First rise", "Roast cauliflower \
+& make sauce", "Bake", "Cool", "Prep", "Cook". A simple dish may need only two or three; never more \
+than six.
+  Each phase carries exactly two numbers, both whole non-negative minutes:
+  - handsOnMinutes: minutes the cook is actively working during that block.
+  - handsOffMinutes: minutes of that block that pass WITHOUT the cook — heat, a prove, a chill, a \
+rest, a pan coming to the boil, an oven heating.
+  The block's elapsed time is those two added, so do NOT return a total for a phase.
+- Phases are NOT steps. Several steps collapse into one phase, and a phase is named for what it is, \
+not for the steps inside it. Do not emit one phase per step.
+- Work that OVERLAPS goes in ONE phase, never two. Roasting the cauliflower while you make the \
+sauce is a single 20-minute phase with 15 minutes hands-on inside it. Where several things share a \
+window and no single name fits, give the phase a general name ("Cook").
+- Account for EVERY minute the cook waits, including the ones no step bothers to time: bringing a \
+pan of water to the boil, heating the oven, waiting for butter to soften. Those are hands-off \
+minutes of the phase they happen in. A recipe whose phases sum to less than the real wall clock is \
+the failure being fixed.
+- Overestimate rather than underestimate a phase, but assume a competent cook who overlaps what any \
+competent cook would overlap. Round to numbers a person would say: 5, 10, 15, 20, 30, 45, 90.
+- timingSummary: ONE short plain sentence over the strip, saying how much of it is the cook and how \
+long the whole thing spans — "About 40 minutes of you, spread over 2¼ hours — start it the night \
+before." Null only when you have no phases.`;
+
 // What the three time fields MEAN, and it is unconditional — a recipe off a web
 // page and one out of a chat have to be comparable, or the list's "quickest
 // first" sort and the cook plan are sorting on three different units (issue
@@ -100,6 +144,7 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 // the assembler is what guarantees the stored document is, whatever the model
 // returns. Asking without enforcing is how `total: 35` came to sit on a recipe
 // whose own prep + cook is 45.
+
 // Exported (issue #952, phase 2) so the estimateRecipeTimes flow asks its question
 // against THIS text and not a paraphrase of it. A backfill that re-estimates
 // against a second, hand-copied definition would put the library back where it
@@ -115,7 +160,8 @@ prep nor cook (marinating, proving, chilling, resting).
 - The three MUST reconcile: totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes. Estimate the \
 numbers yourself when the source states none, or states ones that break that rule — an honest \
 estimate is worth more than a copied figure. Integers in minutes; null only when you genuinely \
-cannot estimate.`;
+cannot estimate.
+${PHASE_RULES}`;
 
 function fields(measures: MeasurePolicy): string {
   return `## Fields
@@ -137,13 +183,27 @@ ${STEP_RULES}
 // and ingredient-hygiene rules above are unconditional, and without the
 // precedence sentence "preserve the original wording" reads as a licence to keep
 // "1 cup heavy cream" and "salt and pepper".
+//
+// The bracket clause added under 'preserve' (#934) is the other half of the chef
+// flipping to metric-first. The chef now writes "3 g salt (½ tsp)", so a chat line
+// reaches `parseRecipeIngredients` ALREADY IN GRAMS — and that flow correctly
+// emits `displayText: null` for an already-metric source. Left alone, the flip
+// would silently strip the spoon measure from every chat-authored recipe. The
+// bracket has to survive this transcription for the parser to have anything to
+// lift, which is why the two changes could not ship apart. The parser's matching
+// half is its "already reads metric-first with a spoon measure in brackets"
+// bullet; the two are pinned together in
+// `apps/cloud-functions/tests/flows/unitPolicy.test.ts`.
 function rawTextClause(measures: MeasurePolicy): string {
   if (measures === 'metricate') {
     return `rawText (the ingredient line rewritten in British spelling/terms and the units the measure \
 rules above allow — this is what the rest of the pipeline parses, so write a clean natural line e.g. \
 "240ml whole milk", "2 cloves garlic, crushed" or "1 tsp ground cumin")`;
   }
-  return `rawText (preserve the original wording and any tsp/tbsp measures the chef used, EXCEPT \
+  return `rawText (preserve the original wording and any tsp/tbsp measures the chef used — INCLUDING \
+a spoon measure the chef wrote in brackets AFTER a metric amount ("3 g salt (½ tsp)", "15 ml oil \
+(1 tbsp)"): copy that bracket through exactly as written, because a later stage lifts it out as the \
+form the cook reads and dropping it here loses it for good — EXCEPT \
 where the conversion rules above take precedence — always use the measure rules' units (never a cup, \
 pint or ounce, however the chef phrased it), always use the British ingredient NAMES (e.g. "double \
 cream" not "heavy cream"), commit to a single ingredient rather than an either-or choice, and split any \

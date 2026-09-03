@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 const { mockGenerate, mockGet, mockDoc, mockCollection, mockFlowModel, aiTimeoutOptions } =
   vi.hoisted(() => {
@@ -235,7 +236,8 @@ describe('proposeSchedule', () => {
 
   it('runs on the better tier — this is judgement, not transcription', async () => {
     await run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' });
-    expect(mockFlowModel).toHaveBeenCalledWith('pro', 'proposeSchedule');
+    expect(mockFlowModel).toHaveBeenCalledWith('proposeSchedule');
+    expect(AI_FLOW_ROLES.proposeSchedule).toBe('pro');
   });
 
   it('caps the thinking budget and warms the temperature', async () => {
@@ -419,6 +421,33 @@ describe('proposeSchedule — the trust boundaries', () => {
   it('throws when the recipe does not exist', async () => {
     stubDocs(null, LOAF_FORMULA);
     await expect(run({ recipeId: 'nope', targetEndAtLocal: '2026-08-15T07:30' })).rejects.toThrow();
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it('reports the recipe first when both the recipe and its formula are missing', async () => {
+    // Behavior Contract clause 5: a recipe that is missing AND has no formula
+    // must still report the recipe, not the formula. `requireRecipeFrom` runs
+    // before the formula's `.exists` check in the flow body, so this should be
+    // `not-found` (the recipe's code) rather than `failed-precondition` (the
+    // formula's) — but nothing else in this suite distinguishes the two codes
+    // for `proposeSchedule`, so a future edit that reordered the checks would
+    // pass every other case here while silently breaking this one.
+    stubDocs(null, null);
+    await expect(
+      run({ recipeId: 'nope', targetEndAtLocal: '2026-08-15T07:30' }),
+    ).rejects.toMatchObject({ code: 'not-found' });
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it('throws when the stored recipe fails validation', async () => {
+    // An object, so it reaches RecipeSchema and fails there rather than at
+    // `exists` — the same payload the guided-plan and extraction suites use.
+    // Its formula is valid, so a `failed-precondition` here can only be the
+    // recipe's parse, which is the path this suite otherwise never took.
+    stubDocs({ id: 'recipe-1', schemaVersion: 2 }, LOAF_FORMULA);
+    await expect(
+      run({ recipeId: 'recipe-1', targetEndAtLocal: '2026-08-15T07:30' }),
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
     expect(mockGenerate).not.toHaveBeenCalled();
   });
 

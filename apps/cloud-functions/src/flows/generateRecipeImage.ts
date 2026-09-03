@@ -411,7 +411,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
   async ({ title, description, hint, tags, sceneBrief, kind }) => {
     setActiveSpanName(`generateRecipeImage: ${title}`);
 
-    const modelId = await resolveModel('image', 'generateRecipeImage');
+    const modelId = await resolveModel('generateRecipeImage');
     const imageModel = googleAI.model(modelId);
     const result = await withAiTimeout(
       'generateRecipeImage',

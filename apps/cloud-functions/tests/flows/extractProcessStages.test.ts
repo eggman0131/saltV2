@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -152,7 +153,8 @@ describe('extractProcessStages', () => {
   it('runs on the cheap tier — this is transcription, not judgement', async () => {
     mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
     await run({ recipeId: 'recipe-1' });
-    expect(mockFlowModel).toHaveBeenCalledWith('lite', 'extractProcessStages');
+    expect(mockFlowModel).toHaveBeenCalledWith('extractProcessStages');
+    expect(AI_FLOW_ROLES.extractProcessStages).toBe('lite');
     // Temperature 0 for the same reason: there is one correct reading of a method,
     // and every degree of creativity is a degree of invented proof.
     expect(mockGenerate.mock.calls[0]![0].config).toEqual({ temperature: 0 });

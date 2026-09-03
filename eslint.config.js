@@ -202,13 +202,22 @@ function forbidGroup(pkgs, message) {
 // Everything under packages/domain/src IS a module except these:
 //   - schemas       the @salt/domain/schemas subpath — shared zod shapes every
 //                   module reads, not a module with internals of its own.
+//   - prompts       the @salt/domain/prompts subpath (#934) — model-facing prose
+//                   that two packages must state and that rule 6 leaves nowhere
+//                   else to live. Exported constants, exactly like schemas: no
+//                   entities/ports/commands/queries internals to protect.
 //   - coordinators  has its own config block below, with the inverse rule
 //                   (coordinators may reach across modules; modules may not
 //                   reach into coordinators). Treating it as a module would
 //                   forbid a coordinator from importing its own siblings.
 //   - __boundary_tests__  deliberate-violation fixtures; globally ignored.
 const DOMAIN_SRC_DIR = new URL('./packages/domain/src/', import.meta.url);
-const DOMAIN_NON_MODULE_DIRS = new Set(['schemas', 'coordinators', '__boundary_tests__']);
+const DOMAIN_NON_MODULE_DIRS = new Set([
+  'schemas',
+  'prompts',
+  'coordinators',
+  '__boundary_tests__',
+]);
 const DOMAIN_MODULES = readdirSync(DOMAIN_SRC_DIR, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !DOMAIN_NON_MODULE_DIRS.has(entry.name))
   .map((entry) => entry.name)

@@ -20,7 +20,7 @@ export const generateChatTitleFlow = ai.defineFlow(
     const prompt = `User's message: "${input.userMessage}"\n\nChef's reply:\n${input.assistantResponse.slice(0, 500)}`;
 
     try {
-      const model = await flowModel('lite', 'generateChatTitle');
+      const model = await flowModel('generateChatTitle');
       const result = await withAiTimeout(
         'generateChatTitle',
         () =>

@@ -10,7 +10,7 @@ import type { ProductFormProposal } from '../../schemas/productFormArbitration.j
  * reason: arbitration is per-ingredient and stateless, while both rules below are
  * facts about the rest of the library.
  */
-export type ProposalRejection = 'self_reference' | 'has_producer';
+export type ProposalRejection = 'self_reference' | 'has_producer' | 'label_omits_parent';
 
 /**
  * A product form exists to express a FIXED PHYSICAL CONVERSION between two
@@ -37,6 +37,30 @@ export type ProposalRejection = 'self_reference' | 'has_producer';
  * honest answer was not available to it: there was no stock-cube canon in the
  * candidate list, and a preference list with no right answer in it still gets an
  * answer.
+ *
+ * `label_omits_parent` — the label shares NO word with the parent it is being
+ * filed under (issue #1180). A form's label is not display-only: `resolveProductForm`
+ * matches it on equal terms with the matchers (issue #818), so a bare component
+ * word — "Zest", "Juice", "Stock" — is a matching phrase that names no parent at
+ * all. The arbitration prompt has forbidden exactly this for the `matcher` field
+ * since #500, with the reason spelled out beside it; the label line was written
+ * before #818 made the label matching input, and was never revisited. This is
+ * that rule, enforced rather than asked for.
+ *
+ * It is the WRITE-side half of a pair. `resolveProductForm`'s contested-phrase
+ * rule already makes a stored bare label harmless to resolution; this stops the
+ * table filling with rows whose display name is "Zest" and whose label
+ * `findFormWithSameLabel` still keys on. Neither substitutes for the other: this
+ * one cannot touch a label already stored, or one an admin types into the form
+ * editor, and it is deliberately not a `.refine()` on `ProductFormSchema` —
+ * a stored document that violates it must stay readable.
+ *
+ * Its boundary, stated rather than rounded up: it asks only whether the label
+ * shares SOME word with the parent name, not whether that word disambiguates.
+ * "Active whey" under Plain Yogurt fails it — correctly, on this rule's own
+ * terms, and harmlessly, because the rule applies to AI proposals only and no
+ * stored document is re-validated. A label sharing a word with a differently-named
+ * parent ("Beef stock" under "Beef Stock Cube") passes it and always will.
  *
  * Compared on `normaliseName` so the check folds case and spacing exactly like
  * every other name comparison in the matcher.
@@ -66,7 +90,21 @@ export function proposalRejectionReason(
   const produced = new Set(producedCanonNames.map(normaliseName));
   if (produced.has(label) || produced.has(matcher)) return 'has_producer';
 
+  // Last, so a proposal that is wrong for a more specific reason is reported by
+  // that reason. Both names must be non-empty to judge anything: a parent or
+  // label that normalises away leaves nothing to compare, and a rejection built
+  // on nothing is worse than the row.
+  if (parent.length > 0 && label.length > 0 && !sharesAnyWord(label, parent)) {
+    return 'label_omits_parent';
+  }
+
   return null;
+}
+
+/** Does the label use any of the words the parent's name is made of? */
+function sharesAnyWord(normalisedLabel: string, normalisedParent: string): boolean {
+  const parentWords = new Set(normalisedParent.split(' '));
+  return normalisedLabel.split(' ').some((word) => parentWords.has(word));
 }
 
 /**

@@ -465,59 +465,66 @@ describe('assembleRecipeDraft — canon keying', () => {
 
 // ─── edit mode ───────────────────────────────────────────────────────────────
 
-describe('assembleRecipeDraft — edit mode', () => {
-  function baseRecipe(): RecipeDoc {
-    return {
-      id: 'r1',
-      schemaVersion: 1,
-      kind: 'cocktail',
-      kit: [],
-      title: 'Old Fashioned',
-      description: null,
-      ingredients: [
-        {
-          id: 'g1',
-          name: null,
-          items: [
-            {
-              id: 'i1',
-              rawText: '200g pasta',
-              parsed: {
-                quantity: { type: 'single', value: 200 },
-                unit: 'g',
-                item: 'pasta',
-                preparation: [],
-                notes: null,
-                displayText: null,
-              },
-              canonId: 'canon-pasta',
-              matchState: 'matched',
-              isOptional: false,
-              firstUsedInStepId: 'old-step',
+// The stored recipe an edit-mode amend is spread over. Module-scoped so the
+// phase-strip suite at the foot of this file can reuse it (issue #1122).
+function baseRecipe(): RecipeDoc {
+  return {
+    id: 'r1',
+    schemaVersion: 1,
+    kind: 'cocktail',
+    kit: [],
+    title: 'Old Fashioned',
+    description: null,
+    ingredients: [
+      {
+        id: 'g1',
+        name: null,
+        items: [
+          {
+            id: 'i1',
+            rawText: '200g pasta',
+            parsed: {
+              quantity: { type: 'single', value: 200 },
+              unit: 'g',
+              item: 'pasta',
+              preparation: [],
+              notes: null,
+              displayText: null,
             },
-          ],
-        },
-      ],
-      steps: [{ id: 'old-step', text: 'Boil the pasta.', timer: null, note: null }],
-      metadata: {
-        servings: 4,
-        totalTimeMinutes: 15,
-        prepTimeMinutes: null,
-        cookTimeMinutes: null,
-        tags: [],
+            canonId: 'canon-pasta',
+            matchState: 'matched',
+            isOptional: false,
+            firstUsedInStepId: 'old-step',
+          },
+        ],
       },
-      source: { type: 'manual' },
-      notes: null,
-      producesCanonId: 'canon-sauce',
-      componentRecipeIds: ['comp-a', 'comp-b'],
-      image: null,
-      createdAt: '2026-06-01T00:00:00.000Z',
-      updatedAt: '2026-06-01T00:00:00.000Z',
-      createdBy: 'Daniel',
-      lastEditedBy: 'Kate',
-    };
-  }
+    ],
+    steps: [{ id: 'old-step', text: 'Boil the pasta.', timer: null, note: null }],
+    metadata: {
+      servings: 4,
+      totalTimeMinutes: 15,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      // A strip a cook corrected by hand (issue #1122). The two tests at the
+      // bottom of this file are what make the "survives an amend" claim in
+      // `assembleRecipeDraft`'s metadata block checkable rather than asserted.
+      phases: [{ label: 'Stir', handsOnMinutes: 3, handsOffMinutes: 0 }],
+      timingSummary: 'Three minutes, all of them you.',
+      tags: [],
+    },
+    source: { type: 'manual' },
+    notes: null,
+    producesCanonId: 'canon-sauce',
+    componentRecipeIds: ['comp-a', 'comp-b'],
+    image: null,
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    createdBy: 'Daniel',
+    lastEditedBy: 'Kate',
+  };
+}
 
+describe('assembleRecipeDraft — edit mode', () => {
   it('reuses id, parsed data and canon match for a byte-identical rawText, and skips both sub-flows for it', async () => {
     mockCanonFlow.mockResolvedValue([
       { kind: 'ok', value: { decision: 'created', item: { id: 'canon-garlic' } } },
@@ -863,5 +870,100 @@ describe('assembleRecipeDraft — no-cook recipes', () => {
       prepTimeMinutes: 15,
       cookTimeMinutes: 30,
     });
+  });
+});
+
+// ─── phases (issue #1122) ────────────────────────────────────────────────────
+
+describe('assembleRecipeDraft — the phase strip', () => {
+  it("carries the authoring path's strip straight onto the draft", async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        phases: [
+          { label: 'Prep', handsOnMinutes: 10, handsOffMinutes: 0 },
+          { label: 'Cook', handsOnMinutes: 5, handsOffMinutes: 20 },
+        ],
+        timingSummary: 'About 15 minutes of you, over 35.',
+      }),
+      { source: MANUAL },
+    );
+    expect(doc.metadata.phases).toEqual([
+      { label: 'Prep', handsOnMinutes: 10, handsOffMinutes: 0 },
+      { label: 'Cook', handsOnMinutes: 5, handsOffMinutes: 20 },
+    ]);
+    expect(doc.metadata.timingSummary).toBe('About 15 minutes of you, over 35.');
+  });
+
+  it('stores an empty strip when the model returned none and there is no base', async () => {
+    const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+    expect(doc.metadata.phases).toEqual([]);
+    expect(doc.metadata.timingSummary).toBeNull();
+  });
+
+  // The load-bearing one: a hand-edited strip must survive an amend whose raw
+  // output carries no phases, exercised directly against that input, or the
+  // cook's correction is silently thrown away by unrelated work. `rawOutput()`
+  // with no phases is not yet what a real librarian turn produces — it is
+  // always asked for 3-6 phases (`PHASE_RULES`) and never shown the stored
+  // strip to answer against (`formatRecipeForPrompt`) — so this pins the
+  // fallback mechanism itself, not (yet) a guarantee that holds on a live chat
+  // amend.
+  it('preserves a hand-edited strip through an amend that returned no phases', async () => {
+    const base = baseRecipe();
+    const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL, baseRecipe: base });
+    expect(doc.metadata.phases).toEqual(base.metadata.phases);
+    expect(doc.metadata.timingSummary).toBe(base.metadata.timingSummary);
+  });
+
+  // And the other half of that claim, so it is not read as "phases are frozen":
+  // a strip the model DID return is the amend doing its job, and it wins.
+  it('lets an amend that DID return phases replace the stored strip', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        phases: [{ label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 }],
+        timingSummary: 'Two minutes.',
+      }),
+      { source: MANUAL, baseRecipe: baseRecipe() },
+    );
+    expect(doc.metadata.phases).toEqual([
+      { label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 },
+    ]);
+    expect(doc.metadata.timingSummary).toBe('Two minutes.');
+  });
+
+  // Blocking finding 2 (issue #1122 review, PR #1201): `phases` and
+  // `timingSummary` used to fall back to the base INDEPENDENTLY, so a fresh
+  // strip could be stored under the base's stale sentence. The fix takes both
+  // fields from the SAME source — `raw` when it answered, `base` when it did
+  // not — so this pairing can no longer happen in either direction.
+  it('does not pair a fresh strip with the stale stored summary', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        phases: [{ label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 }],
+        // timingSummary omitted — the model returned a strip but no sentence.
+      }),
+      { source: MANUAL, baseRecipe: baseRecipe() },
+    );
+    expect(doc.metadata.phases).toEqual([
+      { label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 },
+    ]);
+    // NOT baseRecipe().metadata.timingSummary ('Three minutes, all of them
+    // you.') — that sentence describes the OLD strip, not this one.
+    expect(doc.metadata.timingSummary).toBeNull();
+  });
+
+  it('does not pair a fresh summary with the stale stored strip', async () => {
+    const base = baseRecipe();
+    const doc = await assembleRecipeDraft(
+      rawOutput({
+        // phases omitted — the model returned a sentence but no strip.
+        timingSummary: 'A completely different timing than the strip below.',
+      }),
+      { source: MANUAL, baseRecipe: base },
+    );
+    // The strip and summary move TOGETHER: no fresh phases means BOTH fields
+    // come from the base, not just the one the model happened to omit.
+    expect(doc.metadata.phases).toEqual(base.metadata.phases);
+    expect(doc.metadata.timingSummary).toBe(base.metadata.timingSummary);
   });
 });

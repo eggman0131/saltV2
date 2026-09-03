@@ -298,11 +298,17 @@ export const coverageThresholds = {
     uncoveredLines: 390,
     uncoveredBranches: 368,
   },
+  // Banked by #935: `AppSettingsPage.svelte` had no test at all and now has one
+  // (the role cards' job lists are generated from the registry, and that claim
+  // needed a pin). Rendering the page covers most of it, so all four numbers
+  // moved the right way at once — lines 77.46 → 79.34, branches 65.86 → 67.08,
+  // uncovered lines 2080 → 1915, uncovered branches 1859 → 1799. Measured by
+  // `pnpm test:coverage` on this branch and pasted from the ratchet's own block.
   'apps/web-pwa/src/routes/**': {
-    lines: 77.46,
-    branches: 65.86,
-    uncoveredLines: 2080,
-    uncoveredBranches: 1859,
+    lines: 79.34,
+    branches: 67.08,
+    uncoveredLines: 1915,
+    uncoveredBranches: 1799,
   },
   'apps/web-pwa/src/lib/**': {
     lines: 75.95,
@@ -310,11 +316,28 @@ export const coverageThresholds = {
     uncoveredLines: 798,
     uncoveredBranches: 604,
   },
+  // RE-PINNED 54.58/38.81 → 61.22/46.02 in #947. `EquipmentPhotoDialog.svelte`
+  // landed with real tests from the start (`EquipmentPhotoDialog.test.ts`,
+  // 8 cases covering capture, describe, the not-ready-yet crop, the busy
+  // state and cancel) rather than joining `ImagePromptDialog`/`ImageUploadDialog`
+  // as untested siblings — so the area's ratio rose by more than the
+  // 1.00-point staleness tolerance can absorb, and the header rule says that
+  // earned coverage gets banked, not left to rot as unpinned headroom.
+  // Uncovered LINE count is unchanged at 114 (the new file's own lines are
+  // all covered, so the ratio moved only because the denominator grew).
+  // Uncovered BRANCH count rose 93 → 95: `handleFileChange`'s `|| busy` and
+  // `handleDescribe`'s `|| busy` guards each have an early-return side that
+  // cannot fire through the UI (the file input and the Describe button are
+  // both absent/disabled exactly when `busy` is true) — the same
+  // structurally-unreachable defensive shape `RecipeImportPhotoDialog.svelte`
+  // already carries at its own `useCurrentPage` guard, kept for the same
+  // reason: the type only proves the OTHER two disjuncts, `busy` still has to
+  // be re-checked in case a click and the busy flip land in the same tick.
   'apps/web-pwa/src/components/**': {
-    lines: 54.58,
-    branches: 38.81,
+    lines: 61.22,
+    branches: 46.02,
     uncoveredLines: 114,
-    uncoveredBranches: 93,
+    uncoveredBranches: 95,
   },
 };
 

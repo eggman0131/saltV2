@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SHOPPING_BEHAVIORS, CANON_ITEM_UNITS } from '@salt/shared-types';
 
 // What changed on this item since it was last approved — by the matching
 // pipeline, or (Phase 2) by the user's own aisle admin (issue #193). Unlike
@@ -77,9 +78,9 @@ export const CanonItemSchema = z.object({
   // reintroduce writes to this field.
   embedding: z.array(z.number()).nullable().optional(),
   needs_approval: z.boolean(),
-  shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+  shoppingBehavior: z.enum(SHOPPING_BEHAVIORS),
   largeQuantityThreshold: z.number().optional(),
-  unit: z.enum(['g', 'ml', 'count']).optional(),
+  unit: z.enum(CANON_ITEM_UNITS).optional(),
   reasoning: z.string().optional(),
   updatedAt: z.string(),
   // Distributed-trace correlation field (issue #362, Phase 5). A W3C

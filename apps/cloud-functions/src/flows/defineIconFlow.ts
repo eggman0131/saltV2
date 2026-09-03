@@ -24,8 +24,8 @@ import { parseDataUrl } from './dataUrl.js';
 // ─── Three identities the factory takes as a PARAMETER, never collapses ──────
 //
 // `name` reaches four places that each depend on it being this flow's own:
-// `resolveModel('image', name)` — a registry key (#935), so merging the names
-// would silently repoint every per-flow model override; `withAiTimeout(name, …)`;
+// `resolveModel(name)` — a registry key (#935), so merging the names would
+// silently repoint every per-flow model override; `withAiTimeout(name, …)`;
 // `setActiveSpanName(\`${name}: ${subject}\`)`; and the media-null error message,
 // which is how a failure is attributed to a family in the logs. That is why this
 // is a factory over three flows rather than one flow over three families.
@@ -93,7 +93,7 @@ export function defineIconFlow<TSchema extends z.ZodTypeAny>(
       // THIS seed — swapping it means updating them too.
       const seed = loadCanonIconSeed();
 
-      const modelId = await resolveModel('image', name);
+      const modelId = await resolveModel(name);
       const imageModel = googleAI.model(modelId);
 
       const result = await withAiTimeout(

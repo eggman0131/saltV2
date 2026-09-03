@@ -160,7 +160,8 @@ for (const recipe of recipes) {
       const canon = ing.canonId === null ? undefined : canonById.get(ing.canonId);
       // The same parent guard every other product-form read applies: a form
       // resolving to some OTHER canon is not this line's bridge.
-      const form = ing.parsed === null ? null : resolveProductForm(ing.parsed.item, forms);
+      const form =
+        ing.parsed === null ? null : resolveProductForm(ing.parsed.item, forms, canonItems);
       const bridging = form !== null && form.parentCanonId === ing.canonId ? form : null;
 
       candidates.push({

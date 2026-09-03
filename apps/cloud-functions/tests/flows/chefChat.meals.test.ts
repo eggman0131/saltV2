@@ -187,6 +187,45 @@ describe('chefChat — meal components', () => {
     expect(system).toContain('cook: 90 min');
   });
 
+  it("carries each dish's tags, step timers and notes through to the prompt (#934)", async () => {
+    // Deliberate widening, not a new feature: the chef's meal section used to
+    // build its own thinner rendering of a dish and drop these three. That is the
+    // hole #890 closed for the recipe body, re-opened for the dishes hanging off
+    // it — and it costs the same thing. Ask the chef to write a meal out again and
+    // it cannot preserve a timer it was never shown.
+    recipeDocs.set(
+      'chicken',
+      recipeDoc('chicken', 'Roast chicken', {
+        description: 'A whole bird, hot oven then rested.',
+        ingredients: group('chicken', [CHICKEN_INGREDIENT]),
+        steps: [
+          {
+            id: 'cs1',
+            text: CHICKEN_STEP,
+            timer: { durationMinutes: 90, description: 'Roast the bird' },
+            note: 'Rest it or the juices run out.',
+          },
+        ],
+        metadata: {
+          servings: 4,
+          totalTimeMinutes: 125,
+          prepTimeMinutes: 15,
+          cookTimeMinutes: 90,
+          tags: ['sunday', 'roast'],
+        },
+        notes: 'The bird comes out at 4:30 whatever else happens.',
+      }),
+    );
+
+    await send({ recipeId: 'roast' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Tags: sunday, roast');
+    expect(system).toContain('[timer: 90 min — Roast the bird]');
+    expect(system).toContain('(note: Rest it or the juices run out.)');
+    expect(system).toContain('Notes: The bird comes out at 4:30 whatever else happens.');
+  });
+
   it('asks for the gap and the coordination, not a list of what is attached', async () => {
     await send({ recipeId: 'roast' });
 

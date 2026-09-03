@@ -57,6 +57,9 @@
     takeImportedDraft,
   } from '../../lib/recipeService.js';
   import { RecipeKindSchema } from '@salt/domain/schemas';
+  import { recipePhasesGate } from '../../lib/featureGate.js';
+  import { formatMinutes } from '../../lib/durationDisplay.js';
+  import { phaseMinutes } from './recipeTiming.js';
   import { canonItems } from '../../lib/canonService.js';
   import { members } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -346,6 +349,19 @@
   // elsewhere resolves to nothing and is skipped, so the row never breaks; one
   // level only, so a component's own components are neither shown nor read.
   const componentRecipes = $derived(resolveComponents(draft, $recipes));
+
+  // The component row's time, the same rule the view page's rows use (issue
+  // #1122): the phase sum when the component has a strip, its stored cook time
+  // otherwise, and the fallback keeps the raw `n min` spelling it has always had.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+
+  function componentTimeLabel(component: Recipe): string | null {
+    const minutes = phaseMinutes(component, phasesEnabled);
+    if (minutes !== null) return formatMinutes(minutes);
+    return component.metadata.cookTimeMinutes === null
+      ? null
+      : `${component.metadata.cookTimeMinutes} min`;
+  }
 
   function addComponent(id: string): void {
     if (!id) return;
@@ -737,10 +753,10 @@
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col">
                   <span class="truncate text-sm font-medium">{component.title}</span>
-                  {#if component.metadata.cookTimeMinutes !== null}
+                  {#if componentTimeLabel(component) !== null}
                     <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Icon name="Clock" size={12} />
-                      {component.metadata.cookTimeMinutes} min
+                      {componentTimeLabel(component)}
                     </span>
                   {/if}
                 </span>

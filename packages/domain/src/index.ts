@@ -63,6 +63,7 @@ export type {
   CreateProductFormInput,
   UpdateProductFormInput,
   FormDemand,
+  CanonNaming,
 } from './productForm/index.js';
 export {
   createProductForm,
@@ -199,7 +200,9 @@ export type {
   Recipe,
   RecipeKind,
   RecipeMetadata,
+  RecipePhase,
   RecipeTimes,
+  RecipePhaseStrip,
 } from './recipe/index.js';
 export {
   emptyRecipe,
@@ -214,6 +217,9 @@ export {
   // The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
   // flows and the re-estimate trigger had a copy each, and they disagreed.
   reconcileRecipeTimes,
+  // The one merge of a fresh phase strip against a stored one (issue #1122
+  // review) — the strip and its summary move together, or not at all.
+  reconcileRecipePhases,
   flattenIngredients,
   quantityToNumber,
   usableServings,
@@ -226,6 +232,10 @@ export {
   takesComponents,
   cookShape,
   OTHER_WAITS_LABEL,
+  // The one place a recipe's phases are added up (issue #1122). Every timing
+  // figure in the app is this sum at the point of use; none is stored.
+  recipePhaseTotals,
+  phaseElapsedMinutes,
   hasComponents,
   resolveComponents,
   componentDisplayLines,
@@ -234,6 +244,7 @@ export {
   expandForPlanner,
   mergePlannerRecipeIds,
   kitByStep,
+  groupKitByEquipment,
   findProducingRecipes,
   diffRecipe,
   diffWords,
@@ -244,6 +255,8 @@ export {
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
 export type { CookShapeSegment } from './recipe/index.js';
+export type { RecipePhaseTotals } from './recipe/index.js';
+export type { KitEquipmentGroup } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
 export type { NullableStringChange, StepChange, RecipeDiff } from './recipe/index.js';

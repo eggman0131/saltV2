@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RECIPE_PAGE_PHOTO_CONTENT_TYPES } from './extractRecipeFromPhoto.js';
 
 // Input/output for the describeEquipmentSubject flow (equipment pictogram
 // art-direction, issue #877).
@@ -13,6 +14,30 @@ import { z } from 'zod';
 // conventions put every schema at a trust boundary in `@salt/domain/schemas`.
 // The arrangement mirrors `describeRecipeScene.ts`, which is the same flow shape
 // for the recipe hero.
+
+// ─── Photo mode (issue #947) ────────────────────────────────────────────────
+// One reference photo of the actual appliance. The wire shape mirrors
+// `RecipePagePhotoSchema` (`extractRecipeFromPhoto.ts`) — bare base64, the same
+// closed content-type enum — rather than inventing a third convention; capped to
+// ONE image where recipes allow up to four, because a recipe spans a spread and
+// an appliance does not (YAGNI).
+//
+// The base64 length is capped HERE, not left to client discipline: a Firebase
+// callable payload is capped at 10 MB total, and the capture UI targets ~1024px
+// WebP (a few hundred KB of base64 in practice), so 4,000,000 characters
+// (~3 MB decoded) is generous headroom without trusting the client to have
+// actually downscaled.
+export const EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH = 4_000_000;
+
+export const EquipmentReferencePhotoSchema = z.object({
+  // Bare base64 payload WITHOUT the `data:` prefix — the flow re-forms the data
+  // URI, exactly as extractRecipeFromPhoto does.
+  base64: z.string().min(1).max(EQUIPMENT_REFERENCE_PHOTO_MAX_BASE64_LENGTH),
+  contentType: z.enum(RECIPE_PAGE_PHOTO_CONTENT_TYPES),
+});
+
+export type EquipmentReferencePhoto = z.infer<typeof EquipmentReferencePhotoSchema>;
+
 export const DescribeEquipmentSubjectInputSchema = z.object({
   // The equipment item's name, verbatim from the manifest. By contract this
   // already carries the make and model (identifyEquipment.ts's system rule 1),
@@ -37,6 +62,13 @@ export const DescribeEquipmentSubjectInputSchema = z.object({
   // house style, prohibitions and the brand ban are locked in Cloud Functions
   // code and are not something a steer can vote on.
   hint: z.string().trim().max(200).optional(),
+  // ─── Photo mode (issue #947) ─────────────────────────────────────────────
+  // Present → the flow authors a FRESH description from what the photo shows,
+  // discarding `currentBrief`/`hint` exactly as "Start over" discards the box —
+  // "Start over, but with a picture" is the whole of the decision (see
+  // describeEquipmentSubject.ts's mode selection). Request-scoped: the bytes are
+  // sent to the model and never written anywhere, on this item or any document.
+  photo: EquipmentReferencePhotoSchema.optional(),
 });
 
 export type DescribeEquipmentSubjectInput = z.infer<typeof DescribeEquipmentSubjectInputSchema>;

@@ -19,7 +19,6 @@
     Icon,
     ImageCropper,
     Markdown,
-    PictogramPill,
     Popover,
     PopoverContent,
     PopoverMenuItem,
@@ -38,8 +37,13 @@
   import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
+  // The ⋮ menu's two canned chef turns, declared here until #934. They moved into
+  // `@salt/domain/prompts` because Refresh states the step policy `stepRules.ts`
+  // also states, and rule 6 leaves a sentence both must carry no home in either
+  // package. They are still sent from here, as ordinary user turns, unchanged.
+  import { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from '@salt/domain/prompts';
   import { goBack } from '../../lib/nav.js';
-  import { breadGate } from '../../lib/featureGate.js';
+  import { breadGate, recipePhasesGate } from '../../lib/featureGate.js';
   import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
@@ -62,6 +66,8 @@
   import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
   import IngredientMatchSheet from './IngredientMatchSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
+  import RecipePhaseTimeline from './RecipePhaseTimeline.svelte';
+  import { phaseMinutes } from './recipeTiming.js';
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
   import { chatsForRecipe } from './recipeChats.js';
@@ -76,13 +82,14 @@
   import { canonIndex, matchMarkersReady } from '../../lib/canonIndex.js';
   // The ONE shared kitchen-tool lookup (issue #882). Subscribed app-wide in
   // App.svelte, so there is nothing to initialise here — and it is a store rather
-  // than a plain function precisely so the strip fills in the moment the drawn
+  // than a plain function precisely so the pictures fill in the moment the drawn
   // vocabulary lands, which on a cold load is after first paint.
   import { kitIcons } from '../../lib/kitIcons.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     recipeHeroUrl,
     cookShape,
+    recipePhaseTotals,
     duplicateRecipe,
     firstUseByStep as groupIngredientsByFirstUse,
     flattenIngredients,
@@ -93,6 +100,7 @@
     isCookable,
     isPlannable,
     kitByStep as groupKitByStep,
+    groupKitByEquipment,
     looksScalable,
     OTHER_WAITS_LABEL,
     resolveComponents,
@@ -125,75 +133,6 @@
     readClipboardImage,
     imageFromClipboardData,
   } from '../../lib/clipboardImage.js';
-
-  // ─── "Optimise for my kitchen" canned prompt ─────────────────────────────────
-  // A shortcut for a prompt you could type by hand, not a new capability: this
-  // lands in the transcript as an ordinary USER turn, which is why it lives here
-  // beside the sidebar and not in any flow prompt file. chefChat already has both
-  // the household equipment manifest and the current recipe server-side, so the
-  // text deliberately names no appliance — the manifest is injected for us, and
-  // hardcoding kit here would go stale the moment the household buys something.
-  //
-  // The wording carries four loads: method-only (an ingredient rewrite would put
-  // every ingredient back through canon matching for nothing), timings and
-  // temperatures MOVING with the method (a pressure-cooker step that keeps the
-  // two-hour simmer is worse than no change), proportionality (leaving a step
-  // alone is a valid and common outcome), and a short account of what changed so
-  // the chat turn reads on its own before you open the diff.
-  const OPTIMISE_FOR_KITCHEN_PROMPT = `Go through this recipe's method and re-work it around the equipment I actually own.
-
-Where a piece of my kit genuinely does a step better, rewrite that step to use it, and be specific: name the appliance, the mode, the accessory and the setting. Move the timings and temperatures with it — a step that changes equipment has to carry the times and temperatures that equipment actually needs, not the ones inherited from the original method. A step handed to different kit but left on the old timings is worse than no change at all.
-
-Change the method only. Leave the ingredients, the quantities and the servings exactly as they are — this is about how it is cooked, not what goes into it.
-
-Be proportionate. Only move a step where the result or the effort is genuinely better for it, counting set-up and washing-up as part of the cost. Leaving a step exactly as written is a good outcome, and if nothing in this recipe is better off on my kit, say so plainly rather than finding something to change.
-
-Finish with a short note on what you changed and why, so I can read the gist here before I look at the recipe itself.`;
-
-  // ─── "Refresh" canned prompt (issue #890) ────────────────────────────────────
-  // Refresh asks the chef to WRITE THE DISH OUT AGAIN — the same dinner, written
-  // the way it would be written today, for this kitchen. It is the same shape as
-  // Optimise above and for the same reason: a shortcut for a prompt you could
-  // type by hand, landing in the transcript as an ordinary user turn.
-  //
-  // It replaces a fourth librarian mode (#784), which re-transcribed the document
-  // at temperature 0 on the `fast` tier under a prompt that forbade re-invention
-  // and ended by blessing "barely changed" as a good outcome. It did what it said
-  // and that turned out to be the wrong job: recipes that had lost their servings
-  // and their timings, or that carried four operations in one step, came back
-  // unrepaired, because a transcriber may not state a fact the document does not
-  // already hold. The chef may, and does — it is `pro`, and the equipment
-  // manifest, the household's favourites and the kitchen notes all ride with it.
-  //
-  // The wording carries five loads:
-  //   1. WRITE THE WHOLE THING OUT. The librarian transcribes the conversation, so
-  //      a reply that lists changes rather than the recipe leaves it with nothing
-  //      to transcribe.
-  //   2. SERVINGS AND TIMINGS ARE THE REPAIR. This is the half that fixes real
-  //      recipes in the library, and the half no transcriber could ever do.
-  //   3. THE SAME DISH. The photograph, the shopping history and the household's
-  //      trust all belong to the dinner they already know.
-  //   4. INGREDIENTS BY EXCEPTION, OUT LOUD. Every changed line costs a re-parse
-  //      and a re-canonicalisation, and quantities are what people trust most —
-  //      so a change has to earn itself and be said plainly, not slipped in.
-  //   5. THE HOUSEHOLD'S OWN NOTES ARE NOT THE CHEF'S TO REWRITE. Same rule the
-  //      old refresh prompt carried, and the one thing worth keeping from it.
-  // Kit is deliberately unmentioned: `equipmentSectionForChef` already tells the
-  // chef what is owned and — crucially — that proportionality is a rule, so
-  // naming appliances here would only re-open a question the manifest settles.
-  const REFRESH_PROMPT = `Write this recipe out again from scratch — the same dish, written the way you would write it today for my kitchen.
-
-Give me the complete recipe, not a list of changes: every ingredient and every step, in full, as though I had just asked you for it.
-
-State the servings, and state the timings. If the recipe has lost them, work them out and put them back — how many it feeds, how long the prep and the cooking take, and how long each step that involves waiting actually takes. A step with a wait needs its own duration.
-
-One coherent operation per step. Where the method has bundled several things into one step, split them. Where a step is really two stations or a wait in the middle, make it two steps.
-
-Keep it the same dish. The ingredients and the quantities should come through as they are — change one only where a genuinely better method or a piece of my kit actually requires it, and when you do, say which one you changed and why. Don't take the opportunity to improve the food.
-
-Leave my own notes alone — the recipe's notes and any notes on individual steps are mine, not yours. Reproduce them as they are.
-
-Finish with a short note on what you changed and why, so I can read the gist here before I look at the diff.`;
 
   interface Props {
     params: { id: string };
@@ -493,6 +432,35 @@ Finish with a short note on what you changed and why, so I can read the gist her
     readonly testId?: string;
   }
 
+  // The phase strip (issue #1122). Gated, and the gate is deliberately BOTH
+  // halves: a recipe with no phases stored yet renders exactly as it does today
+  // whether the flag is on or off, which is what makes this invisible to a library
+  // that has not been backfilled.
+  //
+  // `metadata.phases` is optional on the schema, so the gate resolves it to a list
+  // once, here, and everything below reads that list — the template never asks the
+  // recipe for it again. `recipePhaseTotals` then sums exactly what is drawn.
+  //
+  // It is declared ABOVE `facts` because `facts` now reads it: the three duration
+  // chips are what the timeline replaces, so a recipe with a strip stops showing
+  // them and one without keeps them. `hasPhases` is the whole of that condition —
+  // it is false with the key off, and false for an un-backfilled recipe, so both
+  // fallbacks are the same fallback.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+  const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
+  const phaseTotals = $derived(recipePhaseTotals(phases));
+
+  // A component row's time. The phase sum when the component has a strip, its
+  // stored cook time otherwise — and the fallback keeps the raw `n min` spelling
+  // it has always had, so with the key off this row is byte-for-byte what it was.
+  function componentTimeLabel(component: Recipe): string | null {
+    const minutes = phaseMinutes(component, phasesEnabled);
+    if (minutes !== null) return formatMinutes(minutes);
+    return component.metadata.cookTimeMinutes === null
+      ? null
+      : `${component.metadata.cookTimeMinutes} min`;
+  }
+
   const facts = $derived.by((): RecipeFact[] => {
     if (!recipe) return [];
     const out: RecipeFact[] = [];
@@ -519,28 +487,36 @@ Finish with a short note on what you changed and why, so I can read the gist her
           tone: 'secondary',
         });
       }
-      if (m.prepTimeMinutes !== null) {
-        out.push({
-          key: 'prep',
-          icon: 'Timer',
-          label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
-          tone: 'primary',
-        });
-      }
-      if (m.cookTimeMinutes !== null) {
-        out.push({
-          key: 'cook',
-          icon: 'Flame',
-          label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
-          tone: 'tertiary',
-        });
-      }
-      if (m.totalTimeMinutes !== null) {
-        out.push({
-          key: 'total',
-          icon: 'Clock',
-          label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
-        });
+      // Prep / Cook / Total, or nothing. A recipe with a phase strip has its
+      // timing on the timeline a few lines below — and #1122's whole complaint is
+      // two accounts of the same fact side by side, so these three come off rather
+      // than sitting above it. There is no phase-derived chip in their place: the
+      // timeline states its own total, and a chip repeating it would be the same
+      // defect at a smaller scale.
+      if (!phaseTotals.hasPhases) {
+        if (m.prepTimeMinutes !== null) {
+          out.push({
+            key: 'prep',
+            icon: 'Timer',
+            label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
+            tone: 'primary',
+          });
+        }
+        if (m.cookTimeMinutes !== null) {
+          out.push({
+            key: 'cook',
+            icon: 'Flame',
+            label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
+            tone: 'tertiary',
+          });
+        }
+        if (m.totalTimeMinutes !== null) {
+          out.push({
+            key: 'total',
+            icon: 'Clock',
+            label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
+          });
+        }
       }
     }
     // Provenance is a fact about the document rather than about the dish, and it
@@ -1228,7 +1204,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToast('Generating a new image — it will appear shortly.', 'success');
   }
 
-  // ─── "You'll need" (issue #882) ──────────────────────────────────────────────
+  // ─── The Equipment tab (issues #882, #1140) ─────────────────────────────────
   //
   // The kit is inferred server-side and stored as WORDS — `{ label, stepIds }` —
   // never as an id into the drawn vocabulary. The picture is found from the words
@@ -1237,16 +1213,34 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // vocabulary grow later and light up every recipe already written, and it is why
   // nothing below ever substitutes a near match or a generic glyph.
   //
-  // The whole recipe's kit, in the order the flow listed it. This strip answers the
-  // question you ask before you have chosen a tab at all: have I got what this
-  // needs? `stepIds` is unread HERE and read further down the page — `kitByStep`
-  // turns it into the per-step rows on the method — so the two readings are of one
-  // stored list, not two.
+  // The whole recipe's kit, in the order the flow listed it. It is the Equipment
+  // tab's list (issue #1140) — the third alternative view of the body, answering
+  // "have I got what this needs?" beside the ingredients you check the same way.
+  // `stepIds` is unread HERE and read further down the page — `kitByStep` turns it
+  // into the per-step rows on the method — so the two readings are of one stored
+  // list, not two.
   const kit = $derived(recipe?.kit ?? []);
+
+  // The Equipment trigger and panel both disappear when the kit empties, and
+  // `bodyTab` is `$state` — so a kit that goes away while its own tab is selected
+  // would leave the strip with nothing selected and the body blank. Rare (an
+  // editor save, or a Redo kit that comes back with nothing) but not impossible,
+  // and the cost of it is a page that looks broken. Falling back to Ingredients is
+  // where the page starts anyway.
+  $effect(() => {
+    if (kit.length === 0 && bodyTab === 'equipment') bodyTab = 'ingredients';
+  });
+
+  // The Equipment tab's display order, with an accessory folded under the appliance
+  // it came in the box with (issue #1140). The rule is pure and lives in `domain` —
+  // the page only renders what it returns, and never decides on its own what belongs
+  // to what. Total lines always equal `kit.length`, which is why the tab's count can
+  // stay `kit.length` however the rows are arranged.
+  const kitGroups = $derived(groupKitByEquipment(kit, $equipment?.items ?? []));
 
   // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
   // a nonce, the trigger re-infers, and the new list arrives on the subscription —
-  // so the old strip stays on screen throughout rather than blanking. Mirrors
+  // so the old list stays on screen throughout rather than blanking. Mirrors
   // `runRegenerate` exactly, toast for toast.
   let kitBusy = $state(false);
 
@@ -1704,10 +1698,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  librarian can write one — which is the same predicate the server's
                  kit branch asks before it spends anything.
 
-                 It lives here rather than beside the strip because the strip has no
-                 controls on it at all: the chips are read, and a recipe whose kit
-                 came back empty shows no card, so an action attached to the card
-                 would be unreachable in exactly the case you most want it. -->
+                 It lives here rather than beside the list because the list has no
+                 controls on it at all: the rows are read, and a recipe whose kit
+                 came back empty shows no Equipment tab (#1140), so an action
+                 attached to that tab would be unreachable in exactly the case you
+                 most want it. -->
             <PopoverMenuItem
               icon="CookingPot"
               onclick={() => {
@@ -2025,8 +2020,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </div>
         {/if}
 
-        <!-- Description, facts, tags, and the shape of the cook -->
-        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape}
+        <!-- Description, facts, tags, the phase strip, and the shape of the cook.
+             `phaseTotals.hasPhases` joins the card's gate rather than sitting
+             outside it: a recipe whose only stated fact is its timing still has
+             something to say here, and it is false whenever the key is off
+             (issue #1122). Read through `recipePhaseTotals` rather than
+             `phases.length` — the single funnel docs/recipe-module.md names
+             (issue #1122 review, should-fix 6). -->
+        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape || phaseTotals.hasPhases}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
@@ -2063,11 +2064,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {/each}
                 </div>
               {/if}
+              <!-- The planning timeline (issue #1122). It sits ABOVE the #878
+                   ribbon rather than replacing it: while the gate exists the two
+                   coexist, and the ribbon is what everyone outside the test group
+                   still sees. The ribbon and its Prep/Cook/Total chips go in phase
+                   4, together with the three fields they read.
+                   Everything drawn and every figure shown is derived inside the
+                   component from this list — nothing is passed in pre-summed. -->
+              {#if phaseTotals.hasPhases}
+                <RecipePhaseTimeline
+                  {phases}
+                  timingSummary={recipe.metadata.timingSummary ?? null}
+                />
+              {/if}
               <!-- The shape of the cook (issue #878): how long, how much of it is you,
                    and where the waiting goes — answered before a single step is read.
                    The bar is decoration and says so; the legend beneath it carries the
-                   whole of the information, so nothing here depends on colour. -->
-              {#if shape}
+                   whole of the information, so nothing here depends on colour.
+
+                   `!phaseTotals.hasPhases` joins the gate (#1205 review, blocking 1):
+                   `shape.totalMinutes`/`handsOnMinutes` come from `cookShape`, which reads
+                   the old prep/cook/total fields and any step timer — a different sum than
+                   `RecipePhaseTimeline`'s `recipe-phase-totals` line above, which reads the
+                   phases. A recipe with a phase strip already stated this sentence once;
+                   printing the ribbon's version too would be #1122's own defect (two
+                   accounts of the same fact) reproduced on the page built to fix it. -->
+              {#if shape && !phaseTotals.hasPhases}
                 <div class="flex flex-col gap-1.5" data-testid="recipe-cook-shape">
                   <p class="text-xs text-muted-foreground">
                     <span class="font-medium text-foreground"
@@ -2239,13 +2261,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
                         </span>
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="truncate text-sm font-medium">{component.title}</span>
-                          {#if component.metadata.cookTimeMinutes !== null}
+                          {#if componentTimeLabel(component) !== null}
                             <span
                               class="inline-flex items-center gap-1 text-xs text-muted-foreground"
                               data-testid="recipe-component-cook-time"
                             >
                               <Icon name="Clock" size={12} />
-                              {component.metadata.cookTimeMinutes} min
+                              {componentTimeLabel(component)}
                             </span>
                           {/if}
                         </span>
@@ -2254,53 +2276,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {/each}
                 </ul>
               {/if}
-            </CardContent>
-          </Card>
-        {/if}
-
-        <!-- "You'll need" (issue #882) — what to get out of the cupboards, above the
-             tab strip because it answers a question you ask BEFORE choosing between
-             Ingredients and Method: have I got what this dish needs?
-
-             The whole card goes when the kit is empty, in the same idiom the tab
-             strip below uses for a kind with no body: a heading reading "You'll
-             need" over nothing is worse than no card, because it reads as a recipe
-             that failed rather than one nobody has asked yet.
-
-             Each entry is a `PictogramPill` (ui-spec-v12 §8.30) — a span, no
-             `onclick`, not reachable by Tab, because these are read, not pressed.
-             It was a `fact` chip until #955, drawing the pictogram at 18px inside a
-             26px text pill: a frying pan painted 15 × 9 px, which is a smudge
-             rather than a picture. A chip is the wrong container for a drawn
-             object, not merely the wrong number — §8.30.2 has the reasoning.
-
-             The picture is resolved from the LABEL through the shared lookup and
-             handed over already resolved; a label the drawn vocabulary does not
-             know renders its words with no picture and never borrows another
-             tool's, because the pill draws no tile at all on a miss (§8.30.5).
-             Turning the icon kill-switch off therefore costs the pictures and
-             nothing else — the words are the content.
-
-             `shrink-0 max-w-full` is this row's own obligation as the pill's
-             caller (§8.30.3): the pill is `inline-flex`, not `flex`, so it does
-             not stretch on its own, but this row IS a flex row and would still
-             shrink or overflow a long pill without it — the same class the
-             cook-step kit list applies via its `<li>`. -->
-        {#if kit.length > 0}
-          <Card>
-            <CardContent class="flex flex-col gap-2 p-4">
-              <p class="text-sm font-medium">You&rsquo;ll need</p>
-              <div class="flex flex-wrap items-center gap-2" data-testid="recipe-kit-strip">
-                {#each kit as entry (entry.label)}
-                  <PictogramPill
-                    label={entry.label}
-                    thumbnail={$kitIcons.kitIconFor(entry.label)}
-                    version={$kitIcons.kitIconVersionFor(entry.label)}
-                    class="shrink-0 max-w-full"
-                    data-testid="recipe-kit-chip"
-                  />
-                {/each}
-              </div>
             </CardContent>
           </Card>
         {/if}
@@ -2314,18 +2289,22 @@ Finish with a short note on what you changed and why, so I can read the gist her
              a kind with no body still has somewhere to scroll to. -->
         <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
 
-        <!-- The body of the recipe: two alternatives, one at a time (issue #878).
-             They are alternatives on a phone — there is one screen and one thing
-             you are doing — and the count on each tab tells you the size of the
-             side you are not looking at without opening it.
+        <!-- The body of the recipe: alternatives, one at a time (issue #878, third
+             one added by #1140). They are alternatives on a phone — there is one
+             screen and one thing you are doing — and the count on each tab tells you
+             the size of the side you are not looking at without opening it.
 
              The whole STRIP goes when the concept doesn't apply (issue #637), not
              just its contents: a panel headed "Ingredients" saying "No
              ingredients." is worse than no panel, because it reads as an
              unfinished recipe rather than a takeaway. The inner "No ingredients."
              guard stays for the half-written-recipe case it was written for.
+             Equipment carries the same reasoning one step further: its trigger and
+             panel are gated on the kit existing at all, so a recipe nobody has
+             asked the kit question about shows two tabs, not three with an empty
+             one.
 
-             Both panels stay mounted while hidden (ui-spec-v10 §8.28.3), which is
+             Every panel stays mounted while hidden (ui-spec-v10 §8.28.3), which is
              what lets the drawer scroll to either and what keeps every
              `recipe-view-step` countable from a spec. -->
         {#if showBodyTabs}
@@ -2333,6 +2312,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
             <TabsList ariaLabel="Recipe">
               <TabsTrigger value="ingredients" count={ingredientCount}>Ingredients</TabsTrigger>
               <TabsTrigger value="method" count={recipe.steps.length}>Method</TabsTrigger>
+              {#if kit.length > 0}
+                <TabsTrigger value="equipment" count={kit.length}>Equipment</TabsTrigger>
+              {/if}
             </TabsList>
 
             <TabsContent value="ingredients">
@@ -2693,6 +2675,138 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <!-- Equipment (issue #1140). Was a "You'll need" card of `PictogramPill`
+                 chips above the strip; it is a third alternative view of the same
+                 region now, which is what ui-spec-v10 §8.28 is for. Read the same
+                 way the ingredients beside it are read: one thing per line, the
+                 picture in a fixed left gutter, a hairline between rows, so the
+                 names start at one left edge and the column is something you run
+                 your eye down rather than a heap of chips.
+
+                 THE GUTTER IS RESERVED, THE TILE IS NOT DRAWN ON A MISS. The
+                 ingredients list draws `CanonIcon` for every row, matched or not,
+                 because its bare tile is what holds the text column straight. Kit
+                 cannot borrow that: #882's contract is that a label the drawn
+                 vocabulary does not know renders its WORDS with no picture — never
+                 the bare placeholder, which reads as a broken image, and never
+                 another tool's drawing. A fixed-width empty gutter buys the straight
+                 column without the tile, so the two rules do not have to be traded
+                 off against each other.
+
+                 The picture comes from `$kitIcons` — equipment vocabulary first,
+                 then kitchen tools; that file's header explains at length why the
+                 order is load-bearing (#954) — so turning the icon kill-switch off
+                 costs the pictures and nothing else.
+
+                 ACCESSORIES SIT UNDER THEIR APPLIANCE, indented. The rice spoon
+                 came in the rice cooker's box, and a flat list saying otherwise is
+                 the defect. `groupKitByEquipment` decides what belongs to what — a
+                 pure query, so the page never guesses — and it never nests an
+                 accessory whose appliance this recipe did not ask for.
+
+                 AN ACCESSORY ROW STILL ASKS `$kitIcons`, THE SAME LOOKUP THE HEAD
+                 ROW USES. `equipmentIcons` is keyed by item id, so it is true that
+                 there is no OWNED-ITEM picture for an accessory — but `kitIconFor`
+                 is not that lookup alone; per that file's header it asks the
+                 equipment vocabulary FIRST, then falls through to the kitchen-tool
+                 vocabulary. MOST accessory rows are a label
+                 `resolveEquipmentItem` refused — every bare one, which is how the
+                 library names them today — and for those the tool-vocabulary half
+                 is precisely the half that still has something to draw (a rice
+                 spoon draws the generic rice-paddle pictogram; a mixing bowl
+                 accessory draws the generic bowl). Since #1182 that is no longer
+                 ALL of them: a prefixed accessory ("Magimix Cocotte Slow Cook
+                 Pot") does resolve, to its owning item, so its nested row draws
+                 the SAME equipment picture as the appliance heading it. That
+                 reads correctly — indented and muted under the machine it is part
+                 of — and it is exactly what must not happen on two TOP-LEVEL rows,
+                 which is the defect #1182 fixed in the query. Calling the same
+                 lookup here means a genuine miss on BOTH vocabularies still
+                 renders no tile — never a placeholder (#882) — but a
+                 tool-vocabulary hit is not suppressed just because the row is
+                 nested (#1179 review finding B1). `RecipeViewPage.kit.test.ts`
+                 pins a real hit alongside the real miss so this claim stays true.
+
+                 Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
+                 rhythm is unbroken and `last:border-b-0` still means the last line
+                 on screen. That flat structure is a LAYOUT choice, and it is why
+                 the nesting has to be said in words as well (#1182): a screen
+                 reader walking this list is handed siblings, and `pl-12` plus
+                 `text-muted-foreground` are pixels, not structure. The accessory
+                 row's `aria-label` is what carries the relationship — "Rice
+                 Spoon, part of Cosori 5L Rice Cooker" — so the row is announced
+                 as belonging to the appliance above it rather than as an
+                 unrelated peer.
+
+                 `aria-label` rather than a nested `<ul>` or visually-hidden text,
+                 for two reasons: a nested list is the thing that would break
+                 `last:border-b-0` (the last accessory would be last in ITS list,
+                 not on screen), and hidden text inside the row would land in
+                 `textContent`, where several of this page's tests read the row's
+                 words from. It is an ADDITION to the accessible name, never a
+                 replacement: the visible label is its first words, so nothing a
+                 sighted user reads goes missing from what is announced.
+                 `RecipeViewPage.kit.test.ts` asserts it through
+                 `getByRole('listitem', { name })`, never through the class.
+
+                 One template literal, not `aria-label="{a}, part of {b}"`. The
+                 interpolated-attribute form compiles to a concatenation with a
+                 `?? ''` per hole, and both labels are non-optional `string`s in
+                 `RecipeKitEntrySchema` — so those two branches are unreachable,
+                 uncoverable, and cost the routes area exactly the two uncovered
+                 branches that put it over its ratchet ceiling. -->
+            {#if kit.length > 0}
+              <TabsContent value="equipment">
+                <Card>
+                  <CardContent class="p-4">
+                    <ul class="flex flex-col" data-testid="recipe-kit-list">
+                      {#each kitGroups as group (group.entry.label)}
+                        <li
+                          class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
+                          data-testid="recipe-kit-row"
+                        >
+                          <div class="flex h-10 w-10 shrink-0 items-center justify-center">
+                            {#if $kitIcons.kitIconFor(group.entry.label)}
+                              <CanonIcon
+                                thumbnail={$kitIcons.kitIconFor(group.entry.label)}
+                                version={$kitIcons.kitIconVersionFor(group.entry.label)}
+                                name={group.entry.label}
+                                size={40}
+                              />
+                            {/if}
+                          </div>
+                          <span class="min-w-0 flex-1">{group.entry.label}</span>
+                        </li>
+                        {#each group.accessories as accessory (accessory.label)}
+                          <!-- `pl-12` is the gutter (40px) plus the row gap (8px), so
+                               an accessory's OWN gutter+text starts one step in from
+                               the head row's, keeping the nesting visible even though
+                               this row draws through the same `$kitIcons` lookup. -->
+                          <li
+                            class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
+                            data-testid="recipe-kit-accessory-row"
+                            aria-label={`${accessory.label}, part of ${group.entry.label}`}
+                          >
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center">
+                              {#if $kitIcons.kitIconFor(accessory.label)}
+                                <CanonIcon
+                                  thumbnail={$kitIcons.kitIconFor(accessory.label)}
+                                  version={$kitIcons.kitIconVersionFor(accessory.label)}
+                                  name={accessory.label}
+                                  size={40}
+                                />
+                              {/if}
+                            </div>
+                            <span class="min-w-0 flex-1">{accessory.label}</span>
+                          </li>
+                        {/each}
+                      {/each}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            {/if}
           </Tabs>
         {/if}
 

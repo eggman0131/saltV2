@@ -38,12 +38,12 @@ export const arbitrateCanonFlow = ai.defineFlow(
     // arbitration into the same fallback branch, differing only in the
     // `reasoning` string it records. So this preserves current e2e behaviour
     // while dropping the network call, the retry budget and the log noise.
-    // Wire it to `flowModel('lite', 'arbitrateCanon')` the day a spec needs a
+    // Wire it to `flowModel('arbitrateCanon')` the day a spec needs a
     // positive arbitration. Unreachable in production (the flag is never set).
     if (aiFakeEnabled()) {
       return { kind: 'no-match' as const, prompt: builtPrompt, rawResponse: '' };
     }
-    const model = await resolveModel('lite', 'arbitrateCanon');
+    const model = await resolveModel('arbitrateCanon');
     // Below the fake seam on purpose (issue #915): under FUNCTIONS_AI_FAKE the
     // short-circuit above returns before this line, so the wrapper adds no
     // timer to the fake path and nothing here has to change the day that seam

@@ -155,6 +155,44 @@ describe('recipeFieldRules — the time fields are DEFINED, on every path (#952)
   });
 });
 
+describe('recipeFieldRules — the phase strip is defined on every path (#1122)', () => {
+  // The strip is what recipe timing BECOMES, so it has to be defined in the ONE
+  // shared text every authoring path is given — not appended to the estimator's
+  // own flow-local heuristics, which the librarian and the two extractors never
+  // see. Half a library drawn to one definition of "hands-on" and half to another
+  // is the #785 twin, and these assertions are what stop it.
+  it('asks every path for an ordered list of named blocks, capped at six', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain("phases: the recipe's timing as an ORDERED list of 3–6 named blocks");
+      expect(rules).toContain('never more than six');
+    }
+  });
+
+  it('asks for exactly two numbers per phase, and forbids a third', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('handsOnMinutes');
+      expect(rules).toContain('handsOffMinutes');
+      expect(rules).toContain('do NOT return a total for a phase');
+    }
+  });
+
+  // The 12-minute pan of water that opened the issue: the minutes nobody timed
+  // have to land somewhere, and "somewhere" is a phase's hands-off time.
+  it('demands the untimed waits be accounted for, and folds overlap into one phase', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('pan of water to the boil');
+      expect(rules).toContain('Work that OVERLAPS goes in ONE phase, never two');
+      expect(rules).toContain('Phases are NOT steps');
+    }
+  });
+
+  it('asks for the one-line summary', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('timingSummary: ONE short plain sentence');
+    }
+  });
+});
+
 describe('recipeFieldRules — unconditional rules', () => {
   it('converts temperatures, names and spelling whichever the source', () => {
     // None of these is a measure the chef chose, so preserving their wording

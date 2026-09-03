@@ -155,6 +155,96 @@ describe('mergeAmendedRecipe — a metadata value the librarian DID return wins'
   });
 });
 
+// ─── the phase strip and its summary move together (issue #1203) ───────────────
+//
+// The one field pair in this merge that is NOT two independent scalars. Every
+// case below is the same question asked from a different side: can the saved
+// document end up holding a strip and a sentence that describe different
+// timings? The pre-fix merge answered yes — `phases` and `timingSummary` each
+// fell back to `existing` on their own, and `draft.metadata.phases` is always a
+// defined array, so a fresh strip always won while an omitted sentence came
+// back `null` and quietly restored the stored recipe's old one underneath it.
+
+const STORED_PHASES = [
+  { label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 },
+  { label: 'Rise', handsOnMinutes: 0, handsOffMinutes: 90 },
+  { label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 30 },
+];
+const STORED_SUMMARY = 'About 40 minutes of you, spread over 2¼ hours — start it the night before.';
+const FRESH_PHASES = [{ label: 'Shake', handsOnMinutes: 2, handsOffMinutes: 0 }];
+
+/** A recipe stored WITH a phase strip and the sentence written over it. */
+function recipeWithStrip(): Recipe {
+  const recipe = existingRecipe();
+  return {
+    ...recipe,
+    metadata: { ...recipe.metadata, phases: STORED_PHASES, timingSummary: STORED_SUMMARY },
+  };
+}
+
+describe('mergeAmendedRecipe — the phase strip and its summary are one fact', () => {
+  it('does not pair a fresh strip with the stored sentence when the draft omitted the summary', () => {
+    // The reported case: "make it a traybake" comes back with a one-block strip
+    // and no sentence. `null` there is a real answer — nothing worth a sentence
+    // — not a gap to fill from a recipe that no longer exists.
+    const merged = mergeAmendedRecipe(
+      recipeWithStrip(),
+      draftWithoutMetadata({ phases: FRESH_PHASES, timingSummary: null }),
+      NOW,
+    );
+    expect(merged.metadata.phases).toEqual(FRESH_PHASES);
+    expect(merged.metadata.timingSummary).toBeNull();
+  });
+
+  it('takes both halves from the draft when it returned both', () => {
+    const merged = mergeAmendedRecipe(
+      recipeWithStrip(),
+      draftWithoutMetadata({
+        phases: FRESH_PHASES,
+        timingSummary: 'Two minutes, start to finish.',
+      }),
+      NOW,
+    );
+    expect(merged.metadata.phases).toEqual(FRESH_PHASES);
+    expect(merged.metadata.timingSummary).toBe('Two minutes, start to finish.');
+  });
+
+  it('does not pair a fresh sentence with the stored strip when the draft returned no phases', () => {
+    // The inverse, and the reason the pair cannot be merged field by field in
+    // either direction: a sentence with no strip behind it is not an answer
+    // about this recipe's timing, so the stored pair stands whole.
+    const merged = mergeAmendedRecipe(
+      recipeWithStrip(),
+      draftWithoutMetadata({ phases: [], timingSummary: 'Ready in five minutes flat.' }),
+      NOW,
+    );
+    expect(merged.metadata.phases).toEqual(STORED_PHASES);
+    expect(merged.metadata.timingSummary).toBe(STORED_SUMMARY);
+  });
+
+  it('keeps the stored pair whole when the draft returned neither — the no-loss floor', () => {
+    // The #1201 floor this fix must not trade away, exercised directly against
+    // a draft with no strip. It is not yet what a real chat amend produces: the
+    // librarian is always asked for 3-6 phases (`PHASE_RULES`) and is never
+    // shown the stored strip (`formatRecipeForPrompt`), so `draftWithoutMetadata`
+    // here is not a case an unrelated "add some chilli" turn currently reaches —
+    // see the boundary note on `mergeAmendedRecipe`.
+    const merged = mergeAmendedRecipe(recipeWithStrip(), draftWithoutMetadata(), NOW);
+    expect(merged.metadata.phases).toEqual(STORED_PHASES);
+    expect(merged.metadata.timingSummary).toBe(STORED_SUMMARY);
+  });
+
+  it('stores an absent pair as the empty strip and a null sentence, never undefined', () => {
+    // A recipe from before #1122 amended by chat: neither side has a strip.
+    // Firestore has no `undefined`, so the pair is written as what "no strip"
+    // is stored as — the same shape `assembleRecipeDraft` and the re-estimate
+    // trigger write.
+    const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);
+    expect(merged.metadata.phases).toEqual([]);
+    expect(merged.metadata.timingSummary).toBeNull();
+  });
+});
+
 describe('mergeAmendedRecipe — identity and the fields the librarian never returns', () => {
   it('keeps the existing id, createdAt, image and source, and stamps updatedAt', () => {
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);

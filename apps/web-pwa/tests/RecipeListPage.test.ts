@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { appendCacheBuster } from '@salt/domain';
-import type { Recipe, RecipeKind } from '@salt/domain';
+import type { Recipe, RecipeKind, RecipePhase } from '@salt/domain';
 import { setNextCrop } from './fixtures/cropStub.js';
 
 // ─── Mock stores and services ──────────────────────────────────────────────────
@@ -98,6 +98,9 @@ function makeRecipe(over: {
   // real production value for anything written before the field existed.
   createdBy?: string;
   lastEditedBy?: string;
+  // The phase strip (issue #1122). Absent on almost every fixture here, which is
+  // the state the whole library is in until the backfill runs.
+  phases?: RecipePhase[];
 }): Recipe {
   return {
     kit: [],
@@ -128,6 +131,7 @@ function makeRecipe(over: {
       cookTimeMinutes: null,
       totalTimeMinutes: over.totalTimeMinutes,
       tags: over.tags,
+      ...(over.phases === undefined ? {} : { phases: over.phases }),
     },
     source: null,
     notes: null,
@@ -1448,5 +1452,83 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
 
     expect(screen.queryByTestId('recipe-list-thumb')).toBeNull();
     expect(screen.getByTestId('recipe-list-thumb-fallback')).toBeInTheDocument();
+  });
+});
+
+// ─── Timing on the card, and in the sort (issue #1122) ────────────────────────
+// The list is the surface where the two accounts of a recipe's timing were most
+// obviously the same fact twice: a card labelled from `totalTimeMinutes` and a
+// Quickest sort ordering by it. Both now read the phase sum where there is one.
+//
+// The feature key reads ON throughout the unit suite — with no PostHog key
+// nothing can be gated (`isObservabilityFeatureEnabled`) — so the fixtures
+// without a strip are the key-off rendering as well as the un-backfilled one.
+// The key-off resolution itself is pinned in `tests/phaseTimeline.test.ts`.
+
+const STRIP_65 = [
+  { label: 'Parboil', handsOnMinutes: 5, handsOffMinutes: 10 },
+  { label: 'Roast', handsOnMinutes: 5, handsOffMinutes: 45 },
+];
+
+function timed(id: string, title: string, over: Partial<Parameters<typeof makeRecipe>[0]> = {}) {
+  return makeRecipe({
+    id,
+    title,
+    tags: [],
+    totalTimeMinutes: null,
+    servings: null,
+    ingredientCount: 0,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  });
+}
+
+describe('RecipeListPage — how long it takes', () => {
+  it('labels the card from the phase sum, and from the stored total without one', () => {
+    seed([
+      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
+      timed('plain', 'Plain Dish', { totalTimeMinutes: 20 }),
+    ]);
+    render(RecipeListPage);
+
+    const cards = screen.getAllByTestId('recipe-list-item');
+    expect(normalized(cards[0]!)).toContain('1 hr 5 min');
+    expect(normalized(cards[0]!)).not.toContain('20 min');
+    // No strip: the raw spelling the card has always had, unchanged.
+    expect(normalized(cards[1]!)).toContain('20 min');
+  });
+
+  it('shows no time chip at all for a recipe with neither', () => {
+    seed([timed('bare', 'Bare Dish')]);
+    render(RecipeListPage);
+
+    expect(normalized(screen.getByTestId('recipe-list-item'))).not.toContain('min');
+  });
+
+  // The chip and the sort go through one function, and this is what says so: the
+  // 65-minute strip sorts BEHIND the 30-minute recipe even though the field it
+  // used to sort on says 20.
+  // `fireEvent`, not `userEvent`: the popover primitive marks the page inert while
+  // it opens, and user-event refuses to click through `pointer-events: none`.
+  it('orders Quickest by the same figure the card shows', async () => {
+    seed([
+      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
+      timed('half', 'Half Hour', { totalTimeMinutes: 30 }),
+      timed('untimed', 'Untimed Dish'),
+    ]);
+    render(RecipeListPage);
+
+    await fireEvent.click(screen.getByTestId('recipe-sort-trigger'));
+    const quickest = await waitFor(() => {
+      const option = screen
+        .getAllByTestId('recipe-sort-option')
+        .find((el) => el.getAttribute('data-sort') === 'quickest');
+      if (option === undefined) throw new Error('Quickest option not open');
+      return option;
+    });
+    await fireEvent.click(quickest);
+
+    await waitFor(() => expect(cardTitles()).toEqual(['Half Hour', 'Phased Dish', 'Untimed Dish']));
   });
 });

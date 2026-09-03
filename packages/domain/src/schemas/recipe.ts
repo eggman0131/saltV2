@@ -84,6 +84,78 @@ export const StepSchema = z.object({
   note: z.string().nullable(),
 });
 
+// One named block of a recipe's timing (issue #1122). Three to six of them, in
+// the order you do them, are what a recipe's timing IS — the ordered strip the
+// planning timeline draws.
+//
+// `label` is free text the model wrote ("First rise", "Roast cauliflower & make
+// sauce"). NOTHING IN THE APP MAY BRANCH ON IT: it is displayed and nothing else,
+// the same discipline CLAUDE.md applies to `recipes.kind`. The moment behaviour
+// depends on the word we have built a fixed enum with extra steps, and a fixed
+// enum cannot serve both a loaf and a traybake.
+//
+// TWO numbers, never three. A phase's elapsed time is `handsOnMinutes +
+// handsOffMinutes`, derived at the point of use (`recipePhaseTotals`) and never
+// stored: a third number is a third thing that can disagree with the other two,
+// which is the split-definition defect this issue exists to close.
+//
+// Work that OVERLAPS folds into ONE phase whose hands-on is less than its
+// elapsed — roasting the cauliflower while the bechamel comes together is one
+// 20-minute phase with 15 minutes of you in it, not two tracks. There are
+// deliberately no start offsets here; those would be a scheduling engine.
+export const RecipePhaseSchema = z.object({
+  label: z.string(),
+  /** Minutes of the cook's attention. */
+  handsOnMinutes: z.number(),
+  /** Minutes the phase runs without the cook — heat, a prove, a chill, a rest. */
+  handsOffMinutes: z.number(),
+});
+
+/**
+ * How many phases a strip may carry.
+ *
+ * Six, and the argument is `cookShape`'s: a strip is read at a glance, and a
+ * seventh block stops being a glance. A dish with eleven distinguishable stages
+ * has eleven stages whether or not we draw them; what it does not have is eleven
+ * things worth knowing before you start.
+ */
+export const MAX_RECIPE_PHASES = 6;
+
+/**
+ * The phase list as the three AUTHORING paths must emit it — the librarian, both
+ * extractors and the re-estimator, which all ask the same question against the
+ * same definition (`TIME_RULES`).
+ *
+ * Tighter than `RecipeMetadataSchema.phases` on purpose, and the asymmetry is the
+ * #1123 one restated: the gates are on the way IN. Whole non-negative minutes and
+ * at most six blocks are what a model may return; a stored document that somehow
+ * holds seven is still read and still drawn.
+ *
+ * `.catch([])` on a strip that FAILS this gate — a seventh block, a fractional or
+ * negative minute — rather than letting that failure propagate (issue #1122
+ * review, blocking 3). This is a decorative field on every call site that embeds
+ * it (`.optional()` on top, always): the librarian has no retry, so a bad strip
+ * failing the whole `LibrarianOutputSchema` parse used to lose the user's entire
+ * chat-authored recipe over a field invisible to them, and on the estimator path
+ * it discarded the three prep/cook/total numbers the model got right alongside
+ * it. `[]` reads exactly like "the model omitted phases" to every consumer
+ * (`reconcileRecipePhases`, `reconcileEstimatedTimes`) — an over-cap or malformed
+ * strip degrades to no strip, never to no recipe. `MAX_RECIPE_PHASES` stays the
+ * one stated bound; only the failure mode changed.
+ */
+export const AuthoredRecipePhasesSchema = z
+  .array(
+    RecipePhaseSchema.extend({
+      handsOnMinutes: z.number().int().nonnegative(),
+      handsOffMinutes: z.number().int().nonnegative(),
+    }),
+  )
+  .max(MAX_RECIPE_PHASES)
+  .catch([]);
+
+/** The one-line summary as the authoring paths emit it: a sentence, or null. */
+export const AuthoredTimingSummarySchema = z.string().nullable();
+
 export const RecipeMetadataSchema = z.object({
   // Deliberately permissive, and staying that way (issue #1123). This is the READ
   // boundary for a production collection: rejecting a bad `servings` here would
@@ -95,6 +167,27 @@ export const RecipeMetadataSchema = z.object({
   totalTimeMinutes: z.number().nullable(),
   prepTimeMinutes: z.number().nullable(),
   cookTimeMinutes: z.number().nullable(),
+  // The recipe's timing (issue #1122). Additive and OPTIONAL, the same bargain
+  // `timesRequestedAt` and `RecipeSourceSchema.book` make: every document stored
+  // before this shipped lacks both keys, and a required field here would skip the
+  // whole recipe rather than fix one field — the block above says why that is the
+  // one thing this schema may never do.
+  //
+  // `undefined` is therefore a live state and means "never estimated". Read it
+  // through `recipePhaseTotals`, which is the single funnel that turns absent, empty
+  // and populated into one answer; do not reach for `.length` on it directly.
+  //
+  // NOT capped at six here, though the three authoring output schemas are. This is
+  // the read side of a production collection: a document that somehow carries seven
+  // phases is a document to render, not one to drop.
+  phases: z.array(RecipePhaseSchema).optional(),
+  /**
+   * One short sentence over the strip ("About 40 minutes of you, spread over 2¼
+   * hours — start it the night before"), or absent. `null` and `undefined` both
+   * mean no sentence: null is what an estimate that produced none stores (Firestore
+   * rejects `undefined`), undefined is a document written before this existed.
+   */
+  timingSummary: z.string().nullable().optional(),
   tags: z.array(z.string()),
 });
 
@@ -350,6 +443,7 @@ export type IngredientDoc = z.infer<typeof IngredientSchema>;
 export type IngredientGroupDoc = z.infer<typeof IngredientGroupSchema>;
 export type StepTimerDoc = z.infer<typeof StepTimerSchema>;
 export type StepDoc = z.infer<typeof StepSchema>;
+export type RecipePhaseDoc = z.infer<typeof RecipePhaseSchema>;
 export type RecipeMetadataDoc = z.infer<typeof RecipeMetadataSchema>;
 export type RecipeSourceDoc = z.infer<typeof RecipeSourceSchema>;
 export type RecipeImageDoc = z.infer<typeof RecipeImageSchema>;

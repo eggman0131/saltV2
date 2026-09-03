@@ -77,7 +77,7 @@
   const form = $derived.by(() => {
     const parsed = ingredient?.parsed;
     if (!parsed || !canonId) return null;
-    const f = resolveProductForm(parsed.item, $productForms);
+    const f = resolveProductForm(parsed.item, $productForms, $canonItems);
     return f && f.parentCanonId === canonId ? f : null;
   });
 

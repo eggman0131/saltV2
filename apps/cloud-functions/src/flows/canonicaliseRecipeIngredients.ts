@@ -7,6 +7,7 @@ import {
   resolveProductForm,
   findFormWithSameLabel,
   proposalRejectionReason,
+  normaliseName,
 } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreateResult, ProductForm } from '@salt/domain';
 import {
@@ -78,13 +79,28 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // the just-written form (and its idempotency check) without a second AI call.
       const forms: ProductForm[] = formsResult.kind === 'ok' ? [...formsResult.value] : [];
 
+      // Buyable canon items, id + name. Two consumers: the proposal AI picks a
+      // parent from them (a PREFERENCE list — see the read below), and
+      // `resolveProductForm`'s contested-phrase rule reads them to refuse a
+      // phrase that does not distinguish the parent it binds (issue #1180).
+      //
+      // DECLARED HERE, FILLED BELOW, and mutated in place rather than
+      // reassigned. The canon read needs `ports.store`, and the ports need the
+      // synonym-guard closure, so the list cannot exist before the closure is
+      // built — but the closure reads it at CALL time, and every `isDerivedName`
+      // call happens inside `matchOrCreateBatch` at the very end of this flow,
+      // long after the fill. Exactly the reason `forms` is mutable a few lines
+      // up. While empty the contested rule is inert, which is today's behaviour
+      // and also the degrade a failed canon read lands on (Rule 10).
+      const candidates: { id: string; name: string }[] = [];
+
       // Loaded BEFORE the ports so the synonym guard can be handed to the matcher.
       // A name a product form already claims is a DERIVATION, and must never be
       // recorded as a synonym — i.e. as another name for its own parent. Reading
       // `forms` through the closure rather than copying it is deliberate: a form
       // minted mid-batch below protects the very next item in the same recipe.
       const ports = await buildMatchOrCreatePorts(batchSpan, activeTraceparent(), {
-        isDerivedName: (name) => resolveProductForm(name, forms) !== null,
+        isDerivedName: (name) => resolveProductForm(name, forms, candidates) !== null,
       });
 
       const results: (ReadResult<MatchOrCreateResult, DomainError> | undefined)[] = new Array(
@@ -113,16 +129,17 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // deterministically in input order.
       const unresolved: number[] = [];
 
-      // Buyable canon items the proposal AI may pick a parent from — a PREFERENCE
-      // list, not a requirement: the model is told to reuse one of these names when
-      // it fits and otherwise to name a new parent, which #505's
-      // `resolveParentCanonId` then mints. Best-effort: a read failure just means an
-      // empty list (see the cold-start note below).
+      // Fill `candidates`, declared above. The proposal AI may pick a parent from
+      // it — a PREFERENCE list, not a requirement: the model is told to reuse one
+      // of these names when it fits and otherwise to name a new parent, which
+      // #505's `resolveParentCanonId` then mints. Best-effort: a read failure
+      // just means an empty list (see the cold-start note below).
       // ponytail: second canon list read (matchOrCreateBatch lists again); fold
       // into a shared load if recipe-import canon reads ever show up hot.
       const canonList = await ports.store.list();
-      const candidates =
-        canonList.kind === 'ok' ? canonList.value.map((c) => ({ id: c.id, name: c.name })) : [];
+      if (canonList.kind === 'ok') {
+        candidates.push(...canonList.value.map((c) => ({ id: c.id, name: c.name })));
+      }
       // Read BEFORE the loop below, which now consults it. A failed read yields an
       // empty list, and an empty list makes the exact check a no-op — so the flow
       // degrades to its previous behaviour rather than to a wrong answer (Rule 10).
@@ -162,7 +179,7 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
           continue;
         }
 
-        const form = forms.length > 0 ? resolveProductForm(item.rawName, forms) : null;
+        const form = forms.length > 0 ? resolveProductForm(item.rawName, forms, candidates) : null;
         if (form && (await bindToParent(i, form.parentCanonId))) continue;
         unresolved.push(i);
       }
@@ -240,6 +257,49 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         return null;
       };
 
+      // The proposal's parent, resolved WITHOUT minting anything (issue #1127).
+      // The covering check below needs a parent id, and `resolveParentCanonId`
+      // above cannot supply one: it mints a canon item as a side effect, so
+      // calling it before we know whether the proposal is even needed would
+      // create a canon item only to throw it away. Nothing has to be minted,
+      // because the proposal carries the parent's NAME and both places that
+      // already know the name→id mapping are in memory here: the canon list read
+      // above, and the in-batch cache of parents `resolveParentCanonId` has
+      // minted for an earlier item in this same recipe (which is what keeps the
+      // #854 dedupe working for two ingredients sharing a brand-new parent).
+      // Folded through `normaliseName`, exactly like both halves of this
+      // pipeline. `null` here means only "this exact-name lookup doesn't know
+      // it" — NOT "the parent doesn't exist yet". A canon-list read failure
+      // empties this map for the whole batch while the parent (and any stored
+      // form already on it) still exists, and a `parentName` the model
+      // resolved by synonym/fuzzy/embedding rather than copying verbatim from
+      // the candidate list also misses here. Neither is treated as final: the
+      // covering check below re-runs against the AUTHORITATIVE id once
+      // `resolveParentCanonId` has resolved it, before minting anything
+      // (issue #1127 review, finding B1).
+      // Ambiguous keys are dropped, not last-wins: `normaliseName` singularises,
+      // so distinct canon items ("Lemon" / "Lemons") can collide on one key, and
+      // answering with whichever happened to be last would scope a proposal to a
+      // canon item it never named (issue #1127 follow-up #1180 review).
+      const nameKeyCounts = new Map<string, number>();
+      for (const c of candidates) {
+        const key = normaliseName(c.name);
+        nameKeyCounts.set(key, (nameKeyCounts.get(key) ?? 0) + 1);
+      }
+      const canonIdByNormalisedName = new Map(
+        candidates
+          .map((c) => [normaliseName(c.name), c.id] as const)
+          // A canon name that normalises to nothing, or that collides with another
+          // canon item's normalised name, must not answer for a parent name — the
+          // empty key unconditionally (many items can normalise to ''), an
+          // ambiguous key because a coin-flip answer is worse than none.
+          .filter(([key]) => key !== '' && nameKeyCounts.get(key) === 1),
+      );
+      const namedParentCanonId = (parentName: string): string | null =>
+        canonIdByNormalisedName.get(normaliseName(parentName)) ??
+        parentIdByName.get(parentName.trim().toLowerCase()) ??
+        null;
+
       // Apply proposals in input order so in-batch idempotency is deterministic.
       for (let u = 0; u < unresolved.length; u++) {
         const i = unresolved[u]!;
@@ -247,7 +307,7 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         const proposal = proposals[u]!;
 
         // A prior in-batch write may now cover this ingredient — re-resolve first.
-        const nowForm = resolveProductForm(item.rawName, forms);
+        const nowForm = resolveProductForm(item.rawName, forms, candidates);
         if (nowForm && (await bindToParent(i, nowForm.parentCanonId))) continue;
 
         // Idempotency: skip if any existing/in-batch form (pending or confirmed)
@@ -262,10 +322,21 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         //     identically-labelled form on the same parent was minted — which is
         //     why hand-correcting a form's matchers never survived the next
         //     recipe that mentioned juice.
-        // Checked by label rather than by parent because the parent is not known
-        // yet: `resolveParentCanonId` below MINTS canon as a side effect, so
-        // resolving it early to compare would create a canon item only to discard
-        // it.
+        // The label check is SCOPED TO THE PARENT the proposal named (#1127),
+        // via `namedParentCanonId` above — which mints nothing. Unscoped, it
+        // matched a bare-noun label across the whole table, so a `Zest` proposal
+        // on Lime bound the ingredient to a `Zest` form parented on Lemon and the
+        // shopping list said buy lemons. `namedParentCanonId` can itself miss (a
+        // canon-list read failure, or a `parentName` resolved by synonym/fuzzy/
+        // embedding) — the `else` branch below re-checks against the
+        // AUTHORITATIVE parent id before minting, so a miss here is never the
+        // final answer (issue #1127 review, finding B1). What this scoping does
+        // NOT do is cover the other three `resolveProductForm` calls in this flow
+        // (the pre-arbitration bind, the mid-batch re-resolve above, and the one
+        // immediately below); those cross parents on a bare-noun label for a
+        // different reason — a form's label is also one of its matching phrases —
+        // and are answered by that query's own contested-phrase rule, which every
+        // call here now feeds `candidates` for (issue #1180).
         if (proposal.kind === 'form') {
           // Two proposals are coherent but must never be minted — a form naming
           // its own parent, and a form for something a recipe already PRODUCES.
@@ -294,8 +365,8 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
           }
 
           const covering =
-            resolveProductForm(proposal.matcher, forms) ??
-            findFormWithSameLabel(proposal.label, forms);
+            resolveProductForm(proposal.matcher, forms, candidates) ??
+            findFormWithSameLabel(proposal.label, namedParentCanonId(proposal.parentName), forms);
           // Already covered: bind to what exists instead of minting beside it. A
           // parent that no longer loads degrades to normal matching (Rule 10),
           // exactly as every other bind here does.
@@ -306,28 +377,50 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
             // null result (resolution failed) degrades to normal matching (Rule 10).
             const parentCanonId = await resolveParentCanonId(proposal.parentName);
             if (parentCanonId) {
-              const created: ProductForm = {
-                id: crypto.randomUUID(),
-                schemaVersion: 1,
-                matchers: [proposal.matcher],
-                parentCanonId,
-                label: proposal.label,
-                yield: { formUnit: proposal.formUnit, amountPerParent: proposal.amountPerParent },
-                // Written pending: used live immediately, but flagged for admin review.
-                needs_approval: true,
-                updatedAt: new Date().toISOString(),
-                // No icon yet (issue #871). Stated rather than omitted: this is a
-                // full-document write, and null is what onProductFormWritten's edge
-                // guard reads on the create to start generating. An AI-seeded form
-                // gets its pictogram on the same terms as an admin-created one —
-                // pending review has never gated what a form can do.
-                thumbnail: null,
-              };
-              // Best-effort write; on failure we simply fall through to matching.
-              const written = await productFormStore.upsert(created);
-              if (written.kind === 'ok') {
-                forms.push(created);
-                if (await bindToParent(i, parentCanonId)) continue;
+              // `parentCanonId` is now AUTHORITATIVE: `resolveParentCanonId` just
+              // ran the full five-stage matcher (name, synonym, fuzzy, embedding,
+              // AI arbitration), strictly wider than `namedParentCanonId`'s
+              // exact-normalised-name lookup above. Re-run the same-label check
+              // against it before minting. This is the only place that catches a
+              // disagreement between the two: a canon-list read failure (which
+              // empties `namedParentCanonId` for the whole batch), or a
+              // `parentName` the model resolved by synonym/fuzzy/embedding rather
+              // than copying verbatim from the candidate list — both left
+              // `covering` null above even though a same-labelled form already
+              // sits on this parent. Nothing extra is minted: `resolveParentCanonId`
+              // already ran, win or lose (issue #1127 review, finding B1 — a
+              // duplicate same-labelled form was minted on a parent that already
+              // had one, regressing #854).
+              const stillCovering = findFormWithSameLabel(proposal.label, parentCanonId, forms);
+              if (stillCovering) {
+                if (await bindToParent(i, stillCovering.parentCanonId)) continue;
+              } else {
+                const created: ProductForm = {
+                  id: crypto.randomUUID(),
+                  schemaVersion: 1,
+                  matchers: [proposal.matcher],
+                  parentCanonId,
+                  label: proposal.label,
+                  yield: {
+                    formUnit: proposal.formUnit,
+                    amountPerParent: proposal.amountPerParent,
+                  },
+                  // Written pending: used live immediately, but flagged for admin review.
+                  needs_approval: true,
+                  updatedAt: new Date().toISOString(),
+                  // No icon yet (issue #871). Stated rather than omitted: this is a
+                  // full-document write, and null is what onProductFormWritten's edge
+                  // guard reads on the create to start generating. An AI-seeded form
+                  // gets its pictogram on the same terms as an admin-created one —
+                  // pending review has never gated what a form can do.
+                  thumbnail: null,
+                };
+                // Best-effort write; on failure we simply fall through to matching.
+                const written = await productFormStore.upsert(created);
+                if (written.kind === 'ok') {
+                  forms.push(created);
+                  if (await bindToParent(i, parentCanonId)) continue;
+                }
               }
             }
           }

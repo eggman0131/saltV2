@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import type { EquipmentManifest } from '@salt/domain';
 import type { EquipmentIconDoc } from '@salt/domain/schemas';
+import { setNextCrop } from './fixtures/cropStub.js';
 
 // The description panel's revision loop (issue #885). Revise and Start over both
 // rewrite the words in the box and PERSIST NOTHING — Draw is still the only thing
 // that writes a description to the item, and the only thing that spends money.
+// Use a photo (issue #947) is the third of the three: it opens the real
+// EquipmentPhotoDialog (only its ImageCropper stubbed, same seam
+// RecipeImportPhotoDialog's own test uses — jsdom cannot answer a real crop), so
+// this exercises the actual lazy-load and the actual wiring into runBriefAction.
 
 const { mockEquipment, mockEquipmentIcons } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
@@ -18,6 +24,11 @@ const { mockEquipment, mockEquipmentIcons } = await vi.hoisted(async () => {
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/nav.js', () => ({ goBack: vi.fn() }));
+vi.mock('@salt/ui-components', async () => {
+  const actual = await vi.importActual<typeof import('@salt/ui-components')>('@salt/ui-components');
+  const stub = await import('./fixtures/StubImageCropper.svelte');
+  return { ...actual, ImageCropper: stub.default };
+});
 vi.mock('../src/lib/equipmentService.js', () => ({
   equipment: mockEquipment,
   equipmentIcons: mockEquipmentIcons,
@@ -28,6 +39,7 @@ vi.mock('../src/lib/equipmentService.js', () => ({
   hideEquipmentIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   reviseEquipmentBrief: vi.fn(),
   restartEquipmentBrief: vi.fn(),
+  describeEquipmentFromPhoto: vi.fn(),
   renameEquipmentItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   removeEquipmentItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   addEquipmentAccessory: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -43,6 +55,7 @@ import {
   drawEquipmentIcon,
   reviseEquipmentBrief,
   restartEquipmentBrief,
+  describeEquipmentFromPhoto,
 } from '../src/lib/equipmentService.js';
 
 const ITEM_ID = 'mixer-1';
@@ -87,9 +100,15 @@ function brief(): HTMLTextAreaElement {
   return screen.getByTestId('equipment-icon-brief') as HTMLTextAreaElement;
 }
 
+let objectUrlSeq = 0;
+
 beforeEach(() => {
   vi.clearAllMocks();
   seed();
+  setNextCrop('stub-cropped-base64');
+  objectUrlSeq = 0;
+  globalThis.URL.createObjectURL = vi.fn(() => `blob:photo-${++objectUrlSeq}`);
+  globalThis.URL.revokeObjectURL = vi.fn();
 });
 
 afterEach(() => {
@@ -243,5 +262,88 @@ describe('EquipmentEditPage — Draw still owns the words', () => {
         'A matte black tilt-head stand mixer.',
       );
     });
+  });
+});
+
+describe('EquipmentEditPage — Use a photo (issue #947)', () => {
+  async function openPhotoDialog(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByTestId('equipment-icon-photo-btn'));
+    await screen.findByTestId('equipment-photo-dialog');
+  }
+
+  async function pickAndDescribe(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    const input = await screen.findByTestId('equipment-photo-input');
+    await user.upload(input, new File(['bytes'], 'mixer.jpg', { type: 'image/jpeg' }));
+    await user.click(screen.getByTestId('equipment-photo-describe-btn'));
+  }
+
+  it('opens the dialog lazily on Use a photo', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.queryByTestId('equipment-photo-dialog')).toBeNull();
+    await openPhotoDialog(user);
+
+    expect(screen.getByTestId('equipment-photo-dialog')).toBeInTheDocument();
+  });
+
+  it('cancelling closes the dialog and changes nothing', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await openPhotoDialog(user);
+    await user.click(screen.getByTestId('equipment-photo-cancel'));
+
+    await waitFor(() => expect(screen.queryByTestId('equipment-photo-dialog')).toBeNull());
+    expect(vi.mocked(describeEquipmentFromPhoto)).not.toHaveBeenCalled();
+    expect(brief().value).toBe(STORED_BRIEF);
+  });
+
+  it('rewrites the description from the photo, spends the steer, draws nothing, and closes', async () => {
+    vi.mocked(describeEquipmentFromPhoto).mockResolvedValue({
+      kind: 'ok',
+      value: 'A squat matte-black bean-to-cup machine.',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    // A leftover steer is "Start over, but with a picture" — spent the same way
+    // Start over spends it, since the photo discards whatever was in the box.
+    await fireEvent.input(screen.getByTestId('equipment-icon-steer'), {
+      target: { value: 'leftover steer text' },
+    });
+    await openPhotoDialog(user);
+    await pickAndDescribe(user);
+
+    await waitFor(() => {
+      expect(brief().value).toBe('A squat matte-black bean-to-cup machine.');
+    });
+    expect(vi.mocked(describeEquipmentFromPhoto)).toHaveBeenCalledWith(NAME, {
+      base64: 'stub-cropped-base64',
+      contentType: 'image/webp',
+    });
+    // Nothing is drawn and nothing is saved: Draw is still the only writer.
+    expect(vi.mocked(drawEquipmentIcon)).not.toHaveBeenCalled();
+    expect((screen.getByTestId('equipment-icon-steer') as HTMLInputElement).value).toBe('');
+    await waitFor(() => expect(screen.queryByTestId('equipment-photo-dialog')).toBeNull());
+  });
+
+  it('a failure leaves the box EXACTLY as it was and says so', async () => {
+    vi.mocked(describeEquipmentFromPhoto).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    // Several edits deep — precisely the text a failed describe must not cost.
+    await fireEvent.input(brief(), { target: { value: 'Six edits deep.' } });
+    await openPhotoDialog(user);
+    await pickAndDescribe(user);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('equipment-icon-brief-error')).toBeTruthy();
+    });
+    expect(brief().value).toBe('Six edits deep.');
   });
 });

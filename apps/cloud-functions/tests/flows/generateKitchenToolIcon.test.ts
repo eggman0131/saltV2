@@ -20,6 +20,7 @@
  * imagery rather than on argument. Update them with the change; never around it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 const mockGenerate = vi.fn();
 
@@ -115,7 +116,8 @@ describe('generateKitchenToolIcon flow', () => {
     // The three icon flows keep three distinct names because those names are
     // resolveModel registry keys (#935): collapsing them would silently repoint
     // every per-flow override.
-    expect(mockResolveModel).toHaveBeenCalledWith('image', 'generateKitchenToolIcon');
+    expect(mockResolveModel).toHaveBeenCalledWith('generateKitchenToolIcon');
+    expect(AI_FLOW_ROLES.generateKitchenToolIcon).toBe('image');
     expect(mockGenerate.mock.calls[0]![0].model).toBe('gemini-2.5-flash-image');
   });
 

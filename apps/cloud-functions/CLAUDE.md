@@ -1,8 +1,8 @@
-# Cloud Functions — AI / Genkit conventions
+# Cloud Functions — subsystem conventions
 
-Loaded only when working under `apps/cloud-functions/`. The universal AI rules
-(all AI access via Genkit callables; wrap every AI call in `withAiTimeout`) stay in
-the root [CLAUDE.md](../../CLAUDE.md) — this file holds the subsystem detail.
+Loaded only when working under `apps/cloud-functions/`. The universal AI rules (all
+AI access via Genkit callables; wrap every AI call in `withAiTimeout`) stay in the
+root [CLAUDE.md](../../CLAUDE.md) — this file holds the subsystem detail.
 
 ## AI timeouts — the three sub-rules
 
@@ -18,4 +18,82 @@ Functions calling AI must also declare their AI-related secrets.
 
 ## Trace propagation
 
-- **Server-side trace propagation is env-gated.** Each CF invocation renders as one coherent trace: in production the canon-matching callables run the Genkit flow within a W3C trace context so the flow span nests under the request trace instead of re-rooting. These are USER-INITIATED callables, so the **browser-supplied field is preferred**. There are two context sources, applied with a fixed precedence: (1) a browser-**supplied** `traceparent` carried as a NAMED, TYPED, OPTIONAL input field on the callable WIRE input, run via `runWithSuppliedTraceContext`; else (2) a real inbound W3C trace **header** off `request.rawRequest.headers` (what the platform/GCP injects), extracted via `runWithExtractedTraceContext` (both in `@salt/observability/server`; both degrade to a plain call and never throw — Rule 10). The field is preferred because **the Firebase callable SDK cannot carry a custom per-call HTTP header** (`HttpsCallableOptions` is only `{ timeout?, limitedUseAppCheckTokens? }` and the `@firebase/functions` transport sets its own fixed headers — Content-Type, Authorization, App Check, Instance-ID), so the field is the ONLY channel that can carry the browser's trace id and thus the only one that unifies the browser action with the server flow; the inbound header is GCP's FRESH request-trace root, so preferring it would re-root away from the browser trace and could never unify with it — it is the fallback only when no non-empty field is present. The field is schema-validated by a wire-envelope schema (`<Name>WireInputSchema = <Name>InputSchema.extend({ traceparent: z.string().optional() })` in `@salt/domain/schemas`) and **stripped at the entrypoint** so the domain flow receives the PURE domain input (domain purity) — flows never consume `traceparent`. This is applied to every callable declared with `makeTracedCallable`, and the wire envelopes in `packages/domain/src/schemas/traceContextWire.ts` (re-exported from the `@salt/domain/schemas` barrel) are that list — deliberately not copied here, because a hand-maintained roll-call is exactly what went stale (it named six while `index.ts` built nine). Note it is not an AI-flow feature: `refreshWeatherForecast` carries the field and calls no model. The two equipment-add callables (`identifyEquipment`, `populateEquipmentEntry`) are the cross-invocation case (issue #361): the multi-step add-equipment action fires `identifyEquipment` then `populateEquipmentEntry` with human think-time between, so the browser mints ONE `startUserActionSpan('Add equipment: <name>')` and supplies its SAME `traceparent` to BOTH calls — both flows then nest under one trace instead of re-rooting two. They were converted `onCallGenkit`→`onCall` for this and, like the other `onCall` flows, now flush AI-OTLP spans in a `finally` (`onCall` has no framework forceFlush) with error reporting at the entrypoint catch. A malformed/absent `traceparent` must NOT fail the call — it is optional/best-effort; only a malformed wire envelope (bad domain input) is rejected with `HttpsError('invalid-argument', …)`. The whole thing is SUPPRESSED when `GENKIT_TELEMETRY_SERVER` is set (local `pnpm dev:emulators`) so flows stay root-listed in the Genkit Dev UI — the env-gate is what resolved the 2026-05-11 regression that originally parked propagation. New callable flows that don't need this nesting can use `onCallGenkit`. This SUPERSEDES the prior "do not re-add a `_trace` wire field / browser→CF unification deferred" stance: the new field is named + typed + schema-validated (NOT the magic `_trace`, which was named/untyped payload plumbing). The browser mints a REAL trace id via its in-memory OTel tracer (`startUserActionSpan`, `packages/adapters/observability/src/browserTracer.ts`), which roots the user-action span client-side and exports it to PostHog's `/i/v1/traces` endpoint, so the whole path renders as ONE trace id rooted at the browser click. **Firestore triggers continue the trace via a Firestore correlation field (Phase 5, implemented).** They have no inbound HTTP headers, so an OPTIONAL, additive `traceContext` (a W3C `traceparent` string) rides on the written doc: `ShoppingListItemSchema` and `CanonItemSchema` each carry `traceContext: z.string().optional()`. The browser roots a `startUserActionSpan('Add item: <name>')` at "add to shopping list" and threads its `traceparent` into `saveShoppingListItem(item, traceparent?)`, which stamps it as `traceContext` (firebase-sync forwards the plain string and NEVER imports observability — Rule 4). `onShoppingListItemWrite` reads `traceContext` off the doc and runs its canon-matching within it (`runWithSuppliedTraceContext` in `@salt/observability/server`), and propagates `traceContext` onto the canon doc it writes — the ADAPTER (`createFirestoreCanonStore`/`buildMatchOrCreatePorts`) adds the field at write time so the pure-domain `CanonItem` never carries it (domain purity). `onCanonItemWritten` then reads `traceContext` and runs its icon + embedding work within the same context, so "Add 'tinned tomatoes' to shopping list" renders as ONE trace: browser action → canon-match trigger → icon trigger. The mechanism is env-gated identically to the callable path (a CF-local `runTriggerWithTraceContext` wraps the helper): SUPPRESSED under `GENKIT_TELEMETRY_SERVER` (local `pnpm dev:emulators`) so flows stay root-listed in the Genkit Dev UI. `traceContext` is TRANSPORT ONLY — domain logic never branches on it — and a missing/malformed value degrades to a normal root trace and never fails a write or a trigger (Rule 10). Additive/back-compat: old docs lack the field and stay valid (skip-invalid `.safeParse` reads). The bare `traceContext`-only write-back cannot loop the icon/embedding triggers — their idempotency guards key off `thumbnail`/`iconRequestedAt`/`embedding`, never `traceContext`.
+**Goal:** one CF invocation renders as one coherent trace, rooted at the browser
+click and never re-rooted server-side. The browser mints a real trace id with its
+in-memory OTel tracer (`startUserActionSpan`, `packages/adapters/observability/src/browserTracer.ts`)
+and exports it to PostHog, so the whole path shares one trace id. Rationale and
+history: [docs/trace-propagation.md](../../docs/trace-propagation.md).
+
+1. **Callables prefer the browser-supplied field over the inbound header.** Two
+   context sources, fixed precedence: (1) a browser-supplied `traceparent` carried
+   as a named, typed, optional field on the callable wire input, run via
+   `runWithSuppliedTraceContext`; failing that, (2) a real inbound W3C trace header
+   off `request.rawRequest.headers`, extracted via `runWithExtractedTraceContext`.
+   Both live in `@salt/observability/server`, and both degrade to a plain call and
+   never throw (Rule 10).
+
+   **This precedence cannot be flipped.** The Firebase callable SDK cannot carry a
+   custom per-call HTTP header — `HttpsCallableOptions` is only
+   `{ timeout?, limitedUseAppCheckTokens? }`, and the `@firebase/functions`
+   transport sets its own fixed headers (Content-Type, Authorization, App Check,
+   Instance-ID). The field is therefore the _only_ channel that can carry the
+   browser's trace id, and the only one that unifies the browser action with the
+   server flow. The inbound header is GCP's fresh request-trace root: preferring it
+   would re-root away from the browser trace and could never unify with it. It is
+   the fallback, used only when no non-empty field is present.
+
+2. **The field is schema-validated, then stripped at the entrypoint.** Wire envelope
+   is `<Name>WireInputSchema = <Name>InputSchema.extend({ traceparent: z.string().optional() })`
+   in `@salt/domain/schemas`. The entrypoint strips `traceparent` so the flow
+   receives the pure domain input — flows never consume it (domain purity). A
+   malformed or absent `traceparent` must **not** fail the call; it is optional and
+   best-effort. Only a malformed wire envelope (bad domain input) is rejected, with
+   `HttpsError('invalid-argument', …)`.
+
+3. **`traceContextWire.ts` is the roll-call — never copy it.** Every callable
+   declared with `makeTracedCallable` gets this treatment, and the wire envelopes in
+   `packages/domain/src/schemas/traceContextWire.ts` (re-exported from the
+   `@salt/domain/schemas` barrel) _are_ the list. It is deliberately not restated
+   here: a hand-maintained roll-call is exactly what went stale, naming six while
+   `index.ts` built nine. Note this is not an AI-flow feature —
+   `refreshWeatherForecast` carries the field and calls no model. A new callable
+   that doesn't need the nesting can use `onCallGenkit`.
+
+4. **One browser span may cover several callables.** `identifyEquipment` →
+   `populateEquipmentEntry` is the standing case (#361): the add-equipment action
+   fires both with human think-time between, so the browser mints one
+   `startUserActionSpan('Add equipment: <name>')` and supplies the _same_
+   `traceparent` to both calls, nesting both flows under one trace instead of
+   re-rooting two. Both were converted `onCallGenkit` → `onCall` for this. **Any
+   `onCall` flow must flush AI-OTLP spans in a `finally`** — `onCall` has no
+   framework forceFlush — with error reporting at the entrypoint catch.
+
+5. **Firestore triggers continue the trace via a doc field.** Triggers have no
+   inbound HTTP headers, so an optional, additive `traceContext` (a W3C
+   `traceparent` string) rides on the written doc; `ShoppingListItemSchema` and
+   `CanonItemSchema` each carry it. The chain: browser roots
+   `startUserActionSpan('Add item: <name>')` → `saveShoppingListItem(item, traceparent?)`
+   stamps it as `traceContext` → `onShoppingListItemWrite` runs its canon-matching
+   within that context and propagates the field onto the canon doc it writes →
+   `onCanonItemWritten` runs icon + embedding work in the same context. So "Add
+   tinned tomatoes to shopping list" renders as one trace: browser action →
+   canon-match trigger → icon trigger.
+
+   Two purity constraints are easy to break here. `firebase-sync` forwards the plain
+   string and **never imports observability** (Rule 4). The adapter
+   (`createFirestoreCanonStore` / `buildMatchOrCreatePorts`) adds the field at write
+   time, so the pure-domain `CanonItem` never carries it.
+
+6. **`traceContext` is transport only.** Domain logic never branches on it. A
+   missing or malformed value degrades to a normal root trace and never fails a
+   write or a trigger (Rule 10). Additive and back-compatible: old docs lack the
+   field and stay valid under skip-invalid `.safeParse` reads. The bare
+   `traceContext`-only write-back cannot loop the icon/embedding triggers — their
+   idempotency guards key off `thumbnail` / `iconRequestedAt` / `embedding`, never
+   `traceContext`.
+
+7. **The whole mechanism is suppressed under `GENKIT_TELEMETRY_SERVER`** (local
+   `pnpm dev:emulators`), so flows stay root-listed in the Genkit Dev UI. Callables
+   and triggers alike — a CF-local `runTriggerWithTraceContext` wraps the helper on
+   the trigger side. This env gate is what resolved the regression that originally
+   parked propagation; do not remove it.

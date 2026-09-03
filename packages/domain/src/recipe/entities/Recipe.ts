@@ -1,4 +1,9 @@
-import type { RecipeDoc, RecipeKindDoc, RecipeMetadataDoc } from '../../schemas/recipe.js';
+import type {
+  RecipeDoc,
+  RecipeKindDoc,
+  RecipeMetadataDoc,
+  RecipePhaseDoc,
+} from '../../schemas/recipe.js';
 
 // The recipe entity graph (issue #179). Schema-first (issue #417): these are
 // aliases of the inferred schema types from `@salt/domain/schemas` — `RecipeSchema`
@@ -9,6 +14,10 @@ import type { RecipeDoc, RecipeKindDoc, RecipeMetadataDoc } from '../../schemas/
 // Free-form numeric metadata. Every field is `number | null`: null means "not
 // recorded", which is a valid authored state, not a missing value.
 export type RecipeMetadata = RecipeMetadataDoc;
+
+// One named block of a recipe's timing (issue #1122). Displayed, summed and
+// hand-edited; never branched on — see `RecipePhaseSchema`.
+export type RecipePhase = RecipePhaseDoc;
 
 // What kind of entry a `recipes/{id}` document is (issue #637). Aliased here so
 // the whole recipe surface — including the kind — is reachable from `@salt/domain`

@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   // The cleaned list: every synonym a product form claims, removed.
   const cleaned: CanonItem[] = items.map((i) => ({
     ...i,
-    synonyms: i.synonyms.filter((s) => resolveProductForm(s, forms) === null),
+    synonyms: i.synonyms.filter((s) => resolveProductForm(s, forms, items) === null),
   }));
   const removed = items.reduce(
     (n, i, k) => n + (i.synonyms.length - cleaned[k]!.synonyms.length),

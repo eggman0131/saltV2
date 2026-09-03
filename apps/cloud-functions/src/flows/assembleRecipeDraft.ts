@@ -6,7 +6,7 @@ import type {
   IngredientDoc,
 } from '@salt/domain/schemas';
 import { RecipeSchema } from '@salt/domain/schemas';
-import { normaliseTags, reconcileRecipeTimes } from '@salt/domain';
+import { normaliseTags, reconcileRecipeTimes, reconcileRecipePhases } from '@salt/domain';
 import { logger } from 'firebase-functions';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
@@ -251,13 +251,34 @@ export async function assembleRecipeDraft(
   // raises an understated STATED total — it must never fabricate one that was
   // never stated. On a fresh draft that distinction is moot: there is no stored
   // value to protect. But `baseRecipe` means this draft is about to be spread
-  // over an existing recipe by `mergeAmendedRecipe`'s `draft ?? existing` (or,
-  // for a refresh, an equivalent client-side merge) — and a fabricated non-null
-  // total wins that `??` and silently overwrites the real stored one (a 4-hour
-  // chill, say) with `prep + cook`. So in edit mode a librarian `total: null`
-  // stays null, exactly like a forgotten `servings`; only a STATED total still
-  // gets raised to the parts' floor.
+  // over an existing recipe by `mergeAmendedRecipe`'s own
+  // `draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes` —
+  // Refresh goes through that same path too (issue #890 folded it into
+  // `proposeRecipeAmendment`; there is no separate client-side merge for it) —
+  // and a fabricated non-null total wins that `??` and silently overwrites the
+  // real stored one (a 4-hour chill, say) with `prep + cook`. So in edit mode a
+  // librarian `total: null` stays null, exactly like a forgotten `servings`;
+  // only a STATED total still gets raised to the parts' floor.
   const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
+
+  // The phase strip and its one-line summary (issue #1122), merged as ONE fact
+  // rather than two independently-defaulted fields (issue #1122 review, blocking
+  // 2). `reconcileRecipePhases` is the shared implementation, and its callers are
+  // exactly three — this flow, `onRecipeWritten`'s re-estimate branch, and the
+  // client's `mergeAmendedRecipe` (`apps/web-pwa/src/lib/recipeAmend.ts`). For a
+  // write coming through one of those three, a fresh strip cannot land paired
+  // with a stale summary or the reverse. That list IS the boundary of the claim:
+  // it is a property of routing through this function, not of the collection, so
+  // a fourth writer of `metadata.phases` that pairs the fields itself is outside
+  // it and gets no such guarantee.
+  //
+  // Stated once without that boundary (issue #1203), the sentence was simply
+  // false: `mergeAmendedRecipe` re-split the pair downstream of this flow, and
+  // its output — not this draft — is what a chat amend actually stores. Pinned by
+  // the two pairing tests in `tests/flows/assembleRecipeDraft.test.ts`, the
+  // re-estimate pair in `tests/triggers/onRecipeWritten.phases.test.ts`, and the
+  // amend-merge pairing tests in `apps/web-pwa/tests/recipeAmend.test.ts`.
+  const phaseStrip = reconcileRecipePhases(raw, baseRecipe?.metadata ?? null);
 
   const draft: RecipeDoc = {
     id: recipeId,
@@ -275,6 +296,12 @@ export async function assembleRecipeDraft(
       totalTimeMinutes: times.totalTimeMinutes,
       prepTimeMinutes: times.prepTimeMinutes,
       cookTimeMinutes: times.cookTimeMinutes,
+      // The phase strip and its summary (issue #1122) — one merged fact, computed
+      // above by `reconcileRecipePhases`. See that function for the edit-mode
+      // carry-through argument (a cook's hand-edit must survive an amend that
+      // returned no phases) and why the summary is never split from the strip.
+      phases: phaseStrip.phases,
+      timingSummary: phaseStrip.timingSummary,
       tags: normaliseTags(raw.tags),
     },
     source,

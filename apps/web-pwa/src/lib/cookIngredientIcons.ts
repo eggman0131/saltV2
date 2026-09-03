@@ -71,7 +71,14 @@ function lookupFor(
   function formIconFor(
     ingredient: IngredientDoc,
   ): { thumbnail: string; version: string | number | undefined } | null {
-    const form = resolveIngredientProductForm(ingredient.parsed?.item, ingredient.canonId, forms);
+    // `items` is the live canon list this lookup already holds, so the
+    // contested-phrase rule (issue #1180) costs no extra read here.
+    const form = resolveIngredientProductForm(
+      ingredient.parsed?.item,
+      ingredient.canonId,
+      forms,
+      items,
+    );
     if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
     return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
   }

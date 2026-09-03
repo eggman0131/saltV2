@@ -96,6 +96,15 @@ async function describeCookTimer(
   };
 }
 
+// The in-app route back into the cook, for the web-push payload's `url` — a
+// hash PATH, like the three sibling notification kinds send (`onKitchenTimerDispatch`
+// sends `/#/mine` the same way). The service worker used to rebuild this itself by
+// slicing the recipe id out of `sessionId`; the sender has always had
+// `session.recipeId` to hand, so it sends it (issue #1127).
+function cookPath(recipeId: string): string {
+  return `/#/recipes/${recipeId}/cook`;
+}
+
 // Absolute deep link back into the cook, for the Pushover `url` (a native client
 // opens it, so a path would have no origin to resolve against). Hosting is
 // `<projectId>.web.app` in all three environments and GCLOUD_PROJECT is set by the
@@ -105,7 +114,7 @@ function cookDeepLink(recipeId: string): string | undefined {
   const projectId = process.env['GCLOUD_PROJECT'] ?? process.env['GCP_PROJECT'] ?? '';
   if (!projectId) return undefined;
   // Hash-routed app, matching the notificationclick route in push-sw.js.
-  return `https://${projectId}.web.app/#/recipes/${recipeId}/cook`;
+  return `https://${projectId}.web.app${cookPath(recipeId)}`;
 }
 
 export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
@@ -192,12 +201,19 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       // for BOTH sinks: a device may legitimately be reached by either, and a
       // named notification beside an anonymous one would just read as a bug.
       // The service worker renders whatever it is given, using `tag` to collapse
-      // repeats and `sessionId` to deep-link back to the cook.
+      // repeats and `url` to deep-link back to the cook.
       const copy = (await describeCookTimer(session.recipeId, timer)) ?? FALLBACK_COPY;
       const payload = {
         type: 'cook-timer' as const,
         tag: `cook::${sessionId}`,
+        // KEPT alongside `url`, not replaced by it (issue #1127). Tasks queued
+        // before this shipped carry `sessionId` and no `url`, and the cook-timer
+        // horizon runs to a session's lifetime — so the service worker's slice
+        // stays as the fallback for those and this field has to keep feeding it.
         sessionId,
+        // The route, sent rather than reconstructed. `session.recipeId` was
+        // always here; the service worker was slicing it back out of `sessionId`.
+        url: cookPath(session.recipeId),
         title: copy.title,
         body: copy.body,
       };

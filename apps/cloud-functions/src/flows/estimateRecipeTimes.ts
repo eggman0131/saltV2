@@ -1,8 +1,8 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   EstimateRecipeTimesInputSchema,
   EstimateRecipeTimesAIOutputSchema,
   EstimateRecipeTimesOutputSchema,
+  type EstimateRecipeTimesAIOutput,
   type EstimateRecipeTimesInput,
   type EstimateRecipeTimesOutput,
 } from '@salt/domain/schemas';
@@ -10,7 +10,7 @@ import { reconcileRecipeTimes } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { TIME_RULES } from './recipeFieldRules.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 // estimateRecipeTimes (issue #952, phase 2) — "how long does this ACTUALLY take?",
 // asked of a recipe that is ALREADY in the library.
@@ -41,14 +41,20 @@ import { resolveModel } from '../ai/resolveModel.js';
 // claim, because it is easy to overstate from the TIME_RULES import above: a
 // chat-authored recipe and a backfilled one of the same dish are measured
 // against the SAME field definitions, not against one shared estimation policy.
-// Unifying the two is deliberately deferred to its own follow-up issue.
+// Unifying the two is deliberately deferred, and the deferral now has a name:
+// issue #1191, filed out of #934 for the purpose. It is not folded into #934
+// because it is the one item of that sweep whose fix CHANGES WHAT THREE SHIPPED
+// AUTHORING PATHS PRODUCE, is unvalidatable without AI keys, and carries the
+// #785/#784 constraint in a new form — heuristics written for a backfill reading
+// a stored recipe, applied to a path reading a photograph.
 //
 // ─── What it is NOT allowed to do ─────────────────────────────────────────────
 //
-// It returns three numbers. It has no output field for anything else, so it
-// cannot rewrite a title, an ingredient or a step even if asked — which is the
-// structural half of the issue's "no re-authoring, no Refresh, no re-parse".
-// The trigger writes exactly the three `metadata.*` paths it returns.
+// It returns TIMING: the three numbers, plus the ordered phase strip and its one
+// sentence (issue #1122). It has no output field for anything else, so it cannot
+// rewrite a title, an ingredient or a step even if asked — which is the structural
+// half of the issue's "no re-authoring, no Refresh, no re-parse". The trigger
+// writes exactly the `metadata.*` timing paths it returns and nothing else.
 //
 // ─── It is not shown the stored times, deliberately ───────────────────────────
 //
@@ -62,9 +68,9 @@ import { resolveModel } from '../ai/resolveModel.js';
 
 const ESTIMATE_TIMES_SYSTEM = `You are an experienced cook reading a recipe that is already written, working out \
 honestly how long it takes to make. You are given the recipe's title, description, servings, ingredient lines \
-and numbered method steps, with each step's timer where it has one. Return ONLY the three time fields.
+and numbered method steps, with each step's timer where it has one. Return ONLY the timing fields.
 
-## What the three fields mean
+## What the timing fields mean
 ${TIME_RULES}
 
 ## How to estimate
@@ -80,8 +86,12 @@ stretches of totalTimeMinutes.
 - Be realistic, not generous and not heroic. Estimate for a competent home cook in a normal kitchen who is \
 doing only this.
 - Return whole minutes. Round to something a person would say: 5, 10, 15, 20, 25, 30, 45, 90 — not 37.
+- Build the PHASES from the same reading. A step timer that is time on heat is a phase's hands-off \
+minutes; the knife work you counted from the ingredient lines is a phase's hands-on minutes. Every \
+minute you counted for totalTimeMinutes has to land in some phase, including the untimed waits no \
+step mentions — a pan coming to the boil, an oven heating.
 
-Do not comment, do not explain, and do not return anything about the recipe other than these three numbers.`;
+Do not comment, do not explain, and do not return anything about the recipe other than its timing.`;
 
 /**
  * Impose the arithmetic contract on a model's three numbers, and fold the zeros.
@@ -102,13 +112,18 @@ Do not comment, do not explain, and do not return anything about the recipe othe
  * recorded none, which is exactly the case "never derive" would erase.
  */
 export function reconcileEstimatedTimes(
-  raw: Readonly<{
-    prepTimeMinutes: number | null;
-    cookTimeMinutes: number | null;
-    totalTimeMinutes: number | null;
-  }>,
+  raw: Readonly<EstimateRecipeTimesAIOutput>,
 ): EstimateRecipeTimesOutput {
-  return reconcileRecipeTimes(raw, { deriveMissingTotal: true });
+  // The phases pass through UNTOUCHED, and that is the point of them (issue
+  // #1122): their arithmetic is a sum computed where it is read, so there is no
+  // second representation here to reconcile against and nothing to zero-fold.
+  // Absent becomes empty here, which is the ONE place that conversion happens on
+  // this path — the trigger writes what this returns.
+  return {
+    ...reconcileRecipeTimes(raw, { deriveMissingTotal: true }),
+    phases: raw.phases ?? [],
+    timingSummary: raw.timingSummary ?? null,
+  };
 }
 
 export const estimateRecipeTimesFlow = ai.defineFlow(
@@ -149,8 +164,7 @@ export const estimateRecipeTimesFlow = ai.defineFlow(
     // categoriseRecipe. Two cooks reading the same recipe should reach the same
     // half-hour, and a backfill that returns a different answer each time it is
     // re-run is not a backfill.
-    const modelId = await resolveModel('fast', 'estimateRecipeTimes');
-    const model = googleAI.model(modelId);
+    const model = await flowModel('estimateRecipeTimes');
     const result = await withAiTimeout(
       'estimateRecipeTimes',
       () =>

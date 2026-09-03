@@ -57,7 +57,13 @@ describe('reconcileEstimatedTimes', () => {
   it('raises a stated total that is below prep + cook', () => {
     expect(
       reconcileEstimatedTimes({ prepTimeMinutes: 10, cookTimeMinutes: 35, totalTimeMinutes: 35 }),
-    ).toEqual({ prepTimeMinutes: 10, cookTimeMinutes: 35, totalTimeMinutes: 45 });
+    ).toEqual({
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 45,
+      phases: [],
+      timingSummary: null,
+    });
   });
 
   it('leaves a total ABOVE prep + cook alone — the excess is an unattended wait', () => {
@@ -65,13 +71,25 @@ describe('reconcileEstimatedTimes', () => {
     // The contract is `>=`, not `===`; a proving time is not prep and not cook.
     expect(
       reconcileEstimatedTimes({ prepTimeMinutes: 30, cookTimeMinutes: 12, totalTimeMinutes: 762 }),
-    ).toEqual({ prepTimeMinutes: 30, cookTimeMinutes: 12, totalTimeMinutes: 762 });
+    ).toEqual({
+      prepTimeMinutes: 30,
+      cookTimeMinutes: 12,
+      totalTimeMinutes: 762,
+      phases: [],
+      timingSummary: null,
+    });
   });
 
   it('derives a missing total from the two parts', () => {
     expect(
       reconcileEstimatedTimes({ prepTimeMinutes: 20, cookTimeMinutes: 25, totalTimeMinutes: null }),
-    ).toEqual({ prepTimeMinutes: 20, cookTimeMinutes: 25, totalTimeMinutes: 45 });
+    ).toEqual({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 25,
+      totalTimeMinutes: 45,
+      phases: [],
+      timingSummary: null,
+    });
   });
 
   it('cannot derive a total when a part is missing, and does not invent one', () => {
@@ -81,7 +99,13 @@ describe('reconcileEstimatedTimes', () => {
         cookTimeMinutes: null,
         totalTimeMinutes: null,
       }),
-    ).toEqual({ prepTimeMinutes: 20, cookTimeMinutes: null, totalTimeMinutes: null });
+    ).toEqual({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      phases: [],
+      timingSummary: null,
+    });
   });
 
   // The #739 asymmetry, and the ORDER that makes it work: reconcile from the raw
@@ -90,13 +114,25 @@ describe('reconcileEstimatedTimes', () => {
   it('folds a 0 part to null but still counts it in the total first', () => {
     expect(
       reconcileEstimatedTimes({ prepTimeMinutes: 15, cookTimeMinutes: 0, totalTimeMinutes: null }),
-    ).toEqual({ prepTimeMinutes: 15, cookTimeMinutes: null, totalTimeMinutes: 15 });
+    ).toEqual({
+      prepTimeMinutes: 15,
+      cookTimeMinutes: null,
+      totalTimeMinutes: 15,
+      phases: [],
+      timingSummary: null,
+    });
   });
 
   it('folds a total of 0 to null — a recipe that takes no time at all is nonsense', () => {
     expect(
       reconcileEstimatedTimes({ prepTimeMinutes: 0, cookTimeMinutes: 0, totalTimeMinutes: null }),
-    ).toEqual({ prepTimeMinutes: null, cookTimeMinutes: null, totalTimeMinutes: null });
+    ).toEqual({
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      phases: [],
+      timingSummary: null,
+    });
   });
 });
 
@@ -140,6 +176,101 @@ describe('estimateRecipeTimesFlow', () => {
       prepTimeMinutes: 10,
       cookTimeMinutes: 35,
       totalTimeMinutes: 45,
+      phases: [],
+      timingSummary: null,
+    });
+  });
+
+  // Issue #1122. The phases travel in the SAME call as the three numbers and are
+  // handed back untouched — no reconciliation, no zero-fold — because their
+  // arithmetic is a sum computed where they are read.
+  it('returns the phase strip and its summary untouched', async () => {
+    respond({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+      phases: [
+        { label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 },
+        { label: 'Cook', handsOnMinutes: 5, handsOffMinutes: 30 },
+      ],
+      timingSummary: 'About 25 minutes of you, over just under an hour.',
+    });
+    await expect(estimateRecipeTimesFlow(input)).resolves.toMatchObject({
+      phases: [
+        { label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 },
+        { label: 'Cook', handsOnMinutes: 5, handsOffMinutes: 30 },
+      ],
+      timingSummary: 'About 25 minutes of you, over just under an hour.',
+    });
+  });
+
+  // A phase of 0 hands-on is an unattended wait — a real answer, and NOT the
+  // model glitch the three numbers' zero-fold exists to catch. This goes red if
+  // anyone extends `reconcileEstimatedTimes`'s fold over the strip.
+  it('keeps a phase with no hands-on time rather than folding it away', async () => {
+    respond({
+      prepTimeMinutes: 5,
+      cookTimeMinutes: 0,
+      totalTimeMinutes: 725,
+      phases: [
+        { label: 'Mix', handsOnMinutes: 5, handsOffMinutes: 0 },
+        { label: 'Prove overnight', handsOnMinutes: 0, handsOffMinutes: 720 },
+      ],
+      timingSummary: null,
+    });
+    const result = await estimateRecipeTimesFlow(input);
+    expect(result.phases).toHaveLength(2);
+    expect(result.phases[1]).toEqual({
+      label: 'Prove overnight',
+      handsOnMinutes: 0,
+      handsOffMinutes: 720,
+    });
+  });
+
+  // The cap the strip is drawn against (`MAX_RECIPE_PHASES`). Issue #1122
+  // review, blocking 3: a seventh block used to fail the WHOLE trust-boundary
+  // parse, discarding the three prep/cook/total numbers the model got right
+  // alongside it. `AuthoredRecipePhasesSchema`'s `.catch([])` degrades the
+  // strip to empty instead — `reconcileEstimatedTimes` then reads that exactly
+  // like "the model omitted phases" (it already does; see the two tests below),
+  // never as a reason to fail the call.
+  it('degrades a strip longer than six blocks to no strip, keeping the three numbers', async () => {
+    respond({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+      phases: Array.from({ length: 7 }, (_, i) => ({
+        label: `Phase ${i + 1}`,
+        handsOnMinutes: 5,
+        handsOffMinutes: 0,
+      })),
+      timingSummary: null,
+    });
+    const result = await estimateRecipeTimesFlow(input);
+    expect(result.phases).toEqual([]);
+    expect(result).toMatchObject({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+    });
+  });
+
+  // The other half of blocking 3: a fractional or negative phase minute is the
+  // same class of lapse as the cap, and degrades the same way.
+  it('degrades a strip with a malformed minute to no strip, keeping the three numbers', async () => {
+    respond({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
+      phases: [{ label: 'Prep', handsOnMinutes: 7.5, handsOffMinutes: 0 }],
+      timingSummary: null,
+    });
+    const result = await estimateRecipeTimesFlow(input);
+    expect(result.phases).toEqual([]);
+    expect(result).toMatchObject({
+      prepTimeMinutes: 20,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 55,
     });
   });
 
