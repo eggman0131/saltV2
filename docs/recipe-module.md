@@ -187,10 +187,12 @@ onto the same figure the line shows. `scheduleFor` works a start time back from
 meal's "Made from" rows on it, so nothing anywhere sorts, starts or displays from a
 different number (#1205 review, should-fix 4).
 
-The definition the model is given lives in `TIME_RULES`
-(`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
-own definitions, so all four authoring paths — librarian, URL import, photo import,
-re-estimator — ask one question against one text. The strip and its summary are
+The definition the model is given lives in `PHASE_RULES`
+(`apps/cloud-functions/src/flows/recipeFieldRules.ts`), so all four authoring paths
+— librarian, URL import, photo import, re-estimator — ask one question against one
+text. It was `TIME_RULES`, and it carried definitions of the three old numbers
+above the strip until issue #1233 removed them: nothing stores them, so asking pays
+a model call for an answer that is thrown away. The strip and its summary are
 paired by one shared function, `reconcileRecipePhases`
 (`packages/domain/src/recipe/commands/`), called by exactly three writers:
 `assembleRecipeDraft` on an authoring path, the `onRecipeWritten` times branch on a
@@ -263,19 +265,15 @@ not a definition, so the model fell back on published-recipe convention. That
 convention is the optimistic one: a food writer's "prep: 5 minutes" starts from an
 already-weighed counter and stops before the washing up.
 
-The definition, now stated in `recipeFieldRules.ts` and therefore identical on all
-three paths (librarian, URL import, photo import):
-
-- **`prepTimeMinutes`** — every minute the cook actively spends that is not time on
-  heat: fetching the ingredients and equipment out, weighing and measuring, the
-  knife work, and clearing down afterwards. Estimated for a cook who starts with
-  nothing out and finishes with a clean kitchen.
-- **`cookTimeMinutes`** — time the food spends cooking. On the hob, in the oven,
-  under the grill.
-- **`totalTimeMinutes`** — wall-clock from starting to serving, **including**
-  unattended waits that are neither prep nor cook: marinating, proving, chilling,
-  resting. This is why a total may legitimately be many times prep + cook.
-- **`totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes`**, always.
+**Issue #1233 retired all three rather than redefining them again.** The model is
+no longer asked for `prepTimeMinutes`, `cookTimeMinutes` or `totalTimeMinutes` on
+any path, and the `totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes` rule went
+with them — it is definitional once elapsed time is a sum of the phases by
+construction. The three AI output schemas keep the keys as `.optional()` so a model
+that stops returning them cannot fail `.safeParse` at the trust boundary and take
+every authoring call with it; #1211 deletes them. What the paths ask for instead is
+the phase strip, defined above. The rest of this section is the record of why the
+old definitions read as they did.
 
 Two decisions worth keeping:
 
@@ -345,17 +343,16 @@ deploy → dry-run → apply → verify procedure.
 - **`isCookable(recipe.kind)` gates the call**, same as the kit branch — an outing
   or a placeholder has nothing to time.
 - **It shares the field DEFINITIONS, not the estimation policy.** The flow
-  interpolates `TIME_RULES` from `recipeFieldRules.ts` — the same field-meaning
-  text quoted above — so a backfilled recipe and a freshly-authored one are judged
-  against the same statement of what `prepTimeMinutes`/`cookTimeMinutes`/
-  `totalTimeMinutes` **mean**. It is precise to stop there: the flow's own
-  `## How to estimate` block (scale prep with servings, a step timer is a floor,
-  heat vs. unattended wait, overlapping work counts once, "a competent home cook
-  doing only this", round to a human number) is a separate, flow-local set of
-  heuristics for turning that definition into three numbers, and it is **not**
-  shared with `recipeFieldRules.ts` or with the three authoring paths — the two
-  texts can drift from each other independently. Unifying them is deferred to its
-  own follow-up issue.
+  interpolates `PHASE_RULES` from `recipeFieldRules.ts` — the same text quoted
+  above — so a backfilled recipe and a freshly-authored one are judged against the
+  same statement of what a recipe's timing **means**. It is precise to stop there:
+  the flow's own `## How to estimate` block (scale the hands-on work with servings,
+  a step timer is a floor, heat vs. unattended wait, overlapping work counts once,
+  "a competent home cook doing only this", round to a human number) is a separate,
+  flow-local set of heuristics for turning that definition into a strip, and it is
+  **not** shared with `recipeFieldRules.ts` or with the three authoring paths — the
+  two texts can drift from each other independently. Unifying them is deferred to
+  its own follow-up issue.
 
 ### Schema extensions (issue #180)
 

@@ -54,20 +54,19 @@ export const LibrarianOutputSchema = z.object({
   // list by Infinity (issue #1123) — so this path was the last one able to mint
   // that state.
   servings: z.number().int().positive().nullable(),
-  // Same time constraints as the extractor (ExtractRecipeAIOutputSchema), and
-  // for the same reasons — the librarian was the one authoring path that would
-  // accept a fractional or negative minute count and store it (issue #952).
+  // NO LONGER ASKED FOR (issue #1233). The prompt stopped naming these three, so
+  // the model stops returning them — and `.optional()` is what keeps that from
+  // failing `.safeParse` at the trust boundary and taking every authoring call
+  // with it. Absent means the same as null here; the assembler writes null.
   //
-  // The 0 rule is asymmetric on purpose (issue #739): `totalTimeMinutes: 0`
-  // describes a recipe nobody can cook, so 0 there is a model glitch and stays
-  // rejected, while `prepTimeMinutes: 0` / `cookTimeMinutes: 0` are real answers
-  // for anything assembled rather than cooked. Read the fuller reasoning beside
-  // the extractor's copy before changing either. 0 does not survive to the
-  // stored recipe in any case: assembleRecipeDraft folds it back to null once it
-  // has reconciled the total.
-  totalTimeMinutes: z.number().int().positive().nullable(),
-  prepTimeMinutes: z.number().int().nonnegative().nullable(),
-  cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  // The constraints below still apply to a value that DOES arrive, because the
+  // relaxation is about presence, not about range. Kept rather than deleted only
+  // until #1211 removes the three keys from `RecipeMetadataSchema` and sweeps the
+  // fixtures; nothing reads them in the meantime. The 0 rule they encode (issue
+  // #739) is recorded beside the extractor's copy.
+  totalTimeMinutes: z.number().int().positive().nullable().optional(),
+  prepTimeMinutes: z.number().int().nonnegative().nullable().optional(),
+  cookTimeMinutes: z.number().int().nonnegative().nullable().optional(),
   // The recipe's timing as an ordered strip (issue #1122), which is what it will
   // BE once the three numbers above retire. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer

@@ -21,10 +21,21 @@ export function formatRecipeForPrompt(r: RecipeDoc): string {
 
   const meta: string[] = [];
   if (r.metadata.servings != null) meta.push(`servings: ${r.metadata.servings}`);
-  if (r.metadata.prepTimeMinutes != null) meta.push(`prep: ${r.metadata.prepTimeMinutes} min`);
-  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
-  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
   if (meta.length > 0) parts.push(meta.join(', '));
+  // The timing, as the phase strip and nothing else (issue #1233). The three old
+  // numbers were rendered here until nothing wrote them; showing a chef a stored
+  // figure no screen displays is showing it something the cook cannot see.
+  const phases = r.metadata.phases ?? [];
+  if (phases.length > 0) {
+    parts.push(
+      `Timing:\n${phases
+        .map(
+          (p) =>
+            `  - ${p.label}: ${p.handsOnMinutes} min hands-on, ${p.handsOffMinutes} min hands-off`,
+        )
+        .join('\n')}`,
+    );
+  }
   if (r.metadata.tags.length > 0) parts.push(`Tags: ${r.metadata.tags.join(', ')}`);
 
   const ingredientLines: string[] = [];

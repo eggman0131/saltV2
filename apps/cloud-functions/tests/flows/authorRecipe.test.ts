@@ -789,7 +789,12 @@ describe('authorRecipe — meal components', () => {
         },
       ],
       steps: [{ id: 'cs1', text: CHICKEN_STEP, timer: null, note: null }],
-      metadata: { ...baseRecipeDoc().metadata, cookTimeMinutes: 90, totalTimeMinutes: 125 },
+      metadata: {
+        ...baseRecipeDoc().metadata,
+        cookTimeMinutes: 90,
+        totalTimeMinutes: 125,
+        phases: [{ label: 'Roast & rest', handsOnMinutes: 15, handsOffMinutes: 110 }],
+      },
     };
   }
 
@@ -830,7 +835,8 @@ describe('authorRecipe — meal components', () => {
     const system = systemPromptFrom();
     expect(system).toContain('NAMES AND TIMES ONLY');
     expect(system).toContain('Dish 1: Roast chicken');
-    expect(system).toContain('cook: 90 min');
+    // The whole process, start to serve — the phase sum since issue #1233.
+    expect(system).toContain('takes: 125 min start to serve');
     // Edit-mode grounding survives alongside it.
     expect(system).toContain('Editing an existing recipe');
   });

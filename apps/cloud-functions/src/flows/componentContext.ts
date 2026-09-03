@@ -23,7 +23,7 @@
 //     Withholding the ingredient lists makes that impossible by construction
 //     rather than by prompt wording. The librarian does not need them anyway: the
 //     meal's own method is timing ("chicken in at 4:00, potatoes at 4:45"), which
-//     needs cook times, not potato quantities.
+//     needs how long each dish takes, not potato quantities.
 //
 // The invariant this module must never break is the one the whole meals feature
 // rests on (`docs/recipe-module.md`, `packages/domain/src/recipe/queries/components.ts`):
@@ -42,6 +42,7 @@ import type { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { RecipeSchema } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
+import { recipePhaseTotals } from '@salt/domain';
 import { formatRecipeForPrompt } from './recipeText.js';
 
 /**
@@ -94,16 +95,17 @@ export async function readComponentContext(
  * and how long it takes. NEVER its ingredients and NEVER its steps — see the
  * header comment for why that omission is structural rather than stylistic.
  *
- * Cook time earns its place because the meal's own method is a timing plan; prep
- * time does not, because prep is done ahead and in any order.
+ * The timing earns its place because the meal's own method is a timing plan. It is
+ * the dish's ELAPSED time, from the phase strip — the whole process, start to
+ * serve, which is the same figure the cook plan's start clock is worked back from
+ * (issue #1233). A dish with no strip contributes no timing line rather than a
+ * fabricated one.
  */
 function renderComponentForLibrarian(r: RecipeDoc, ordinal: number): string {
   const parts = [`Dish ${ordinal}: ${r.title}`];
   if (r.description) parts.push(`Description: ${r.description}`);
-  const meta: string[] = [];
-  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
-  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
-  if (meta.length > 0) parts.push(meta.join(', '));
+  const totals = recipePhaseTotals(r.metadata.phases);
+  if (totals.hasPhases) parts.push(`takes: ${totals.elapsedMinutes} min start to serve`);
   return parts.join('\n');
 }
 

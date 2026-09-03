@@ -29,7 +29,7 @@ vi.mock('../../src/ai/resolveModel.js', () => ({
 
 const { estimateRecipeTimesFlow, reconcileEstimatedTimes } =
   await import('../../src/flows/estimateRecipeTimes.js');
-const { TIME_RULES } = await import('../../src/flows/recipeFieldRules.js');
+const { PHASE_RULES } = await import('../../src/flows/recipeFieldRules.js');
 
 beforeEach(() => {
   mockGenerate.mockReset();
@@ -142,13 +142,13 @@ describe('estimateRecipeTimesFlow', () => {
     // shared. If the backfill ever measures recipes against its own
     // hand-written field definitions, the library goes back to being split
     // between two of them — which is the whole of issue #952. The estimation
-    // HEURISTICS below TIME_RULES are a separate, flow-local half not covered
+    // HEURISTICS below PHASE_RULES are a separate, flow-local half not covered
     // by this assertion — see the "FIELD DEFINITIONS... ESTIMATION HEURISTICS"
     // header comment in estimateRecipeTimes.ts.
     respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55 });
     await estimateRecipeTimesFlow(input);
     const { system } = mockGenerate.mock.calls[0]![0] as { system: string };
-    expect(system).toContain(TIME_RULES);
+    expect(system).toContain(PHASE_RULES);
   });
 
   it('sends the ingredient lines and the step timers as the evidence', async () => {

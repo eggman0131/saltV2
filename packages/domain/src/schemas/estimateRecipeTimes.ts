@@ -37,41 +37,39 @@ export type EstimateRecipeTimesInput = z.infer<typeof EstimateRecipeTimesInputSc
 // What the model emits, and it carries the SAME constraints as the two authoring
 // paths (LibrarianOutputSchema, ExtractRecipeAIOutputSchema) because it is
 // answering the same question against the same definition — a third set of
-// constraints for the same three fields is how the three drift apart.
+// constraints for the same shape is how the three drift apart.
 //
-// The 0 rule stays asymmetric exactly as it is there (issue #739): a
-// `totalTimeMinutes` of 0 describes a recipe nobody can cook and is a model
-// glitch, while `prepTimeMinutes: 0` / `cookTimeMinutes: 0` are real answers for
-// something assembled rather than cooked. `reconcileEstimatedTimes` folds a
-// surviving 0 back to null before anything is written, so 0 never reaches a
-// stored document — the same bargain assembleRecipeDraft makes.
+// The three time numbers are NO LONGER ASKED FOR (issue #1233): the prompt names
+// the phase strip and nothing else, so the model stops returning them and
+// `.optional()` is what keeps that from failing `.safeParse` and taking every
+// re-estimate with it. They stay declared, with their ranges, only until #1211
+// removes them; the 0 rule they encode (issue #739) is recorded on the authoring
+// schemas.
 export const EstimateRecipeTimesAIOutputSchema = z.object({
-  prepTimeMinutes: z.number().int().nonnegative().nullable(),
-  cookTimeMinutes: z.number().int().nonnegative().nullable(),
-  totalTimeMinutes: z.number().int().positive().nullable(),
-  // The ordered phase strip (issue #1122), asked for in the SAME call as the three
-  // numbers rather than by a second flow — one model call, one answer, and no way
-  // for a recipe's strip and its total to have been decided by two readings of it.
+  prepTimeMinutes: z.number().int().nonnegative().nullable().optional(),
+  cookTimeMinutes: z.number().int().nonnegative().nullable().optional(),
+  totalTimeMinutes: z.number().int().positive().nullable().optional(),
+  // The ordered phase strip (issue #1122), and since #1233 the whole of what this
+  // flow is for.
   //
-  // Both `.optional()` for the reason the authoring schemas give: a strip the model
-  // forgot must leave the recipe unestimated, not throw away the numbers it did
-  // return. `reconcileEstimatedTimes` is what turns absent into empty.
-  // `AuthoredRecipePhasesSchema`'s own `.catch([])` is what protects the SAME
-  // three numbers from a strip the model returned but got wrong — the backfill
-  // retries a hard failure, but there is no reason to force that retry over a
-  // decorative field (issue #1122 review, blocking 3).
+  // `.optional()` for the reason the authoring schemas give: a strip the model
+  // forgot must leave the recipe unestimated rather than fail the call.
+  // `reconcileEstimatedTimes` is what turns absent into empty, and
+  // `AuthoredRecipePhasesSchema`'s own `.catch([])` is what stops a malformed
+  // strip forcing a backfill retry (issue #1122 review, blocking 3).
   phases: AuthoredRecipePhasesSchema.optional(),
   timingSummary: AuthoredTimingSummarySchema.optional(),
 });
 
-// The flow's output: the same three fields, reconciled against each other and
-// zero-folded. Named separately from the AI output for the reason
-// identifyRecipeKit and parseRecipeIngredients name theirs — they are the same
-// shape today, and the seam is what keeps them free to differ.
+// The flow's output: reconciled and zero-folded. Named separately from the AI
+// output for the reason identifyRecipeKit and parseRecipeIngredients name theirs —
+// they are the same shape today, and the seam is what keeps them free to differ.
 export const EstimateRecipeTimesOutputSchema = z.object({
-  prepTimeMinutes: z.number().int().positive().nullable(),
-  cookTimeMinutes: z.number().int().positive().nullable(),
-  totalTimeMinutes: z.number().int().positive().nullable(),
+  // `.optional()` alongside the AI output's, so the flow may stop producing the
+  // three without a second schema move (issue #1233). Nothing reads them.
+  prepTimeMinutes: z.number().int().positive().nullable().optional(),
+  cookTimeMinutes: z.number().int().positive().nullable().optional(),
+  totalTimeMinutes: z.number().int().positive().nullable().optional(),
   // Passed through untouched by `reconcileEstimatedTimes`: the phases carry their
   // own arithmetic (elapsed is a sum, computed at the point of use), so there is
   // nothing here to reconcile and nothing to zero-fold. A phase of 0 hands-on is

@@ -138,6 +138,7 @@ beforeEach(() => {
         totalTimeMinutes: 125,
         prepTimeMinutes: 15,
         cookTimeMinutes: 90,
+        phases: [{ label: 'Roast & rest', handsOnMinutes: 15, handsOffMinutes: 110 }],
         tags: [],
       },
     }),
@@ -151,6 +152,7 @@ beforeEach(() => {
         totalTimeMinutes: 70,
         prepTimeMinutes: 10,
         cookTimeMinutes: 50,
+        phases: [{ label: 'Parboil & roast', handsOnMinutes: 10, handsOffMinutes: 60 }],
         tags: [],
       },
     }),
@@ -184,7 +186,8 @@ describe('chefChat — meal components', () => {
     expect(system).toContain(CHICKEN_INGREDIENT);
     expect(system).toContain(CHICKEN_STEP);
     expect(system).toContain(POTATO_INGREDIENT);
-    expect(system).toContain('cook: 90 min');
+    // The dish's timing, as the phase strip and nothing else (issue #1233).
+    expect(system).toContain('110 min hands-off');
   });
 
   it("carries each dish's tags, step timers and notes through to the prompt (#934)", async () => {

@@ -259,7 +259,18 @@ export async function assembleRecipeDraft(
   // real stored one (a 4-hour chill, say) with `prep + cook`. So in edit mode a
   // librarian `total: null` stays null, exactly like a forgotten `servings`;
   // only a STATED total still gets raised to the parts' floor.
-  const times = reconcileRecipeTimes(raw, { deriveMissingTotal: baseRecipe === null });
+  //
+  // `?? null` on each because the model is no longer ASKED for the three (issue
+  // #1233), so the output schemas accept them absent; absent and null mean the
+  // same thing here. This whole block goes with `reconcileRecipeTimes` itself.
+  const times = reconcileRecipeTimes(
+    {
+      prepTimeMinutes: raw.prepTimeMinutes ?? null,
+      cookTimeMinutes: raw.cookTimeMinutes ?? null,
+      totalTimeMinutes: raw.totalTimeMinutes ?? null,
+    },
+    { deriveMissingTotal: baseRecipe === null },
+  );
 
   // The phase strip and its one-line summary (issue #1122), merged as ONE fact
   // rather than two independently-defaulted fields (issue #1122 review, blocking
