@@ -147,6 +147,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'pending',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-05-14T10:00:00.000Z',
       updatedAt: '2026-05-14T10:00:00.000Z',
@@ -164,6 +165,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: 'canon-flour',
       matchState: 'matched',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-05-14T10:00:00.000Z',
       updatedAt: '2026-05-14T10:00:00.000Z',
@@ -184,6 +186,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'pending',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '',
       updatedAt: '',
@@ -204,6 +207,7 @@ const deliveryCases: DeliveryCase[] = [
       amount: 3,
       unit: 'count',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-07-17T10:00:00.000Z',
       updatedAt: '2026-07-17T10:00:00.000Z',
@@ -229,6 +233,7 @@ const deliveryCases: DeliveryCase[] = [
       amount: 3,
       unit: 'count',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-07-01T10:00:00.000Z',
       updatedAt: '2026-07-01T10:00:00.000Z',
@@ -239,7 +244,13 @@ const deliveryCases: DeliveryCase[] = [
     },
   },
   {
-    name: 'an unknown matchState falls back to pending',
+    // Both of the next two rows asserted the OPPOSITE until #1114, and the
+    // inversion is the fix. `matchState` carried the repository's only
+    // `.catch()`, so an unrecognised state was laundered to 'pending' — and
+    // `onShoppingListItemWrite` reads the same field raw and sees something that
+    // is NOT 'pending', so the row showed as waiting to be matched while the
+    // trigger declined to match it, forever.
+    name: 'an unknown matchState is SKIPPED, not laundered to pending',
     docId: 'item-x',
     stored: {
       id: 'item-x',
@@ -249,17 +260,21 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'unknown_future_value',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '',
       updatedAt: '',
     },
-    assert: (items) => expect(items[0]!.matchState).toBe('pending'),
+    assert: (items) => expect(items).toEqual([]),
   },
   {
-    name: 'missing sources default to an empty array',
+    // A row with almost nothing on it used to arrive with every field invented
+    // — no name to read in the shop, and an id that made ticking it off, editing
+    // it and deleting it all fail.
+    name: 'a document missing most of its fields is SKIPPED, not filled in',
     docId: 'item-bare',
     stored: { id: 'item-bare', rawText: 'x' },
-    assert: (items) => expect(items[0]!.sources).toEqual([]),
+    assert: (items) => expect(items).toEqual([]),
   },
 ];
 
@@ -360,6 +375,7 @@ describe('listShoppingListItems', () => {
             canonId: 'canon-oat-milk',
             matchState: 'matched',
             checked: true,
+            needsCheck: false,
             schemaVersion: 1,
             createdAt: '2026-05-14T10:00:00.000Z',
             updatedAt: '2026-05-14T10:00:00.000Z',

@@ -113,27 +113,30 @@ describe('subscribeShoppingLists', () => {
     expect(delivered).toEqual([[LIST_1]]);
   });
 
-  it('normalises missing fields to safe defaults rather than skipping the document', () => {
+  it('SKIPS a document missing fields rather than delivering it with blanks', () => {
+    // This row used to assert the opposite, and the inversion IS the fix
+    // (#1114). `ShoppingListSchema` defaulted every field, so a document with
+    // pieces missing did not fail — it was filled in and delivered as a real,
+    // unnamed list. The parse loop's whole contract is to skip an invalid
+    // document and log it, and it was never given a failure to act on.
     const delivered: ShoppingList[][] = [];
+    const errors: unknown[][] = [];
     subscribeShoppingLists(
       (lists) => delivered.push(lists),
-      () => {},
+      (...args) => errors.push(args),
     );
 
     (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
-      firstSnapshot([{ id: 'legacy', data: () => ({}) }]),
+      firstSnapshot([
+        { id: 'legacy', data: () => ({}) },
+        { id: LIST_1.id, data: () => ({ ...LIST_1 }) },
+      ]),
     );
 
-    // Defaults, not a rejection. The parse loop SKIPS an invalid document, so a
-    // schema that refused this one would take a legacy list off the screen
-    // instead of showing it unnamed.
-    //
-    // The `id` is the one field that does NOT default here: it comes from the
-    // document id now (#1114), so an empty `id` FIELD can no longer reach the
-    // screen even on a document that carries nothing else.
-    expect(delivered).toEqual([
-      [{ id: 'legacy', name: '', schemaVersion: 1, createdAt: '', updatedAt: '' }],
-    ]);
+    // Skipped, not rejected wholesale: one bad document must never fail the
+    // whole read, so the good list beside it still arrives.
+    expect(delivered).toEqual([[LIST_1]]);
+    expect(errors).toEqual([]);
   });
 
   it('classifies a stream error and forwards the raw one alongside it', () => {
