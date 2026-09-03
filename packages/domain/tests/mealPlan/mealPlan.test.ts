@@ -270,7 +270,7 @@ describe('instantiateWeek', () => {
     const days = Object.fromEntries(
       WEEKDAYS.map((wd) => [wd, { ...emptyDay(), note: `usual-${wd}` }]),
     );
-    return { schemaVersion: 1, days: days as MealPlanTemplate['days'] };
+    return { schemaVersion: 1, days };
   }
 
   it('copies each weekday template day onto the matching dated day (Monday start)', () => {
@@ -297,7 +297,30 @@ describe('instantiateWeek', () => {
   it('deep-copies template days (no shared array references)', () => {
     const template = emptyTemplate();
     const week = instantiateWeek('2026-06-08', config('mon'), template);
-    expect(week.days['2026-06-08']!.chefs).not.toBe(template.days.mon.chefs);
+    expect(week.days['2026-06-08']!.chefs).not.toBe(template.days.mon!.chefs);
+  });
+
+  // Issue #1056. `MealPlanTemplateSchema` accepts a document missing weekdays,
+  // so this input is a legally parsed template. Before the fix this threw
+  // `TypeError: Cannot read properties of undefined (reading 'recipeIds')` out
+  // of a non-async function, escaping the planner's `await` and its toast.
+  it('instantiates a weekday the template omits as a blank day, and still returns seven dates', () => {
+    const partial: MealPlanTemplate = {
+      schemaVersion: 1,
+      days: { mon: { ...emptyDay(), note: 'usual-mon' } },
+    };
+    const week = instantiateWeek('2026-06-08', config('mon'), partial);
+    expect(Object.keys(week.days)).toEqual(weekDates('2026-06-08'));
+    expect(week.days['2026-06-08']!.note).toBe('usual-mon');
+    for (const date of weekDates('2026-06-08').slice(1)) {
+      expect(week.days[date]).toEqual(emptyDay());
+    }
+  });
+
+  it('instantiates an entirely empty template as seven blank days', () => {
+    const week = instantiateWeek('2026-06-08', config('mon'), { schemaVersion: 1, days: {} });
+    expect(Object.keys(week.days)).toEqual(weekDates('2026-06-08'));
+    for (const date of weekDates('2026-06-08')) expect(week.days[date]).toEqual(emptyDay());
   });
 });
 
@@ -367,7 +390,35 @@ describe('day mutators (immutability + correctness)', () => {
   it('mutators also operate on a template keyed by weekday', () => {
     const template = emptyTemplate();
     const next = setDayNote(template, 'fri', 'pizza');
-    expect(next.days.fri.note).toBe('pizza');
-    expect(template.days.fri.note).toBe('');
+    expect(next.days.fri!.note).toBe('pizza');
+    expect(template.days.fri!.note).toBe('');
+  });
+
+  // Issue #1056, both failure modes of an absent day key. The four whole-day
+  // mutators did not throw — they wrote a malformed one-key `Day`, which every
+  // `MealPlanDaySchema` field defaulting meant read back as a blank day, so the
+  // corruption concealed itself. Asserting the SHAPE is therefore the only
+  // assertion that fails on the unfixed code; `not.toThrow()` would pass.
+  it('setDayNote on a weekday the template omits creates a complete day', () => {
+    const partial: MealPlanTemplate = { schemaVersion: 1, days: {} };
+    const next = setDayNote(partial, 'wed', 'curry');
+    expect(next.days.wed).toEqual({ ...emptyDay(), note: 'curry' });
+    expect(partial.days.wed).toBeUndefined();
+  });
+
+  // The other row: the four attendee mutators threw a `TypeError` off
+  // `undefined.attendees` / `.filter`.
+  it('addAttendee on a weekday the template omits creates a complete day', () => {
+    const partial: MealPlanTemplate = { schemaVersion: 1, days: {} };
+    const next = addAttendee(partial, 'sat', attendee);
+    expect(next.days.sat).toEqual({ ...emptyDay(), attendees: [attendee] });
+  });
+
+  // The generic container is shared with the concrete week, whose keys are
+  // always seeded as the full `weekDates(start)` — so this arm is defence in
+  // depth, and it must behave the same way rather than diverging.
+  it('a week mutator on an unseeded date key also creates a complete day', () => {
+    const next = setDayNote(base, '2026-12-25', 'goose');
+    expect(next.days['2026-12-25']).toEqual({ ...emptyDay(), note: 'goose' });
   });
 });

@@ -1,36 +1,33 @@
-// Type-level test: the gap between what `MealPlanTemplateSchema` actually
-// guarantees and what `MealPlanTemplate` claims — finding B3-007, pinned rather
-// than described (issue #932).
+// Type-level test: `MealPlanTemplate` and `MealPlanTemplateSchema` agree about
+// whether a weekday can be missing. They did not until issue #1056 — the entity
+// narrowed `days` back to a total record, and one cast in `mealPlanSync.ts`
+// asserted the parse's partial map into it, which was finding B3-007.
 //
-// #932 recorded that converting this entity to `z.infer` would be "a no-op for
-// B3-007, because z.infer['days'] is Record<Weekday, Day>, exactly as wrong as
-// the interface". That is NOT true on the zod this repo resolves (3.25.x):
-// `z.record(WeekdayEnum, …)` infers `Partial<Record<Weekday, Day>>` — already
-// truthful. The lie lives entirely in the entity's narrowing and in the one
-// surviving cast in mealPlanSync.ts, which together assert the parse's partial
-// record into a total one for `instantiateWeek` to dereference unguarded.
-//
-// These assertions exist so B3-007 is discovered by a failing test rather than
-// by reading a comment, and so the next person to touch either side is told
-// which half they are changing.
+// `z.record(WeekdayEnum, …)` validates an open enum-keyed map and zod (3.25.x
+// here) infers `Partial<Record<Weekday, Day>>`. The entity now takes that
+// inference verbatim. A runtime assertion cannot see any of this, which is why
+// it is pinned here rather than in the schema suite beside it.
 import { describe, it, expectTypeOf } from 'vitest';
 import type { MealPlanTemplate } from '@salt/domain';
 import type { MealPlanTemplateDoc } from '@salt/domain/schemas';
 
 type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+type Day = NonNullable<MealPlanTemplate['days']['mon']>;
 
-describe('MealPlanTemplate vs MealPlanTemplateSchema (B3-007)', () => {
+describe('MealPlanTemplate vs MealPlanTemplateSchema (#1056)', () => {
   it('the SCHEMA admits a template missing weekdays — the parse is partial', () => {
     expectTypeOf<Record<string, never>>().toExtend<MealPlanTemplateDoc['days']>();
   });
 
-  it('the ENTITY claims every weekday is present — this is the lie B3-007 names', () => {
-    expectTypeOf<MealPlanTemplate['days']>().toEqualTypeOf<
-      Record<Weekday, MealPlanTemplate['days']['mon']>
-    >();
+  it('the ENTITY admits it too — every weekday is optional, not required', () => {
+    expectTypeOf<MealPlanTemplate['days']>().toEqualTypeOf<Partial<Record<Weekday, Day>>>();
   });
 
-  it('so the entity does NOT accept the schema type — the gap is real, not stylistic', () => {
-    expectTypeOf<MealPlanTemplateDoc['days']>().not.toExtend<MealPlanTemplate['days']>();
+  it('so the entity accepts the schema type exactly, with no narrowing between them', () => {
+    expectTypeOf<MealPlanTemplateDoc>().toEqualTypeOf<MealPlanTemplate>();
+  });
+
+  it('reading a weekday yields Day | undefined, which is what forces the guard', () => {
+    expectTypeOf<MealPlanTemplate['days']['mon']>().toEqualTypeOf<Day | undefined>();
   });
 });

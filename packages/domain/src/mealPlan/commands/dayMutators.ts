@@ -1,4 +1,5 @@
 import type { Attendee, Day } from '../entities/Day.js';
+import { emptyDay } from './emptyDay.js';
 
 // Day mutators operate on a "day container" — either a MealPlanWeek (date-keyed)
 // or a MealPlanTemplate (weekday-keyed). They are generic over the key type so a
@@ -6,14 +7,27 @@ import type { Attendee, Day } from '../entities/Day.js';
 // while sharing one implementation. All return a new container and never mutate
 // the input (pure, time-free — the service stamps `updatedAt` on save).
 
-type DayContainer<K extends string> = { readonly days: Readonly<Record<K, Day>> };
+// The record is PARTIAL (issue #1056). A template legitimately omits weekdays —
+// `MealPlanTemplateSchema` accepts a document missing them — and `Record<K, Day>`
+// with a generic `K` is a mapped type, not an index signature, so
+// `noUncheckedIndexedAccess` did not apply and the read below was silently typed
+// `Day`. Partial is what makes the `?? emptyDay()` guard load-bearing rather
+// than dead code the compiler thinks unreachable.
+type DayContainer<K extends string> = { readonly days: Readonly<Partial<Record<K, Day>>> };
 
+// An absent `dayKey` updates a blank day rather than `undefined`. Two failure
+// modes preceded this (issue #1056): the four whole-day mutators wrote a
+// malformed one-key `Day` — which every `MealPlanDaySchema` field defaulting
+// meant read back as a blank day, concealing itself — and the four attendee
+// mutators threw a `TypeError` off `undefined.attendees`. Both now produce the
+// same well-formed day. Live for templates; defence in depth for a concrete
+// week, whose keys are always seeded as the full `weekDates(start)`.
 function withDay<K extends string, T extends DayContainer<K>>(
   container: T,
   dayKey: K,
   update: (day: Day) => Day,
 ): T {
-  const next = update(container.days[dayKey]);
+  const next = update(container.days[dayKey] ?? emptyDay());
   return { ...container, days: { ...container.days, [dayKey]: next } } as T;
 }
 

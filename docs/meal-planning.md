@@ -43,9 +43,13 @@ Attendee {
 }
 ```
 
-- **Template** keys its seven `Day`s by weekday name. It carries the _usual_
-  attendees, chefs, home-times (which may be blank), per-person notes, and an
-  optional recurring meal `note` (e.g. Friday = pizza).
+- **Template** keys its `Day`s by weekday name — up to seven, not necessarily
+  seven. `MealPlanTemplateSchema` validates an open enum-keyed record, so a
+  stored template may omit weekdays, and since issue #1056 the type says so and
+  the two commands that index it guard for it. Every writer the app has emits
+  all seven; that is the writers' behaviour, not a schema guarantee. It carries
+  the _usual_ attendees, chefs, home-times (which may be blank), per-person
+  notes, and an optional recurring meal `note` (e.g. Friday = pizza).
 - **Week** keys its seven `Day`s by concrete `YYYY-MM-DD` date.
 
 ## First-day-of-week & week identity
@@ -120,7 +124,9 @@ unreliable in a working household and extra notice costs nothing.
 
 `instantiateWeek(startDate, config, template)` is a pure function: for each of
 the seven dates from `startDate`, it looks up that date's weekday in the
-template and copies the weekday `Day` into the dated `Day`. This is the
+template and copies the weekday `Day` into the dated `Day` — or a blank day if
+the template omits that weekday (#1056), so the produced week always has all
+seven dates and the function never throws. This is the
 "load template" action. Re-loading overwrites the week back to the standard,
 ready for exception-tweaking. This is the heart of the quick-weekly-update goal.
 
