@@ -178,11 +178,32 @@ describe('estimateRecipeTimesFlow', () => {
     });
   });
 
+  // Issue #1233 review, blocking 1: the three time numbers are no longer asked
+  // for and nothing reads them, so a malformed value on one of them (a fractional
+  // minute, a `0` the range gate rejects) must not take the whole re-estimate
+  // down — it degrades to null the same way an over-cap or malformed `phases`
+  // degrades to `[]`. A perfect phase strip must not be thrown away over a field
+  // invisible to the user.
+  it('degrades a malformed retired time field to null, rather than failing', async () => {
+    respond({
+      prepTimeMinutes: 12.5,
+      cookTimeMinutes: 35,
+      totalTimeMinutes: 0,
+      phases: [{ label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 }],
+      timingSummary: 'About 20 minutes.',
+    });
+    await expect(estimateRecipeTimesFlow(input)).resolves.toEqual({
+      phases: [{ label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 }],
+      timingSummary: 'About 20 minutes.',
+    });
+  });
+
   it('throws on an output that fails the trust-boundary parse', async () => {
-    // A fractional minute count, which the schema rejects. The trigger catches
-    // this, leaves `timesEstimatedAt` unstamped, and the script picks the recipe
-    // up on its next run.
-    respond({ prepTimeMinutes: 12.5, cookTimeMinutes: 35, totalTimeMinutes: 55 });
+    // `phases` is the one field left whose shape the flow actually depends on —
+    // a summary of the wrong TYPE (not a string or null) is not a range the
+    // decorative time fields' `.catch(null)` can absorb, because it never reaches
+    // that gate: the object itself is malformed.
+    respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55, timingSummary: 42 });
     await expect(estimateRecipeTimesFlow(input)).rejects.toThrow(/invalid output/);
   });
 });

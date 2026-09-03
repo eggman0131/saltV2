@@ -92,15 +92,19 @@ export const ExtractRecipeAIOutputSchema = z.object({
   // three, so the model stops returning them — and `.optional()` is what keeps
   // that from failing `.safeParse` at the trust boundary and taking every import
   // with it. Absent means the same as null; the assembler writes null. The range
-  // constraints still apply to a value that DOES arrive: the relaxation is about
-  // presence, not about range. They go entirely with #1211.
-  totalTimeMinutes: z.number().int().positive().nullable().optional(),
-  prepTimeMinutes: z.number().int().nonnegative().nullable().optional(),
-  cookTimeMinutes: z.number().int().nonnegative().nullable().optional(),
+  // constraints still apply to a value that DOES arrive — but a value that FAILS
+  // them now degrades to null (`.catch(null)`) rather than failing the parse, the
+  // same posture `AuthoredRecipePhasesSchema` takes on `phases` below: these are
+  // decorative fields nothing reads, and there is no retry on this path, so a
+  // stray `12.5` or `0` from a model that was never asked for the number must not
+  // cost the user their whole import. They go entirely with #1211.
+  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
+  prepTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
+  cookTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
   // The recipe's timing as an ordered strip (issue #1122), which is what it will
   // BE once the three numbers above retire. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer
-  // one question against one definition (`TIME_RULES`), and a per-file constraint
+  // one question against one definition (`PHASE_RULES`), and a per-file constraint
   // is how three of them come to mean three different things (#785, #952).
   //
   // `.optional()` on both so a model that omits them yields no strip rather than
