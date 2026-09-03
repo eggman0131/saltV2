@@ -11,8 +11,15 @@
 // `packages/domain/src/recipe/queries/recipePhaseTotals.ts:33-42` is the
 // specification, and a repo-root script cannot resolve `@salt/domain` (the
 // script states that bargain for its `COOKABLE_KINDS` list). So the rule is
-// restated here, and CLAUDE.md rule 12 applies: the restatement gets a test that
-// goes red when it drifts, rather than a comment claiming it agrees.
+// restated here, and CLAUDE.md rule 12 applies: the restatement gets a test —
+// bounded, not absolute, because packages/domain is out of scope for this issue
+// and nothing there names this copy back. `recipePhaseStrip.test.mjs` goes red
+// if THIS FILE drifts from the rule below; a change to `hasPhases` itself is not
+// caught here — unlike the `COOKABLE_KINDS` bargain a few lines down in the
+// script, where the trigger enforces `isCookable` either way, so drift there can
+// only skip a kind that would have been skipped anyway. There is no equivalent
+// backstop for this rule: the script's copy alone decides whether `--verify` may
+// call the library done.
 //
 // The rule, in full:
 //
@@ -37,10 +44,13 @@
  * same answer, and flattening them here would hide the distinction from anyone
  * reading a decode in isolation.
  *
- * Minutes are read with the same absent-reads-as-null care the script's
- * `readNumber` takes, and for the same reason — but note the boundary: the
- * strip ANSWER never depends on them. They are decoded so the shape is a
- * faithful `RecipePhase`, not because `hasPhaseStrip` inspects them.
+ * Minutes are read with the same absent-vs-stated care the script's
+ * `readNumber` takes, but note the opposite default: `readNumber` reads an
+ * absent field as `null`, while `minutes()` four lines below reads one as `0`,
+ * because `RecipePhaseSchema` types both minutes as plain numbers and a decoded
+ * phase has to satisfy that shape. Either way, note the boundary: the strip
+ * ANSWER never depends on them. They are decoded so the shape is a faithful
+ * `RecipePhase`, not because `hasPhaseStrip` inspects them.
  */
 export function decodeRecipePhases(field) {
   if (!field?.arrayValue) return null;

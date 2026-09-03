@@ -9,16 +9,20 @@ three environments are done in, and the ways a run silently does nothing.
 
 The script has been pointed at the library twice, for two different gaps.
 
-| Pass                 | Flag               | Asks the cookable recipes that…         | Status                       |
-| -------------------- | ------------------ | --------------------------------------- | ---------------------------- |
-| First (#952 phase 2) | _(none — default)_ | have no `timesEstimatedAt` stamp        | done, all three environments |
-| Second (#1210)       | `--missing-phases` | have **no phase strip**, stamped or not | the one you are here to run  |
+| Pass                 | Flag               | Asks the cookable recipes that…         | Status                                                                                                                                                              |
+| -------------------- | ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First (#952 phase 2) | _(none — default)_ | have no `timesEstimatedAt` stamp        | shipped, all three environments — but never "finished": it re-selects whatever is still unstamped each time it runs, including anything authored since the last run |
+| Second (#1210)       | `--missing-phases` | have **no phase strip**, stamped or not | the one you are here to run                                                                                                                                         |
 
-**If you are here to give every recipe a timeline, you want `--missing-phases`.** Run
-the default pass today and it will report `To ask : 0` and write nothing, because the
-first pass already stamped every recipe — and a stamp is not evidence of a strip. The
-script's `Select :` banner names which set it is about to ask; read it before typing
-`--apply`.
+**If you are here to give every recipe a timeline, you want `--missing-phases`.** But run
+the default pass too, before or alongside it. The default pass does **not** necessarily
+report `To ask : 0`: it only skips a recipe that is already stamped, and any recipe
+authored since the last default-pass apply has no stamp yet, so it still shows up there —
+and `--verify`'s `pending` count for it never clears until the default pass runs again. A
+stamp is still not evidence of a strip, so `--missing-phases` remains the flag that
+actually fills in the timeline; the default pass is what keeps `--verify` reachable at
+all. The script's `Select :` banner names which set it is about to ask; read it before
+typing `--apply`.
 
 ## What this is remediating
 
@@ -99,9 +103,16 @@ Two consequences worth having in mind before you run it:
    times branch honours it. Symptom is identical to (1). Check the switch before
    assuming a deploy problem.
 3. **Second pass only: you forgot `--missing-phases`.** The default selection is the
-   stamp, and the library is already stamped, so the run prints `To ask : 0` and
-   `✔ Nothing to do.` — which looks exactly like a finished job. The `Select :` banner
-   and a `--verify` that still reports `No phase strip : <n> ✖` are how you catch it.
+   stamp, not the strip, so a default run can print `To ask : 0` and `✔ Nothing to
+do.` while the library still has no phase strips at all — which looks exactly like
+   a finished job. The `Select :` banner and a `--verify` that still reports
+   `No phase strip : <n> ✖` are how you catch it.
+4. **A `--verify` `PENDING` recipe is not necessarily a broken deploy or a disabled
+   kill-switch.** The default pass only stamps what is unstamped when it runs; a recipe
+   authored after your last default-pass apply is genuinely, correctly `PENDING` until
+   the default pass runs again — that is neither (1) nor (2), it is the ordinary gap
+   between "authored" and "next default-pass run." Run the default pass (no
+   `--missing-phases`) to close it, then `--missing-phases` for the strip.
 
 ## What a verified run leaves behind
 
@@ -127,16 +138,21 @@ stamped, stores a strip, and reconciles arithmetically.
 
 ## Residue: recipes a re-ask does not fill
 
-Expect a few. The model can return three sensible numbers and omit the strip, and
-`reconcileRecipePhases` then leaves the document as it found it — no strip, under a fresh
-`timesEstimatedAt` stamp. Those recipes stay in `--verify`'s `No phase strip` list and are
-selected again by the next `--missing-phases` run, so nothing is lost, but the count stops
-falling.
+Expect a few. The model can return three sensible numbers and omit the strip.
+`reconcileRecipePhases` does **not** leave the document as it found it in that case — the
+same `update` (`onRecipeWritten.ts:495-507`) still rewrites `metadata.prepTimeMinutes`,
+`cookTimeMinutes` and `totalTimeMinutes` from the fresh answer; only `phases` stays `[]`
+and `timingSummary` carries forward. For a residue recipe those three numbers are its
+only timing and the only thing on screen, so each additional pass that asks it changes
+what a cook sees, not just the (still-missing) strip. Those recipes stay in `--verify`'s
+`No phase strip` list and are selected again by the next `--missing-phases` run, so
+nothing is lost, but the count stops falling.
 
 When `--verify` still lists a handful after a second apply:
 
-1. **Run the pass once more.** A different sampling of the model often answers. Cheap: it
-   only asks the recipes still missing a strip.
+1. **Run the pass once more.** A different sampling of the model often answers. Cheap in
+   AI calls — it only asks the recipes still missing a strip — but not free of churn:
+   each pass rewrites that recipe's prep/cook/total again, per the overwrite above.
 2. **If the same recipes survive a third pass, fix them by hand** in the recipe's phase
    editor (#1202 phase 2). Two or three named blocks with rough minutes is a better
    answer than none, and a hand-authored strip is exactly what this pass then leaves

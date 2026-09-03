@@ -122,6 +122,7 @@
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { decodeRecipePhases, hasPhaseStrip } from './lib/recipePhaseStrip.mjs';
+import { selectRecipesToAsk } from './lib/recipeSelection.mjs';
 import { isTimesEstimated } from './lib/recipeTimesEstimated.mjs';
 
 // Mirrors scripts/backfill-recipe-kit.mjs, including the env-var names, so the
@@ -384,10 +385,14 @@ const notCookable = recipes.filter((r) => !COOKABLE_KINDS.has(r.kind));
 // Three selections, sharing everything downstream of here. `--missing-phases`
 // sits BESIDE the stamp-keyed skip rather than replacing it: the default pass is
 // still the #952 one and still means what it meant, and the header says why the
-// second pass cannot be keyed on the stamp.
-const done = args.missingPhases ? (r) => r.hasStrip : (r) => r.estimated;
-const alreadyDone = args.redo ? [] : cookable.filter(done);
-const toAsk = args.redo ? cookable : cookable.filter((r) => !done(r));
+// second pass cannot be keyed on the stamp. The decision itself is pinned in
+// scripts/lib/recipeSelection.mjs (issue #1210 review, blocking 2) — an inverted
+// arrow here would silently ask the recipes that already have a strip instead of
+// the ones that don't.
+const { alreadyDone, toAsk } = selectRecipesToAsk(cookable, {
+  missingPhases: args.missingPhases,
+  redo: args.redo,
+});
 
 console.log(`Recipes found     : ${recipes.length}`);
 console.log(`Not cookable      : ${notCookable.length} (skipped — an outing has no prep time)`);
