@@ -7,6 +7,11 @@
 //   node scripts/backfill-recipe-times.mjs --project staging --apply
 //   node scripts/backfill-recipe-times.mjs --project prod    --apply --confirm production
 //
+// …and the SECOND pass (issue #1210), which selects differently:
+//
+//   node scripts/backfill-recipe-times.mjs --project dev  --missing-phases --dry-run
+//   node scripts/backfill-recipe-times.mjs --project dev  --missing-phases --apply
+//
 // ─── RUNBOOK: docs/runbooks/recipe-times-backfill.md ──────────────────────────
 //
 // Read it before the first run of an environment. The short version, because the
@@ -33,6 +38,38 @@
 // so a second run reports "0 to ask" and writes nothing. An interrupted run
 // resumes. `--redo` overrides the skip when a deliberate second pass is wanted
 // (after a change to the definition in `recipeFieldRules.ts`, say).
+//
+// ─── The second pass: the phase strip (issue #1210) ───────────────────────────
+//
+// #1122 added `metadata.phases` — the strip the recipe page draws a timeline
+// from — and the same trigger writes it. The library needs a second sweep for
+// it, and `--missing-phases` is that sweep. It differs from the pass above in
+// exactly one way, the selection:
+//
+//   DEFAULT           asks the cookable recipes with no `timesEstimatedAt` stamp
+//   --missing-phases  asks the cookable recipes with NO PHASE STRIP, stamp or not
+//
+// The default pass is never "finished": it re-selects whatever is still
+// unstamped each time it runs, including anything authored since the last
+// run, so it has to be re-run alongside this one or `--verify`'s pending
+// count never clears. Re-running it does not make this flag redundant,
+// though — a stamped recipe may still have no strip. A STAMP IS NOT
+// EVIDENCE OF A STRIP, and structurally so — `reconcileRecipePhases` leaves
+// `phases: []` when a model's answer omits the strip, and the trigger
+// stamps `timesEstimatedAt` in that same `update`. An empty strip under a
+// fresh stamp is a real outcome.
+//
+// Selecting on the strip rather than the stamp also keeps the two properties the
+// pass above has: it is safe to re-run, and safe to interrupt. And it never
+// re-asks a recipe that already has a strip — which matters more than it used to,
+// because #1202 shipped a hand editor for the strip before this pass ever runs,
+// and a write from here would overwrite a cook's corrections. That is why this is
+// a selection mode and not `--redo` over the whole library; `--redo` still means
+// what it always meant, and the two flags refuse to run together.
+//
+// The rule for "has a strip" is `recipePhaseTotals().hasPhases`, restated in
+// `scripts/lib/recipePhaseStrip.mjs` and tested there — absent and empty are both
+// no strip, and a strip whose minutes sum to zero is a strip.
 //
 // ─── It bumps the nonce; it does NOT call the flow ────────────────────────────
 //
@@ -86,6 +123,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { decodeRecipePhases, hasPhaseStrip } from './lib/recipePhaseStrip.mjs';
+import { selectRecipesToAsk } from './lib/recipeSelection.mjs';
 import { isTimesEstimated } from './lib/recipeTimesEstimated.mjs';
 
 // Mirrors scripts/backfill-recipe-kit.mjs, including the env-var names, so the
@@ -128,13 +167,15 @@ const PAUSE_MS = 1500;
 function parseArgs(argv) {
   // Dry run is the DEFAULT: `--apply` is the only thing that writes. Every write
   // here costs an AI call, so an accidental bare run must cost nothing at all.
-  const args = { apply: false, verify: false, redo: false };
+  const args = { apply: false, verify: false, redo: false, missingPhases: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--apply') args.apply = true;
     else if (arg === '--dry-run') args.apply = false;
     else if (arg === '--verify') args.verify = true;
     else if (arg === '--redo') args.redo = true;
+    // The second pass (#1210): select on the phase strip, not on the stamp.
+    else if (arg === '--missing-phases') args.missingPhases = true;
     else if (arg === '--project') args.project = argv[(i += 1)];
     // Non-interactive confirmation for `--project prod`; see the gate below for
     // why there is no readline prompt anywhere in this file.
@@ -147,11 +188,17 @@ function parseArgs(argv) {
 function die(message) {
   console.error(`✖ ${message}`);
   console.error(
-    '\nUsage: node scripts/backfill-recipe-times.mjs --project <dev|staging|prod> [--apply] [--verify] [--redo]',
+    '\nUsage: node scripts/backfill-recipe-times.mjs --project <dev|staging|prod> [--apply] [--verify] [--redo] [--missing-phases]',
   );
   console.error('       (dry run by default — nothing is written without --apply)');
-  console.error('       --verify re-reads the three fields and reports any that do not reconcile');
+  console.error(
+    '       --verify re-reads the three fields and the phase strip, and reports what is outstanding',
+  );
   console.error('       --redo also asks recipes that already carry timesEstimatedAt');
+  console.error(
+    '       --missing-phases asks the cookable recipes with no phase strip instead, stamp or not',
+  );
+  console.error('       (--redo and --missing-phases are mutually exclusive)');
   console.error('       writing to prod additionally needs --confirm production');
   process.exit(1);
 }
@@ -161,6 +208,12 @@ const args = parseArgs(process.argv.slice(2));
 // No default project, deliberately: the environment you are writing to is never
 // something this script should assume.
 if (!args.project) die('--project is required (dev | staging | prod). There is no default.');
+// Contradictory selections, so refused rather than silently ranked. `--redo`
+// asks EVERY cookable recipe including the ones whose strip a cook corrected by
+// hand; `--missing-phases` exists precisely to leave those alone.
+if (args.redo && args.missingPhases) {
+  die('--redo and --missing-phases select different recipes. Pass one or the other.');
+}
 const env = ENVIRONMENTS[args.project];
 if (!env) die(`Unknown project "${args.project}". Expected one of: dev, staging, prod.`);
 // Backstop against a mistyped SALT_*_PROJECT pointing the write somewhere
@@ -213,6 +266,14 @@ function timesOf(doc) {
   };
 }
 
+// The strip lives in the same `metadata` map as the three numbers, so the mask
+// at `listRecipes` already fetches it — no extra read and no mask change. The
+// decode and the "is this a strip?" rule are in scripts/lib/recipePhaseStrip.mjs
+// so they can be tested; the header there says why they are a hand-copy.
+function phasesOf(doc) {
+  return decodeRecipePhases(doc.fields?.metadata?.mapValue?.fields?.phases);
+}
+
 const show = (n) => (n === null ? '—' : String(n));
 const triple = (t) => `prep ${show(t.prep)} / cook ${show(t.cook)} / total ${show(t.total)}`;
 
@@ -225,12 +286,18 @@ function reconciles(t) {
 
 console.log(`Project : ${env.project} (${env.label})`);
 console.log(
-  `Mode    : ${args.verify ? 'VERIFY — reading only' : args.apply ? 'APPLY — one AI call per recipe' : 'DRY RUN — nothing will be written'}\n`,
+  `Mode    : ${args.verify ? 'VERIFY — reading only' : args.apply ? 'APPLY — one AI call per recipe' : 'DRY RUN — nothing will be written'}`,
 );
+if (!args.verify) {
+  console.log(
+    `Select  : ${args.missingPhases ? 'recipes with NO PHASE STRIP (stamp ignored)' : args.redo ? 'every cookable recipe (--redo)' : 'recipes with no timesEstimatedAt stamp'}`,
+  );
+}
+console.log('');
 
 // ─── Scan ─────────────────────────────────────────────────────────────────────
 
-// Masked to four fields so a scan of the whole collection stays cheap — the
+// Masked to five fields so a scan of the whole collection stays cheap — the
 // recipes themselves (ingredients, steps, prose) are never fetched. The trigger
 // reads those; this script only ever needs to know which documents to ask about
 // and what they say today.
@@ -260,6 +327,8 @@ async function listRecipes() {
           readNumber(doc.fields?.timesEstimatedAt),
         ),
         times: timesOf(doc),
+        // #1210: the second pass selects on this, and `--verify` counts it.
+        hasStrip: hasPhaseStrip(phasesOf(doc)),
       });
     }
     pageToken = page.nextPageToken ?? '';
@@ -281,32 +350,58 @@ const cookable = recipes.filter((r) => COOKABLE_KINDS.has(r.kind));
 if (args.verify) {
   const broken = cookable.filter((r) => !reconciles(r.times));
   const pending = cookable.filter((r) => !r.estimated);
+  // #1210: phase coverage joins the arithmetic check rather than replacing it.
+  // The three old fields are still stored, still written by the trigger and
+  // still the mid-migration fallback until #1202's phase 4, so `total >= prep +
+  // cook` is still a real property of the data this script's writes produce.
+  const noStrip = cookable.filter((r) => !r.hasStrip);
   for (const r of cookable) {
     console.log(
-      `  ${r.estimated ? 'done   ' : 'PENDING'}  ${reconciles(r.times) ? ' ' : '✖'} ${triple(r.times)}  ${r.title}`,
+      `  ${r.estimated ? 'done   ' : 'PENDING'}  ${r.hasStrip ? 'strip   ' : 'NO STRIP'}  ${reconciles(r.times) ? ' ' : '✖'} ${triple(r.times)}  ${r.title}`,
     );
   }
   console.log(`\nCookable recipes    : ${cookable.length}`);
   console.log(`Re-estimated        : ${cookable.length - pending.length}`);
   console.log(`Still pending       : ${pending.length}`);
+  console.log(`With a phase strip  : ${cookable.length - noStrip.length}`);
+  console.log(`No phase strip      : ${noStrip.length}${noStrip.length === 0 ? ' ✔' : ' ✖'}`);
   console.log(`Do not reconcile    : ${broken.length}${broken.length === 0 ? ' ✔' : ' ✖'}`);
   if (broken.length > 0) {
     console.error('\n✖ These still have total < prep + cook:');
     for (const r of broken) console.error(`    ${r.id}  ${triple(r.times)}  ${r.title}`);
   }
-  // Non-zero on either failing condition, so a CI-style "did it work" reads off
-  // the exit code rather than off the prose above it.
-  process.exit(broken.length === 0 && pending.length === 0 ? 0 : 1);
+  if (noStrip.length > 0) {
+    console.error('\n✖ These have no phase strip (--missing-phases asks exactly these):');
+    for (const r of noStrip) console.error(`    ${r.id}  ${triple(r.times)}  ${r.title}`);
+  }
+  // Non-zero on ANY failing condition, so a CI-style "did it work" reads off the
+  // exit code rather than off the prose above it. Note what 0 does and does not
+  // claim: every cookable recipe in THIS project is stamped, carries a strip and
+  // reconciles. It says nothing about the other two environments, and nothing
+  // about whether a strip is any good — only that one is stored.
+  process.exit(broken.length === 0 && pending.length === 0 && noStrip.length === 0 ? 0 : 1);
 }
 
 const notCookable = recipes.filter((r) => !COOKABLE_KINDS.has(r.kind));
-const alreadyDone = args.redo ? [] : cookable.filter((r) => r.estimated);
-const toAsk = args.redo ? cookable : cookable.filter((r) => !r.estimated);
+
+// Three selections, sharing everything downstream of here. `--missing-phases`
+// sits BESIDE the stamp-keyed skip rather than replacing it: the default pass is
+// still the #952 one and still means what it meant, and the header says why the
+// second pass cannot be keyed on the stamp. The decision itself is pinned in
+// scripts/lib/recipeSelection.mjs (issue #1210 review, blocking 2) — an inverted
+// arrow here would silently ask the recipes that already have a strip instead of
+// the ones that don't.
+const { alreadyDone, toAsk } = selectRecipesToAsk(cookable, {
+  missingPhases: args.missingPhases,
+  redo: args.redo,
+});
 
 console.log(`Recipes found     : ${recipes.length}`);
 console.log(`Not cookable      : ${notCookable.length} (skipped — an outing has no prep time)`);
 console.log(
-  `Already estimated : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`,
+  args.missingPhases
+    ? `Already has strip : ${alreadyDone.length} (skipped — never re-asked, so a hand-edited strip stands)`
+    : `Already estimated : ${alreadyDone.length} (skipped${args.redo ? '' : ' — pass --redo to ask again'})`,
 );
 console.log(`To ask            : ${toAsk.length}\n`);
 
