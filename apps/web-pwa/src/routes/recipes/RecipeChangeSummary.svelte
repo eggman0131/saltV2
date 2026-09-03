@@ -283,15 +283,23 @@
       const phases = m.phases;
       const summary = m.timingSummary;
       if (phases || summary) {
-        cards.push(
-          makeCard(
-            'timing',
-            'Timing',
-            'edit',
-            timingSide(phases ? phases.from : null, summary ? summary.from : undefined),
-            timingSide(phases ? phases.to : null, summary ? summary.to : undefined),
-          ),
-        );
+        const before = timingSide(phases ? phases.from : null, summary ? summary.from : undefined);
+        const after = timingSide(phases ? phases.to : null, summary ? summary.to : undefined);
+        // `diffRecipe` reports a field that moved; this card can only report what
+        // a reviewer can SEE move. `timingSide` deliberately collapses null, ""
+        // and whitespace to the one literal `no summary` (and trims a real
+        // sentence), so a stored `timingSummary` going null → "" is a change to
+        // the document and no change at all on screen — a card asserting movement
+        // while printing the same string in both columns, over a live Apply
+        // (#1217). Identical sides therefore yield no card, exactly as
+        // `textOrNull` declines to draw a prose field moving null ↔ "".
+        //
+        // The rule is stated on the RENDERED strings rather than on blankness so
+        // it cannot be outflanked by a second identical-looking pair: printing
+        // hands-on beside elapsed (#1216) exists to make sure a real strip change
+        // never lands here, and if a future rendering loses a distinction, this
+        // drops the unreadable card instead of showing it.
+        if (before !== after) cards.push(makeCard('timing', 'Timing', 'edit', before, after));
       }
     } else {
       for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'] as const) {
