@@ -286,8 +286,32 @@ export const coverageThresholds = {
     uncoveredLines: 87,
     uncoveredBranches: 90,
   },
+  // Lines RE-PINNED 92 → 91.98 in #1056, and this is NOT a ratchet release —
+  // it is the #929/#994 shape described at the head of this file, in its
+  // smallest possible form. #1056 deleted exactly one line of source here: the
+  // read-boundary cast `(template) => onTemplate(template as MealPlanTemplate |
+  // null)`, which became a bare `onTemplate` once the entity stopped narrowing
+  // the schema's partial weekday map into a total one. That line was COVERED.
+  //
+  //     before   621 / 675 lines   →   54 uncovered   →   92.00%
+  //     after    620 / 674 lines   →   54 uncovered   →   91.98%
+  //
+  // **The uncovered count is the invariant, and it is unchanged** — 54 before,
+  // 54 after, still exactly at the ceiling below. That is the test this file
+  // names for separating a moved basis from a regression wearing its clothes,
+  // and one covered line leaving a 92% pool drags the ratio by construction.
+  // Nothing here became less tested: #1056 added no untested code to this
+  // package and removed no test.
+  //
+  // What was rejected, explicitly: keeping an identity wrapper
+  // `(template) => onTemplate(template)` so the line would still be counted —
+  // dead code held solely to hold a number, which is the bodge CLAUDE.md
+  // forbids; and buying the 0.02 back with an unrelated firebase-sync test,
+  // which this file already says is the WRONG fix when the uncovered count has
+  // not risen. Branches, uncovered lines and uncovered branches are all
+  // unmoved, and a pin that does not need to move does not move.
   'packages/adapters/firebase-sync/src/**': {
-    lines: 92,
+    lines: 91.98,
     branches: 85.65,
     uncoveredLines: 54,
     uncoveredBranches: 34,

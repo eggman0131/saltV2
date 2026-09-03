@@ -3,6 +3,7 @@ import type { MealPlanConfig } from '../entities/MealPlanConfig.js';
 import type { MealPlanTemplate } from '../entities/MealPlanTemplate.js';
 import type { MealPlanWeek } from '../entities/MealPlanWeek.js';
 import { weekDates, weekdayOf, weekStartFor } from '../queries/weekdays.js';
+import { emptyDay } from './emptyDay.js';
 
 // Deep-copy a day so the produced week never shares mutable arrays with the
 // template it was instantiated from.
@@ -21,6 +22,15 @@ function cloneDay(day: Day): Day {
 // normalised to the true week start under `config` first, so passing any date
 // in the target week is safe. Pure — returns a fresh week, `updatedAt` blank for
 // the service to stamp on save.
+//
+// A weekday the template omits instantiates BLANK (issue #1056). The template's
+// `days` is a partial map — `MealPlanTemplateSchema` accepts a document missing
+// weekdays — and this function is total: it always produces all seven dates.
+// Blank is what the planner already shows when no template exists at all
+// (`currentTemplateObject()` falls back to `emptyTemplate()`), so a partial
+// template behaves like the empty one rather than as a third case. Skipping the
+// day would break the seven-date invariant every consumer relies on; throwing
+// would escape synchronously past the caller's `await` and never reach a toast.
 export function instantiateWeek(
   startDate: string,
   config: MealPlanConfig,
@@ -28,7 +38,7 @@ export function instantiateWeek(
 ): MealPlanWeek {
   const start = weekStartFor(startDate, config.firstDayOfWeek);
   const days = Object.fromEntries(
-    weekDates(start).map((date) => [date, cloneDay(template.days[weekdayOf(date)])]),
+    weekDates(start).map((date) => [date, cloneDay(template.days[weekdayOf(date)] ?? emptyDay())]),
   );
   return {
     id: start,

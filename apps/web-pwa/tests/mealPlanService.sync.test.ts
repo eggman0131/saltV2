@@ -262,8 +262,8 @@ describe('mealPlanService — mutations', () => {
     seedMealPlanTemplate(emptyTemplate());
     await setTemplateDayNote('fri', 'pizza');
     const saved = fs.saveMealPlanTemplate.mock.calls[0]![0]!;
-    expect(saved.days.fri.note).toBe('pizza');
-    expect(get(mealPlanTemplate)!.days.fri.note).toBe('pizza');
+    expect(saved.days.fri!.note).toBe('pizza');
+    expect(get(mealPlanTemplate)!.days.fri!.note).toBe('pizza');
   });
 });
 

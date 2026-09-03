@@ -9,10 +9,13 @@ export function emptyDay(): Day {
   return { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0 };
 }
 
-// A blank template with all seven weekdays empty.
+// A blank template with all seven weekdays empty. The type only requires a
+// partial map (issue #1056) — emitting all seven is this function's contract,
+// not the type's, and the test at tests/mealPlan/mealPlan.test.ts pins it.
 export function emptyTemplate(): MealPlanTemplate {
-  const days = Object.fromEntries(WEEKDAYS.map((wd) => [wd, emptyDay()]));
-  return { schemaVersion: 1, days: days as MealPlanTemplate['days'] };
+  const days: MealPlanTemplate['days'] = {};
+  for (const wd of WEEKDAYS) days[wd] = emptyDay();
+  return { schemaVersion: 1, days };
 }
 
 // A blank week for `startDate` (its seven dates empty). `updatedAt` is left blank

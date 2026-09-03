@@ -46,17 +46,12 @@ export function subscribeMealPlanTemplate(
       schema: MealPlanTemplateSchema,
       label: 'MealPlanTemplateSchema',
     },
-    // THE ONE READ-BOUNDARY CAST #932 DOES NOT DELETE, and the only one left.
-    // `MealPlanTemplateSchema.days` is `z.record(WeekdayEnum, …)`, which infers
-    // `Partial<Record<Weekday, Day>>` — a template parsed with a weekday missing
-    // is valid. `MealPlanTemplate` declares the record TOTAL, and
-    // `instantiateWeek` dereferences `template.days[weekday]` unguarded on the
-    // strength of it. This cast is what bridges the two, and it is therefore
-    // finding B3-007 itself, not an artefact of the hand-written type #932
-    // removed — deleting it forces the partial type through to `instantiateWeek`
-    // and demands a guard, which is a behavior change #932 deliberately split
-    // out. It goes when B3-007 is fixed, together with that guard.
-    (template) => onTemplate(template as MealPlanTemplate | null),
+    // No cast: `MealPlanTemplate` is now an unnarrowed alias of the schema's
+    // inferred type (issue #1056), so the parsed value crosses the boundary as
+    // itself. The cast this replaces asserted the parse's partial weekday map
+    // into a total one — the last read-boundary cast #932 left standing, and
+    // the defect itself rather than an artefact of it.
+    onTemplate,
     onError,
   );
 }
