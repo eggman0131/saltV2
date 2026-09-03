@@ -115,14 +115,6 @@
     return n === null ? 'none' : String(n);
   }
 
-  // Deferred here until issue #1213's phase 5 stops `recipeAmend.ts` and Refresh
-  // from writing these three — while they still do, an amend whose only movement
-  // is a Prep/Cook/Total number must still produce a card and a live Apply
-  // (PR #1231 review, blocking finding 2).
-  function timeValue(n: number | null): string {
-    return n === null ? 'none' : `${n} min`;
-  }
-
   // Prose absence is a real change of kind: a description that did not exist is
   // "new", not an edit of the word "none". A number or a timer is different —
   // unset still has a readable one-line value ("none", "no timer"), so those stay
@@ -252,14 +244,6 @@
     return cards;
   });
 
-  // Metadata field → readable label. Times get "min" via timeValue; servings is
-  // bare. Deferred here alongside `timeValue` until issue #1213's phase 5.
-  const timeLabels: Record<'prepTimeMinutes' | 'cookTimeMinutes' | 'totalTimeMinutes', string> = {
-    prepTimeMinutes: 'Prep time',
-    cookTimeMinutes: 'Cook time',
-    totalTimeMinutes: 'Total time',
-  };
-
   // Ordered metadata cards (only the fields present in the diff).
   const metadataCards = $derived.by(() => {
     if (!diff) return [] as ChangeCard[];
@@ -275,17 +259,10 @@
           servingsValue(m.servings.to),
         ),
       );
-    // Prep / Cook / Total, alongside the phase Timing card below rather than
-    // instead of it: `recipeAmend.ts` still merges all three into the applied
-    // recipe until issue #1213's phase 5 stops it, so a proposal that only moves
-    // one of them still needs a card and a live Apply (PR #1231 review, blocking
-    // finding 2). The split definition #1122 exists to end is the one this pair
-    // makes obsolete, not the one this deferral reopens.
-    for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'] as const) {
-      const c = m[key];
-      if (c) cards.push(makeCard(key, timeLabels[key], 'edit', timeValue(c.from), timeValue(c.to)));
-    }
-    // One "Timing" card, present when either half of the pair moved.
+    // ONE "Timing" card, present when either half of the pair moved, and since
+    // issue #1233 the only timing card there is: the Prep / Cook / Total cards
+    // restored in PR #1231 went when `recipeAmend.ts` stopped merging the fields
+    // they showed, so there is nothing left for them to propose.
     const phases = m.phases;
     const summary = m.timingSummary;
     if (phases || summary) {

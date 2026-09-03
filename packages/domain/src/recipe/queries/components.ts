@@ -1,4 +1,5 @@
 import type { Recipe } from '../entities/Recipe.js';
+import { recipePhaseTotals } from './recipePhaseTotals.js';
 
 // Meals — a dinner built from several dishes (issue #752).
 //
@@ -64,27 +65,32 @@ export function componentDisplayLines(components: readonly Recipe[]): string[] {
 // is meaningless at any depth, whereas A→B→A is merely unusual and already inert
 // (see the one-level rule above), so it is allowed rather than policed.
 //
-// Two call sites — the picker's candidate filter, and `insertComponentByCookTime`
-// below, which folds the same guard in so it cannot be bypassed by a caller that
-// forgot to ask.
+// Two call sites — the picker's candidate filter, and
+// `insertComponentByElapsedTime` below, which folds the same guard in so it cannot
+// be bypassed by a caller that forgot to ask.
 export function canBeComponentOf(ownerId: string, candidateId: string): boolean {
   return ownerId !== candidateId;
 }
 
-// Where a newly attached component lands. Longest-cooking-first, because that is
-// the order you start things in: the bird goes in before the potatoes.
+// Where a newly attached component lands. Longest-first, because that is the order
+// you start things in: the bird goes in before the potatoes.
 //
-// COOK time, not total time — prep is done ahead and in any order, so it says
-// nothing about when a dish has to begin. `cookTimeMinutes` is nullable and a
-// component with no cook time sorts to the TOP, where it reads as "start this when
-// you like" rather than being buried under everything that does declare a time.
+// THE WHOLE PROCESS, START TO SERVE — `recipePhaseTotals(...).elapsedMinutes`, the
+// same figure `scheduleFor` works the clock times back from (issue #1233). Until
+// then this ranked on a stored `cookTimeMinutes`, which assumed the chopping had
+// already been done at some earlier point in the day; a strip states when a dish
+// really has to begin, so nothing is assumed. The two are one argument and cannot
+// be split: rank on one figure and clock on the other, and the running order and
+// the start times tell different stories. A component with NO STRIP sorts to the
+// TOP, where it reads as "start this when you like" rather than being buried under
+// everything that does state a timing.
 //
 // POSITIONAL ONLY: the existing array is never re-sorted. The stored order is the
 // user's drag order, and a later attach must not silently undo an afternoon of
 // arranging. An id already in `ids` that no longer resolves keeps its place and
-// costs nothing — it is treated as having no cook time, exactly like the display
-// path treats it as absent.
-export function insertComponentByCookTime(
+// costs nothing — it is treated as having no strip, exactly like the display path
+// treats it as absent.
+export function insertComponentByElapsedTime(
   ownerId: string,
   ids: readonly string[],
   newId: string,
@@ -93,12 +99,13 @@ export function insertComponentByCookTime(
   if (!canBeComponentOf(ownerId, newId)) return [...ids];
   if (ids.includes(newId)) return [...ids];
 
-  // Sort key, descending: a higher rank cooks for longer and therefore starts
-  // earlier. "No cook time" is Infinity so it leads, and a dangling id shares that
-  // answer rather than throwing.
+  // Sort key, descending: a higher rank takes longer and therefore starts earlier.
+  // "No strip" is Infinity so it leads, and a dangling id shares that answer rather
+  // than throwing. `hasPhases`, not `elapsedMinutes >= 1` — a strip zeroed by hand
+  // is a stated timing of nothing and ranks last, not first.
   const rankOf = (id: string): number => {
-    const minutes = allRecipes.find((r) => r.id === id)?.metadata.cookTimeMinutes ?? null;
-    return minutes === null ? Infinity : minutes;
+    const totals = recipePhaseTotals(allRecipes.find((r) => r.id === id)?.metadata.phases);
+    return totals.hasPhases ? totals.elapsedMinutes : Infinity;
   };
 
   const newRank = rankOf(newId);

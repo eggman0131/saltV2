@@ -662,16 +662,16 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(doc.metadata.totalTimeMinutes).toBeNull();
   });
 
-  it('still repairs a STATED total that is less than its own parts on an amend', async () => {
-    // The fix is narrow: only a null total is protected. A total the librarian
-    // actually stated, even one that contradicts the parts it also stated, is
-    // still authoritative and still gets raised — same as the create path.
+  it('writes a null total on an amend whatever the librarian states', async () => {
+    // Issue #1233 made the protection above unconditional: the draft writes null
+    // for all three whatever comes back, so `mergeAmendedRecipe`'s `??` always
+    // falls through to the stored value and a real chill can never be overwritten.
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
       { source: MANUAL, baseRecipe: baseRecipe() },
     );
 
-    expect(doc.metadata.totalTimeMinutes).toBe(45);
+    expect(doc.metadata.totalTimeMinutes).toBeNull();
   });
 });
 
@@ -714,162 +714,32 @@ describe('assembleRecipeDraft — document fields', () => {
 
 // ─── total time: derived when missing, repaired when it contradicts its parts ─
 
-describe('assembleRecipeDraft — total time', () => {
-  it('derives a total from prep + cook when the source states no total', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
-      { source: IMPORT },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(20);
-  });
-
-  it('prefers a stated total over the derived one', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 30, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(30);
-  });
-
-  it('leaves the total null when only one part is known', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: null }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBeNull();
-  });
-
-  it('derives on the authoring path too — one definition, every way a recipe is written', async () => {
-    // This assertion is inverted from what it was (issue #952). Derivation used
-    // to be opt-in and off for the librarian, on the documented grounds that a
-    // chat "either stated a total or did not". Now that every path is prompted
-    // for all three fields against ONE definition, that asymmetry has no reason
-    // left — and a chat-authored recipe with no total is exactly what made the
-    // library's "quickest first" sort meaningless.
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(20);
-    expect(doc.metadata.prepTimeMinutes).toBe(5);
-    expect(doc.metadata.cookTimeMinutes).toBe(15);
-  });
-
-  it('repairs a stated total that is less than its own parts', async () => {
-    // The real Paneer Makhanwala shape from the staging library: prep 10, cook
-    // 35, total 35 — arithmetically impossible. (The displayed figure it used to
-    // corrupt came from `cookShape`, deleted by issue #1213; `reconcileRecipeTimes`
-    // and this repair go with it in that issue's Phase 5.)
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(45);
-    expect(doc.metadata.prepTimeMinutes).toBe(10);
-    expect(doc.metadata.cookTimeMinutes).toBe(35);
-  });
-
-  it('repairs on the import path as well as the authoring one', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 20, prepTimeMinutes: 30, cookTimeMinutes: 12 }),
-      { source: IMPORT },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(42);
-  });
-
-  it('leaves a generous total alone — passive waiting is real time, not an error', async () => {
-    // A total far ABOVE prep + cook is the honest shape of an overnight prove or
-    // a chilled pie: the repair raises a floor, it never caps a ceiling.
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 762, prepTimeMinutes: 30, cookTimeMinutes: 12 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(762);
-  });
-
-  it('cannot repair against a part it does not know', async () => {
-    // One known part is not a floor for a total — a stated 20 with an unknown
-    // prep says nothing wrong, and treating the unknown part as 0 would invent a
-    // fact. The stated total stands.
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 20, prepTimeMinutes: null, cookTimeMinutes: 15 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(20);
-  });
-});
-
-// ─── zero-time folding (issue #739) ──────────────────────────────────────────
-
-describe('assembleRecipeDraft — no-cook recipes', () => {
-  it('folds cookTimeMinutes: 0 to null so the card renders nothing, not "Cook 0 min"', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 15, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.cookTimeMinutes).toBeNull();
-  });
-
-  it('folds prepTimeMinutes: 0 to null as well', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 30, prepTimeMinutes: 0, cookTimeMinutes: 30 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.prepTimeMinutes).toBeNull();
-  });
-
-  it('derives the total BEFORE folding — prep 15 + cook 0 is a 15-minute salad, not an unknown', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBe(15);
-    expect(doc.metadata.prepTimeMinutes).toBe(15);
-    expect(doc.metadata.cookTimeMinutes).toBeNull();
-  });
-
-  it('folds a derived total of 0 — no prep and no cook states no time at all', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 0, cookTimeMinutes: 0 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBeNull();
-    expect(doc.metadata.prepTimeMinutes).toBeNull();
-    expect(doc.metadata.cookTimeMinutes).toBeNull();
-  });
-
-  it('folds on the authoring path too — one rule, both ways a recipe is written', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 10, prepTimeMinutes: 10, cookTimeMinutes: 0 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata.cookTimeMinutes).toBeNull();
-    expect(doc.metadata.totalTimeMinutes).toBe(10);
-  });
-
-  it('leaves every non-zero time untouched', async () => {
+// The three time fields are never derived, reconciled or folded any more: the
+// model is not asked for them (issue #1233), nothing reads them, and the draft
+// writes literal null the way `emptyRecipe` does. #1211 removes the keys.
+describe('assembleRecipeDraft — the retired time fields', () => {
+  it('writes prep, cook and total as null whatever the model returns', async () => {
     const doc = await assembleRecipeDraft(
       rawOutput({ totalTimeMinutes: 45, prepTimeMinutes: 15, cookTimeMinutes: 30 }),
       { source: MANUAL },
     );
 
     expect(doc.metadata).toMatchObject({
-      totalTimeMinutes: 45,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+    });
+  });
+
+  it('writes them as null on the import path too, and when the model omits them', async () => {
+    const raw = rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 });
+    delete (raw as { prepTimeMinutes?: unknown }).prepTimeMinutes;
+    const doc = await assembleRecipeDraft(raw, { source: IMPORT });
+
+    expect(doc.metadata).toMatchObject({
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
     });
   });
 });

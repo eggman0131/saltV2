@@ -17,11 +17,15 @@
  * line when the issue was written. It no longer does:
  * `AuthoredRecipePhasesSchema` in `recipe.ts` grew a deliberate `.catch([])`
  * afterwards (#1122 review, blocking 3), it guards an AI OUTPUT rather than a
- * stored document, and `recipe.ts` was on #1114's must-not-touch list. Shipping
- * the unqualified absolute anyway — in a comment, a DoD tick or a test name —
- * is precisely the defect class CLAUDE.md Rule 12 exists for, so the claim is
- * made with its real boundary instead: one known instance, named here with its
- * reason, and any second one reds.
+ * stored document, and `recipe.ts` was on #1114's must-not-touch list. The same
+ * reasoning grew three more (#1233 review, blocking 1): the retired
+ * prep/cook/total time fields on `LibrarianOutputSchema`,
+ * `EstimateRecipeTimesAIOutputSchema`/`EstimateRecipeTimesOutputSchema` and
+ * `ExtractRecipeAIOutputSchema` — AI output, decorative and unread, guarded the
+ * same way `phases` already was. Shipping the unqualified absolute anyway — in a
+ * comment, a DoD tick or a test name — is precisely the defect class CLAUDE.md
+ * Rule 12 exists for, so the claim is made with its real boundary instead: the
+ * known instances, named here with their reasons, and any other one reds.
  *
  * ── Why EQUALITY, not `<=` ─────────────────────────────────────────────────
  *
@@ -50,6 +54,21 @@ import { fileURLToPath } from 'node:url';
 
 /** The sanctioned instances: file → why it is there. */
 const ALLOWED = new Map([
+  [
+    'authorRecipe.ts',
+    'LibrarianOutputSchema — the three retired time fields, an AI output nothing ' +
+      'reads (#1233 review, blocking 1)',
+  ],
+  [
+    'estimateRecipeTimes.ts',
+    'EstimateRecipeTimesAIOutputSchema / EstimateRecipeTimesOutputSchema — the same ' +
+      'three retired time fields (#1233 review, blocking 1)',
+  ],
+  [
+    'extractRecipeFromUrl.ts',
+    'ExtractRecipeAIOutputSchema — the same three retired time fields (#1233 ' +
+      'review, blocking 1)',
+  ],
   ['recipe.ts', 'AuthoredRecipePhasesSchema — an AI output, not a stored document (#1122)'],
 ]);
 

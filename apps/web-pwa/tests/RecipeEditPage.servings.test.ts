@@ -115,15 +115,8 @@ describe('RecipeEditPage — Servings', () => {
     expect((await savedRecipe()).metadata.servings).toBe(6);
   });
 
-  it('leaves the time fields alone — 0 prep and 0 cook are real answers (#739)', async () => {
-    mockRecipes._set([makeRecipe()]);
-    render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
-
-    await typeInto('recipe-prep-input', '0');
-    await typeInto('recipe-cook-input', '0');
-
-    const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(0);
-    expect(saved.metadata.cookTimeMinutes).toBe(0);
-  });
+  // The #739 half of this — a typed 0 that IS a real answer — moved with the
+  // boxes it was asserted through: issue #1233 retired Prep/Cook/Total, and the
+  // remaining `parseNumberOrNull` callers are the phase minute figures, pinned in
+  // `RecipeEditPage.phases.test.ts`.
 });

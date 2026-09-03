@@ -80,25 +80,31 @@ export const ExtractRecipeAIOutputSchema = z.object({
   // Integers only, never negative — null is the "not stated" sentinel (also what
   // an isRecipe=false response uses, which is why none of these is required).
   //
-  // The 0 rule is deliberately asymmetric (issue #739). `servings: 0` and
-  // `totalTimeMinutes: 0` describe a recipe nobody can cook or eat, so 0 there is
-  // a model glitch and stays rejected. `prepTimeMinutes: 0` / `cookTimeMinutes: 0`
-  // are real, correct answers for anything assembled rather than cooked — a Greek
-  // salad, a dressing, overnight oats, most cocktails. Rejecting those failed the
-  // import on the model's *right* answer, and did so intermittently, because "no
-  // cooking" has three expressions (0, null, omitted) and we accepted two.
-  //
-  // Note this is the gate on the way IN. 0 does not survive to the stored recipe:
-  // assembleRecipeDraft folds a 0 back to null once it has derived the total, so
-  // a card renders "—" rather than "Cook 0 min".
+  // The 0 rule is deliberately asymmetric (issue #739). `servings: 0` describes a
+  // recipe nobody can eat, so 0 there is a model glitch and stays rejected.
+  // `prepTimeMinutes: 0` / `cookTimeMinutes: 0` are real, correct answers for
+  // anything assembled rather than cooked — a Greek salad, a dressing, overnight
+  // oats, most cocktails. Rejecting those failed the import on the model's *right*
+  // answer, and did so intermittently, because "no cooking" has three expressions
+  // (0, null, omitted) and we accepted two.
   servings: z.number().int().positive().nullable(),
-  totalTimeMinutes: z.number().int().positive().nullable(),
-  prepTimeMinutes: z.number().int().nonnegative().nullable(),
-  cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  // NO LONGER ASKED FOR (issue #1233). The extraction prompt stopped naming these
+  // three, so the model stops returning them — and `.optional()` is what keeps
+  // that from failing `.safeParse` at the trust boundary and taking every import
+  // with it. Absent means the same as null; the assembler writes null. The range
+  // constraints still apply to a value that DOES arrive — but a value that FAILS
+  // them now degrades to null (`.catch(null)`) rather than failing the parse, the
+  // same posture `AuthoredRecipePhasesSchema` takes on `phases` below: these are
+  // decorative fields nothing reads, and there is no retry on this path, so a
+  // stray `12.5` or `0` from a model that was never asked for the number must not
+  // cost the user their whole import. They go entirely with #1211.
+  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
+  prepTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
+  cookTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
   // The recipe's timing as an ordered strip (issue #1122), which is what it will
   // BE once the three numbers above retire. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer
-  // one question against one definition (`TIME_RULES`), and a per-file constraint
+  // one question against one definition (`PHASE_RULES`), and a per-file constraint
   // is how three of them come to mean three different things (#785, #952).
   //
   // `.optional()` on both so a model that omits them yields no strip rather than

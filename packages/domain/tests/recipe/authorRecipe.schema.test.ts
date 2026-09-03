@@ -54,15 +54,39 @@ describe('LibrarianOutputSchema — the time fields keep issue #739 asymmetry', 
       LibrarianOutputSchema.safeParse({ ...BASE, prepTimeMinutes: 0, cookTimeMinutes: 0 }).success,
     ).toBe(true);
   });
+});
 
-  it('rejects totalTimeMinutes: 0 — a recipe that takes no time at all is nonsense', () => {
-    expect(LibrarianOutputSchema.safeParse({ ...BASE, totalTimeMinutes: 0 }).success).toBe(false);
+// Issue #1233 review, blocking 1: the prompt no longer asks for these three, and
+// nothing reads them (they stay declared only until #1211 deletes them), so a
+// value that fails their range now degrades to null instead of failing the whole
+// parse — the librarian has no retry, and a field invisible to the user must
+// never be able to cost the user their chat-authored recipe. Same posture as
+// `phases` below.
+describe('LibrarianOutputSchema — a malformed retired time field degrades, never fails the parse', () => {
+  it('degrades totalTimeMinutes: 0 to null rather than rejecting the recipe', () => {
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, totalTimeMinutes: 0 });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.totalTimeMinutes).toBeNull();
   });
 
-  it('rejects negative and fractional minutes on every time field', () => {
+  it('degrades a negative or fractional minute on every time field to null', () => {
     for (const field of ['totalTimeMinutes', 'prepTimeMinutes', 'cookTimeMinutes'] as const) {
-      expect(LibrarianOutputSchema.safeParse({ ...BASE, [field]: -1 }).success).toBe(false);
-      expect(LibrarianOutputSchema.safeParse({ ...BASE, [field]: 2.5 }).success).toBe(false);
+      const negative = LibrarianOutputSchema.safeParse({ ...BASE, [field]: -1 });
+      expect(negative.success).toBe(true);
+      if (negative.success) expect(negative.data[field]).toBeNull();
+
+      const fractional = LibrarianOutputSchema.safeParse({ ...BASE, [field]: 2.5 });
+      expect(fractional.success).toBe(true);
+      if (fractional.success) expect(fractional.data[field]).toBeNull();
+    }
+  });
+
+  it('keeps the rest of the recipe when a retired time field is malformed', () => {
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, prepTimeMinutes: 12.5 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.prepTimeMinutes).toBeNull();
+      expect(result.data.title).toBe('Carbonara');
     }
   });
 });

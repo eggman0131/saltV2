@@ -119,19 +119,18 @@ afterEach(() => {
 });
 
 describe('RecipeEditPage — the phase editor', () => {
-  // The strip sits ALONGSIDE Servings and the three time boxes, not in place of
-  // them: `scheduleFor` and `insertComponentByCookTime` (packages/domain) still
-  // read `cookTimeMinutes`, so a hand-authored recipe still needs a way to set it
-  // until issue #1213's phase 3 moves those readers onto `recipePhaseTotals()`
-  // (PR #1231 review, blocking finding 1).
-  it('adds the strip beside Servings and the three time boxes', () => {
+  // Servings and the strip, and NOTHING ELSE. Issue #1233 moved `scheduleFor` and
+  // `insertComponentByElapsedTime` (packages/domain) onto `recipePhaseTotals()`,
+  // which removed the last reader of `cookTimeMinutes` and the last reason to let
+  // a cook type one — so the strip is now the only timing control on this page.
+  it('is the ONLY timing control — Servings and the strip, no Prep/Cook/Total boxes', () => {
     renderEditor([MIX]);
 
     expect(screen.getByTestId('recipe-servings-input')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-phase-editor')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-prep-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-cook-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-total-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-prep-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-cook-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-total-input')).toBeNull();
   });
 
   it('draws a row per stored phase, with its two minute figures and no third', () => {
@@ -256,24 +255,12 @@ describe('RecipeEditPage — the phase editor', () => {
   });
 });
 
-describe('RecipeEditPage — the three time boxes, still beside the strip (PR #1231 review)', () => {
-  // Issue #1213's phase 3 is what retires these — once `scheduleFor` and
-  // `insertComponentByCookTime` move onto `recipePhaseTotals()`. Until then a
-  // recipe that stores all three must still let the cook see and edit them,
-  // alongside the strip rather than instead of it.
-  it('offers Prep, Cook and Total input for a recipe that stores all three, alongside the strip', () => {
-    renderEditor([MIX, PROVE]);
-
-    expect(screen.getByTestId('recipe-servings-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-prep-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-cook-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-total-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-phase-editor')).toBeInTheDocument();
-  });
-
-  // The stored values are left untouched by a save that edits only the strip —
-  // each field patches independently.
-  it('leaves the three stored values untouched when the strip is edited', async () => {
+describe('RecipeEditPage — the three retired time boxes (issue #1233)', () => {
+  // Removing the boxes must not remove the VALUES. A recipe saved before #1233
+  // still stores prep, cook and total; nothing reads them any more, but a save
+  // from this page must leave them exactly as it found them rather than dropping
+  // or zeroing three fields the cook can no longer see.
+  it('leaves the stored prep, cook and total untouched on save', async () => {
     renderEditor([MIX, PROVE]);
 
     await typeInto(screen.getByTestId('recipe-servings-input'), '6');

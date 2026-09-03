@@ -82,15 +82,21 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 - Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
 }
 
-// The PHASES half of the same definition (issue #1122), and it lives inside
-// TIME_RULES rather than beside it for exactly the reason TIME_RULES itself was
-// exported: every authoring path — both extractors, the librarian and the
-// re-estimator — must ask for phases against ONE text. A second copy anywhere is
-// the #785 twin, and this time it would leave half the library's timelines drawn
-// to one definition of "hands-on" and half to another.
+// WHAT A RECIPE'S TIMING IS, and it is unconditional — a recipe off a web page
+// and one out of a chat have to be comparable, or the list's "quickest first" sort
+// and the cook plan are measuring different things (issue #952).
 //
-// The three numbers above are still asked for and still stored while this ships
-// (issue #1122 phase 1); phase 4 removes them and leaves this block alone.
+// EXPORTED (issue #952, phase 2; renamed from `TIME_RULES` in #1233) so every
+// authoring path — both extractors, the librarian and the re-estimator — asks for
+// phases against ONE text and never a paraphrase. A second copy anywhere is the
+// #785 twin, and it would leave half the library's timelines drawn to one
+// definition of "hands-on" and half to another.
+//
+// This block used to sit UNDER definitions of `prepTimeMinutes`, `cookTimeMinutes`
+// and `totalTimeMinutes`, including a `total >= prep + cook` clause. Issue #1233
+// removed all four: nothing stores those three any more, so asking for them buys a
+// model call for an answer that is thrown away, and the reconciliation clause is
+// definitional once elapsed time is a sum of the parts by construction.
 //
 // TWO numbers per phase, never a third. Elapsed time is derived from them, and
 // asking the model for it as well is asking for a number that can contradict the
@@ -101,7 +107,7 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 // a pan of water coming to the boil landed nowhere at all. It goes in the phase
 // that contains it, as hands-off minutes, and the attended work happening across
 // it is that same phase's hands-on minutes.
-const PHASE_RULES = `- phases: the recipe's timing as an ORDERED list of 3–6 named blocks, in the order the \
+export const PHASE_RULES = `- phases: the recipe's timing as an ORDERED list of 3–6 named blocks, in the order the \
 cook does them, covering the whole process from walking into the kitchen to the dish being ready. \
 Name each one for what it IS in a couple of words — "Mix & knead", "First rise", "Roast cauliflower \
 & make sauce", "Bake", "Cool", "Prep", "Cook". A simple dish may need only two or three; never more \
@@ -126,49 +132,12 @@ competent cook would overlap. Round to numbers a person would say: 5, 10, 15, 20
 long the whole thing spans — "About 40 minutes of you, spread over 2¼ hours — start it the night \
 before." Null only when you have no phases.`;
 
-// What the three time fields MEAN, and it is unconditional — a recipe off a web
-// page and one out of a chat have to be comparable, or the list's "quickest
-// first" sort and the cook plan are sorting on three different units (issue
-// #952).
-//
-// The old rule was one line — "integers in minutes, or null" — which is a TYPE
-// declaration, not a definition. With nothing else to go on (there are no
-// `.describe()` calls in the schemas, so Genkit sends the model only names and
-// types) the model fell back on published-recipe convention, where "prep: 5 min"
-// conventionally starts from an already-weighed counter and ends before the
-// washing up. That is the kitchen nobody cooks in, and it is why every recipe in
-// the library reads optimistic.
-//
-// The arithmetic bullet is stated here AND enforced in assembleRecipeDraft. Both
-// are needed: the prompt is what makes the model's own three numbers coherent,
-// the assembler is what guarantees the stored document is, whatever the model
-// returns. Asking without enforcing is how `total: 35` came to sit on a recipe
-// whose own prep + cook is 45.
-
-// Exported (issue #952, phase 2) so the estimateRecipeTimes flow asks its question
-// against THIS text and not a paraphrase of it. A backfill that re-estimates
-// against a second, hand-copied definition would put the library back where it
-// started — half the recipes on one definition and half on another — which is the
-// #785 twin in a new place.
-export const TIME_RULES = `- prepTimeMinutes: every minute the cook actively spends that is NOT time on heat — \
-fetching the ingredients and equipment out, weighing and measuring, peeling, chopping, mixing, \
-and clearing down afterwards. Estimate it for a cook starting with nothing out and finishing with a \
-clean kitchen, NOT for the already-weighed counter a published "prep: 5 minutes" assumes.
-- cookTimeMinutes: time the food spends cooking — on the hob, in the oven, under the grill.
-- totalTimeMinutes: wall-clock from starting to serving, INCLUDING unattended waits that are neither \
-prep nor cook (marinating, proving, chilling, resting).
-- The three MUST reconcile: totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes. Estimate the \
-numbers yourself when the source states none, or states ones that break that rule — an honest \
-estimate is worth more than a copied figure. Integers in minutes; null only when you genuinely \
-cannot estimate.
-${PHASE_RULES}`;
-
 function fields(measures: MeasurePolicy): string {
   return `## Fields
 - title: clear, concise recipe name.
 - description: 1–2 sentence summary, or null.
 - servings: integer portions, or null if not stated.
-${TIME_RULES}
+${PHASE_RULES}
 ${CATEGORY_TAG_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: ${rawTextClause(measures)}, isOptional (true only if explicitly optional), \

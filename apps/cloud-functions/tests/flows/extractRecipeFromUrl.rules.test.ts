@@ -126,7 +126,7 @@ describe('extractRecipeFromUrl — shared field rules (#785)', () => {
     expect(system).not.toContain('preserve the original wording');
   });
 
-  it('exempts the TIMES from faithfulness, and nothing else (#952)', async () => {
+  it('exempts the TIMING from faithfulness, and nothing else (#952)', async () => {
     mockJsonLd.mockReturnValue(JSON_LD);
 
     await (extractRecipeFromUrlFlow as Function)({ url: URL });
@@ -139,13 +139,13 @@ describe('extractRecipeFromUrl — shared field rules (#785)', () => {
     const system = systemPromptFrom();
     expect(system).not.toContain('Use ONLY the ingredients, steps, times and servings given');
     expect(system).toContain('Use ONLY the ingredients, steps and servings given');
-    expect(system).toContain('The TIMES are the one exception');
+    expect(system).toContain('The TIMING is the one exception');
     expect(system).toContain('a HINT, not a floor');
 
-    // The narrowing is for the three numbers ONLY. Content stays verbatim.
+    // The narrowing is for the TIMING ONLY. Content stays verbatim.
     expect(system).toContain('Do not invent, add, drop or reorder');
     expect(system).toContain('Keep every ingredient and every instruction');
-    expect(system).toContain('this licence covers the three numbers and nothing else');
+    expect(system).toContain('this licence covers the timing and nothing else');
   });
 
   it("labels the page's own times as the page's, not as fields to copy", async () => {

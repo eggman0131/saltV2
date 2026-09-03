@@ -127,13 +127,6 @@ export interface RecipePhasesChange {
 // faithful account of what moved and the summary decides how to say it.
 export interface RecipeMetadataDiff {
   servings?: NullableNumberChange;
-  // Deferred here until issue #1213's phase 5 stops the CF writers
-  // (`recipeAmend.ts` and Refresh) from proposing these fields at all — while
-  // they still do, the review gate needs a way to show the cook what changed
-  // (PR #1231 review, blocking finding 2).
-  totalTimeMinutes?: NullableNumberChange;
-  prepTimeMinutes?: NullableNumberChange;
-  cookTimeMinutes?: NullableNumberChange;
   phases?: RecipePhasesChange;
   timingSummary?: NullableStringChange;
 }

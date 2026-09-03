@@ -37,6 +37,8 @@ function recipe(
     cookTimeMinutes?: number | null;
     prepTimeMinutes?: number | null;
     totalTimeMinutes?: number | null;
+    /** Elapsed minutes of the dish's phase strip — the timing anything reads (#1233). */
+    elapsedMinutes?: number;
     componentRecipeIds?: string[];
     // The three fields the chef's own thin rendering used to drop (#934, A5-007).
     // Optional so every existing fixture is byte-for-byte what it was.
@@ -80,6 +82,10 @@ function recipe(
       totalTimeMinutes: opts.totalTimeMinutes ?? null,
       prepTimeMinutes: opts.prepTimeMinutes ?? null,
       cookTimeMinutes: opts.cookTimeMinutes ?? null,
+      phases:
+        opts.elapsedMinutes === undefined
+          ? []
+          : [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: opts.elapsedMinutes }],
       tags: opts.tags ?? [],
     },
     kind: 'recipe' as const,
@@ -103,6 +109,7 @@ const CHICKEN = recipe('chicken', 'Roast chicken', {
   cookTimeMinutes: 90,
   prepTimeMinutes: 15,
   totalTimeMinutes: 125,
+  elapsedMinutes: 125,
 });
 
 const POTATOES = recipe('potatoes', 'Roast potatoes', {
@@ -114,6 +121,7 @@ const POTATOES = recipe('potatoes', 'Roast potatoes', {
   steps: ['Parboil for 8 minutes and rough up the edges.', 'Roast for 50 minutes at 200 °C.'],
   cookTimeMinutes: 50,
   totalTimeMinutes: 70,
+  elapsedMinutes: 70,
 });
 
 /**
@@ -245,7 +253,10 @@ describe('componentSectionForChef', () => {
     expect(section).toContain('1 whole chicken, 1.6 kg');
     expect(section).toContain('Roast for 90 minutes, then rest for 20.');
     expect(section).toContain('1.5 kg Maris Piper potatoes');
-    expect(section).toContain('cook: 90 min');
+    // The chef sees the whole recipe rendering, timing included — as the phase
+    // strip since issue #1233, which is the only timing a screen shows.
+    expect(section).toContain('Roast for 90 minutes');
+    expect(section).toContain('125 min hands-off');
   });
 
   it('asks for the two things the cards cannot tell the user themselves', () => {
@@ -326,13 +337,14 @@ describe('componentSectionForLibrarian', () => {
     expect(section).toContain('PRESERVE the dish names');
   });
 
-  it('shows names, descriptions and times', () => {
+  it('shows names, descriptions and how long each dish takes', () => {
     const section = componentSectionForLibrarian([CHICKEN]);
 
     expect(section).toContain('Dish 1: Roast chicken');
     expect(section).toContain('A whole bird, hot oven then rested.');
-    expect(section).toContain('cook: 90 min');
-    expect(section).toContain('total: 125 min');
+    // The whole process, start to serve — the same figure the cook plan's start
+    // clock is worked back from (issue #1233), not the old stored cook time.
+    expect(section).toContain('takes: 125 min start to serve');
   });
 
   it('NEVER shows a component ingredient or step — the guard is structural, not a prompt clause', () => {
@@ -350,9 +362,19 @@ describe('componentSectionForLibrarian', () => {
     expect(section).not.toContain('Method:');
   });
 
-  it('omits prep time — prep is done ahead and says nothing about when a dish starts', () => {
+  it('shows no stored prep, cook or total — nothing reads them (#1233)', () => {
     const section = componentSectionForLibrarian([CHICKEN]);
     expect(section).not.toContain('prep:');
+    expect(section).not.toContain('cook:');
+    expect(section).not.toContain('total:');
+  });
+
+  it('says nothing about timing for a dish with no phase strip', () => {
+    // A fabricated figure would be worse than none: the meal's method is a timing
+    // plan, and a made-up number is a plan built on a guess.
+    const section = componentSectionForLibrarian([recipe('salad', 'Green salad')]);
+    expect(section).toContain('Dish 1: Green salad');
+    expect(section).not.toContain('takes:');
   });
 
   it('says nothing at all when the recipe is not a meal', () => {

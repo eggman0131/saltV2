@@ -50,33 +50,43 @@ describe('ExtractRecipeAIOutputSchema — zero on the time fields', () => {
   });
 });
 
-describe('ExtractRecipeAIOutputSchema — the glitch guards that stay strict', () => {
+describe('ExtractRecipeAIOutputSchema — the glitch guard that stays strict', () => {
   it('rejects servings: 0 — a recipe nobody can eat is a model glitch', () => {
     expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, servings: 0 }).success).toBe(false);
   });
 
-  it('rejects totalTimeMinutes: 0 — a recipe that takes no time at all is nonsense', () => {
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, totalTimeMinutes: 0 }).success).toBe(
-      false,
-    );
-  });
-
-  it('rejects a negative time on every field — widening to 0 did not widen past it', () => {
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, cookTimeMinutes: -1 }).success).toBe(
-      false,
-    );
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, prepTimeMinutes: -1 }).success).toBe(
-      false,
-    );
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, totalTimeMinutes: -1 }).success).toBe(
-      false,
-    );
+  it('rejects a negative servings count', () => {
     expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, servings: -1 }).success).toBe(false);
   });
+});
 
-  it('rejects a fractional time — these are whole minutes', () => {
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, cookTimeMinutes: 2.5 }).success).toBe(
-      false,
-    );
+// Issue #1233 review, blocking 1: the extraction prompt no longer asks for these
+// three, and nothing reads them (they go entirely with #1211), so a value that
+// fails their range now degrades to null instead of failing the whole import —
+// there is no retry on this path, and a field invisible to the user must never be
+// able to cost the user their extraction. Same posture `AuthoredRecipePhasesSchema`
+// takes on `phases` (`packages/domain/src/schemas/recipe.ts`).
+describe('ExtractRecipeAIOutputSchema — a malformed retired time field degrades, never fails the parse', () => {
+  it('degrades totalTimeMinutes: 0 to null rather than rejecting the import', () => {
+    const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, totalTimeMinutes: 0 });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.totalTimeMinutes).toBeNull();
+  });
+
+  it('degrades a negative time on every retired field to null', () => {
+    for (const field of ['totalTimeMinutes', 'prepTimeMinutes', 'cookTimeMinutes'] as const) {
+      const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, [field]: -1 });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data[field]).toBeNull();
+    }
+  });
+
+  it('degrades a fractional time to null, and keeps the rest of the import', () => {
+    const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, cookTimeMinutes: 2.5 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cookTimeMinutes).toBeNull();
+      expect(result.data.title).toBe('Greek salad');
+    }
   });
 });

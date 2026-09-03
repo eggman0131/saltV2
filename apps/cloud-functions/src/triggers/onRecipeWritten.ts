@@ -3,12 +3,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
-import {
-  RecipeSchema,
-  DevSettingsSchema,
-  type RecipeDoc,
-  type EstimateRecipeTimesOutput,
-} from '@salt/domain/schemas';
+import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
 import { componentDisplayLines, isCookable, reconcileRecipePhases } from '@salt/domain';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
@@ -39,7 +34,8 @@ import { withFirestoreTrigger, traceContextFromWrittenDoc } from './triggerEntry
 // create. The three authoring paths already answer "how long does this take?"
 // against a proper definition, so a create has nothing to re-ask. It fires only on
 // an explicit `timesRequestedAt` bump — which today means the one-off backfill
-// script — and rewrites the three `metadata.*TimeMinutes` fields and nothing else.
+// script — and rewrites the phase strip and its summary, and nothing else (the
+// three `metadata.*TimeMinutes` fields went with issue #1233).
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -368,59 +364,17 @@ export function timesNeedEstimate(before: DocumentSnapshot | undefined, after: R
 }
 
 /**
- * Floors the WRITTEN total at the stored total whenever the stored total already
- * exceeded stored `prep + cook` (issue #952 phase 2 review, blocking 1).
- *
- * The flow is deliberately never shown the stored triple (see
- * `estimateRecipeTimes.ts` → "It is not shown the stored times, deliberately"),
- * and for `prep`/`cook` that is right — the stored numbers are wrong in a KNOWN
- * direction, low. It is NOT right for `total`: when the stored total already
- * exceeds stored prep + cook, that excess is a real unattended wait (a prove, a
- * marinade, a chill), and a wait is frequently recorded ONLY in that number —
- * often as prose with no `step.timer`, which leaves the flow's inputs with no
- * arithmetic route back to it. Overwriting it unconditionally would destroy
- * exactly the number issue #952's own `reconcileEstimatedTimes` doc comment
- * calls out as legitimate ("an excess is an unattended wait, and those are
- * real"), irreversibly, on a one-off sweep of the whole library.
- *
- * "The stored total already exceeded stored prep + cook" is exactly the signal
- * "this document records a real wait" — so that, and only that, is floored.
- * `prep`/`cook` are still overwritten unconditionally: they carry no such
- * signal, and the direction they are wrong in is the one this backfill exists to
- * fix. A returned `totalTimeMinutes: null` is covered the same way: `null` must
- * not erase a stored total that recorded a wait, so it floors to the stored
- * total exactly as a too-low number would.
- */
-function floorTotalAtStoredWait(
-  stored: Readonly<{
-    prepTimeMinutes: number | null;
-    cookTimeMinutes: number | null;
-    totalTimeMinutes: number | null;
-  }>,
-  estimated: EstimateRecipeTimesOutput,
-): EstimateRecipeTimesOutput {
-  const storedParts = (stored.prepTimeMinutes ?? 0) + (stored.cookTimeMinutes ?? 0);
-  const storedRecordsWait =
-    stored.totalTimeMinutes !== null && stored.totalTimeMinutes > storedParts;
-  if (!storedRecordsWait) return estimated;
-  return {
-    ...estimated,
-    totalTimeMinutes: Math.max(estimated.totalTimeMinutes ?? 0, stored.totalTimeMinutes as number),
-  };
-}
-
-/**
  * Time re-estimate branch. Re-asks how long the recipe actually takes and writes
- * the answer to the three `metadata.*TimeMinutes` fields.
+ * the answer to the phase strip and its one-line summary.
  *
  * BEST-EFFORT (Rule 10), exactly as the kit branch is: a failure logs, reports and
  * leaves `timesEstimatedAt` UNSTAMPED, so re-running the backfill script picks the
  * recipe up again. It never rejects, so the two sibling branches are untouched by
  * it.
  *
- * THE WRITE IS THREE FIELD PATHS AND A STAMP. Not a document `set`, and not a
- * `metadata` object — `update({ 'metadata.prepTimeMinutes': … })` addresses the
- * leaves, so `metadata.servings` and `metadata.tags` are not even sent, let alone
+ * THE WRITE IS TWO FIELD PATHS AND A STAMP. Not a document `set`, and not a
+ * `metadata` object — `update({ 'metadata.phases': … })` addresses the leaves, so
+ * `metadata.servings` and `metadata.tags` are not even sent, let alone
  * overwritten. That matters more here than on the other two branches because this
  * one is driven by a script sweeping the whole library: recipes are last-write-wins
  * per WHOLE document (CLAUDE.md → Data model conventions), so a coarser write from
@@ -476,9 +430,6 @@ async function maybeEstimateTimes(
       })),
     });
     // No `withAiTimeout` wrapper here (issue #915): the flow owns its budget.
-    // Floor the total at a stored wait (blocking 1 above) before it is written —
-    // prep/cook pass through unchanged.
-    const finalTimes = floorTotalAtStoredWait(recipe.metadata, times);
     // The phase strip and its summary (issue #1122 review, blocking 1) — merged
     // against the STORED strip by the same `reconcileRecipePhases` function
     // `assembleRecipeDraft` calls, so the two write paths answer "the model
@@ -491,11 +442,8 @@ async function maybeEstimateTimes(
     // numbers back with no strip must keep the strip it had, not lose it while
     // `timesEstimatedAt` is stamped in the same write so the backfill never
     // revisits it.
-    const phaseStrip = reconcileRecipePhases(finalTimes, recipe.metadata);
+    const phaseStrip = reconcileRecipePhases(times, recipe.metadata);
     await getFirestore().collection('recipes').doc(id).update({
-      'metadata.prepTimeMinutes': finalTimes.prepTimeMinutes,
-      'metadata.cookTimeMinutes': finalTimes.cookTimeMinutes,
-      'metadata.totalTimeMinutes': finalTimes.totalTimeMinutes,
       'metadata.phases': phaseStrip.phases,
       'metadata.timingSummary': phaseStrip.timingSummary,
       // Stamped in the SAME update as the answer, so "estimated" and "has the

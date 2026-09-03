@@ -307,10 +307,10 @@ is genuine recipe data, so set isRecipe=true.
 - Use ONLY the ingredients, steps and servings given. Do not invent, add, drop or reorder \
 content. Keep every ingredient and every instruction. Preserve any ingredient groupings/headings if \
 present in the data.
-- The TIMES are the one exception (issue #952). The page's stated prep/cook/total are a HINT, not a \
-floor: re-estimate all three against the time definitions below, and expect the page's prep time to \
+- The TIMING is the one exception (issue #952). The page's stated prep/cook/total are a HINT, not a \
+floor: build the phase strip yourself against the definition below, and expect the page's prep time to \
 be the low, already-weighed-counter kind. Content faithfulness is unaffected — this licence covers \
-the three numbers and nothing else.
+the timing and nothing else.
 - You MAY, and should, SPLIT a source step that bundles several operations into consecutive steps, per \
 the one-operation rule below. That re-divides the given instructions; it does not add, drop or reorder \
 content, so it is not a breach of the rule above. Never MERGE two source steps into one.

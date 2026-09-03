@@ -41,12 +41,15 @@ test.use({ viewport: { width: 393, height: 851 } });
 const MEAL_ID = 'meal-roast';
 const MEAL_TITLE = 'Sunday roast';
 
-// Cook times chosen so the three start times are the issue's own worked example
-// and land on the quarter hours the picker offers.
+// Phase strips chosen so the three start times are the issue's own worked example
+// and land on the quarter hours the picker offers. Each dish is seeded with a
+// hands-on block and a hands-off one that sum to `elapsedMinutes`: since issue
+// #1233 the strip is what the plan works back from, so a dish's whole process —
+// not just its time in the oven — decides when it has to begin.
 const DISHES = [
-  { id: 'meal-chicken', title: 'Roast chicken', cookTimeMinutes: 90, startsAt: '17:30' },
-  { id: 'meal-potatoes', title: 'Roast potatoes', cookTimeMinutes: 50, startsAt: '18:10' },
-  { id: 'meal-gravy', title: 'Onion gravy', cookTimeMinutes: 10, startsAt: '18:50' },
+  { id: 'meal-chicken', title: 'Roast chicken', elapsedMinutes: 90, startsAt: '17:30' },
+  { id: 'meal-potatoes', title: 'Roast potatoes', elapsedMinutes: 50, startsAt: '18:10' },
+  { id: 'meal-gravy', title: 'Onion gravy', elapsedMinutes: 10, startsAt: '18:50' },
 ] as const;
 
 const SERVE_AT = '19:00';
@@ -54,7 +57,7 @@ const SERVE_AT = '19:00';
 function recipe(
   id: string,
   title: string,
-  opts: { cookTimeMinutes?: number | null; componentRecipeIds?: string[] } = {},
+  opts: { elapsedMinutes?: number; componentRecipeIds?: string[] } = {},
 ): Recipe {
   return {
     id,
@@ -68,7 +71,20 @@ function recipe(
       servings: 4,
       totalTimeMinutes: null,
       prepTimeMinutes: null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
+      // Deliberately contradicts the strip: nothing reads it any more, and if
+      // anything did the start times asserted below would move.
+      cookTimeMinutes: 5,
+      phases:
+        opts.elapsedMinutes === undefined
+          ? []
+          : [
+              { label: 'Get it ready', handsOnMinutes: 10, handsOffMinutes: 0 },
+              {
+                label: 'Cook it',
+                handsOnMinutes: 0,
+                handsOffMinutes: opts.elapsedMinutes - 10,
+              },
+            ],
       tags: [],
     },
     source: null,
@@ -87,7 +103,7 @@ function recipe(
 /** The meal and its three dishes, seeded through the real persistence path. */
 async function seedTheRoast(page: Page): Promise<void> {
   for (const dish of DISHES) {
-    await seedRecipe(page, recipe(dish.id, dish.title, { cookTimeMinutes: dish.cookTimeMinutes }));
+    await seedRecipe(page, recipe(dish.id, dish.title, { elapsedMinutes: dish.elapsedMinutes }));
   }
   await seedRecipe(
     page,

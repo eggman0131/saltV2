@@ -69,14 +69,25 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
   };
 }
 
-function withCookTime(recipe: Recipe, cookTimeMinutes: number | null): Recipe {
-  return { ...recipe, metadata: { ...recipe.metadata, cookTimeMinutes } };
+/**
+ * Give a dish a phase strip that elapses `minutes`. Since issue #1233 the strip is
+ * what decides where an attached component lands, so this is the field the
+ * ordering asserted below is driven from.
+ */
+function withElapsed(recipe: Recipe, minutes: number): Recipe {
+  return {
+    ...recipe,
+    metadata: {
+      ...recipe.metadata,
+      phases: [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: minutes }],
+    },
+  };
 }
 
 const ROAST = makeRecipe({ id: MEAL_ID, title: 'Sunday roast' });
-const CHICKEN = withCookTime(makeRecipe({ id: 'chicken', title: 'Roast chicken' }), 90);
-const POTATOES = withCookTime(makeRecipe({ id: 'potatoes', title: 'Roast potatoes' }), 45);
-const GRAVY = withCookTime(makeRecipe({ id: 'gravy', title: 'Onion gravy' }), 20);
+const CHICKEN = withElapsed(makeRecipe({ id: 'chicken', title: 'Roast chicken' }), 90);
+const POTATOES = withElapsed(makeRecipe({ id: 'potatoes', title: 'Roast potatoes' }), 45);
+const GRAVY = withElapsed(makeRecipe({ id: 'gravy', title: 'Onion gravy' }), 20);
 const TAKEAWAY = makeRecipe({ id: 'takeaway', title: 'Takeaway — Indian', kind: 'outing' });
 const PLACEHOLDER = makeRecipe({ id: 'stock-photo', title: 'A good dinner', kind: 'placeholder' });
 
@@ -141,7 +152,7 @@ describe('RecipeEditPage — building a meal out of recipes', () => {
     expect(options).toEqual(['Roast chicken', 'Roast potatoes', 'Onion gravy']);
   });
 
-  it('attaches longest-cooking first, whatever order you pick them in', async () => {
+  it('attaches longest-first, whatever order you pick them in', async () => {
     mockRecipes._set(LIBRARY);
     await openEditor();
 
@@ -262,8 +273,8 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
 
   // Issue #1122: the row shows the phase sum, and after issue #1213 nothing else
   // — the stored-cook-time fallback under it is gone, so a dish with no strip
-  // shows no time. Same rule as the view page's rows (`recipeTiming.ts`).
-  // `POTATOES` still stores a cook time and must show none of it.
+  // shows no time. Same rule as the view page's rows (`recipeTiming.ts`). The
+  // stripless potatoes below still store a cook time and must show none of it.
   it("shows a component's phase sum, and no time at all without one", async () => {
     const gravyWithPhases = {
       ...GRAVY,
@@ -275,10 +286,14 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
         ],
       },
     };
+    const potatoesWithNoStrip: Recipe = {
+      ...POTATOES,
+      metadata: { ...POTATOES.metadata, phases: undefined, cookTimeMinutes: 45 },
+    };
     mockRecipes._set([
       { ...ROAST, componentRecipeIds: ['gravy', 'potatoes'] },
       gravyWithPhases,
-      POTATOES,
+      potatoesWithNoStrip,
     ]);
     await openEditor();
 

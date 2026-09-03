@@ -111,6 +111,10 @@ const RECIPE = {
     totalTimeMinutes: 210,
     prepTimeMinutes: 30,
     cookTimeMinutes: 180,
+    phases: [
+      { label: 'Prep', handsOnMinutes: 30, handsOffMinutes: 0 },
+      { label: 'Braise', handsOnMinutes: 0, handsOffMinutes: 180 },
+    ],
     tags: ['slow', 'winter'],
   },
   componentRecipeIds: [],
@@ -141,11 +145,15 @@ async function systemPromptFor(recipeId: string): Promise<string> {
 }
 
 describe('chefChat — the chef reads the whole recipe, not a summary of it', () => {
-  it('shows the servings and every stated time', async () => {
+  it('shows the servings, and the timing as the phase strip', async () => {
     const system = await systemPromptFor('r1');
-    // One line, because that is how the renderer writes it — asserted whole so a
-    // reordering that drops a field cannot pass on four separate substrings.
-    expect(system).toContain('servings: 6, prep: 30 min, cook: 180 min, total: 210 min');
+    expect(system).toContain('servings: 6');
+    // Since issue #1233 the strip IS the timing, and the three stored numbers are
+    // no longer rendered — the chef must not be shown a figure no screen displays.
+    expect(system).toContain('Prep: 30 min hands-on, 0 min hands-off');
+    expect(system).toContain('Braise: 0 min hands-on, 180 min hands-off');
+    expect(system).not.toContain('prep: 30 min');
+    expect(system).not.toContain('total: 210 min');
   });
 
   it('shows a step timer with its label, so a re-author can hand it back', async () => {

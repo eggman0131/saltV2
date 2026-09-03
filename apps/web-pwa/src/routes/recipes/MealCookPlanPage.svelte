@@ -233,15 +233,9 @@
   // Same rule as the recipe page, the component rows and the list chip
   // (`recipeTiming.ts`).
   //
-  // ONLY THE LINE THE ROW SHOWS. The START CLOCK beside it still comes from
-  // `scheduleFor`, which still works back from `cookTimeMinutes` — moving that
-  // onto the phase sum is phase 4 of #1122, and it is what makes the start times
-  // earlier (#953). Until then a row with a strip states the whole process while
-  // its clock still assumes you prepped in advance; that is the migration, and it
-  // is deliberately visible only to the test group. The same half-moved boundary
-  // is true of a meal's "Made from" rows: `insertComponentByCookTime` still
-  // orders them by `cookTimeMinutes` while the row now displays the phase sum
-  // (#1205 review, should-fix 4) — moving the ordering is the same phase 4.
+  // The START CLOCK beside it is worked back from the same figure — `scheduleFor`
+  // moved onto the phase sum in issue #1233, and so did the "Made from" ordering
+  // — so the line, the clock and the running order cannot disagree.
   function dishTimeLabel(row: Recipe): string {
     const minutes = phaseMinutes(row);
     return minutes === null ? 'No timing yet' : formatMinutes(minutes);
