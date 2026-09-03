@@ -89,9 +89,11 @@ test.describe('recipes — the planning timeline', () => {
     await expect(loafCard).not.toContainText('45 min');
     // And the recipe with no strip carries no chip: issue #1213 took away the
     // `?? totalTimeMinutes` fallback that used to put its stored 45 here.
-    await expect(
-      page.getByTestId('recipe-list-item').filter({ hasText: 'Ten minute pasta' }),
-    ).not.toContainText('min');
+    // ("min", unqualified, would match the title.)
+    const pastaCard = page.getByTestId('recipe-list-item').filter({ hasText: 'Ten minute pasta' });
+    await expect(pastaCard).not.toContainText('45 min');
+    await expect(pastaCard).not.toContainText('30 min');
+    await expect(pastaCard).not.toContainText('15 min');
 
     // ── The recipe page: the strip is drawn, and the chips are gone ──────────
     await page.goto(`/#/recipes/${LOAF_ID}`);
