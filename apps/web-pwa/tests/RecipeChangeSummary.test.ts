@@ -465,6 +465,43 @@ describe('RecipeChangeSummary — the phase strip, key on', () => {
 
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
+
+  // Issue #1217. `nullableStringChange` compares by identity, so a stored
+  // sentence going null → "" is a change to the document; both sides render as
+  // `no summary`, so it is no change on screen. The card that used to be drawn
+  // asserted movement, showed the reviewer two identical columns, and offered a
+  // live Apply — approve what you cannot see, or discard what may be real.
+  describe.each([
+    ['null → ""', { from: null, to: '' }],
+    ['"" → null', { from: '', to: null }],
+    ['whitespace → ""', { from: '   ', to: '' }],
+  ] as const)('a blank-to-blank timing sentence (%s)', (_name, timingSummary) => {
+    it('draws no Timing card, and the sheet falls through to "No changes."', () => {
+      openWithPhases({ timingSummary: { from: timingSummary.from, to: timingSummary.to } });
+
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+      expect(screen.queryByText('Timing')).toBeNull();
+      expect(screen.getByTestId('recipe-change-summary-none')).toHaveTextContent('No changes.');
+      expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
+    });
+  });
+
+  // The neighbour the rule must not swallow: a strip whose labels and elapsed sum
+  // hold while minutes move between hands-on and hands-off renders two different
+  // strings only because #1216 prints both figures. It stays a card.
+  it('still draws a card when only hands-on/hands-off moved within a phase', () => {
+    openWithPhases({
+      phases: {
+        from: [{ label: 'Prove', handsOnMinutes: 10, handsOffMinutes: 50 }],
+        to: [{ label: 'Prove', handsOnMinutes: 0, handsOffMinutes: 60 }],
+      },
+    });
+
+    const card = onlyCard();
+    expect(card.textContent).toContain('Timing');
+    expect(card.textContent).toContain('10 hands-on');
+    expect(card.textContent).toContain('0 hands-on');
+  });
 });
 
 describe('RecipeChangeSummary — the phase strip, key off', () => {
