@@ -15,11 +15,12 @@ import { phaseElapsedMinutes, type RecipePhase } from '@salt/domain';
 //
 // IT DOES FEED FIGURES THE READER SEES, and an earlier version of this comment
 // denied it (#1208 bullet 4). The legend prints each block's `elapsedMinutes`,
-// `handsOnMinutes` and `handsOffMinutes`, and each band's `minutes` — and all but
-// the first come through `drawable` below rather than straight from the phase.
-// That is only safe while `drawable` and domain's `safeMinutes` clamp identically,
-// which is a claim and not a guarantee, so it is pinned by a test rather than by
-// this sentence (CLAUDE.md rule 12).
+// `handsOnMinutes` and `handsOffMinutes` — and the last two come through
+// `drawable` below rather than straight from the phase, while `elapsedMinutes`
+// comes through domain's `phaseElapsedMinutes`. That is only safe while `drawable`
+// and domain's `safeMinutes` clamp identically, which is a claim and not a
+// guarantee, so it is pinned by a test rather than by this sentence (CLAUDE.md
+// rule 12).
 //
 // THE DRAWING IS NOT TO SCALE, ON PURPOSE. An overnight prove is 720 minutes
 // beside a 15-minute knead: drawn honestly, the knead is two pixels and the strip
@@ -50,7 +51,9 @@ export type PhaseBandKind = 'hands-on' | 'wait' | 'long-wait';
 
 export interface PhaseBand {
   readonly kind: PhaseBandKind;
-  /** The uncapped figure, never the drawn width. Shown in words in the legend. */
+  /** The band's uncapped minutes, never its drawn width. The block's own
+   *  hands-on / hands-off figures are what the legend prints; this carries the
+   *  same number at band granularity. */
   readonly minutes: number;
   /** Share of its own block, 0–100. */
   readonly widthPercent: number;
