@@ -301,7 +301,7 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
       'Green salad',
     ]);
     expect(getAllByTestId('cook-plan-row-start')[1]).toHaveTextContent('start when you like');
-    expect(getAllByTestId('cook-plan-row-cook-time')[1]).toHaveTextContent('No cook time');
+    expect(getAllByTestId('cook-plan-row-cook-time')[1]).toHaveTextContent('No timing yet');
   });
 
   // Issue #1122. The LINE moves onto the phase sum; the START CLOCK beside it does

@@ -260,12 +260,11 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
     expect(row.querySelector('img')).toBeNull();
   });
 
-  // Issue #1122: the row shows the phase sum where the dish has a strip and its
-  // stored cook time where it does not — the same rule the view page's rows use.
-  // The feature key reads on throughout the unit suite (no PostHog key, nothing
-  // can be gated), so the fallback here is the no-strip case, which is also
-  // byte-for-byte what the key-off case renders.
-  it("shows a component's phase sum, falling back to its stored cook time", async () => {
+  // Issue #1122: the row shows the phase sum, and after issue #1213 nothing else
+  // — the stored-cook-time fallback under it is gone, so a dish with no strip
+  // shows no time. Same rule as the view page's rows (`recipeTiming.ts`).
+  // `POTATOES` still stores a cook time and must show none of it.
+  it("shows a component's phase sum, and no time at all without one", async () => {
     const gravyWithPhases = {
       ...GRAVY,
       metadata: {
@@ -286,6 +285,6 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
     const rows = screen.getAllByTestId('recipe-component-row').map((r) => r.textContent ?? '');
     expect(rows.find((t) => t.includes('Onion gravy'))).toContain('40 min');
     expect(rows.find((t) => t.includes('Onion gravy'))).not.toContain('20 min');
-    expect(rows.find((t) => t.includes('Roast potatoes'))).toContain('45 min');
+    expect(rows.find((t) => t.includes('Roast potatoes'))).not.toContain('min');
   });
 });

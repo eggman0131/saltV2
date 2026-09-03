@@ -3,10 +3,9 @@
  *
  * One journey, because the phase has one promise: a recipe that carries a phase
  * strip reads its timing FROM THE STRIP everywhere it is shown. Issue #1213 took
- * the feature key and the old-field fallback off the recipe page, so the second
- * recipe here is the one with no strip at all — on the recipe page it now shows no
- * timing rather than the old numbers, and the list chip is the one surface still
- * falling back (that goes in #1213's Phase 2).
+ * the feature key and the old-field fallbacks away entirely, so the second recipe
+ * here is the one with no strip at all: it stores prep 15 / cook 30 / total 45 and
+ * shows none of them, on the list or on the recipe page.
  *
  * What needs a real browser is exactly what jsdom cannot say: that the two
  * recipes' figures come back from Firestore and render side by side on the list,
@@ -82,15 +81,17 @@ test.describe('recipes — the planning timeline', () => {
     await seedRecipe(page, recipe(LOAF_ID, 'Overnight loaf', LOAF_PHASES));
     await seedRecipe(page, recipe(PASTA_ID, 'Ten minute pasta'));
 
-    // ── The list: two recipes, two sources of truth ──────────────────────────
+    // ── The list: the chip is the strip's sum, or nothing ────────────────────
     await page.goto('/#/recipes');
     const loafCard = page.getByTestId('recipe-list-item').filter({ hasText: 'Overnight loaf' });
     await expect(loafCard).toContainText('13 hr', { timeout: SYNC_TIMEOUT });
     // Not the stored 45, which is still on the document and now unread.
     await expect(loafCard).not.toContainText('45 min');
+    // And the recipe with no strip carries no chip: issue #1213 took away the
+    // `?? totalTimeMinutes` fallback that used to put its stored 45 here.
     await expect(
       page.getByTestId('recipe-list-item').filter({ hasText: 'Ten minute pasta' }),
-    ).toContainText('45 min');
+    ).not.toContainText('min');
 
     // ── The recipe page: the strip is drawn, and the chips are gone ──────────
     await page.goto(`/#/recipes/${LOAF_ID}`);

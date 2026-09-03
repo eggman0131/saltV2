@@ -49,7 +49,6 @@
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
-  import { recipePhasesGate } from '../../lib/featureGate.js';
   import { phaseMinutes } from './recipeTiming.js';
   import { kindOf } from './recipeKind.js';
   import { quarterHourOptions } from '../../lib/timeOptions.js';
@@ -229,9 +228,10 @@
     return now >= startAt;
   }
 
-  // What this dish takes, on its plan row (issue #1122): the phase sum when the
-  // dish has a strip, its stored cook time otherwise. Same rule as the recipe
-  // page, the component rows and the list chip (`recipeTiming.ts`).
+  // What this dish takes, on its plan row (issue #1122): the phase sum, and after
+  // issue #1213 nothing else — the stored-cook-time fallback under it is gone.
+  // Same rule as the recipe page, the component rows and the list chip
+  // (`recipeTiming.ts`).
   //
   // ONLY THE LINE THE ROW SHOWS. The START CLOCK beside it still comes from
   // `scheduleFor`, which still works back from `cookTimeMinutes` — moving that
@@ -242,11 +242,9 @@
   // is true of a meal's "Made from" rows: `insertComponentByCookTime` still
   // orders them by `cookTimeMinutes` while the row now displays the phase sum
   // (#1205 review, should-fix 4) — moving the ordering is the same phase 4.
-  const phasesEnabled = $derived($recipePhasesGate.enabled);
-
   function dishTimeLabel(row: Recipe): string {
-    const minutes = phaseMinutes(row, phasesEnabled) ?? row.metadata.cookTimeMinutes;
-    return minutes === null ? 'No cook time' : formatMinutes(minutes);
+    const minutes = phaseMinutes(row);
+    return minutes === null ? 'No timing yet' : formatMinutes(minutes);
   }
 
   /** "in 40 min" / "in 1 h 20 min", rounded up so a countdown never reads "in 0 min". */

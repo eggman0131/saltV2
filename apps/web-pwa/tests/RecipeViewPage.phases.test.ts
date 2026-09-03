@@ -331,11 +331,13 @@ describe('RecipeViewPage — the phase strip', () => {
     expect(getByTestId('recipe-component-cook-time').textContent).toContain('2 hr 22 min');
   });
 
-  it("falls back to a component's stored cook time when it has no strip", () => {
+  // Issue #1213 removed the fallback: the dish still stores a cook time of 20 and
+  // its row shows no time at all.
+  it('shows no time on the Made from row when the component has no strip', () => {
     mockRecipes._set(meal(dish({ cookTimeMinutes: 20 })));
-    const { getByTestId } = renderPage();
+    const { queryByTestId } = renderPage();
 
-    expect(getByTestId('recipe-component-cook-time').textContent).toContain('20 min');
+    expect(queryByTestId('recipe-component-cook-time')).toBeNull();
   });
 
   it('renders nothing for a recipe whose stored strip is empty', () => {

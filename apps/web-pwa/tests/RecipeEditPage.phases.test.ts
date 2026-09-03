@@ -8,26 +8,21 @@ import type { Recipe, RecipePhase } from '@salt/domain';
 //
 // Three things are pinned here and nowhere else:
 //
-//  1. THE SWAP. With the key on the edit page offers the strip and NOT the three
-//     Prep / Cook / Total boxes; with it off it offers exactly the three it always
-//     did and nothing hints the strip exists. e2e cannot say this — an e2e build
-//     has no PostHog key, so every gate reads on (`recipe-phase-timeline.spec.ts`
-//     header) — so the key-off half of the promise lives in jsdom or nowhere.
+//  1. THE SWAP, now complete (issue #1213): the edit page offers the strip and
+//     NOT the three Prep / Cook / Total boxes, for everyone, with no key left to
+//     turn. The boxes are gone from the markup, so there is no "key off" half of
+//     this promise any more.
 //  2. THE ROUND TRIP THROUGH THE SAVE. What the cook typed is what
 //     `persistRecipe` is handed: two minute figures per phase, never a third, and
 //     no stored elapsed time.
 //  3. THE CAP IS INBOUND ONLY (#1123). A stored strip of seven renders all seven
 //     and stays editable; the cap only stops this editor adding an eighth.
 
-const { mockRecipes, mockCanonItems, mockPhasesGate } = await vi.hoisted(async () => {
+const { mockRecipes, mockCanonItems } = await vi.hoisted(async () => {
   const { makeStore } = await import('./support/testStore.js');
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
-    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
-      enabled: true,
-      settled: true,
-    }),
   };
 });
 
@@ -47,11 +42,12 @@ vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 // The real gate reads uninitialised observability and therefore always answers
 // "on", which would make the key-off assertions below untestable.
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: mockPhasesGate,
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
-  featureGate: () => mockPhasesGate,
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  }),
   isFeatureEnabled: () => true,
 }));
 
@@ -119,11 +115,10 @@ afterEach(() => {
   document.body.innerHTML = '';
   mockCanonItems._set([]);
   mockRecipes._set([]);
-  mockPhasesGate._set({ enabled: true, settled: true });
   vi.clearAllMocks();
 });
 
-describe('RecipeEditPage — the phase editor, key on', () => {
+describe('RecipeEditPage — the phase editor', () => {
   it('replaces the three time boxes with the strip, and keeps Servings', () => {
     renderEditor([MIX]);
 
@@ -256,32 +251,31 @@ describe('RecipeEditPage — the phase editor, key on', () => {
   });
 });
 
-describe('RecipeEditPage — the phase editor, key off', () => {
-  it('shows the three time boxes and no trace of the strip', () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
+describe('RecipeEditPage — the three time boxes are gone', () => {
+  // The mechanical half of "the edit page has no Prep, Cook or Total number
+  // boxes" (issue #1213). This fixture still STORES all three — 15 / 30 / 45 —
+  // so a control coming back, disabled or hidden or otherwise, fails here.
+  it('offers no Prep, Cook or Total input, even for a recipe that stores all three', () => {
     renderEditor([MIX, PROVE]);
 
     expect(screen.getByTestId('recipe-servings-input')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-prep-input')).toHaveValue('15');
-    expect(screen.getByTestId('recipe-cook-input')).toHaveValue('30');
-    expect(screen.getByTestId('recipe-total-input')).toHaveValue('45');
-
-    // Nothing may hint that a feature is withheld (featureGate.ts): no section,
-    // no heading, no disabled control.
-    expect(screen.queryByTestId('recipe-phase-editor')).toBeNull();
-    expect(screen.queryByTestId('recipe-add-phase-btn')).toBeNull();
-    expect(rows()).toHaveLength(0);
-    expect(screen.queryByText('Timing')).toBeNull();
+    expect(screen.queryByTestId('recipe-prep-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-cook-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-total-input')).toBeNull();
+    expect(screen.getByTestId('recipe-phase-editor')).toBeInTheDocument();
   });
 
-  it('leaves a stored strip untouched when it is not on screen to edit', async () => {
-    mockPhasesGate._set({ enabled: false, settled: true });
+  // The stored values are left exactly as they are — read by nothing, written by
+  // nothing here, and removed by #1211.
+  it('leaves the three stored values untouched when the strip is edited', async () => {
     renderEditor([MIX, PROVE]);
 
-    await typeInto(screen.getByTestId('recipe-prep-input'), '25');
+    await typeInto(screen.getByTestId('recipe-servings-input'), '6');
 
     const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(25);
+    expect(saved.metadata.prepTimeMinutes).toBe(15);
+    expect(saved.metadata.cookTimeMinutes).toBe(30);
+    expect(saved.metadata.totalTimeMinutes).toBe(45);
     expect(saved.metadata.phases).toEqual([MIX, PROVE]);
   });
 });

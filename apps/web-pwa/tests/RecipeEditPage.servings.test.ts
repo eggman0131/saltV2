@@ -32,20 +32,14 @@ vi.mock('../src/lib/recipeService.js', () => ({
   takeImportedDraft: vi.fn().mockReturnValue(null),
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
-// The phase editor replaces the three time boxes when its key is ON (issue
-// #1212), and the real gate reads uninitialised observability as on. This suite
-// is about the three boxes, so it pins the key OFF.
 vi.mock('../src/lib/featureGate.js', () => ({
-  recipePhasesGate: {
-    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: false, settled: true }), () => {}),
-  },
   breadGate: {
     subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   },
   featureGate: () => ({
-    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: false, settled: true }), () => {}),
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
   }),
-  isFeatureEnabled: () => false,
+  isFeatureEnabled: () => true,
 }));
 
 import RecipeEditPage from '../src/routes/recipes/RecipeEditPage.svelte';
@@ -121,15 +115,16 @@ describe('RecipeEditPage — Servings', () => {
     expect((await savedRecipe()).metadata.servings).toBe(6);
   });
 
-  it('leaves the time fields alone — 0 prep and 0 cook are real answers (#739)', async () => {
+  // #739's rule was that 0 is a real answer for a duration, not an absence. The
+  // three time boxes went with issue #1213, so the rule now lives on the phase
+  // editor's own minute fields (`RecipeEditPage.phases.test.ts`). What is left
+  // here is that Servings still has no timing control beside it.
+  it('offers no Prep, Cook or Total box beside Servings', () => {
     mockRecipes._set([makeRecipe()]);
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
 
-    await typeInto('recipe-prep-input', '0');
-    await typeInto('recipe-cook-input', '0');
-
-    const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(0);
-    expect(saved.metadata.cookTimeMinutes).toBe(0);
+    expect(screen.queryByTestId('recipe-prep-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-cook-input')).toBeNull();
+    expect(screen.queryByTestId('recipe-total-input')).toBeNull();
   });
 });
