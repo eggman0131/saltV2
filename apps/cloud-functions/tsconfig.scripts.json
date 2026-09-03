@@ -1,0 +1,41 @@
+{
+  // The one-shot script directory's typecheck (issue #1118, the script-directory
+  // sibling of `tsconfig.test.json`'s UT-G1 job).
+  //
+  // `tsconfig.json` is the BUILD config — `rootDir: "src"`, `composite`, emits to
+  // `dist` — so it can never include `scripts/**`: a composite project cannot see
+  // files outside its `rootDir`, and anything it did see would land in the
+  // deployed bundle's tree. Until this config existed, `scripts/` was outside
+  // every program in the repo and NO compiler had ever read it. Nine `.ts` files
+  // live there, six of which write to production Firestore; `pnpm lint` sees the
+  // directory and structurally cannot see a type error in it.
+  //
+  // Wired into the root `typecheck` script, beside `probes/tsconfig.json` and
+  // `tsconfig.test.json` — which is the half that matters: a config that merely
+  // exists is run by nothing.
+  //
+  // `types: ["node"]` for the same reason `probes/tsconfig.json` states it
+  // (#1171/#1172): these scripts use `process`, `console` and `node:*`, and
+  // leaving those to automatic @types discovery made them a hoisting accident.
+  //
+  // `allowJs` exists for exactly one file: `prune-instance-named-kitchen-tools.ts`
+  // imports `scripts/kitchen-tool-vocabulary.mjs`, which has no declarations. TS
+  // reads it and INFERS its exports, so the `TOOLS as readonly SeedTool[]` at that
+  // call site becomes a checked assertion instead of an assertion on `any`.
+  // `checkJs` stays off: this enrols the `.mjs` as a resolvable module, not every
+  // `.mjs` in the directory into a strict program.
+  //
+  // No `references`: like `probes/`, this recompiles the `../src/…` files two
+  // scripts import inline, and stays a separate `noEmit` invocation so it cannot
+  // disturb `tsc --build`'s incremental state.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["scripts/**/*.ts"]
+}

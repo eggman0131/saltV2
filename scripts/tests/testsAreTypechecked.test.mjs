@@ -33,9 +33,19 @@ import { describe, expect, it } from 'vitest';
 // the root script under their own configs: `apps/web-pwa/e2e/` and
 // `apps/cloud-functions/probes/`.
 //
-// NOT covered and deliberately so: `apps/cloud-functions/scripts/`. That is
-// issue #1118, a separate open issue on the same theme. This guard must not
-// fail on it, and does not — it is not named `tests`.
+// ALSO covered, since #1118: `apps/cloud-functions/scripts/`. Not a `tests/`
+// directory, so the walk never finds it — but the identical failure mode, and a
+// worse blast radius: ten TypeScript files, six of which write to production
+// Firestore, read by no compiler at all until `tsconfig.scripts.json` existed.
+// A config wired by convention alone is the half UT-G1 says goes wrong, so it is
+// asserted below rather than described.
+//
+// NAMED, not derived from the tree, which is a knowing departure from UT-E1 and
+// carries its reason: "every directory under `apps/**` holding TypeScript
+// outside a build config" also selects `packages/ui-components/scripts/`, which
+// is genuinely uncovered today and is another issue's ground. Deriving it would
+// red this guard on work #1118 explicitly excluded. The cost of naming it is the
+// usual one — a second such directory is not caught until someone adds it here.
 //
 // The limit of what a green here means (UT-G2): it says a compiler reads those
 // files, not that everything in them is checked. A `.svelte` import still
@@ -158,6 +168,22 @@ describe('every TypeScript tests/ directory is in the root typecheck script', ()
         `\`tsconfig.json\` and append a \`tsc -p …\` for it to \`package.json\`'s \`typecheck\`:\n  ` +
         uncovered.join('\n  '),
     ).toEqual([]);
+  });
+
+  it('covers apps/cloud-functions/scripts/, which is not a tests/ dir (#1118)', () => {
+    const dir = 'apps/cloud-functions/scripts';
+    // Fails on the walk being wrong as well as on the wiring being wrong: if the
+    // directory has gone, this is the wrong assertion to keep and should be
+    // deleted deliberately rather than left passing over nothing.
+    expect(holdsTypeScript(path.join(repoRoot, dir)), `${dir} no longer holds TypeScript`).toBe(
+      true,
+    );
+    expect(
+      isCovered(dir),
+      `${dir} is in no tsconfig the root \`typecheck\` script runs, so nothing compiles it — ` +
+        `the state #1118 fixed. Re-append \`tsc -p apps/cloud-functions/tsconfig.scripts.json\` ` +
+        `to \`package.json\`'s \`typecheck\`.`,
+    ).toBe(true);
   });
 
   it('runs every config it names — a config that only exists checks nothing', () => {

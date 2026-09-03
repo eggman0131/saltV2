@@ -360,6 +360,9 @@ waitFor(...)`, `findBy*`, or `vi.advanceTimersByTime` under fake timers. A bare 
   _Guard:_ a `tsconfig.test.json` that the root `typecheck` script does not name. It cannot tell you
   a test directory is MISSING one — the absence of a config looks the same as a package with no
   TypeScript tests.
+  **See also —** the same mechanism over SCRIPT directories is
+  [one-shot-scripts.md](one-shot-scripts.md) §1 (#1118). A separate rule over separate directories;
+  it narrows nothing here, and nothing here reaches it.
 
 - **UT-G2 (MUST · review-only) — Note what the typecheck does not cover.** `tsconfig.test.json`
   types the test file against the module under test, but `src/env.d.ts`'s `*.svelte` shim types
