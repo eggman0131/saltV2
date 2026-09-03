@@ -34,7 +34,7 @@
     canBeComponentOf,
     clearIngredientMatch,
     hasLiveCanonMatch,
-    insertComponentByCookTime,
+    insertComponentByElapsedTime,
     isCookable,
     resolveComponents,
     takesComponents,
@@ -205,9 +205,9 @@
   // Servings only (issue #1123). A 0 typed here is not an answer — it is what
   // "not stated" means, and `null` is this field's existing sentinel for that,
   // which every consumer already handles (the chip hides, the scaler falls back
-  // to a base of 1). Deliberately NOT folded into `parseNumberOrNull`: the three
-  // time fields share that helper and `prepTimeMinutes: 0` / `cookTimeMinutes: 0`
-  // are real answers there (issue #739).
+  // to a base of 1). Deliberately NOT folded into `parseNumberOrNull`: the other
+  // callers of that helper are the phase minute boxes and a step timer, where a
+  // typed 0 is a real answer — a prove has no hands-on time at all (issue #739).
   function positiveOrNull(value: number | null): number | null {
     return value !== null && value > 0 ? value : null;
   }
@@ -363,7 +363,7 @@
     // and already-attached guards folded in — so the page never computes an index.
     draft = {
       ...draft,
-      componentRecipeIds: insertComponentByCookTime(
+      componentRecipeIds: insertComponentByElapsedTime(
         draft.id,
         draft.componentRecipeIds,
         id,
@@ -1153,6 +1153,11 @@
            "makes…" below stay: a takeaway can still have a menu page it came
            from. -->
       {#if showCooking}
+        <!-- Servings alone. The Prep / Cook / Total boxes that stood beside it are
+             gone as of issue #1233: the phase strip below is now the only timing
+             control anywhere in Salt, and the cook plan works its start times back
+             from it. The grid columns are kept so the box keeps the width it has
+             always had rather than stretching across the card. -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <TextField
             label="Servings"
@@ -1160,39 +1165,6 @@
             value={draft.metadata.servings === null ? '' : String(draft.metadata.servings)}
             onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
-          />
-          <!-- Kept alongside the phase editor, not moved beside it in a redesigned
-               layout: `scheduleFor` and `insertComponentByCookTime` (in
-               packages/domain) still read `cookTimeMinutes`, so a hand-authored
-               recipe needs a way to set it until issue #1213's phase 3 moves those
-               readers onto `recipePhaseTotals()`. Removing these three boxes is
-               that phase's job, not this one's (PR #1231 review). -->
-          <TextField
-            label="Prep (min)"
-            inputmode="numeric"
-            value={draft.metadata.prepTimeMinutes === null
-              ? ''
-              : String(draft.metadata.prepTimeMinutes)}
-            onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-prep-input"
-          />
-          <TextField
-            label="Cook (min)"
-            inputmode="numeric"
-            value={draft.metadata.cookTimeMinutes === null
-              ? ''
-              : String(draft.metadata.cookTimeMinutes)}
-            onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-cook-input"
-          />
-          <TextField
-            label="Total (min)"
-            inputmode="numeric"
-            value={draft.metadata.totalTimeMinutes === null
-              ? ''
-              : String(draft.metadata.totalTimeMinutes)}
-            onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-total-input"
           />
         </div>
       {/if}

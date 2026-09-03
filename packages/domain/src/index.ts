@@ -239,7 +239,7 @@ export {
   resolveComponents,
   componentDisplayLines,
   canBeComponentOf,
-  insertComponentByCookTime,
+  insertComponentByElapsedTime,
   expandForPlanner,
   mergePlannerRecipeIds,
   kitByStep,

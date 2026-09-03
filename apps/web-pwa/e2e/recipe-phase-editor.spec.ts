@@ -12,14 +12,10 @@
  * into. This spec deliberately uses no bridge seeding at all: the editor IS the
  * seam under test.
  *
- * As that spec's header explains, an e2e build has no PostHog key, so
- * `isObservabilityFeatureEnabled` reads every gate as ON and a key-OFF assertion
- * is impossible here by design — the edit page's three Prep / Cook / Total boxes
- * with the key off are pinned in `tests/RecipeEditPage.phases.test.ts` instead.
- * What this spec CAN assert about the gate is the on-state half: with the key on,
- * the phase editor is offered alongside those three boxes, not in place of them —
- * they still feed `scheduleFor` and `insertComponentByCookTime` until #1213's
- * phase 3/5 retires them (PR #1231 review).
+ * Since issue #1233 the strip is also the ONLY timing control on the page: the
+ * three Prep / Cook / Total boxes are gone, because `scheduleFor` and
+ * `insertComponentByElapsedTime` read the strip and nothing reads them. Their
+ * absence is asserted below so a re-added box cannot slip back in unnoticed.
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
@@ -77,14 +73,13 @@ test.describe('recipes — hand-editing the phase strip', () => {
     await expect(page.getByRole('heading', { name: /new recipe/i })).toBeVisible();
     await page.getByTestId('recipe-title-input').fill(DISH);
 
-    // The phase editor is offered alongside the legacy Prep/Cook/Total boxes —
-    // at this point in #1213's phase order those three still feed
-    // `scheduleFor` and `insertComponentByCookTime` (PR #1231 review), so their
-    // removal is phase 3/5's job, not this one's. Both surfaces coexist.
+    // The phase editor is the ONLY timing control on the page (issue #1233): the
+    // three Prep/Cook/Total boxes went when the last reader of `cookTimeMinutes`
+    // did, so there is no number a cook can type here that nothing consumes.
     await expect(page.getByTestId('recipe-phase-editor')).toBeVisible();
-    await expect(page.getByTestId('recipe-prep-input')).toBeVisible();
-    await expect(page.getByTestId('recipe-cook-input')).toBeVisible();
-    await expect(page.getByTestId('recipe-total-input')).toBeVisible();
+    await expect(page.getByTestId('recipe-prep-input')).toHaveCount(0);
+    await expect(page.getByTestId('recipe-cook-input')).toHaveCount(0);
+    await expect(page.getByTestId('recipe-total-input')).toHaveCount(0);
 
     for (let i = 0; i < TYPED.length; i += 1) {
       await page.getByTestId('recipe-add-phase-btn').click();

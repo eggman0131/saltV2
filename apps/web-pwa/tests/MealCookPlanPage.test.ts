@@ -105,13 +105,24 @@ function dish(id: string, title: string, overrides: Partial<Recipe> = {}): Recip
   };
 }
 
-function withCookTime(id: string, title: string, minutes: number | null): Recipe {
+/**
+ * A dish whose phase strip elapses `minutes`, or which has no strip at all when
+ * `minutes` is null. Since issue #1233 that strip is what both the row's time
+ * line and its start clock are worked from; the stored `cookTimeMinutes` beside
+ * it deliberately says something else, so a reader that regressed onto it would
+ * move every clock time asserted here.
+ */
+function withElapsed(id: string, title: string, minutes: number | null): Recipe {
   return dish(id, title, {
     metadata: {
       servings: 4,
-      cookTimeMinutes: minutes,
+      cookTimeMinutes: 5,
       prepTimeMinutes: null,
       totalTimeMinutes: null,
+      phases:
+        minutes === null
+          ? undefined
+          : [{ label: 'Cook', handsOnMinutes: 0, handsOffMinutes: minutes }],
       tags: [],
     },
   });
@@ -146,9 +157,9 @@ function seedRoast(mealOverrides: Partial<Recipe> = {}): void {
       componentRecipeIds: ['chicken', 'potatoes', 'gravy'],
       ...mealOverrides,
     }),
-    withCookTime('chicken', 'Roast chicken', 90),
-    withCookTime('potatoes', 'Roast potatoes', 50),
-    withCookTime('gravy', 'Onion gravy', 10),
+    withElapsed('chicken', 'Roast chicken', 90),
+    withElapsed('potatoes', 'Roast potatoes', 50),
+    withElapsed('gravy', 'Onion gravy', 10),
   ]);
 }
 
@@ -218,9 +229,9 @@ describe('MealCookPlanPage — the running order', () => {
     // stored order is the order the user dragged them into.
     mockRecipes._set([
       dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['gravy', 'chicken', 'potatoes'] }),
-      withCookTime('chicken', 'Roast chicken', 90),
-      withCookTime('potatoes', 'Roast potatoes', 50),
-      withCookTime('gravy', 'Onion gravy', 10),
+      withElapsed('chicken', 'Roast chicken', 90),
+      withElapsed('potatoes', 'Roast potatoes', 50),
+      withElapsed('gravy', 'Onion gravy', 10),
     ]);
     const { getAllByTestId } = renderPage();
     expect(getAllByTestId('cook-plan-row-title').map((n) => n.textContent?.trim())).toEqual([
@@ -290,8 +301,8 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
   it('leaves a dish with no cook time unscheduled rather than dropping it', () => {
     mockRecipes._set([
       dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['chicken', 'salad'] }),
-      withCookTime('chicken', 'Roast chicken', 90),
-      withCookTime('salad', 'Green salad', null),
+      withElapsed('chicken', 'Roast chicken', 90),
+      withElapsed('salad', 'Green salad', null),
     ]);
     mockCookSession._set(session({ serveAt: '2026-08-16T19:00:00.000Z' }));
 
@@ -304,16 +315,15 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     expect(getAllByTestId('cook-plan-row-cook-time')[1]).toHaveTextContent('No timing yet');
   });
 
-  // Issue #1122. The LINE moves onto the phase sum; the START CLOCK beside it does
-  // not — `scheduleFor` still works back from `cookTimeMinutes` until phase 4, and
-  // this asserts that boundary rather than assuming it. The feature key reads on
-  // here, as it does everywhere in the unit suite: with no PostHog key nothing can
-  // be gated (`isObservabilityFeatureEnabled`).
-  it("shows a dish's phase sum on its plan row, leaving the start clock alone", () => {
-    const potatoes = withCookTime('potatoes', 'Roast potatoes', 30);
+  // Issues #1122 and #1233. The LINE and the START CLOCK read one figure — the
+  // phase sum — so a row cannot state the whole process while its clock assumes
+  // the preparation already happened. That half-moved boundary is what #1233
+  // closed, and this pins that it stays closed.
+  it("reads a dish's line AND its start clock from the same phase sum", () => {
+    const potatoes = withElapsed('potatoes', 'Roast potatoes', 30);
     mockRecipes._set([
       dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['chicken', 'potatoes'] }),
-      withCookTime('chicken', 'Roast chicken', 90),
+      withElapsed('chicken', 'Roast chicken', 90),
       {
         ...potatoes,
         metadata: {
@@ -331,8 +341,9 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     const rows = getAllByTestId('cook-plan-row-title').map((n) => n.textContent?.trim());
     const potatoIndex = rows.indexOf('Roast potatoes');
     expect(getAllByTestId('cook-plan-row-cook-time')[potatoIndex]).toHaveTextContent('1 hr 5 min');
-    // 19:00 less the 30 minutes `scheduleFor` still reads, not the 65 above it.
-    const expected = CLOCK.format(new Date('2026-08-16T18:30:00.000Z'));
+    // 19:00 less the 65 minutes the line states — not the 30 the stored
+    // `cookTimeMinutes` would have given, which is what moved in #953.
+    const expected = CLOCK.format(new Date('2026-08-16T17:55:00.000Z'));
     expect(getAllByTestId('cook-plan-row-start')[potatoIndex]).toHaveTextContent(
       `start ${expected}`,
     );
@@ -345,8 +356,8 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     const serveAt = new Date(Date.now() + 60 * 60_000);
     mockRecipes._set([
       dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['chicken', 'potatoes'] }),
-      withCookTime('chicken', 'Roast chicken', 90),
-      withCookTime('potatoes', 'Roast potatoes', 30),
+      withElapsed('chicken', 'Roast chicken', 90),
+      withElapsed('potatoes', 'Roast potatoes', 30),
     ]);
     mockCookSession._set(session({ serveAt: serveAt.toISOString() }));
 
@@ -395,7 +406,7 @@ describe('MealCookPlanPage — where a row goes, and how far it has got', () => 
     mockLiveCooks._set([
       {
         session: { id: 'chicken_user-1' },
-        recipe: withCookTime('chicken', 'Roast chicken', 90),
+        recipe: withElapsed('chicken', 'Roast chicken', 90),
         stepNumber: 3,
         stepCount: 8,
         completedCount: 2,
@@ -440,7 +451,7 @@ describe('MealCookPlanPage — every timer in the meal, in one place', () => {
       kind: 'cook',
       id: `${recipeId}_${UID}::t1`,
       session: sessionDoc,
-      recipe: withCookTime(recipeId, title, 90),
+      recipe: withElapsed(recipeId, title, 90),
       timer: {
         id: 't1',
         stepId: 's1',

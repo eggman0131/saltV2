@@ -4,7 +4,7 @@ import {
   componentDisplayLines,
   expandForPlanner,
   hasComponents,
-  insertComponentByCookTime,
+  insertComponentByElapsedTime,
   mergePlannerRecipeIds,
   resolveComponents,
 } from '@salt/domain';
@@ -18,7 +18,8 @@ function makeRecipe(over: {
   id: string;
   title?: string;
   description?: string | null;
-  cookTimeMinutes?: number | null;
+  /** Elapsed time of the dish's phase strip; `null`/absent = no strip at all. */
+  elapsedMinutes?: number | null;
   componentRecipeIds?: string[];
   ingredients?: Recipe['ingredients'];
   steps?: Recipe['steps'];
@@ -35,7 +36,14 @@ function makeRecipe(over: {
       servings: null,
       totalTimeMinutes: null,
       prepTimeMinutes: null,
-      cookTimeMinutes: over.cookTimeMinutes ?? null,
+      // Deliberately contradicts the strip on every fixture: issue #1233 moved the
+      // ranking onto the phases, and if this field were still read the orders
+      // asserted below would move.
+      cookTimeMinutes: 5,
+      phases:
+        over.elapsedMinutes === null || over.elapsedMinutes === undefined
+          ? undefined
+          : [{ label: 'block', handsOnMinutes: 0, handsOffMinutes: over.elapsedMinutes }],
       tags: [],
     },
     source: null,
@@ -51,11 +59,11 @@ function makeRecipe(over: {
   };
 }
 
-const CHICKEN = makeRecipe({ id: 'chicken', title: 'Roast chicken', cookTimeMinutes: 90 });
-const POTATOES = makeRecipe({ id: 'potatoes', title: 'Roast potatoes', cookTimeMinutes: 45 });
-const GRAVY = makeRecipe({ id: 'gravy', title: 'Onion gravy', cookTimeMinutes: 20 });
-// No cook time at all — "start when you like", which sorts to the TOP.
-const SALAD = makeRecipe({ id: 'salad', title: 'Green salad', cookTimeMinutes: null });
+const CHICKEN = makeRecipe({ id: 'chicken', title: 'Roast chicken', elapsedMinutes: 90 });
+const POTATOES = makeRecipe({ id: 'potatoes', title: 'Roast potatoes', elapsedMinutes: 45 });
+const GRAVY = makeRecipe({ id: 'gravy', title: 'Onion gravy', elapsedMinutes: 20 });
+// No phase strip at all — "start when you like", which sorts to the TOP.
+const SALAD = makeRecipe({ id: 'salad', title: 'Green salad', elapsedMinutes: null });
 
 const LIBRARY = [CHICKEN, POTATOES, GRAVY, SALAD];
 
@@ -237,33 +245,44 @@ describe('canBeComponentOf', () => {
   });
 });
 
-describe('insertComponentByCookTime', () => {
-  it('inserts longest-cooking first, so the thing you start first leads', () => {
-    let ids = insertComponentByCookTime('roast', [], 'gravy', LIBRARY);
-    ids = insertComponentByCookTime('roast', ids, 'chicken', LIBRARY);
-    ids = insertComponentByCookTime('roast', ids, 'potatoes', LIBRARY);
+describe('insertComponentByElapsedTime', () => {
+  it('inserts longest-first, so the thing you start first leads', () => {
+    let ids = insertComponentByElapsedTime('roast', [], 'gravy', LIBRARY);
+    ids = insertComponentByElapsedTime('roast', ids, 'chicken', LIBRARY);
+    ids = insertComponentByElapsedTime('roast', ids, 'potatoes', LIBRARY);
     expect(ids).toEqual(['chicken', 'potatoes', 'gravy']);
   });
 
-  it('sorts a component with NO cook time to the top — "start when you like"', () => {
-    const ids = insertComponentByCookTime('roast', ['chicken', 'potatoes'], 'salad', LIBRARY);
+  it('sorts a component with NO phase strip to the top — "start when you like"', () => {
+    const ids = insertComponentByElapsedTime('roast', ['chicken', 'potatoes'], 'salad', LIBRARY);
     expect(ids).toEqual(['salad', 'chicken', 'potatoes']);
   });
 
-  it('uses cook time, not total time — prep is done ahead and in any order', () => {
-    // A dish with a huge total time but a short cook still goes last: the number
-    // that matters is when it has to go ON, not how long it took to get ready.
-    const marinated = makeRecipe({ id: 'marinated', cookTimeMinutes: 5 });
-    const library = [
+  it('ranks on the WHOLE PROCESS, not the cooking alone (#1233)', () => {
+    // A dish that is 100 min of soaking and marinating before 5 min in the pan
+    // starts before the bird, not after the gravy. Every fixture's stored
+    // `cookTimeMinutes` is 5, so this order is only reachable from the strip.
+    const marinated = makeRecipe({ id: 'marinated', elapsedMinutes: 105 });
+    const ids = insertComponentByElapsedTime('roast', ['chicken', 'gravy'], 'marinated', [
       ...LIBRARY,
-      { ...marinated, metadata: { ...marinated.metadata, totalTimeMinutes: 600 } },
-    ];
-    const ids = insertComponentByCookTime('roast', ['chicken', 'gravy'], 'marinated', library);
-    expect(ids).toEqual(['chicken', 'gravy', 'marinated']);
+      marinated,
+    ]);
+    expect(ids).toEqual(['marinated', 'chicken', 'gravy']);
   });
 
-  it('appends when nothing already attached cooks for less time', () => {
-    expect(insertComponentByCookTime('roast', ['chicken'], 'gravy', LIBRARY)).toEqual([
+  it('ranks a strip zeroed by hand LAST, never as "no strip"', () => {
+    // `hasPhases`, not `elapsedMinutes >= 1`: a stated timing of nothing is not an
+    // unknown, so it goes at the end rather than leading the running order.
+    const zeroed = makeRecipe({ id: 'zeroed', elapsedMinutes: 0 });
+    const ids = insertComponentByElapsedTime('roast', ['chicken', 'gravy'], 'zeroed', [
+      ...LIBRARY,
+      zeroed,
+    ]);
+    expect(ids).toEqual(['chicken', 'gravy', 'zeroed']);
+  });
+
+  it('appends when nothing already attached takes less time', () => {
+    expect(insertComponentByElapsedTime('roast', ['chicken'], 'gravy', LIBRARY)).toEqual([
       'chicken',
       'gravy',
     ]);
@@ -271,22 +290,22 @@ describe('insertComponentByCookTime', () => {
 
   it('is a no-op when the id is already attached', () => {
     const ids = ['chicken', 'gravy'];
-    expect(insertComponentByCookTime('roast', ids, 'chicken', LIBRARY)).toEqual(ids);
+    expect(insertComponentByElapsedTime('roast', ids, 'chicken', LIBRARY)).toEqual(ids);
   });
 
   it('refuses to attach a recipe to itself — the guard is folded in, not merely advised', () => {
     // The same answer `canBeComponentOf` gives the picker, enforced again here so
     // a caller that forgot to ask cannot write a self-reference.
     const ids = ['chicken'];
-    expect(insertComponentByCookTime('roast', ids, 'roast', LIBRARY)).toEqual(ids);
+    expect(insertComponentByElapsedTime('roast', ids, 'roast', LIBRARY)).toEqual(ids);
   });
 
   it('never re-sorts the existing array — the drag order survives a later attach', () => {
-    // gravy(20) before chicken(90) is not cook-time order; it is what the user
+    // gravy(20) before chicken(90) is not elapsed-time order; it is what the user
     // dragged, and attaching potatoes must not quietly undo it. potatoes(45) lands
-    // before the first entry that cooks for less, which is gravy.
+    // before the first entry that takes less time, which is gravy.
     const dragged = ['gravy', 'chicken'];
-    expect(insertComponentByCookTime('roast', dragged, 'potatoes', LIBRARY)).toEqual([
+    expect(insertComponentByElapsedTime('roast', dragged, 'potatoes', LIBRARY)).toEqual([
       'potatoes',
       'gravy',
       'chicken',
@@ -295,15 +314,15 @@ describe('insertComponentByCookTime', () => {
 
   it('does not crash on an already-attached id that no longer resolves', () => {
     const ids = ['deleted-elsewhere', 'gravy'];
-    expect(insertComponentByCookTime('roast', ids, 'chicken', LIBRARY)).toEqual([
+    expect(insertComponentByElapsedTime('roast', ids, 'chicken', LIBRARY)).toEqual([
       'deleted-elsewhere',
       'chicken',
       'gravy',
     ]);
   });
 
-  it('treats an unknown NEW id as having no cook time and leads with it', () => {
-    expect(insertComponentByCookTime('roast', ['chicken'], 'unknown', LIBRARY)).toEqual([
+  it('treats an unknown NEW id as having no strip and leads with it', () => {
+    expect(insertComponentByElapsedTime('roast', ['chicken'], 'unknown', LIBRARY)).toEqual([
       'unknown',
       'chicken',
     ]);
@@ -311,7 +330,7 @@ describe('insertComponentByCookTime', () => {
 
   it('returns a new array and never mutates the one it was given', () => {
     const ids = ['chicken'];
-    const out = insertComponentByCookTime('roast', ids, 'gravy', LIBRARY);
+    const out = insertComponentByElapsedTime('roast', ids, 'gravy', LIBRARY);
     expect(out).not.toBe(ids);
     expect(ids).toEqual(['chicken']);
   });

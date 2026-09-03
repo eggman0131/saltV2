@@ -20,7 +20,7 @@ import {
   addItem,
   recipeItemAddDefault,
   findProducingRecipes,
-  insertComponentByCookTime,
+  insertComponentByElapsedTime,
   resolveComponents,
   componentDisplayLines,
   resolveProductForm,
@@ -204,7 +204,7 @@ export async function persistRecipe(recipe: Recipe): Promise<ReadResult<void, Do
 // which is already safe on the server — rather than to strand it.
 //
 // Ordering and the self/duplicate guards belong to the domain, so the new array
-// comes from `insertComponentByCookTime` rather than a push: the dish lands where
+// comes from `insertComponentByElapsedTime` rather than a push: the dish lands where
 // the cook would start it (longest-cooking first), attaching a meal to itself is
 // refused, and a second attach of the same dish is a no-op. That last property is
 // what makes this IDEMPOTENT BY CONSTRUCTION — re-saving an editor that still
@@ -222,7 +222,7 @@ export async function attachComponentToMeal(
   if (meal === undefined) return failure({ kind: 'NotFound', resource: 'recipe', id: mealId });
   return persistRecipe({
     ...meal,
-    componentRecipeIds: insertComponentByCookTime(
+    componentRecipeIds: insertComponentByElapsedTime(
       mealId,
       meal.componentRecipeIds,
       componentId,

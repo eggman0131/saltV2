@@ -180,14 +180,12 @@ plan's per-dish line all go through it, so a recipe cannot read 45 min on one
 screen and 13 hr on another. Issue #1213 removed the old-field fallback along with
 the feature key and the `phasesEnabled` argument that threaded it: `phaseMinutes`
 now takes only the recipe, and returns `null` for a recipe with no strip — in
-practice only placeholders and outings, which never showed a timing anyway. Note
-the boundary that is still open: only the LINE a surface shows has moved onto the
-phase sum — the ORDERING beside it has not. The cook plan's START CLOCK still comes
-from `scheduleFor` reading `cookTimeMinutes`, and a meal's "Made from" rows are
-still positioned by `insertComponentByCookTime` reading the same field, so a
-component can display a phase sum while sorting — or starting — as if the old field
-still ran the show (#1205 review, should-fix 4; closing this is #1213 phase 3, and
-carries `breaking-change`).
+practice only placeholders and outings, which never showed a timing anyway. Issue
+#1233 then closed the boundary that was left open: the ORDERING and the CLOCK moved
+onto the same figure the line shows. `scheduleFor` works a start time back from
+`recipePhaseTotals().elapsedMinutes`, and `insertComponentByElapsedTime` positions a
+meal's "Made from" rows on it, so nothing anywhere sorts, starts or displays from a
+different number (#1205 review, should-fix 4).
 
 The definition the model is given lives in `TIME_RULES`
 (`apps/cloud-functions/src/flows/recipeFieldRules.ts`) alongside the three fields'
@@ -301,9 +299,12 @@ Two decisions worth keeping:
   use ours has a "quickest first" sort that means nothing. Ingredients, steps and
   servings stay verbatim.
 
-Nothing downstream changed. The cook plan still starts a dish at
-`serve − cookTimeMinutes` — the decisions recorded below at _The cook plan_. That
-start clock excludes prep on purpose and is tracked separately as #953.
+The cook plan starts a dish at `serve − recipePhaseTotals().elapsedMinutes` — the
+whole process, start to serve; the decisions are recorded below at _The cook plan_.
+Issue #1233 moved it off `cookTimeMinutes`, which had assumed the preparation
+happened at some earlier point in the day, and closed #953 in doing so: there is no
+separate prep figure left for the plan to decide whether to account for. Start times
+on existing plans moved earlier, which is why that change carries `breaking-change`.
 
 The #878 cook-shape ribbon and `cookShape` itself — which had derived the
 displayed hands-on figure as `total − timer waits`, a second source of truth this
@@ -575,12 +576,16 @@ Decisions worth not relitigating:
   `false` for `outing` and `placeholder`. The picker's candidate list is gated on
   `isCookable` instead — a component is a dish you MAKE, which is the same two
   kinds read from the other side.
-- **Attach order is cook time, longest first** (`insertComponentByCookTime`) —
-  the order you start things in. `cookTimeMinutes`, **not** `totalTimeMinutes`:
-  prep is done ahead and in any order, so it says nothing about when a dish has to
-  begin. A component with no cook time sorts to the **top** ("start when you
-  like"). Insertion is **positional only** and never re-sorts the existing array:
-  the stored order is the user's drag order, and a later attach must not undo it.
+- **Attach order is elapsed time, longest first** (`insertComponentByElapsedTime`)
+  — the order you start things in. The figure is
+  `recipePhaseTotals().elapsedMinutes`, the same one the cook plan's start clock
+  works back from, so the running order and the clock times cannot disagree; issue
+  #1233 moved both off `cookTimeMinutes` together for exactly that reason. A
+  component with **no phase strip** sorts to the **top** ("start when you like"),
+  while one whose strip is zeroed by hand ranks last — a stated timing of nothing
+  is not an unknown. Insertion is **positional only** and never re-sorts the
+  existing array: the stored order is the user's drag order, and a later attach
+  must not undo it.
 - **Meals is a section of the recipes list, not a kind of entry.** `sectionOf`
   (`apps/web-pwa/src/routes/recipes/recipeKind.ts`) returns the Meals section for
   anything with components, so an entry appears exactly once — under Meals _and_
@@ -610,7 +615,7 @@ evening: the meal and its dishes in running order, each with a start clock time
 and a live countdown, plus every timer in the meal in one cancellable list. One
 schema field carries it — `serveAt` on `CookSessionSchema` — and one pure helper
 computes it: `scheduleFor(rows, serveAtMs)` in `domain/src/cookSession/`, which is
-`start = serve − cookTimeMinutes`, per row and nothing else.
+`start = serve − recipePhaseTotals().elapsedMinutes`, per row and nothing else.
 
 Decisions worth not relitigating:
 
@@ -640,8 +645,8 @@ Decisions worth not relitigating:
   evening.
 - **The meal is a row only when it has steps of its own.** A pure bundle has
   nothing to start, and a row you cannot act on is noise.
-- **A dish with no `cookTimeMinutes` stays in the plan**, reading "start when you
-  like". Dropping it would hide a dish for the crime of an incomplete recipe.
+- **A dish with no phase strip stays in the plan**, reading "start when you like".
+  Dropping it would hide a dish for the crime of an incomplete recipe.
 
 Two bounds recorded rather than fixed: the timer list inherits the
 five-session cap on `myCookSessions` (raising it is a shared personal-view

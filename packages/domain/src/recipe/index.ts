@@ -63,7 +63,7 @@ export {
   resolveComponents,
   componentDisplayLines,
   canBeComponentOf,
-  insertComponentByCookTime,
+  insertComponentByElapsedTime,
   expandForPlanner,
   mergePlannerRecipeIds,
 } from './queries/components.js';
