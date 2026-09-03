@@ -23,12 +23,13 @@ any row of it.
 | `s2-stage-ccb22` | **yes** — every `chatSessions` and `timerDeliveries` document holds `Timestamp`s                                               | no                                  |
 | `s2-prod-e46bd`  | **yes**                                                                                                                        | **yes — both collections `ACTIVE`** |
 
-**Production is armed and has already swept.** Its ledger holds 9 documents, all
-with a future expiry, the oldest delivered 2026-08-23 — exactly the shape the
-`timerDeliveries` bullet below predicts. Dev and staging are _behind_ prod, not
-ahead of it: the dev → staging → prod order below is the order to follow, not the
-order this actually happened in, so do not read an armed prod as evidence that
-the dev and staging gates were walked.
+**Production is armed and has already swept, deliberately — Daniel armed it, and
+it stays on.** Its ledger holds 9 documents, all with a future expiry, the oldest
+delivered 2026-08-23 — exactly the shape the `timerDeliveries` bullet below
+predicts. Dev and staging are _behind_ prod, not ahead of it: the dev → staging →
+prod order below is the order to follow, not the order this actually happened in,
+so do not read an armed prod as evidence that the dev and staging gates were
+walked, and do not read an unarmed dev as a reason to disarm prod.
 
 ## Why this exists
 
