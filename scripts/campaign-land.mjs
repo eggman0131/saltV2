@@ -30,6 +30,10 @@
  * Cleanup is bounded by construction: the worktree removed is the one git says
  * holds the PR's head branch, and it must sit under `.claude/worktrees/`; the
  * branch deleted is the PR's head branch. Neither is taken from an argument.
+ *
+ * ORDER: the enqueue happens FIRST and nothing local is touched until it has
+ * succeeded - see `scripts/lib/landSteps.mjs`, which holds that guarantee and
+ * the reasoning, and `scripts/tests/campaignLand.test.mjs`, which pins it.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -37,6 +41,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { land } from './lib/landSteps.mjs';
 import { judgePr } from './lib/prEligibility.mjs';
 
 const WORKTREE_DIR = '.claude/worktrees';
@@ -154,40 +159,24 @@ if (verdict.verdict !== 'allow') {
 
 const branch = verdict.head;
 
-if (notePath) {
-  const res = run('gh', ['pr', 'comment', pr, '--body-file', notePath]);
-  if (res.status !== 0) die(`failed to post the note on PR #${pr}: ${(res.stderr || '').trim()}`);
-  console.log(`noted: posted ${notePath} on #${pr}`);
-}
-
-// Cleanup before enqueueing: git refuses to delete a branch that is checked out
-// in a worktree, so `--delete-branch` would fail its local half. Nothing is at
-// risk - the branch is pushed, and the queue owns it from here.
-const wt = worktreeFor(repo, branch);
-if (wt) {
-  const expected = path.join(repo, WORKTREE_DIR);
-  if (!wt.startsWith(expected + path.sep)) {
-    die(`refusing to remove ${wt}: it is not under ${WORKTREE_DIR}`);
+// Resolve the worktree before anything happens, and refuse anything outside the
+// campaign root here rather than inside the ordering module - that check is the
+// header's "bounded by construction" claim and it stays at the IO boundary.
+let worktree = worktreeFor(repo, branch);
+if (worktree) {
+  const root = path.join(repo, WORKTREE_DIR);
+  if (!worktree.startsWith(root + path.sep)) {
+    die(`refusing to remove ${worktree}: it is not under ${WORKTREE_DIR}`);
   }
-  const res = run('git', ['-C', repo, 'worktree', 'remove', wt]);
-  if (res.status !== 0) die(`failed to remove worktree ${wt}: ${(res.stderr || '').trim()}`);
-  console.log(`cleaned: removed worktree ${path.relative(repo, wt)}`);
 }
 
-const del = run('git', ['-C', repo, 'branch', '-D', branch]);
-console.log(
-  del.status === 0
-    ? `cleaned: deleted local branch ${branch}`
-    : `cleaned: no local branch ${branch} to delete`,
-);
-
-const merge = run('gh', ['pr', 'merge', pr, '--squash', '--auto', '--delete-branch']);
-if (merge.status !== 0) {
-  die(`failed to enqueue PR #${pr}: ${(merge.stderr || merge.stdout || '').trim()}`);
-}
+const result = land({ pr, branch, worktree, repo, notePath, run });
+for (const line of result.lines) console.log(line);
+if (!result.ok) die(result.error);
 
 const after = ghJson(['pr', 'view', pr, '--json', 'state,mergeStateStatus,autoMergeRequest']);
-const state = after.data
-  ? `state=${after.data.state} mergeState=${after.data.mergeStateStatus} auto=${after.data.autoMergeRequest !== null}`
-  : `state unreadable (${after.error})`;
-console.log(`enqueued: #${pr} (${branch}) — ${state}`);
+console.log(
+  after.data
+    ? `landed: #${pr} state=${after.data.state} mergeState=${after.data.mergeStateStatus} auto=${after.data.autoMergeRequest !== null}`
+    : `landed: #${pr} — state unreadable (${after.error})`,
+);
