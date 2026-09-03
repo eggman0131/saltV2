@@ -49,13 +49,15 @@
 //   DEFAULT           asks the cookable recipes with no `timesEstimatedAt` stamp
 //   --missing-phases  asks the cookable recipes with NO PHASE STRIP, stamp or not
 //
-// The default finds nothing to do here, and that is the trap this flag exists
-// for: the #952 pass already stamped the library, so pointed at an environment
-// today `--apply` reports "0 to ask" and writes nothing, while those same
-// stamped recipes may have no strip at all. A STAMP IS NOT EVIDENCE OF A STRIP,
-// and structurally so — `reconcileRecipePhases` leaves `phases: []` when a
-// model's answer omits the strip, and the trigger stamps `timesEstimatedAt` in
-// that same `update`. An empty strip under a fresh stamp is a real outcome.
+// The default pass is never "finished": it re-selects whatever is still
+// unstamped each time it runs, including anything authored since the last
+// run, so it has to be re-run alongside this one or `--verify`'s pending
+// count never clears. Re-running it does not make this flag redundant,
+// though — a stamped recipe may still have no strip. A STAMP IS NOT
+// EVIDENCE OF A STRIP, and structurally so — `reconcileRecipePhases` leaves
+// `phases: []` when a model's answer omits the strip, and the trigger
+// stamps `timesEstimatedAt` in that same `update`. An empty strip under a
+// fresh stamp is a real outcome.
 //
 // Selecting on the strip rather than the stamp also keeps the two properties the
 // pass above has: it is safe to re-run, and safe to interrupt. And it never
