@@ -11,6 +11,25 @@ verify**. Enabling is the one irreversible act in the whole procedure, so it is
 deliberately its own step per project — dev, then staging, then prod — and no
 command in this file arms more than one project per invocation.
 
+## State of play — verified 2026-09-03
+
+Read against the three projects on that date. **This is a log, not a plan**:
+re-check with `gcloud firestore fields ttls list --project=<P>` before acting on
+any row of it.
+
+| Project          | Migrated (Step 2)                                                                                                              | Policies armed (Step 4)             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| `s2-dev-eggman`  | **no** — 31 chat sessions still hold ISO strings; 2 ledger docs still hold an epoch-ms `deliveredAt` and no `expiresAt` at all | no                                  |
+| `s2-stage-ccb22` | **yes** — every `chatSessions` and `timerDeliveries` document holds `Timestamp`s                                               | no                                  |
+| `s2-prod-e46bd`  | **yes**                                                                                                                        | **yes — both collections `ACTIVE`** |
+
+**Production is armed and has already swept.** Its ledger holds 9 documents, all
+with a future expiry, the oldest delivered 2026-08-23 — exactly the shape the
+`timerDeliveries` bullet below predicts. Dev and staging are _behind_ prod, not
+ahead of it: the dev → staging → prod order below is the order to follow, not the
+order this actually happened in, so do not read an armed prod as evidence that
+the dev and staging gates were walked.
+
 ## Why this exists
 
 A TTL policy only expires a document whose TTL field holds a Firestore
@@ -47,11 +66,32 @@ a side effect of a deploy or a CI run.
   until the next turn of that conversation restamps it to 540 days, exactly as
   #939 designed. A migration that silently shortened a recorded expiry would
   delete data nobody agreed to delete.
-- **`timerDeliveries` docs expire 14 days after delivery.** The ledger only has
-  to outlive a duplicate dispatch, and Cloud Tasks retries span minutes (≤5
+
+  **540 for every one of them, never the general-chat 14.** `saveChatSession`
+  picks the fortnight when `recipeId === null`, so an _unattached_ sentinel would
+  restamp to 14 days — but no such document can exist. The write that produced the
+  sentinel ran only under `recipeId !== null` (#707), and nothing ever clears a
+  session's `recipeId` back to null (`attachRecipeToSession` is first-claim-wins
+  and there is no un-attach path). Both windows are pinned by the `WINDOWS` table
+  in `packages/adapters/firebase-sync/tests/chatSessionRetention.test.ts`.
+  Measured on `s2-stage-ccb22` on 2026-09-03: 36 sentinels, **none** with a null
+  `recipeId`.
+
+- **`timerDeliveries` docs expire 14 days after delivery. The first sweep takes
+  the ones already past that — not the whole ledger.** The migration derives each
+  document's `expiresAt` from **its own `deliveredAt`**, never from the day the
+  migration runs (`scripts/lib/ttlMigrationPlan.mjs`; the derivation and the
+  "an old document gets an expiry already in the past" property are both pinned by
+  `scripts/tests/ttlMigrationPlan.test.mjs`). So a delivery from three months ago
+  is expired the instant the field is written, and last Tuesday's is not. Expect
+  the ledger to fall to _whatever was delivered in the last fortnight_, and to
+  keep draining on a rolling basis after that — never to zero while timers are
+  still firing. Prod bears this out: armed and swept, it still holds 9 ledger
+  documents, all future-dated. The window is `TIMER_DELIVERY_RETENTION_MS` in
+  `apps/cloud-functions/src/triggers/timerDeliveryRetention.ts`; the ledger only
+  has to outlive a duplicate dispatch, and Cloud Tasks retries span minutes (≤5
   attempts, seconds-to-minutes backoff) while a re-timed timer changes the ledger
-  key entirely. The window is `TIMER_DELIVERY_RETENTION_MS` in
-  `apps/cloud-functions/src/triggers/timerDeliveryRetention.ts`.
+  key entirely.
 
 ## Order matters
 
@@ -82,10 +122,10 @@ shape; the PWA carries the `Timestamp` chat write and the tolerant read.
 Once per collection per project. It needs your `gcloud` account
 (`gcloud auth login`) and nothing else.
 
-**The script has never been executed anywhere** — not on dev, not on staging,
-not in an emulator. The `--dry-run` on dev below is genuinely its first run, and
-the first time the `PATCH` path runs at all is the dev `--apply`. Read the
-dry-run output rather than skimming it.
+**It has run on staging and prod, and never on dev** (see _State of play_). The
+`--dry-run` on dev below is genuinely its first run there, and the dev `--apply`
+is the first `PATCH` that project has seen. Read the dry-run output rather than
+skimming it.
 
 ```bash
 # Preview first — reads only, writes nothing, and prints every document it would touch.
@@ -142,9 +182,17 @@ curl -s -X POST \
        "value":{"timestampValue":"'"$NOW"'"}}}}}}'
 ```
 
-On `s2-stage-ccb22` expect roughly **42** for `chatSessions` and all **23** for
-`timerDeliveries` once Step 2 has been applied there. Write the numbers down —
-they are the "before" that Step 5 compares against.
+On `s2-stage-ccb22` expect roughly **42** for `chatSessions` once Step 2 has been
+applied there.
+
+For `timerDeliveries`, **expect fewer than the collection holds**. 23 was the
+whole ledger when it was counted, not the past-expiry subset; this query returns
+only documents delivered more than 14 days ago, because the migration derives
+each expiry from its own delivery instant (see _What gets deleted, and what does
+not_). A ledger that has seen recent deliveries will show a count well below its
+document count, and that is correct, not a sign the migration was skipped.
+
+Write the numbers down — they are the "before" that Step 5 compares against.
 
 ## Step 4 — enable the policies, one project at a time
 
