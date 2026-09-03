@@ -50,9 +50,12 @@ const TAG = 'refreshgate';
 // answer forgets all of it, so this doubles as the metadata-preserve assertion.
 const SEEDED_METADATA = {
   servings: 4,
-  prepTimeMinutes: 15,
-  cookTimeMinutes: 30,
-  totalTimeMinutes: 45,
+  // Null since #1212: the editor's three time boxes are gone with the phase key
+  // on, and this dish is authored through the editor. Servings and the tag carry
+  // the "the librarian dropped it, the merge kept it" assertion.
+  prepTimeMinutes: null,
+  cookTimeMinutes: null,
+  totalTimeMinutes: null,
   // Not typed by anyone: `emptyRecipe` stamps an empty phase strip on every new
   // recipe (issue #1122), so the stored document carries both keys from creation.
   // They are here because this is a whole-`metadata` equality — it is the
@@ -123,9 +126,11 @@ async function seedDish(page: Page): Promise<string> {
   await page.getByTestId('recipe-title-input').fill(DISH);
 
   await page.getByTestId('recipe-servings-input').fill(String(SEEDED_METADATA.servings));
-  await page.getByTestId('recipe-prep-input').fill(String(SEEDED_METADATA.prepTimeMinutes));
-  await page.getByTestId('recipe-cook-input').fill(String(SEEDED_METADATA.cookTimeMinutes));
-  await page.getByTestId('recipe-total-input').fill(String(SEEDED_METADATA.totalTimeMinutes));
+  // Prep / Cook / Total are no longer typed here (issue #1212): with the phase key
+  // on the editor offers the strip instead, and an e2e build has no PostHog key so
+  // every gate reads ON. They stay null on this document, which costs this spec
+  // nothing — Servings and the tag are the metadata the librarian drops, and they
+  // are what the preservation assertion below actually rests on.
   await page.getByTestId('recipe-tags-input').fill(TAG);
   await page.getByTestId('recipe-tags-input').press('Enter');
 

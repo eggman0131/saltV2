@@ -9,20 +9,24 @@
     SheetHeader,
     SheetTitle,
   } from '@salt/ui-components';
-  import { diffWords, unchangedRatio } from '@salt/domain';
-  import type { DiffPart } from '@salt/domain';
+  import { diffWords, phaseElapsedMinutes, unchangedRatio } from '@salt/domain';
+  import type { DiffPart, RecipePhase } from '@salt/domain';
   import type { NullableStringChange, RecipeDiff } from '@salt/domain';
   import type { StepTimerDoc } from '@salt/domain/schemas';
+  import { recipePhasesGate } from '../../lib/featureGate.js';
 
   // Review-and-approve gate for an AI-chef recipe edit. Renders the pure
   // `RecipeDiff` produced by `diffRecipe` as a DIFF: one card per change,
   // grouped into the same five sections, each chipped with what kind of change
   // it is and labelled with what it applies to. Two choices only: Apply (commit
   // the merge + save, owned by the caller via `onApply`) or Discard / keep
-  // chatting (drop the proposal, no write). A no-op diff (`hasChanges === false`)
-  // shows "No changes" with nothing to apply. Self-contained review sheet; both
-  // edit surfaces (chat page + recipe-view sidebar) reuse it so the review UX is
-  // identical.
+  // chatting (drop the proposal, no write). A diff that draws no card at all
+  // shows "No changes" with nothing to apply — decided from the cards this
+  // component actually built (`hasAnyCards` below), not from `diff.hasChanges`:
+  // `diffRecipe` can report a change this component is not drawing (the Timing
+  // card gated off, or its key-on counterpart), and Apply must never sit next
+  // to a blank body (#1216). Self-contained review sheet; both edit surfaces
+  // (chat page + recipe-view sidebar) reuse it so the review UX is identical.
   //
   // It replaced a flat list that drew every edit as the whole old value, an
   // arrow, and the whole new value: on a real house-rules refresh that came to
@@ -140,6 +144,53 @@
     totalTimeMinutes: 'Total time',
   };
 
+  // The phase strip replaces the three time cards when its key is on (issue
+  // #1212) — the same swap the recipe page makes, so nobody sees a Prep or Cook
+  // number on one screen and a strip on the other.
+  const phasesEnabled = $derived($recipePhasesGate.enabled);
+
+  // The strip, as ONE readable value. Per-phase add/remove/change cards were
+  // rejected deliberately: a reorder would read as six edits and bury the single
+  // question this gate exists to ask. `phaseElapsedMinutes` is the domain's sum —
+  // elapsed time is never stored, here or anywhere.
+  //
+  // Both figures are printed, not just the elapsed total: a change that keeps a
+  // phase's label and its elapsed sum but moves minutes between hands-on and
+  // hands-off (the model re-classifying attended time as a wait, say) would
+  // otherwise render Now and Proposed as the identical string — a card that
+  // asserts something changed while showing the reviewer nothing that did
+  // (#1216). Hands-on is the one figure this whole feature exists to surface.
+  //
+  // A blank label is what a half-typed row in the editor stores, so it is given a
+  // placeholder rather than rendered as an empty gap. That is presentation, not a
+  // reading of the word: nothing branches on what a label says.
+  function phasesValue(phases: RecipePhase[]): string {
+    if (phases.length === 0) return 'none';
+    return phases
+      .map((p) => {
+        const label = p.label.trim() === '' ? 'Untitled' : p.label;
+        return `${label} ${phaseElapsedMinutes(p)} min (${p.handsOnMinutes} hands-on)`;
+      })
+      .join(' · ');
+  }
+
+  // One side of the Timing card. The strip and the sentence over it are two halves
+  // of one fact (`reconcileRecipePhases`), so they share a side rather than
+  // getting a card each.
+  //
+  // Each half is included ONLY when that half is in the diff, and that is a
+  // correctness rule rather than a tidiness one: `RecipeDiff` carries changed
+  // fields and nothing else, so an unchanged strip is not available to draw. A
+  // card that filled the gap with `[]` would tell a reviewer the recipe has no
+  // phases at the exact moment it is asking them to approve something else.
+  function timingSide(phases: RecipePhase[] | null, summary: string | null | undefined): string {
+    const parts: string[] = [];
+    if (phases !== null) parts.push(phasesValue(phases));
+    if (summary !== undefined)
+      parts.push(summary === null || summary.trim() === '' ? 'no summary' : summary.trim());
+    return parts.join(' — ');
+  }
+
   // ── Cards, per section, in a stable order ──────────────────────────────────
   const basicsCards = $derived.by(() => {
     if (!diff) return [] as ChangeCard[];
@@ -225,9 +276,29 @@
           servingsValue(m.servings.to),
         ),
       );
-    for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'] as const) {
-      const c = m[key];
-      if (c) cards.push(makeCard(key, timeLabels[key], 'edit', timeValue(c.from), timeValue(c.to)));
+    if (phasesEnabled) {
+      // One "Timing" card, present when either half of the pair moved. The three
+      // numbers are not drawn at all with the key on — showing a Prep time beside
+      // a phase breakdown is the split definition #1122 exists to end.
+      const phases = m.phases;
+      const summary = m.timingSummary;
+      if (phases || summary) {
+        cards.push(
+          makeCard(
+            'timing',
+            'Timing',
+            'edit',
+            timingSide(phases ? phases.from : null, summary ? summary.from : undefined),
+            timingSide(phases ? phases.to : null, summary ? summary.to : undefined),
+          ),
+        );
+      }
+    } else {
+      for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'] as const) {
+        const c = m[key];
+        if (c)
+          cards.push(makeCard(key, timeLabels[key], 'edit', timeValue(c.from), timeValue(c.to)));
+      }
     }
     return cards;
   });
@@ -250,6 +321,19 @@
   const hasSteps = $derived(stepCards.length > 0);
   const hasMetadata = $derived(metadataCards.length > 0);
   const hasTags = $derived(tagCards.length > 0);
+
+  // Whether the sheet has anything to show at all. Deliberately NOT
+  // `diff?.hasChanges`: `diffRecipe` reports a change whenever a field moved,
+  // but a section renders only what THIS component chose to draw from it (the
+  // Timing card gated on `phasesEnabled`, its key-on/key-off counterparts
+  // covering disjoint fields) — the two can disagree in both key states, and
+  // when they do, `hasChanges` alone would draw the "here's what will change"
+  // sheet with a live Apply button over zero cards (#1216). Deciding from the
+  // cards actually built keeps this exact everywhere `diff.hasChanges` used to
+  // be read below.
+  const hasAnyCards = $derived(
+    !!diff && (hasBasics || hasIngredients || hasSteps || hasMetadata || hasTags),
+  );
 
   // ── Surfaces ───────────────────────────────────────────────────────────────
   // The sage container marks what arrives, its destructive counterpart what
@@ -367,7 +451,7 @@
     <SheetHeader>
       <SheetTitle>Review changes</SheetTitle>
       <SheetDescription>
-        {#if diff?.hasChanges}
+        {#if hasAnyCards}
           Here's what the chef will change. Nothing is saved until you apply.
         {:else}
           The chef didn't propose any changes to this recipe.
@@ -376,7 +460,7 @@
     </SheetHeader>
 
     <div class="flex flex-col gap-4 overflow-y-auto text-sm" data-testid="recipe-change-summary">
-      {#if !diff || !diff.hasChanges}
+      {#if !hasAnyCards}
         <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
            dashed-border PANEL with an `<h3>` title — a page saying "this place
            holds nothing". This is one sentence inside a bottom sheet, with no
@@ -432,9 +516,9 @@
         disabled={applying}
         data-testid="recipe-change-discard"
       >
-        {diff?.hasChanges ? 'Discard / keep chatting' : 'Close'}
+        {hasAnyCards ? 'Discard / keep chatting' : 'Close'}
       </Button>
-      {#if diff?.hasChanges}
+      {#if hasAnyCards}
         <Button
           size="sm"
           onclick={onApply}

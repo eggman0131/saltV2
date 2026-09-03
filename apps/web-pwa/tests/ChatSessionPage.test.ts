@@ -24,7 +24,15 @@ const { mockSessions, mockIsLoading, mockRecipes, mockRouter } = await vi.hoiste
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn(), pop: vi.fn(), router: mockRouter }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
-vi.mock('@salt/observability', () => ({ trackUsageEvent: vi.fn() }));
+// `RecipeChangeSummary` reads the phase feature key since #1212, so this mock is
+// now on `featureGate.ts`'s import path and must carry everything it names.
+vi.mock('@salt/observability', () => ({
+  trackUsageEvent: vi.fn(),
+  BREAD_FLAG_KEY: 'bread',
+  isObservabilityFeatureEnabled: () => false,
+  areObservabilityFeatureFlagsSettled: () => true,
+  onObservabilityFeatureFlags: () => () => {},
+}));
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));

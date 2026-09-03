@@ -697,3 +697,133 @@ describe('diffRecipe', () => {
     expect(after).toEqual(afterSnapshot);
   });
 });
+
+// ── The phase strip and its sentence (issue #1212) ───────────────────────────
+//
+// The review gate is the only consumer of `diffRecipe`, and until this landed it
+// could not see either half of a recipe's timing: a proposal that rewrote the
+// strip, or (since #1203 let an amend clear it) one that deleted the sentence,
+// was confirmed by a reviewer who was never shown it.
+describe('diffRecipe — phases and timingSummary', () => {
+  const MIX = { label: 'Mix & knead', handsOnMinutes: 20, handsOffMinutes: 0 };
+  const PROVE = { label: 'First rise', handsOnMinutes: 0, handsOffMinutes: 90 };
+  const BAKE = { label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 };
+
+  function withPhases(base: Recipe, phases: Recipe['metadata']['phases']): Recipe {
+    return withMetadata(base, { phases });
+  }
+
+  it('reports nothing when the strip is identical', () => {
+    const before = withPhases(recipe(), [MIX, PROVE, BAKE]);
+    const after = withPhases(recipe(), [{ ...MIX }, { ...PROVE }, { ...BAKE }]);
+
+    const diff: RecipeDiff = diffRecipe(before, after);
+
+    expect(diff.metadata.phases).toBeUndefined();
+    expect(diff.hasChanges).toBe(false);
+  });
+
+  it('treats an absent strip and an empty one as the same "no strip"', () => {
+    const diff = diffRecipe(withPhases(recipe(), undefined), withPhases(recipe(), []));
+
+    expect(diff.metadata.phases).toBeUndefined();
+    expect(diff.hasChanges).toBe(false);
+  });
+
+  it('reports an added phase, carrying both sides whole', () => {
+    const diff = diffRecipe(
+      withPhases(recipe(), [MIX, BAKE]),
+      withPhases(recipe(), [MIX, PROVE, BAKE]),
+    );
+
+    expect(diff.metadata.phases).toEqual({ from: [MIX, BAKE], to: [MIX, PROVE, BAKE] });
+    expect(diff.hasChanges).toBe(true);
+  });
+
+  it('reports a removed phase', () => {
+    const diff = diffRecipe(
+      withPhases(recipe(), [MIX, PROVE, BAKE]),
+      withPhases(recipe(), [MIX, BAKE]),
+    );
+
+    expect(diff.metadata.phases).toEqual({ from: [MIX, PROVE, BAKE], to: [MIX, BAKE] });
+  });
+
+  it('reports a rename, without reading the word', () => {
+    const renamed = { ...PROVE, label: 'Bulk ferment' };
+
+    const diff = diffRecipe(withPhases(recipe(), [PROVE]), withPhases(recipe(), [renamed]));
+
+    expect(diff.metadata.phases).toEqual({ from: [PROVE], to: [renamed] });
+  });
+
+  it('reports a retimed phase, on either minute field', () => {
+    const slower = { ...PROVE, handsOffMinutes: 120 };
+    const fiddlier = { ...PROVE, handsOnMinutes: 5 };
+
+    expect(
+      diffRecipe(withPhases(recipe(), [PROVE]), withPhases(recipe(), [slower])).metadata.phases,
+    ).toBeDefined();
+    expect(
+      diffRecipe(withPhases(recipe(), [PROVE]), withPhases(recipe(), [fiddlier])).metadata.phases,
+    ).toBeDefined();
+  });
+
+  // The deliberate departure from the ingredients/steps convention, and the whole
+  // reason it is deliberate: the order of a phase list IS the plan.
+  it('reports a pure reorder, unlike a reordered ingredient or step', () => {
+    const diff = diffRecipe(
+      withPhases(recipe(), [MIX, PROVE, BAKE]),
+      withPhases(recipe(), [MIX, BAKE, PROVE]),
+    );
+
+    expect(diff.metadata.phases).toEqual({
+      from: [MIX, PROVE, BAKE],
+      to: [MIX, BAKE, PROVE],
+    });
+    expect(diff.hasChanges).toBe(true);
+  });
+
+  it('reports a strip cleared to nothing', () => {
+    const diff = diffRecipe(withPhases(recipe(), [MIX]), withPhases(recipe(), []));
+
+    expect(diff.metadata.phases).toEqual({ from: [MIX], to: [] });
+  });
+
+  it('reports a sentence written where there was none', () => {
+    const diff = diffRecipe(
+      withMetadata(recipe(), { timingSummary: null }),
+      withMetadata(recipe(), { timingSummary: 'About 25 minutes of you, over 2 hours.' }),
+    );
+
+    expect(diff.metadata.timingSummary).toEqual({
+      from: null,
+      to: 'About 25 minutes of you, over 2 hours.',
+    });
+  });
+
+  // The #1208 ordering constraint in one assertion: an amend that clears the
+  // sentence is now visible in the gate instead of landing unseen.
+  it('reports a sentence deleted', () => {
+    const diff = diffRecipe(
+      withMetadata(recipe(), { timingSummary: 'About 25 minutes of you, over 2 hours.' }),
+      withMetadata(recipe(), { timingSummary: null }),
+    );
+
+    expect(diff.metadata.timingSummary).toEqual({
+      from: 'About 25 minutes of you, over 2 hours.',
+      to: null,
+    });
+    expect(diff.hasChanges).toBe(true);
+  });
+
+  it('treats an absent sentence and an explicit null as the same nothing', () => {
+    const diff = diffRecipe(
+      withMetadata(recipe(), { timingSummary: undefined }),
+      withMetadata(recipe(), { timingSummary: null }),
+    );
+
+    expect(diff.metadata.timingSummary).toBeUndefined();
+    expect(diff.hasChanges).toBe(false);
+  });
+});

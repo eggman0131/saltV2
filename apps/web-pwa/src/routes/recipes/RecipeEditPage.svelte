@@ -47,6 +47,7 @@
     type Ingredient,
     type Step,
     type RecipeMetadata,
+    type RecipePhase,
   } from '@salt/domain';
   import {
     recipes,
@@ -56,10 +57,9 @@
     matchIngredient,
     takeImportedDraft,
   } from '../../lib/recipeService.js';
-  import { RecipeKindSchema } from '@salt/domain/schemas';
+  import { MAX_RECIPE_PHASES, RecipeKindSchema } from '@salt/domain/schemas';
   import { recipePhasesGate } from '../../lib/featureGate.js';
-  import { formatMinutes } from '../../lib/durationDisplay.js';
-  import { phaseMinutes } from './recipeTiming.js';
+  import { componentTimeLabel } from './recipeTiming.js';
   import { canonItems } from '../../lib/canonService.js';
   import { members } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -176,7 +176,15 @@
       ...r,
       ingredients: r.ingredients.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i })) })),
       steps: r.steps.map((s) => ({ ...s, timer: s.timer ? { ...s.timer } : null })),
-      metadata: { ...r.metadata, tags: [...r.metadata.tags] },
+      metadata: {
+        ...r.metadata,
+        tags: [...r.metadata.tags],
+        // Value-cloned like `tags`: `phases` is edited on this page (add/
+        // remove/move/update a row) and must never reach into the store's
+        // copy. Conditional — a literal `phases: undefined` written back
+        // would reach `setDoc` and store a key that was never there.
+        ...(r.metadata.phases ? { phases: r.metadata.phases.map((p) => ({ ...p })) } : {}),
+      },
       // Value-cloned like `metadata.tags`: the draft's component order is edited
       // here and must never reach into the store's copy of the recipe.
       componentRecipeIds: [...r.componentRecipeIds],
@@ -350,18 +358,9 @@
   // level only, so a component's own components are neither shown nor read.
   const componentRecipes = $derived(resolveComponents(draft, $recipes));
 
-  // The component row's time, the same rule the view page's rows use (issue
-  // #1122): the phase sum when the component has a strip, its stored cook time
-  // otherwise, and the fallback keeps the raw `n min` spelling it has always had.
+  // The one gate derivation on this page — the component rows' time label and the
+  // phase editor below both read it (issue #1122).
   const phasesEnabled = $derived($recipePhasesGate.enabled);
-
-  function componentTimeLabel(component: Recipe): string | null {
-    const minutes = phaseMinutes(component, phasesEnabled);
-    if (minutes !== null) return formatMinutes(minutes);
-    return component.metadata.cookTimeMinutes === null
-      ? null
-      : `${component.metadata.cookTimeMinutes} min`;
-  }
 
   function addComponent(id: string): void {
     if (!id) return;
@@ -464,6 +463,64 @@
       group.items.map((i) => (i.id === ingredientId ? { ...i, isOptional } : i)),
     );
   }
+
+  // ─── Phase helpers (issue #1212) ────────────────────────────────────────────
+  // The hand editor for the timing strip. Deliberately the SAME plain row editor
+  // as the method steps above — add / remove / move up / move down — because the
+  // model gets the strip right often enough that most recipes are never touched,
+  // and a rarely-used editor is the wrong place to spend a week on drag-and-drop.
+  //
+  // A phase has no id (`RecipePhaseSchema` is settled: label + two minute figures
+  // and nothing else), so rows are addressed by INDEX rather than keyed. That is
+  // sound here because every mutation below rebuilds the whole array from
+  // `draft.metadata.phases` in one go — there is no per-row identity to preserve
+  // across a reorder, and the fields are re-read from the array on every render.
+  //
+  // TWO minute fields per row, never three: elapsed time is
+  // `handsOnMinutes + handsOffMinutes` computed at the point of use, and is never
+  // stored (issue #1122). Nothing here reads `label` for meaning — the cook may
+  // type anything into it.
+  const draftPhases = $derived(draft.metadata.phases ?? []);
+
+  function setPhases(phases: RecipePhase[]): void {
+    setMetadata({ phases });
+  }
+
+  function addPhaseRow(): void {
+    setPhases([...draftPhases, { label: '', handsOnMinutes: 0, handsOffMinutes: 0 }]);
+  }
+
+  function removePhase(index: number): void {
+    setPhases(draftPhases.filter((_, i) => i !== index));
+  }
+
+  function movePhase(index: number, delta: number): void {
+    const target = index + delta;
+    if (target < 0 || target >= draftPhases.length) return;
+    const phases = [...draftPhases];
+    const [p] = phases.splice(index, 1);
+    phases.splice(target, 0, p!);
+    setPhases(phases);
+  }
+
+  function updatePhase(index: number, patch: Partial<RecipePhase>): void {
+    setPhases(draftPhases.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  }
+
+  // Whole non-negative minutes, and nothing stricter (the spec's own bound). An
+  // empty or unparseable box means 0 rather than `null`: unlike Servings, a phase
+  // minute figure is REQUIRED by the schema, and 0 is a real answer — a prove has
+  // no hands-on time at all.
+  function phaseMinutesOrZero(value: string): number {
+    const n = parseNumberOrNull(value);
+    if (n === null || n < 0) return 0;
+    return Math.floor(n);
+  }
+
+  // The cap is INBOUND ONLY (issue #1123). It stops this editor ADDING a seventh
+  // block; it never truncates, hides or refuses a stored strip that already has
+  // one, which still renders row for row and stays fully editable.
+  const canAddPhase = $derived(draftPhases.length < MAX_RECIPE_PHASES);
 
   // ─── Step helpers ───────────────────────────────────────────────────────────
   function setSteps(steps: Step[]): void {
@@ -753,10 +810,10 @@
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col">
                   <span class="truncate text-sm font-medium">{component.title}</span>
-                  {#if componentTimeLabel(component) !== null}
+                  {#if componentTimeLabel(component, phasesEnabled) !== null}
                     <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Icon name="Clock" size={12} />
-                      {componentTimeLabel(component)}
+                      {componentTimeLabel(component, phasesEnabled)}
                     </span>
                   {/if}
                 </span>
@@ -1109,34 +1166,133 @@
             onValueChange={(v) => setMetadata({ servings: positiveOrNull(parseNumberOrNull(v)) })}
             data-testid="recipe-servings-input"
           />
-          <TextField
-            label="Prep (min)"
-            inputmode="numeric"
-            value={draft.metadata.prepTimeMinutes === null
-              ? ''
-              : String(draft.metadata.prepTimeMinutes)}
-            onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-prep-input"
-          />
-          <TextField
-            label="Cook (min)"
-            inputmode="numeric"
-            value={draft.metadata.cookTimeMinutes === null
-              ? ''
-              : String(draft.metadata.cookTimeMinutes)}
-            onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-cook-input"
-          />
-          <TextField
-            label="Total (min)"
-            inputmode="numeric"
-            value={draft.metadata.totalTimeMinutes === null
-              ? ''
-              : String(draft.metadata.totalTimeMinutes)}
-            onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
-            data-testid="recipe-total-input"
-          />
+          <!-- The three numbers the phase strip replaces (issue #1122). With the
+               key ON they are gone from the screen entirely — not disabled, not
+               relabelled — and their STORED values are left exactly as they are;
+               the flows keep emitting them and phase 4 is what deletes them. -->
+          {#if !phasesEnabled}
+            <TextField
+              label="Prep (min)"
+              inputmode="numeric"
+              value={draft.metadata.prepTimeMinutes === null
+                ? ''
+                : String(draft.metadata.prepTimeMinutes)}
+              onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
+              data-testid="recipe-prep-input"
+            />
+            <TextField
+              label="Cook (min)"
+              inputmode="numeric"
+              value={draft.metadata.cookTimeMinutes === null
+                ? ''
+                : String(draft.metadata.cookTimeMinutes)}
+              onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
+              data-testid="recipe-cook-input"
+            />
+            <TextField
+              label="Total (min)"
+              inputmode="numeric"
+              value={draft.metadata.totalTimeMinutes === null
+                ? ''
+                : String(draft.metadata.totalTimeMinutes)}
+              onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
+              data-testid="recipe-total-input"
+            />
+          {/if}
         </div>
+      {/if}
+
+      <!-- Timing, as the cook actually experiences it: the phases in the order
+           they happen, each with how long it lasts and how much of that is you at
+           the counter (issue #1212). Gated with the timeline it feeds; with the
+           key off this whole section is absent, and nothing above hints at it. -->
+      {#if showCooking && phasesEnabled}
+        <section class="flex flex-col gap-3" data-testid="recipe-phase-editor">
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-medium">Timing</p>
+            {#if canAddPhase}
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={addPhaseRow}
+                data-testid="recipe-add-phase-btn"
+              >
+                {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+                Add phase
+              </Button>
+            {/if}
+          </div>
+
+          {#if draftPhases.length === 0}
+            <p class="text-sm text-muted-foreground">No phases yet.</p>
+          {/if}
+
+          {#each draftPhases as phase, pIdx}
+            <div
+              class="flex flex-col gap-2 rounded border border-border bg-card p-3"
+              data-testid="recipe-phase"
+            >
+              <div class="flex items-start gap-2">
+                <span class="mt-2 text-sm font-medium text-muted-foreground">{pIdx + 1}.</span>
+                <TextField
+                  label="Phase"
+                  placeholder="What happens in this block"
+                  value={phase.label}
+                  onValueChange={(v) => updatePhase(pIdx, { label: v })}
+                  class="flex-1"
+                  data-testid="recipe-phase-label-input"
+                />
+                <div class="flex flex-col">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => movePhase(pIdx, -1)}
+                    disabled={pIdx === 0}
+                    aria-label="Move phase up"
+                  >
+                    <Icon name="ChevronUp" size={16} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => movePhase(pIdx, 1)}
+                    disabled={pIdx === draftPhases.length - 1}
+                    aria-label="Move phase down"
+                  >
+                    <Icon name="ChevronDown" size={16} />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => removePhase(pIdx)}
+                  aria-label="Remove phase"
+                >
+                  <Icon name="Trash2" size={16} />
+                </Button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pl-6">
+                <TextField
+                  label="Hands-on (min)"
+                  inputmode="numeric"
+                  value={String(phase.handsOnMinutes)}
+                  onValueChange={(v) =>
+                    updatePhase(pIdx, { handsOnMinutes: phaseMinutesOrZero(v) })}
+                  data-testid="recipe-phase-hands-on-input"
+                />
+                <TextField
+                  label="Hands-off (min)"
+                  inputmode="numeric"
+                  value={String(phase.handsOffMinutes)}
+                  onValueChange={(v) =>
+                    updatePhase(pIdx, { handsOffMinutes: phaseMinutesOrZero(v) })}
+                  data-testid="recipe-phase-hands-off-input"
+                />
+              </div>
+            </div>
+          {/each}
+        </section>
       {/if}
       <!-- Source -->
       <TextField

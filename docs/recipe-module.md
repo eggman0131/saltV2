@@ -205,6 +205,49 @@ always returns a freshly invented strip rather than an absent one. A cook's
 hand-edit surviving unrelated chat work is the shape this floor is built for, not
 yet what happens on the amend path.
 
+### Hand-editing the strip, and seeing it in the review gate (issue #1212)
+
+The model writes the strip and is usually right; when it is not, the cook has the
+pen. `RecipeEditPage.svelte` replaces the three "Prep / Cook / Total" boxes with
+the phase list itself when the key is on — one row per phase, a free-text label and
+its two minute figures, with add / remove / move-up / move-down, built on the same
+plain row editor the method steps use. Servings stays in both key states; the three
+numbers keep their STORED values and are simply off screen, because the authoring
+flows still emit them until #1122's phase 4 deletes them.
+
+Three things about the editor that the code alone does not say:
+
+- **Two minute fields per row, never three.** Elapsed time is computed at the point
+  of use and never stored, so there is no total to type.
+- **The six-phase cap is inbound only** (#1123). The editor stops the cook adding a
+  seventh; it never truncates, hides or refuses a stored strip that already has
+  one, which renders row for row and stays fully editable. Pinned by
+  `apps/web-pwa/tests/RecipeEditPage.phases.test.ts`.
+- **Validation is non-negative whole minutes and nothing more.** An empty box means
+  `0`, not `null` — unlike Servings, a phase's minute figure is required by the
+  schema, and `0` is a real answer (a prove has no hands-on time at all).
+
+`diffRecipe` reports both halves of the pair, which is what makes the review gate
+honest about timing (#1208's first bullet). `RecipeMetadataDiff` carries `phases`
+as BOTH SIDES WHOLE rather than a per-phase breakdown, and `RecipeChangeSummary`
+renders it as a single "Timing" card: the strip is one fact — a sequence — and a
+reorder drawn as six row edits would bury the one question the gate is asked.
+**A pure reorder IS reported**, deliberately unlike a reordered ingredient or step,
+because the order of a phase list is the order you do the work in. With the key off
+the summary renders the same three time cards it always did.
+
+The card shows only the half that actually moved. `RecipeDiff` carries changed
+fields and nothing else, so an unchanged strip is not available to draw — filling
+that gap with an empty list would tell a reviewer the recipe has no phases at the
+moment they are approving something else.
+
+`componentTimeLabel` lives in `routes/recipes/recipeTiming.ts` beside
+`phaseMinutes` and is called by both the view and the edit page (#1208's third
+bullet). That is not a walk-back of that file's "smallest shared thing" header: the
+component row is the same row on two screens and the two copies were byte-for-byte
+identical, where the list chip and the cook-plan line genuinely say different
+things and keep their own words.
+
 ### The three time fields — definition and arithmetic (issue #952)
 
 The field set is unchanged (`schemaVersion` stays `1`, no migration); what was

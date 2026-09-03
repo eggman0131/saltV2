@@ -1,4 +1,5 @@
 import type { StepTimerDoc } from '../../schemas/recipe.js';
+import type { RecipePhase } from '../entities/Recipe.js';
 
 // Structured diff between an existing recipe and an edited draft (issue-scoped
 // Phase 1). PURE data: `diffRecipe` (packages/domain/src/recipe/queries) produces
@@ -102,12 +103,35 @@ export interface StepsDiff {
   changed: StepChange[];
 }
 
+// A change to the phase strip (issue #1212). BOTH SIDES WHOLE, never a per-phase
+// add/remove/change breakdown: the strip is one fact — a sequence — and a diff
+// that reported a reorder as six row edits would bury the single question the
+// review gate is asked ("did the timing change, and to what?"). An absent strip
+// and an empty one are both `[]` here, the same conflation `recipePhaseTotals`
+// and `reconcileRecipePhases` already make.
+//
+// UNLIKE ingredients and steps, a pure REORDER IS reported. The convention below
+// omits a moved-but-unchanged ingredient because its position carries no meaning;
+// a phase list is the order you do the work in, so moving `Bake` before `Prove`
+// is a different plan for the cook even though no phase's own content moved.
+export interface RecipePhasesChange {
+  from: RecipePhase[];
+  to: RecipePhase[];
+}
+
 // Per-field metadata changes. A field is present only when it changed.
+//
+// `phases` and `timingSummary` are the strip and the sentence written over it —
+// two halves of one fact (`reconcileRecipePhases`), so they are reported as two
+// fields and rendered as one card rather than merged here: the diff stays a
+// faithful account of what moved and the summary decides how to say it.
 export interface RecipeMetadataDiff {
   servings?: NullableNumberChange;
   totalTimeMinutes?: NullableNumberChange;
   prepTimeMinutes?: NullableNumberChange;
   cookTimeMinutes?: NullableNumberChange;
+  phases?: RecipePhasesChange;
+  timingSummary?: NullableStringChange;
 }
 
 // Tag set change. `added`/`removed` are the set difference (draft − existing and

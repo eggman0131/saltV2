@@ -35,6 +35,21 @@ vi.mock('../src/lib/recipeService.js', () => ({
   takeImportedDraft: vi.fn().mockReturnValue(null),
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+// The phase editor replaces the three time boxes when its key is ON (issue
+// #1212), and the real gate reads uninitialised observability as on. This suite
+// is about the three boxes, so it pins the key OFF.
+vi.mock('../src/lib/featureGate.js', () => ({
+  recipePhasesGate: {
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: false, settled: true }), () => {}),
+  },
+  breadGate: {
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  },
+  featureGate: () => ({
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: false, settled: true }), () => {}),
+  }),
+  isFeatureEnabled: () => false,
+}));
 
 import RecipeEditPage from '../src/routes/recipes/RecipeEditPage.svelte';
 import { persistRecipe } from '../src/lib/recipeService.js';

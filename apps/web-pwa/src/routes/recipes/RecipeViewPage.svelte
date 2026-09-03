@@ -67,7 +67,7 @@
   import IngredientMatchSheet from './IngredientMatchSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import RecipePhaseTimeline from './RecipePhaseTimeline.svelte';
-  import { phaseMinutes } from './recipeTiming.js';
+  import { componentTimeLabel } from './recipeTiming.js';
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
   import { chatsForRecipe } from './recipeChats.js';
@@ -449,17 +449,6 @@
   const phasesEnabled = $derived($recipePhasesGate.enabled);
   const phases = $derived(phasesEnabled ? (recipe?.metadata.phases ?? []) : []);
   const phaseTotals = $derived(recipePhaseTotals(phases));
-
-  // A component row's time. The phase sum when the component has a strip, its
-  // stored cook time otherwise — and the fallback keeps the raw `n min` spelling
-  // it has always had, so with the key off this row is byte-for-byte what it was.
-  function componentTimeLabel(component: Recipe): string | null {
-    const minutes = phaseMinutes(component, phasesEnabled);
-    if (minutes !== null) return formatMinutes(minutes);
-    return component.metadata.cookTimeMinutes === null
-      ? null
-      : `${component.metadata.cookTimeMinutes} min`;
-  }
 
   const facts = $derived.by((): RecipeFact[] => {
     if (!recipe) return [];
@@ -2261,13 +2250,13 @@
                         </span>
                         <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                           <span class="truncate text-sm font-medium">{component.title}</span>
-                          {#if componentTimeLabel(component) !== null}
+                          {#if componentTimeLabel(component, phasesEnabled) !== null}
                             <span
                               class="inline-flex items-center gap-1 text-xs text-muted-foreground"
                               data-testid="recipe-component-cook-time"
                             >
                               <Icon name="Clock" size={12} />
-                              {componentTimeLabel(component)}
+                              {componentTimeLabel(component, phasesEnabled)}
                             </span>
                           {/if}
                         </span>

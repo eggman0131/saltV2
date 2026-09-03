@@ -1,6 +1,29 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/svelte';
-import type { RecipeDiff } from '@salt/domain';
+import type { RecipeDiff, RecipePhase } from '@salt/domain';
+
+// The phase gate (issue #1212). The real module reads uninitialised observability
+// and therefore always answers "on", so both halves of the swap — three time
+// cards off, one Timing card on — need it driven from here.
+const { mockPhasesGate } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
+  return {
+    mockPhasesGate: makeStore<{ enabled: boolean; settled: boolean }>({
+      enabled: false,
+      settled: true,
+    }),
+  };
+});
+
+vi.mock('../src/lib/featureGate.js', () => ({
+  recipePhasesGate: mockPhasesGate,
+  breadGate: {
+    subscribe: (fn: (v: unknown) => void) => (fn({ enabled: true, settled: true }), () => {}),
+  },
+  featureGate: () => mockPhasesGate,
+  isFeatureEnabled: () => true,
+}));
+
 import RecipeChangeSummary from '../src/routes/recipes/RecipeChangeSummary.svelte';
 
 // The review gate reads as a diff, not a wall of text (issue #825). What is
@@ -9,7 +32,10 @@ import RecipeChangeSummary from '../src/routes/recipes/RecipeChangeSummary.svelt
 // component that puts `750 g → 1.1 kg` on a single line must mark the words in a
 // reworded step and must refuse to mark anything in a rewritten one.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  mockPhasesGate._set({ enabled: false, settled: true });
+});
 
 const EMPTY: RecipeDiff = {
   hasChanges: true,
@@ -359,5 +385,172 @@ describe('RecipeChangeSummary — the sheet contract is unchanged', () => {
     // A proposal is one thing you accept or refuse (issue #824 holds the
     // deferred per-row capability) — nothing in the list is selectable.
     expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+});
+
+// ── The Timing card (issue #1212) ───────────────────────────────────────────
+//
+// The gate's whole point: a chat proposal that rewrites the phase strip, or that
+// quietly deletes the sentence over it, must be on screen BEFORE it is written.
+// Until `diffRecipe` reported the pair, neither was.
+describe('RecipeChangeSummary — the phase strip, key on', () => {
+  const MIX: RecipePhase = { label: 'Mix & knead', handsOnMinutes: 20, handsOffMinutes: 0 };
+  const PROVE: RecipePhase = { label: 'First rise', handsOnMinutes: 0, handsOffMinutes: 90 };
+
+  function openWithPhases(metadata: RecipeDiff['metadata']): void {
+    mockPhasesGate._set({ enabled: true, settled: true });
+    open({ metadata });
+  }
+
+  it('draws ONE card for a whole rewritten strip, not one per phase', () => {
+    openWithPhases({ phases: { from: [MIX], to: [MIX, PROVE] } });
+
+    // ONE card (enforced by `onlyCard()`), naming both the unchanged phase and
+    // the added one. Which of the three renderings draws it is content-derived
+    // (see the component's own header comment) and not pinned here — carrying
+    // the hands-on figure (#1216) is what pushes a two-phase strip past the
+    // one-line cutoff into the word-diff rendering.
+    const card = onlyCard();
+    expect(card.textContent).toContain('Timing');
+    expect(card.textContent).toContain('Mix & knead 20 min');
+    expect(card.textContent).toContain('First rise');
+  });
+
+  it('shows a deleted sentence as a change rather than letting it land unseen', () => {
+    openWithPhases({
+      timingSummary: { from: 'About 25 minutes of you, over 2 hours.', to: null },
+    });
+
+    const card = onlyCard();
+    expect(card.textContent).toContain('About 25 minutes of you');
+    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent('no summary');
+  });
+
+  // The strip is not in the diff when it did not change, so the card must not
+  // claim anything about it — "none" there would read as "this recipe has no
+  // phases" at the moment the reviewer is deciding.
+  it('says nothing about the strip when only the sentence moved', () => {
+    openWithPhases({ timingSummary: { from: null, to: 'Mostly hands-off.' } });
+
+    const card = onlyCard();
+    expect(within(card).getByTestId('recipe-change-proposed')).toHaveTextContent(
+      'Mostly hands-off.',
+    );
+    // No strip half at all: no phase list, and not the em-dash that joins the two
+    // halves when both are in the diff.
+    expect(card.textContent).not.toContain('none');
+    expect(card.textContent).not.toContain(' — ');
+  });
+
+  it('replaces the three time cards — no Prep or Cook number anywhere', () => {
+    openWithPhases({
+      phases: { from: [MIX], to: [PROVE] },
+      prepTimeMinutes: { from: 10, to: 20 },
+      cookTimeMinutes: { from: 30, to: 40 },
+      totalTimeMinutes: { from: 40, to: 60 },
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(screen.queryByText('Prep time')).toBeNull();
+    expect(screen.queryByText('Cook time')).toBeNull();
+    expect(screen.queryByText('Total time')).toBeNull();
+  });
+
+  it('keeps Servings its own card', () => {
+    openWithPhases({
+      servings: { from: 4, to: 6 },
+      phases: { from: [MIX], to: [PROVE] },
+    });
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+});
+
+describe('RecipeChangeSummary — the phase strip, key off', () => {
+  it('reads exactly as it does today: three time cards, no Timing card', () => {
+    open({
+      metadata: {
+        phases: { from: [], to: [{ label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 }] },
+        timingSummary: { from: null, to: 'Mostly hands-off.' },
+        prepTimeMinutes: { from: 10, to: 20 },
+      },
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]!.textContent).toContain('Prep time');
+    expect(screen.queryByText('Timing')).toBeNull();
+  });
+});
+
+// ── The sheet matches what it drew (issue #1216) ────────────────────────────
+//
+// `diffRecipe` reports a metadata change whenever `phases` or `timingSummary`
+// moved, in both key states — but the Timing card is gated on the key, and
+// its key-off counterpart (Prep/Cook/Total) does not cover a phases-only
+// move either. `hasChanges` and "is there a card to look at" are two
+// different questions, and the sheet must answer from the second one: a
+// review gate that offers Apply next to zero cards would let a write through
+// with nothing shown for the reviewer to approve.
+describe('RecipeChangeSummary — the sheet matches what it drew, not what diffRecipe reported', () => {
+  it('key off: a diff that only moves the phase strip has no card to draw, so it reads as no changes', () => {
+    // `recipeAmend.ts` never shows the librarian the stored strip, so it
+    // re-invents one on essentially every amend — this is the ordinary case,
+    // not a corner one. With the key off there is no Timing card and no
+    // Prep/Cook/Total movement, so nothing should be offered to apply.
+    open({
+      metadata: {
+        phases: { from: [], to: [{ label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 }] },
+      },
+    });
+
+    expect(screen.getByTestId('recipe-change-summary-none')).toHaveTextContent('No changes.');
+    expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
+    expect(screen.queryByTestId('recipe-change-group-metadata')).toBeNull();
+    expect(screen.getByTestId('recipe-change-discard')).toHaveTextContent('Close');
+  });
+
+  it('key on: a diff that only moves Prep/Cook/Total time has no card to draw, so it reads as no changes', () => {
+    // The flows still emit these three fields and `mergeAmendedRecipe` still
+    // writes them; with the key on the Timing card ignores them entirely, so
+    // a diff carrying only these three must not offer Apply.
+    mockPhasesGate._set({ enabled: true, settled: true });
+    open({
+      metadata: {
+        prepTimeMinutes: { from: 10, to: 20 },
+        cookTimeMinutes: { from: 30, to: 40 },
+        totalTimeMinutes: { from: 40, to: 60 },
+      },
+    });
+
+    expect(screen.getByTestId('recipe-change-summary-none')).toHaveTextContent('No changes.');
+    expect(screen.queryByTestId('recipe-change-apply')).toBeNull();
+    expect(screen.queryByTestId('recipe-change-group-metadata')).toBeNull();
+  });
+});
+
+// ── The Timing card must surface a hands-on/hands-off shift (issue #1216) ──
+describe('RecipeChangeSummary — the Timing card, a hands-on/hands-off shift', () => {
+  it('draws Now and Proposed as different text when only the hands-on/hands-off split moved', () => {
+    // Same label, same elapsed total (45 min either side) — the split is the
+    // ONLY thing that changed, and it is the figure the whole feature exists
+    // to surface ("how much of that is you at the counter").
+    mockPhasesGate._set({ enabled: true, settled: true });
+    open({
+      metadata: {
+        phases: {
+          from: [{ label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 40 }],
+          to: [{ label: 'Bake', handsOnMinutes: 0, handsOffMinutes: 45 }],
+        },
+      },
+    });
+
+    const card = onlyCard();
+    const fromText = card.querySelector('p > span:first-child')?.textContent?.trim();
+    const toText = within(card).getByTestId('recipe-change-proposed').textContent?.trim();
+    expect(fromText).toContain('5');
+    expect(toText).toContain('0');
+    expect(fromText).not.toBe(toText);
   });
 });
