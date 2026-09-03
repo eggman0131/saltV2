@@ -377,14 +377,22 @@ node scripts/campaign-land.mjs <pr> [--note <file>] [--adjudicated <issue>]
 ```
 
 It re-applies the eligibility rule above and refuses a PR that fails it; posts
-`--note` as a PR comment if you give one; removes the worktree; deletes the local
-branch; and enqueues the squash merge. It derives the worktree path and the
-branch name from the PR itself, so there is nothing for you to get wrong — and
-cleanup comes first because git refuses to delete a branch that is checked out,
-which would fail `--delete-branch`'s local half. Squash, because `main` is linear
-and squash-merged: subjects end `(#PR)`, and the per-phase history lives in the
-issue's handoff comments where run.md put it. Exit 0 means enqueued; any other
-exit printed the reason and changed nothing.
+`--note` as a PR comment if you give one; enqueues the squash merge; and only
+then removes the worktree and deletes the local branch. It derives the worktree
+path and the branch name from the PR itself, so there is nothing for you to get
+wrong. Squash, because `main` is linear and squash-merged: subjects end `(#PR)`,
+and the per-phase history lives in the issue's handoff comments where run.md put
+it. The remote branch is deleted by GitHub when the queue merges it, not by the
+command.
+
+**The order is the guarantee: nothing local is touched until the PR is in the
+queue** (issue #1207 — the first version had it the other way round, and since
+`gh pr merge` refuses `--delete-branch` on any queue-enabled branch, every single
+landing removed the worktree, deleted the branch, and then failed to enqueue).
+So a failed landing is now a no-op you can simply re-run. Exit 0 means enqueued;
+any other exit printed the reason and changed nothing. A `warning:` line means
+the PR _is_ queued but a leftover worktree needs tidying — that is not a failed
+landing and does not go in the ledger as one.
 
 `--adjudicated <issue>` is the one escape hatch, and it is the **Review**
 section's rule made mechanical: a blocking finding you judged shippable may
