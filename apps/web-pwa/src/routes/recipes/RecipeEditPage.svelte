@@ -176,7 +176,15 @@
       ...r,
       ingredients: r.ingredients.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i })) })),
       steps: r.steps.map((s) => ({ ...s, timer: s.timer ? { ...s.timer } : null })),
-      metadata: { ...r.metadata, tags: [...r.metadata.tags] },
+      metadata: {
+        ...r.metadata,
+        tags: [...r.metadata.tags],
+        // Value-cloned like `tags`: `phases` is edited on this page (add/
+        // remove/move/update a row) and must never reach into the store's
+        // copy. Conditional — a literal `phases: undefined` written back
+        // would reach `setDoc` and store a key that was never there.
+        ...(r.metadata.phases ? { phases: r.metadata.phases.map((p) => ({ ...p })) } : {}),
+      },
       // Value-cloned like `metadata.tags`: the draft's component order is edited
       // here and must never reach into the store's copy of the recipe.
       componentRecipeIds: [...r.componentRecipeIds],

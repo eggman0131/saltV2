@@ -20,10 +20,13 @@
   // grouped into the same five sections, each chipped with what kind of change
   // it is and labelled with what it applies to. Two choices only: Apply (commit
   // the merge + save, owned by the caller via `onApply`) or Discard / keep
-  // chatting (drop the proposal, no write). A no-op diff (`hasChanges === false`)
-  // shows "No changes" with nothing to apply. Self-contained review sheet; both
-  // edit surfaces (chat page + recipe-view sidebar) reuse it so the review UX is
-  // identical.
+  // chatting (drop the proposal, no write). A diff that draws no card at all
+  // shows "No changes" with nothing to apply — decided from the cards this
+  // component actually built (`hasAnyCards` below), not from `diff.hasChanges`:
+  // `diffRecipe` can report a change this component is not drawing (the Timing
+  // card gated off, or its key-on counterpart), and Apply must never sit next
+  // to a blank body (#1216). Self-contained review sheet; both edit surfaces
+  // (chat page + recipe-view sidebar) reuse it so the review UX is identical.
   //
   // It replaced a flat list that drew every edit as the whole old value, an
   // arrow, and the whole new value: on a real house-rules refresh that came to
@@ -151,13 +154,23 @@
   // question this gate exists to ask. `phaseElapsedMinutes` is the domain's sum —
   // elapsed time is never stored, here or anywhere.
   //
+  // Both figures are printed, not just the elapsed total: a change that keeps a
+  // phase's label and its elapsed sum but moves minutes between hands-on and
+  // hands-off (the model re-classifying attended time as a wait, say) would
+  // otherwise render Now and Proposed as the identical string — a card that
+  // asserts something changed while showing the reviewer nothing that did
+  // (#1216). Hands-on is the one figure this whole feature exists to surface.
+  //
   // A blank label is what a half-typed row in the editor stores, so it is given a
   // placeholder rather than rendered as an empty gap. That is presentation, not a
   // reading of the word: nothing branches on what a label says.
   function phasesValue(phases: RecipePhase[]): string {
     if (phases.length === 0) return 'none';
     return phases
-      .map((p) => `${p.label.trim() === '' ? 'Untitled' : p.label} ${phaseElapsedMinutes(p)} min`)
+      .map((p) => {
+        const label = p.label.trim() === '' ? 'Untitled' : p.label;
+        return `${label} ${phaseElapsedMinutes(p)} min (${p.handsOnMinutes} hands-on)`;
+      })
       .join(' · ');
   }
 
@@ -309,6 +322,19 @@
   const hasMetadata = $derived(metadataCards.length > 0);
   const hasTags = $derived(tagCards.length > 0);
 
+  // Whether the sheet has anything to show at all. Deliberately NOT
+  // `diff?.hasChanges`: `diffRecipe` reports a change whenever a field moved,
+  // but a section renders only what THIS component chose to draw from it (the
+  // Timing card gated on `phasesEnabled`, its key-on/key-off counterparts
+  // covering disjoint fields) — the two can disagree in both key states, and
+  // when they do, `hasChanges` alone would draw the "here's what will change"
+  // sheet with a live Apply button over zero cards (#1216). Deciding from the
+  // cards actually built keeps this exact everywhere `diff.hasChanges` used to
+  // be read below.
+  const hasAnyCards = $derived(
+    !!diff && (hasBasics || hasIngredients || hasSteps || hasMetadata || hasTags),
+  );
+
   // ── Surfaces ───────────────────────────────────────────────────────────────
   // The sage container marks what arrives, its destructive counterpart what
   // leaves — symmetric on purpose, so a removal does not read weaker than an
@@ -425,7 +451,7 @@
     <SheetHeader>
       <SheetTitle>Review changes</SheetTitle>
       <SheetDescription>
-        {#if diff?.hasChanges}
+        {#if hasAnyCards}
           Here's what the chef will change. Nothing is saved until you apply.
         {:else}
           The chef didn't propose any changes to this recipe.
@@ -434,7 +460,7 @@
     </SheetHeader>
 
     <div class="flex flex-col gap-4 overflow-y-auto text-sm" data-testid="recipe-change-summary">
-      {#if !diff || !diff.hasChanges}
+      {#if !hasAnyCards}
         <!-- Deliberately NOT an `EmptyState` (#930 Phase 9). That primitive is a
            dashed-border PANEL with an `<h3>` title — a page saying "this place
            holds nothing". This is one sentence inside a bottom sheet, with no
@@ -490,9 +516,9 @@
         disabled={applying}
         data-testid="recipe-change-discard"
       >
-        {diff?.hasChanges ? 'Discard / keep chatting' : 'Close'}
+        {hasAnyCards ? 'Discard / keep chatting' : 'Close'}
       </Button>
-      {#if diff?.hasChanges}
+      {#if hasAnyCards}
         <Button
           size="sm"
           onclick={onApply}
