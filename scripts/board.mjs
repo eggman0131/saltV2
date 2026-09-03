@@ -19,7 +19,21 @@
 //    a new issue arrives on the board already triaged rather than needing a
 //    second pass. See docs/issue-board.md.
 //
-// 3. THE PROMOTION RULE NEEDS A CHECK, NOT A PROMISE. `Recommended` means
+// 3. A NEW ISSUE HAS A PLACE AND A PARENT, AND ONLY ONE OF THEM WAS WIRED.
+//    `add` triaged an issue onto the board from the moment /spec, /defect and
+//    /refactor-spec started calling it — but nothing anywhere could say what a
+//    new issue BELONGS TO, so a parent link was only ever something a human
+//    added afterwards. `parent` closes that half. A parent is NOT an epic: see
+//    the `epic:` check below.
+//
+//    ASK GRAPHQL WHETHER AN ISSUE HAS A PARENT. The REST issue endpoint
+//    (`gh api repos/{owner}/{repo}/issues/N`) reports `parent: null` for every
+//    issue in this repo, sub-issues of #1202 included — so a REST sweep answers
+//    "nothing is parented" with total confidence and is wrong. `issue.parent`
+//    over GraphQL is the field that is actually populated, and it is what
+//    `cmdParent` reads before it refuses to re-parent anything.
+//
+// 4. THE PROMOTION RULE NEEDS A CHECK, NOT A PROMISE. `Recommended` means
 //    actionable AND proven, and an issue is not actionable if something in this
 //    repo blocks it — so a Recommended item's in-repo blocker is itself
 //    Recommended, sitting above it. That is an invariant (CLAUDE.md rule 12),
@@ -41,10 +55,13 @@
 //   node scripts/board.mjs add 1234 --queue Medium --class Defect --size S
 //   node scripts/board.mjs set 1234 --status "In progress"
 //   node scripts/board.mjs pr 5678 --status "In review"     # via the PR's Closes #N
+//   node scripts/board.mjs parent 1234 --of 1129            # sub-issue link
 //   node scripts/board.mjs release --sha <deployed sha>
 //   node scripts/board.mjs check
 
 import { execFileSync } from 'node:child_process';
+
+import { isEpicTitle, isLedger } from './lib/boardTitles.mjs';
 
 const OWNER = 'eggmanorg';
 const REPO = 'salt';
@@ -119,7 +136,7 @@ function loadItems(project) {
       items(first:100, after:${after}){
         pageInfo{ hasNextPage endCursor }
         nodes{ id
-          content{ ... on Issue { number title state subIssues(first:1){ totalCount } } }
+          content{ ... on Issue { number title state } }
           queue:fieldValueByName(name:"Queue"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           status:fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           blockedBy:fieldValueByName(name:"Blocked by"){ ... on ProjectV2ItemFieldTextValue { text } } } } } } }`)
@@ -131,7 +148,6 @@ function loadItems(project) {
         number: n.content.number,
         title: n.content.title,
         state: n.content.state,
-        children: n.content.subIssues?.totalCount ?? 0,
         queue: n.queue?.name ?? null,
         status: n.status?.name ?? null,
         blockedBy: n.blockedBy?.text ?? '',
@@ -303,6 +319,55 @@ function cmdRelease(project, rest) {
 }
 
 /**
+ * Attach an issue to the one it belongs to, as a GitHub sub-issue.
+ *
+ * A PARENT IS NOT AN EPIC. Grouping and priority are different questions:
+ * `#1122` and `#1202` each hold sub-issues while sitting in an ordinary band,
+ * because their children are the phases of that same piece of work, not a
+ * programme of separate ones. So this writes the link and touches no field —
+ * the child keeps whatever `add` gave it.
+ *
+ * WHY IT REFUSES TO RE-PARENT. `addSubIssue` takes `replaceParent`, and this
+ * never passes it. An agent filing a follow-up cannot tell "unattached" from
+ * "attached to something I cannot see", and silently moving a child out from
+ * under a parent a human chose is the one mistake here that leaves no trace.
+ * Re-parenting is a decision, so it is a `removeSubIssue` someone runs on
+ * purpose. Re-running with the parent it already has is a no-op, which is what
+ * makes a retried campaign step safe.
+ */
+function cmdParent(rest0) {
+  const [num, ...rest] = rest0;
+  const child = Number(num);
+  const flags = parseFlags(rest);
+  const parent = Number(flags.of);
+  if (!Number.isInteger(child) || !Number.isInteger(parent))
+    die('usage: board.mjs parent <issue> --of <parent issue>');
+  if (child === parent) die(`#${child} cannot be its own parent`);
+
+  const r = gql(`{ repository(owner:"${OWNER}",name:"${REPO}"){
+    child: issue(number:${child}){ id title parent{ number title } }
+    parent: issue(number:${parent}){ id title } } }`).repository;
+  if (!r?.child) die(`issue #${child} not found in ${OWNER}/${REPO}`);
+  if (!r?.parent) die(`issue #${parent} not found in ${OWNER}/${REPO}`);
+
+  const held = r.child.parent?.number;
+  if (held === parent) {
+    console.log(`#${child} is already under #${parent}  ${r.parent.title}`);
+    return;
+  }
+  if (held)
+    die(
+      `#${child} is already a sub-issue of #${held} (${r.child.parent.title}) — ` +
+        `detach it deliberately with removeSubIssue before re-parenting`,
+    );
+
+  gql(
+    `mutation{ addSubIssue(input:{issueId:"${r.parent.id}", subIssueId:"${r.child.id}"}){ issue{ number } } }`,
+  );
+  console.log(`#${child} → sub-issue of #${parent}  ${r.parent.title}`);
+}
+
+/**
  * The promotion rule, made mechanical: a Recommended issue blocked by another
  * issue in this repo is only actionable if that blocker is also Recommended and
  * ordered above it. `Blocked by` leads with the reference precisely so this can
@@ -340,6 +405,7 @@ function cmdCheck(project) {
   const SHIPPING = new Set(['Merged', 'Released']);
   for (const item of items) {
     if (item.state !== 'CLOSED') continue;
+    if (isLedger(item.title)) continue; // closes by hand, never by a PR — see isLedger
     if (item.status === 'Released') {
       console.log(`  note: #${item.number} is Released — safe to remove from the board`);
     } else if (!SHIPPING.has(item.status)) {
@@ -354,13 +420,34 @@ function cmdCheck(project) {
   // priority its children already carry. Left as prose that is the unguarded
   // invariant CLAUDE.md rule 12 is about — the failure mode being `board.mjs
   // add <epic> --queue Medium`, which reads as ordinary work forever after.
-  // One direction only: having sub-issues proves a container, but NOT every
-  // epic uses them (#894, #913 and #941 predate GitHub's sub-issues and hold
-  // their children as body links), so `Epic` without sub-issues is legal.
+  //
+  // THE TEST IS THE TITLE, NOT THE SUB-ISSUES, and that is a correction. This
+  // read "having sub-issues proves a container", which stopped being true the
+  // moment a parent link became the ordinary way to group an issue with the
+  // work it came out of: #1122 and #1202 each hold their own phase issues while
+  // correctly sitting in a work band, and both were failing this check on live
+  // data. Every epic this repo has ever had titles itself `epic:` (#778, #894,
+  // #913, #941, #1129), so that is what is actually checkable — and unlike the
+  // old form it also catches an epic with no children at all, which the "one
+  // direction only" carve-out had to let through.
   for (const item of items) {
-    if (item.state !== 'OPEN' || item.children === 0 || item.queue === 'Epic') continue;
+    if (item.state !== 'OPEN' || !isEpicTitle(item.title)) continue;
+    if (item.queue === 'Epic') continue;
     failures.push(
-      `#${item.number} has ${item.children} sub-issue(s) but sits in Queue="${item.queue ?? 'unset'}" — an epic belongs in the Epic band, not among the work units`,
+      `#${item.number} is titled "epic:" but sits in Queue="${item.queue ?? 'unset'}" — an epic belongs in the Epic band, not among the work units`,
+    );
+  }
+
+  // UNTRIAGED IS A STATE THE BOARD CANNOT SHOW YOU. GitHub's own "add item to
+  // project" workflow puts every new issue on the board with every field empty,
+  // and an item with no Queue appears in no queue view — so the pile that most
+  // needs looking at is the one pile nothing surfaces. Nine agent-filed issues
+  // sat there in a week before anyone noticed. `add --queue` is what fills it,
+  // and this is what makes skipping that call visible.
+  for (const item of items) {
+    if (item.state !== 'OPEN' || item.queue || isLedger(item.title)) continue;
+    failures.push(
+      `#${item.number} is on the board with no Queue — triage it with \`board.mjs set ${item.number} --queue <band>\``,
     );
   }
 
@@ -432,9 +519,17 @@ if (!command || command === '--help' || command === '-h') {
   board.mjs add <issue> [--queue X --class Y --size Z --status W]
   board.mjs set <issue> [--queue X --class Y --size Z --status W]
   board.mjs pr <pr> --status "In review"
+  board.mjs parent <issue> --of <parent issue>
   board.mjs release --sha <deployed sha>
   board.mjs check`);
   process.exit(command ? 0 : 1);
+}
+
+// `parent` writes no project field, so it needs no project — and resolving one
+// would make it fail on a token without the `project` scope for no reason.
+if (command === 'parent') {
+  cmdParent(args);
+  process.exit(0);
 }
 
 const project = loadProject();
@@ -443,4 +538,4 @@ else if (command === 'set') cmdSet(project, args);
 else if (command === 'pr') cmdPr(project, args);
 else if (command === 'release') cmdRelease(project, args);
 else if (command === 'check') cmdCheck(project);
-else die(`unknown command "${command}" — expected add, set, pr, release or check`);
+else die(`unknown command "${command}" — expected add, set, pr, parent, release or check`);
