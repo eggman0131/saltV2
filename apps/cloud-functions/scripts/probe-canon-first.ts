@@ -41,7 +41,10 @@
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { findClosestMatch, resolveProductForm } from '@salt/domain';
-import type { CanonItem, ProductForm } from '@salt/domain';
+import type { CanonItem, FormNaming } from '@salt/domain';
+
+/** The projection of a productForms doc this script matches against. */
+type FormRow = FormNaming & { readonly id: string };
 
 const projectId = process.env['GOOGLE_CLOUD_PROJECT'];
 if (!projectId) {
@@ -73,15 +76,15 @@ async function main(): Promise<void> {
       }) as CanonItem,
   );
 
-  const forms: ProductForm[] = formSnap.docs.map(
-    (d) =>
-      ({
-        id: d.id,
-        label: String(d.get('label') ?? ''),
-        matchers: (d.get('matchers') as string[] | undefined) ?? [],
-        parentCanonId: String(d.get('parentCanonId') ?? ''),
-      }) as ProductForm,
-  );
+  // Only the fields resolveProductForm reads — `FormRow`, not `ProductForm`,
+  // because the row genuinely is not one and `resolveProductForm` is generic over
+  // exactly this shape (issue #1118), so no assertion is needed to say so.
+  const forms: FormRow[] = formSnap.docs.map((d) => ({
+    id: d.id,
+    label: String(d.get('label') ?? ''),
+    matchers: (d.get('matchers') as string[] | undefined) ?? [],
+    parentCanonId: String(d.get('parentCanonId') ?? ''),
+  }));
 
   const nameById = new Map(items.map((i) => [i.id, i.name]));
 
@@ -97,7 +100,7 @@ async function main(): Promise<void> {
 
   // Every string a form claims, deduped — label and matchers compete on equal
   // terms in resolveProductForm, so both are inputs a reordering would meet.
-  const claims = new Map<string, ProductForm>();
+  const claims = new Map<string, FormRow>();
   for (const f of forms) {
     for (const phrase of [f.label, ...f.matchers]) {
       if (phrase.trim().length > 0) claims.set(phrase, f);

@@ -4,6 +4,9 @@ import type { ProductForm } from '../entities/ProductForm.js';
 /** Just enough of a canon item to ask whether some text names it. */
 export type CanonNaming = Pick<CanonItem, 'id' | 'name'>;
 
+/** Just enough of a product form to ask whether some text names it. */
+export type FormNaming = Pick<ProductForm, 'label' | 'matchers' | 'parentCanonId'>;
+
 // Pure table lookup: find the product form that `name` identifies.
 //
 // A form is identified by EVERYTHING it is called — its `label` as well as its
@@ -91,16 +94,31 @@ export type CanonNaming = Pick<CanonItem, 'id' | 'name'>;
 //
 // Match-time only: nothing here is written back. Stored labels and matchers stay
 // exactly as they were typed.
-export function resolveProductForm(
+// GENERIC OVER THE ROW rather than fixed to `ProductForm` (issue #1118). This
+// function reads three fields and hands back the row it was given, so a caller
+// holding a PARTIAL row — a Firestore read projected to just what matching needs
+// — passes it directly and gets it back typed, instead of asserting
+// `as ProductForm` over a value that is not one. Two production scripts did
+// exactly that, and the assertion was not merely ugly: it is legal TypeScript
+// (a subset object literal is comparable to the whole type), so enrolling that
+// directory in `tsc` would not by itself have caught it.
+//
+// What the constraint buys, stated with its limit: adding a fourth field to
+// `FormNaming` — the next `form.x` this function learns to read — turns every
+// caller that cannot supply it red, which is how #1192's third field read
+// (`parentCanonId`) should have been surfaced instead of relying on its author
+// remembering two scripts. It does NOT stop a caller re-asserting `as
+// ProductForm` at its own site; nothing type-level can.
+export function resolveProductForm<T extends FormNaming>(
   name: string,
-  forms: readonly ProductForm[],
+  forms: readonly T[],
   // REQUIRED, and deliberately not defaulted to `[]` (issue #1180). An optional
   // canon list would leave every call site that was never updated silently on
   // the old cross-parent behaviour — the defect again, invisibly. Required means
   // the compiler enumerates the call sites. A caller that genuinely has no canon
   // list in hand passes `[]` at its own site, where the degrade is legible.
   canon: readonly CanonNaming[],
-): ProductForm | null {
+): T | null {
   const target = normaliseName(name);
   if (!target) return null;
   const tokens = target.split(' ');
@@ -129,7 +147,7 @@ export function resolveProductForm(
     return named;
   };
 
-  let best: ProductForm | null = null;
+  let best: T | null = null;
   let bestLen = 0;
   for (const form of forms) {
     for (const phrase of [form.label, ...form.matchers]) {

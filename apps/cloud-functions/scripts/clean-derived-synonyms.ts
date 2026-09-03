@@ -66,7 +66,10 @@
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { resolveProductForm } from '@salt/domain';
-import type { ProductForm } from '@salt/domain';
+import type { FormNaming } from '@salt/domain';
+
+/** The projection of a productForms doc this script matches against. */
+type FormRow = FormNaming & { readonly id: string };
 
 const projectId = process.env['GOOGLE_CLOUD_PROJECT'];
 if (!projectId) {
@@ -103,15 +106,15 @@ async function main(): Promise<void> {
 
   // Only the fields resolveProductForm reads. Parsing the full schema would be
   // stricter than this needs to be and would skip a form over an unrelated field.
-  const forms: ProductForm[] = formSnap.docs.map(
-    (d) =>
-      ({
-        id: d.id,
-        label: String(d.get('label') ?? ''),
-        matchers: (d.get('matchers') as string[] | undefined) ?? [],
-        parentCanonId: String(d.get('parentCanonId') ?? ''),
-      }) as ProductForm,
-  );
+  // `FormRow`, not `ProductForm`: the row genuinely is not one, and
+  // `resolveProductForm` is generic over exactly this shape (issue #1118) so no
+  // assertion is needed to say so.
+  const forms: FormRow[] = formSnap.docs.map((d) => ({
+    id: d.id,
+    label: String(d.get('label') ?? ''),
+    matchers: (d.get('matchers') as string[] | undefined) ?? [],
+    parentCanonId: String(d.get('parentCanonId') ?? ''),
+  }));
 
   const removals: Removal[] = [];
   let synonymCount = 0;
