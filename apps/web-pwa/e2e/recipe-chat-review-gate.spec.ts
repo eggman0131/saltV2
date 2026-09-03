@@ -25,8 +25,7 @@
  *         → "Review changes" runs the real authorRecipe callable, whose canned
  *           answer OMITS servings, all three times and the tags
  *           → the diff proposes the title change and NOTHING about metadata
- *             → Apply writes a document that still has Serves 4, 15/30/45 and
- *               its tag
+ *             → Apply writes a document that still has Serves 4 and its tag
  *
  * No `parseRecipeIngredients` stub, deliberately: the librarian's canned answer
  * repeats the seeded ingredient's rawText verbatim, which is exactly what edit
@@ -57,9 +56,12 @@ const TAG = 'reviewgate';
 // value checked on both surfaces IS the "identical saved document" assertion.
 const SEEDED_METADATA = {
   servings: 4,
-  prepTimeMinutes: 15,
-  cookTimeMinutes: 30,
-  totalTimeMinutes: 45,
+  // Null since #1212: the editor's three time boxes are gone with the phase key
+  // on, and this dish is authored through the editor. Servings and the tag carry
+  // the "the librarian dropped it, the merge kept it" assertion.
+  prepTimeMinutes: null,
+  cookTimeMinutes: null,
+  totalTimeMinutes: null,
   // Stamped by `emptyRecipe` on every new recipe (issue #1122), so it is part of
   // the seeded document even though nobody typed it. Its presence here is what
   // pins `mergeAmendedRecipe` carrying the strip through an amend rather than
@@ -180,9 +182,11 @@ async function seedDish(page: Page): Promise<string> {
   await page.getByTestId('recipe-title-input').fill(DISH);
 
   await page.getByTestId('recipe-servings-input').fill(String(SEEDED_METADATA.servings));
-  await page.getByTestId('recipe-prep-input').fill(String(SEEDED_METADATA.prepTimeMinutes));
-  await page.getByTestId('recipe-cook-input').fill(String(SEEDED_METADATA.cookTimeMinutes));
-  await page.getByTestId('recipe-total-input').fill(String(SEEDED_METADATA.totalTimeMinutes));
+  // Prep / Cook / Total are no longer typed here (issue #1212): with the phase key
+  // on the editor offers the strip instead, and an e2e build has no PostHog key so
+  // every gate reads ON. They stay null on this document, which costs this spec
+  // nothing — Servings and the tag are the metadata the librarian drops, and they
+  // are what the preservation assertion below actually rests on.
   await page.getByTestId('recipe-tags-input').fill(TAG);
   await page.getByTestId('recipe-tags-input').press('Enter');
 

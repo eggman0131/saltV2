@@ -1,4 +1,4 @@
-import type { Recipe } from '../entities/Recipe.js';
+import type { Recipe, RecipePhase } from '../entities/Recipe.js';
 import type { Ingredient } from '../entities/Ingredient.js';
 import type { Step, StepTimer } from '../entities/Step.js';
 import type {
@@ -9,6 +9,7 @@ import type {
   RecipeDiff,
   RecipeFieldChange,
   RecipeMetadataDiff,
+  RecipePhasesChange,
   StepChange,
   StepDiffEntry,
 } from './recipeDiff.js';
@@ -465,6 +466,30 @@ function flatIngredients(recipe: Recipe): Ingredient[] {
   return recipe.ingredients.flatMap((group) => group.items);
 }
 
+// Two phases are the same phase when all three of their fields match. `label` is
+// compared as a VALUE, never read for meaning — nothing anywhere may branch on
+// the word (the discipline CLAUDE.md applies to `recipes.kind`).
+function phasesEqual(a: RecipePhase, b: RecipePhase): boolean {
+  return (
+    a.label === b.label &&
+    a.handsOnMinutes === b.handsOnMinutes &&
+    a.handsOffMinutes === b.handsOffMinutes
+  );
+}
+
+// Position-wise, so a REORDER is a change (see `RecipePhasesChange`). `undefined`
+// and `[]` are the same "no strip", so a recipe that never had one and one whose
+// strip was cleared do not diff against each other.
+function phasesChange(
+  from: RecipePhase[] | undefined,
+  to: RecipePhase[] | undefined,
+): RecipePhasesChange | undefined {
+  const a = from ?? [];
+  const b = to ?? [];
+  const same = a.length === b.length && a.every((phase, i) => phasesEqual(phase, b[i]!));
+  return same ? undefined : { from: a, to: b };
+}
+
 function diffMetadata(existing: Recipe, draft: Recipe): RecipeMetadataDiff {
   const e = existing.metadata;
   const d = draft.metadata;
@@ -477,6 +502,14 @@ function diffMetadata(existing: Recipe, draft: Recipe): RecipeMetadataDiff {
   if (prep) metadata.prepTimeMinutes = prep;
   const cook = numberChange(e.cookTimeMinutes, d.cookTimeMinutes);
   if (cook) metadata.cookTimeMinutes = cook;
+  // The phase strip and its sentence (issue #1212). Reported for the same reason
+  // the three numbers above are: this is the only place the review gate can see
+  // that a proposal rewrote the timing — or, since #1203 let an amend clear it,
+  // that a proposal deleted the sentence.
+  const phases = phasesChange(e.phases, d.phases);
+  if (phases) metadata.phases = phases;
+  const summary = nullableStringChange(e.timingSummary ?? null, d.timingSummary ?? null);
+  if (summary) metadata.timingSummary = summary;
   return metadata;
 }
 
