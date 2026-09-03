@@ -106,35 +106,75 @@ const { onShoppingListItemWrite } = await import('../../src/triggers/onShoppingL
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * The fields a row below actually cares about. Everything else is filled in
+ * from `COMPLETE_ITEM` by `makeEvent`.
+ *
+ * That completion is not tidiness. Since #1114 `ShoppingListItemSchema`
+ * REQUIRES all eleven non-additive fields, so a partial literal here would be
+ * refused at the trigger's own trust boundary — and the trigger's failure path
+ * is to log and return. Every row asserting `not.toHaveBeenCalled()` would then
+ * pass for the wrong reason, and every row asserting a write would fail. Rows
+ * that mean to hand the trigger a document it cannot parse say so, through
+ * `rawAfter` below.
+ */
 interface ItemData {
-  rawText: string;
+  rawText?: string;
   notes?: string;
-  canonId: string | null;
-  matchState: string;
+  canonId?: string | null;
+  matchState?: string;
   checked?: boolean;
 }
+
+/** A well-formed row, as every writer in the app produces one. */
+const COMPLETE_ITEM = {
+  id: 'item-1',
+  rawText: 'heinz baked beans',
+  notes: '',
+  sources: [{ kind: 'manual' }],
+  canonId: null as string | null,
+  matchState: 'pending',
+  checked: false,
+  needsCheck: false,
+  schemaVersion: 1,
+  createdAt: '2026-09-03T10:00:00.000Z',
+  updatedAt: '2026-09-03T10:00:00.000Z',
+};
+
+const complete = (overrides: ItemData | Record<string, unknown>) => ({
+  ...COMPLETE_ITEM,
+  ...overrides,
+});
 
 function makeEvent({
   before,
   after,
+  rawBefore,
+  rawAfter,
   listId = 'list-1',
   itemId = 'item-1',
 }: {
-  // `Record<string, unknown>` is allowed alongside the well-formed shape so the
-  // trust-boundary cases below can hand the trigger a document that does not
-  // parse — which is the whole point of validating it.
   before?: ItemData | Record<string, unknown> | null;
   after?: ItemData | Record<string, unknown> | null;
+  // The trust-boundary escape: handed to the trigger VERBATIM, no completion.
+  // This is how a row says "the stored document really is this shape" — a
+  // document with no `matchState` at all, or one that is not a document.
+  rawBefore?: unknown;
+  rawAfter?: unknown;
   listId?: string;
   itemId?: string;
 }) {
+  const beforeDoc = rawBefore !== undefined ? rawBefore : before ? complete(before) : null;
+  const afterDoc = rawAfter !== undefined ? rawAfter : after ? complete(after) : null;
   return {
     params: { listId, itemId },
     data: {
-      before: before
-        ? { exists: true, data: () => before }
+      before: beforeDoc
+        ? { exists: true, data: () => beforeDoc }
         : { exists: false, data: () => undefined },
-      after: after ? { exists: true, data: () => after } : { exists: false, data: () => undefined },
+      after: afterDoc
+        ? { exists: true, data: () => afterDoc }
+        : { exists: false, data: () => undefined },
     },
   };
 }
@@ -250,25 +290,31 @@ describe('onShoppingListItemWrite', () => {
     });
 
     it('does not throw on a document that is not an object at all', async () => {
-      const event = makeEvent({ after: 'not a document' as unknown as Record<string, unknown> });
+      const event = makeEvent({ rawAfter: 'not a document' });
       await expect((onShoppingListItemWrite as Function)(event)).resolves.toBeUndefined();
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('still SKIPS a document carrying no matchState field at all', async () => {
-      // The boundary of the change, and the reason `matchState` is still read off
-      // the raw document. `ShoppingListItemSchema` gives it `.catch('pending')`,
-      // so the parsed value for an absent field is 'pending' — which would send
-      // this straight into the matcher. The skip guard is the brake on the
-      // trigger's own write-back, so it must keep seeing what is stored.
-      const event = makeEvent({ after: { rawText: 'milk', canonId: null } });
+      // Verbatim, not completed: the point is a document that really lacks the
+      // field. It skips TWICE OVER now, and both halves matter. Since #1114 the
+      // schema REFUSES an absent `matchState` (it used to `.catch('pending')`
+      // it), so the parse guard stops it first — and the raw-document read below
+      // it, which falls back to `''`, would stop it too. `matchState` is still
+      // read off the raw document because that guard is the brake on the
+      // trigger's OWN write-back and must see what is stored, not what a schema
+      // would make of it.
+      const event = makeEvent({ rawAfter: { rawText: 'milk', canonId: null } });
       await (onShoppingListItemWrite as Function)(event);
       expect(mockMatchOrCreate).not.toHaveBeenCalled();
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('still SKIPS a document whose matchState is an unrecognised state', async () => {
-      // Same reason: `.catch('pending')` would read a fifth state as 'pending'.
+      // Completed apart from the state itself, so this is an otherwise perfect
+      // document rejected on that field alone. Before #1114 `.catch('pending')`
+      // read a fifth state as 'pending' and only the raw guard below stopped it;
+      // now the schema refuses it outright and the two agree.
       const event = makeEvent({
         after: { rawText: 'milk', canonId: null, matchState: 'reticulating' },
       });
@@ -276,23 +322,28 @@ describe('onShoppingListItemWrite', () => {
       expect(mockMatchOrCreate).not.toHaveBeenCalled();
     });
 
-    it('reads an absent rawText/notes as blank and an absent canonId as null', async () => {
-      // The schema's defaults reproduce the old fallbacks exactly, which is what
-      // makes the swap safe for the guards above.
+    it('SKIPS a document with an absent rawText rather than matching on a blank', async () => {
+      // This row used to assert the opposite, and the inversion IS the fix
+      // (#1114). `rawText`/`notes` defaulted to `''` and `canonId` to `null`, so
+      // a document missing them parsed and went into the matcher carrying an
+      // empty name — the canon matcher asked to match nothing, and a row with no
+      // name on it delivered to the family's shopping list. The schema now
+      // refuses it, and the trigger does what docs/data-model.md has always said
+      // a trigger does with a document that fails: log it and return.
       mockMatchOrCreate.mockResolvedValue({
         kind: 'ok',
         value: { decision: 'matched', item: makeCanonItem({ id: 'canon-1' }) },
       });
 
-      const event = makeEvent({ after: { matchState: 'pending' } });
+      const event = makeEvent({ rawAfter: { matchState: 'pending' } });
       await (onShoppingListItemWrite as Function)(event);
 
-      // canonId absent → null → not a CF own write, so it proceeded; rawText
-      // absent → '' → that is what reached the matcher.
-      expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ rawName: '' }),
-        expect.anything(),
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        'onShoppingListItemWrite: invalid shoppingList item doc, skipping',
+        expect.objectContaining({ listId: 'list-1', itemId: 'item-1' }),
       );
+      expect(mockMatchOrCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 

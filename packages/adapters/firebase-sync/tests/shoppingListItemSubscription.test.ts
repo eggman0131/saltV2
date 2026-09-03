@@ -147,6 +147,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'pending',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-05-14T10:00:00.000Z',
       updatedAt: '2026-05-14T10:00:00.000Z',
@@ -164,6 +165,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: 'canon-flour',
       matchState: 'matched',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-05-14T10:00:00.000Z',
       updatedAt: '2026-05-14T10:00:00.000Z',
@@ -184,6 +186,7 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'pending',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '',
       updatedAt: '',
@@ -204,6 +207,7 @@ const deliveryCases: DeliveryCase[] = [
       amount: 3,
       unit: 'count',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-07-17T10:00:00.000Z',
       updatedAt: '2026-07-17T10:00:00.000Z',
@@ -229,6 +233,7 @@ const deliveryCases: DeliveryCase[] = [
       amount: 3,
       unit: 'count',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '2026-07-01T10:00:00.000Z',
       updatedAt: '2026-07-01T10:00:00.000Z',
@@ -239,7 +244,13 @@ const deliveryCases: DeliveryCase[] = [
     },
   },
   {
-    name: 'an unknown matchState falls back to pending',
+    // Both of the next two rows asserted the OPPOSITE until #1114, and the
+    // inversion is the fix. `matchState` carried the repository's only
+    // `.catch()`, so an unrecognised state was laundered to 'pending' — and
+    // `onShoppingListItemWrite` reads the same field raw and sees something that
+    // is NOT 'pending', so the row showed as waiting to be matched while the
+    // trigger declined to match it, forever.
+    name: 'an unknown matchState is SKIPPED, not laundered to pending',
     docId: 'item-x',
     stored: {
       id: 'item-x',
@@ -249,17 +260,21 @@ const deliveryCases: DeliveryCase[] = [
       canonId: null,
       matchState: 'unknown_future_value',
       checked: false,
+      needsCheck: false,
       schemaVersion: 1,
       createdAt: '',
       updatedAt: '',
     },
-    assert: (items) => expect(items[0]!.matchState).toBe('pending'),
+    assert: (items) => expect(items).toEqual([]),
   },
   {
-    name: 'missing sources default to an empty array',
+    // A row with almost nothing on it used to arrive with every field invented
+    // — no name to read in the shop, and an id that made ticking it off, editing
+    // it and deleting it all fail.
+    name: 'a document missing most of its fields is SKIPPED, not filled in',
     docId: 'item-bare',
     stored: { id: 'item-bare', rawText: 'x' },
-    assert: (items) => expect(items[0]!.sources).toEqual([]),
+    assert: (items) => expect(items).toEqual([]),
   },
 ];
 
@@ -279,6 +294,54 @@ describe('subscribeShoppingListItems — the delivered item', () => {
     expect(delivered).toHaveLength(1);
     assert(delivered[0]!);
   });
+});
+
+/**
+ * The delivered `id` is the DOCUMENT id, never the `id` field (#1114).
+ *
+ * The field is a copy of the document id at every writer — `saveShoppingListItem`
+ * uses one value for both, and `moveShoppingListItems` preserves it across a
+ * move — so on real data the two disagree nowhere: 0 of 62 item documents across
+ * prod, staging and dev. What the projection buys is that a BLANK id can no
+ * longer reach a write path, and a blank id is not confined to its own row.
+ * `deleteShoppingListItems` and `moveShoppingListItems` build one `writeBatch`
+ * for the whole selection, and `doc(db, 'shoppingLists', 'L1', 'items', '')`
+ * throws, so one blank id fails "clear checked" and "move to another list" for
+ * every OTHER row in the operation too.
+ *
+ * Both reads are driven, because they are two call sites of the same decision.
+ */
+describe('subscribeShoppingListItems — the delivered id', () => {
+  const cases = [
+    { name: 'an empty id field', stored: { ...ITEM_1, id: '' } },
+    { name: 'an id field disagreeing with the document', stored: { ...ITEM_1, id: 'stale-id' } },
+  ];
+
+  it.each(cases)('the subscription delivers the document id despite $name', ({ stored }) => {
+    const delivered: ShoppingListItem[][] = [];
+    subscribeShoppingListItems(
+      'list-1',
+      (items) => delivered.push(items),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
+      firstSnapshot([{ id: 'item-1', data: () => stored }]),
+    );
+
+    expect(delivered).toEqual([[ITEM_1]]);
+  });
+
+  it.each(cases)(
+    'listShoppingListItems delivers the document id despite $name',
+    async ({ stored }) => {
+      mockGetDocs.mockResolvedValue({ docs: [{ id: 'item-1', data: () => stored }] });
+
+      const result = await listShoppingListItems('list-1');
+
+      expect(result).toEqual({ kind: 'ok', value: [ITEM_1] });
+    },
+  );
 });
 
 describe('subscribeShoppingListItems — the stream-error path', () => {
@@ -312,6 +375,7 @@ describe('listShoppingListItems', () => {
             canonId: 'canon-oat-milk',
             matchState: 'matched',
             checked: true,
+            needsCheck: false,
             schemaVersion: 1,
             createdAt: '2026-05-14T10:00:00.000Z',
             updatedAt: '2026-05-14T10:00:00.000Z',

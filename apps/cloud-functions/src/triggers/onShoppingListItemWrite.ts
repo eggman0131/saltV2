@@ -70,11 +70,16 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // `timerWriteTrigger` / `iconWriteTrigger` helpers. Per docs/data-model.md
     // ("Zod validation failures, per boundary") a Firestore trigger LOGS AND
     // RETURNS: there is no caller to hand a Failure to, and nothing here may
-    // throw (Rule 10). Note what that changed and what it did not: the schema's
-    // defaults reproduce the old fallbacks exactly for an ABSENT field
-    // (`rawText`/`notes` → `''`, `canonId` → `null`), while a field that is
-    // present and the wrong TYPE now stops the invocation instead of being
-    // silently read as `''` and matched on — `traceContext` excepted, above.
+    // throw (Rule 10).
+    //
+    // This paragraph used to say the schema's defaults reproduced the old
+    // hand-written fallbacks exactly for an ABSENT field (`rawText`/`notes` →
+    // `''`, `canonId` → `null`). #1114 removed those defaults, so that is no
+    // longer true and the difference is the point: a document missing any
+    // required field now STOPS here rather than being read as blanks and matched
+    // on, which is what the list read's skip-and-log contract has always said
+    // should happen (docs/data-model.md). A field that is present and the wrong
+    // TYPE stopped here already — `traceContext` excepted, above.
     const parsed = ShoppingListItemSchema.safeParse(afterDataForParse);
     if (!parsed.success) {
       logger.error('onShoppingListItemWrite: invalid shoppingList item doc, skipping', {
@@ -92,13 +97,16 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // not 'pending' (matched/needs_approval/failed) or canonId is already set.
     // Skip to avoid an infinite loop.
     //
-    // Read off the RAW document, and it is the ONE field here that is. The schema
-    // gives `matchState` a `.catch('pending')`, so a document missing the field —
-    // or carrying a fifth state nobody has shipped yet — parses as 'pending', and
-    // this guard would flip from SKIP to MATCH for exactly the documents it
-    // understands least. This guard is the brake on the trigger's own write-back,
-    // so it keeps reading what is actually stored. Pinned by the "no matchState
-    // field at all" case in onShoppingListItemWrite.test.ts.
+    // Read off the RAW document, and it is the ONE field here that is. It stays
+    // that way after #1114, which removed the `.catch('pending')` that used to
+    // make this necessary: an absent field or a fifth state nobody has shipped
+    // yet parsed as 'pending', and this guard would have flipped from SKIP to
+    // MATCH for exactly the documents it understands least. The schema now
+    // refuses both, so the parse above stops them first — but this guard is the
+    // brake on the trigger's OWN write-back, and a brake reads what is actually
+    // stored rather than what a schema makes of it. Pinned by the "no matchState
+    // field at all" case in onShoppingListItemWrite.test.ts, which hands the
+    // trigger that document verbatim.
     const storedMatchState =
       typeof afterData['matchState'] === 'string' ? afterData['matchState'] : '';
     if (storedMatchState !== 'pending' || canonId !== null) return;

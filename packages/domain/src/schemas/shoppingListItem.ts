@@ -31,20 +31,63 @@ export const FormDemandSchema = z.object({
 export type SourceRefDoc = z.infer<typeof SourceRefSchema>;
 export type FormDemandDoc = z.infer<typeof FormDemandSchema>;
 
+// One Firestore document at `shoppingLists/{listId}/items/{itemId}`.
+//
+// THE ELEVEN NON-ADDITIVE FIELDS BELOW ARE REQUIRED, and that is a decision
+// (issue #1114). Ten of them carried a `.default()` and `matchState` carried a
+// `.catch()`, so a document missing pieces did not FAIL validation — it was
+// filled in with blanks and delivered to the shopping list as a real row: a row
+// with no name on it, or one pinned "still matching" forever. The list read's
+// contract is to SKIP an invalid document and log it (docs/data-model.md), and a
+// schema that cannot fail is a contract that cannot run.
+//
+// Removing a default is a NARROWING over a collection holding real production
+// data, so it was measured rather than argued from symmetry:
+// scripts/audit-shopping-list-fields.mjs, run 2026-09-03, found 0 of 62 item
+// documents across prod, staging and dev lacking any of these eleven, and 0
+// carrying a value that would fail — including `needsCheck`, whose default was
+// the one this issue expected to be load-bearing (it was added by #185, and the
+// pre-#185 rows that lacked it have long since been shopped and deleted).
+//
+// The honest limit of that measurement: it saw the documents that EXIST, not
+// every document that ever has. That is the right basis for this change — what
+// a required field can skip is what is in the collection when the code ships —
+// but it is not a claim that no row ever lacked a field. Re-run the audit before
+// making a twelfth field required.
+//
+// The FOUR ADDITIVE FIELDS below (`traceContext`, `formDemand`, `originalText`,
+// `measureNote`) plus `amount`/`unit` stay `.optional()` and are untouched:
+// their absence is the contract, not a defect, and each carries its own reason.
 export const ShoppingListItemSchema = z.object({
-  id: z.string().default(''),
-  rawText: z.string().default(''),
-  notes: z.string().default(''),
-  sources: z.array(SourceRefSchema).default([]),
-  canonId: z.string().nullable().default(null),
-  matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']).catch('pending'),
+  id: z.string(),
+  rawText: z.string(),
+  notes: z.string(),
+  sources: z.array(SourceRefSchema),
+  canonId: z.string().nullable(),
+  // NO `.catch()`, deliberately, and this was the one field the audit could not
+  // have vetoed. `.catch()` is strictly stronger than a default: it swallowed an
+  // absent field, a null, a wrong type and an unknown enum member alike, so this
+  // was the single field on either collection that could not be rejected for any
+  // reason. (#1114 described it as the only `.catch()` in the repository, which
+  // was true when that was written; `AuthoredRecipePhasesSchema` in `recipe.ts`
+  // has since grown a deliberate one, on an AI OUTPUT rather than a stored
+  // document, for the reason set out at its declaration.)
+  //
+  // What that produced was not cosmetic but a live contradiction with the
+  // server. `onShoppingListItemWrite` reads this field OFF THE RAW DOCUMENT
+  // (`storedMatchState`, and the comment there says why), falling back to `''`;
+  // the browser fell back to `'pending'`. So a document carrying a value the
+  // enum does not recognise showed the family a row waiting to be matched while
+  // the trigger declined to match it — pinned in a state nothing could advance.
+  // A row nobody can match must be visible as broken, not disguised as busy.
+  matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']),
   amount: z.number().optional(),
   unit: z.string().optional(),
-  checked: z.boolean().default(false),
-  needsCheck: z.boolean().default(false),
-  schemaVersion: z.literal(1).default(1),
-  createdAt: z.string().default(''),
-  updatedAt: z.string().default(''),
+  checked: z.boolean(),
+  needsCheck: z.boolean(),
+  schemaVersion: z.literal(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
   // Distributed-trace correlation field (issue #362, Phase 5). A W3C
   // `traceparent` string the browser stamps onto the item at "add to shopping
   // list" so the onShoppingListItemWrite trigger can continue the browser-rooted

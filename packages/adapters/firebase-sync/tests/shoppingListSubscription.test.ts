@@ -113,23 +113,30 @@ describe('subscribeShoppingLists', () => {
     expect(delivered).toEqual([[LIST_1]]);
   });
 
-  it('normalises missing fields to safe defaults rather than skipping the document', () => {
+  it('SKIPS a document missing fields rather than delivering it with blanks', () => {
+    // This row used to assert the opposite, and the inversion IS the fix
+    // (#1114). `ShoppingListSchema` defaulted every field, so a document with
+    // pieces missing did not fail — it was filled in and delivered as a real,
+    // unnamed list. The parse loop's whole contract is to skip an invalid
+    // document and log it, and it was never given a failure to act on.
     const delivered: ShoppingList[][] = [];
+    const errors: unknown[][] = [];
     subscribeShoppingLists(
       (lists) => delivered.push(lists),
-      () => {},
+      (...args) => errors.push(args),
     );
 
     (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
-      firstSnapshot([{ id: 'legacy', data: () => ({}) }]),
+      firstSnapshot([
+        { id: 'legacy', data: () => ({}) },
+        { id: LIST_1.id, data: () => ({ ...LIST_1 }) },
+      ]),
     );
 
-    // Defaults, not a rejection. The parse loop SKIPS an invalid document, so a
-    // schema that refused this one would take a legacy list off the screen
-    // instead of showing it unnamed.
-    expect(delivered).toEqual([
-      [{ id: '', name: '', schemaVersion: 1, createdAt: '', updatedAt: '' }],
-    ]);
+    // Skipped, not rejected wholesale: one bad document must never fail the
+    // whole read, so the good list beside it still arrives.
+    expect(delivered).toEqual([[LIST_1]]);
+    expect(errors).toEqual([]);
   });
 
   it('classifies a stream error and forwards the raw one alongside it', () => {
@@ -144,6 +151,48 @@ describe('subscribeShoppingLists', () => {
 
     // TWO arguments — see the header (#928 finding B2-009).
     expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
+  });
+});
+
+/**
+ * The delivered `id` is the DOCUMENT id, never the `id` field (#1114).
+ *
+ * The field is a copy of the document id at every writer, so on real data these
+ * two disagree nowhere — the audit found 0 of 12 list documents differing
+ * across prod, staging and dev. What the projection buys is that a blank
+ * `listId` is now structurally impossible rather than merely unobserved, and a
+ * blank `listId` is the worst id in the feature: it is the path segment every
+ * row read and write inside the list is built from.
+ *
+ * Both reads are driven, because they are two call sites of the same decision
+ * and only a test of each stops one drifting from the other.
+ */
+describe('shopping lists — the delivered id', () => {
+  const cases = [
+    { name: 'an empty id field', stored: { ...LIST_1, id: '' } },
+    { name: 'an id field disagreeing with the document', stored: { ...LIST_1, id: 'stale-id' } },
+  ];
+
+  it.each(cases)('the subscription delivers the document id despite $name', ({ stored }) => {
+    const delivered: ShoppingList[][] = [];
+    subscribeShoppingLists(
+      (lists) => delivered.push(lists),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
+      firstSnapshot([{ id: 'list-1', data: () => stored }]),
+    );
+
+    expect(delivered).toEqual([[LIST_1]]);
+  });
+
+  it.each(cases)('listShoppingLists delivers the document id despite $name', async ({ stored }) => {
+    mockGetDocs.mockResolvedValue({ docs: [{ id: 'list-1', data: () => stored }] });
+
+    const result = await listShoppingLists();
+
+    expect(result).toEqual({ kind: 'ok', value: [LIST_1] });
   });
 });
 

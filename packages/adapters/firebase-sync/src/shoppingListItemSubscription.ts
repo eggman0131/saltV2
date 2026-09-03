@@ -32,7 +32,23 @@ export function subscribeShoppingListItems(
       path: [LISTS_COLLECTION, listId, ITEMS_SUB],
       schema: ShoppingListItemSchema,
       label: 'ShoppingListItemSchema',
-      project: (item) => item,
+      // The DOCUMENT id is authoritative, not the `id` field (issue #1114). The
+      // two are a copy of each other by construction — every writer here sets
+      // the field from the same value it uses as the path segment
+      // (`saveShoppingListItem` below, and `moveShoppingListItems`) — but only
+      // the field can come back blank, and a blank one is not confined to its
+      // own row: `deleteShoppingListItems` and `moveShoppingListItems` build one
+      // `writeBatch` for the whole selection, so a single empty id fails the
+      // batch and takes every other selected row with it. Taking the id the
+      // adapter is already holding makes that structurally impossible rather
+      // than merely unlikely. Same move, same reason, as
+      // `equipmentIconSubscription.ts:46`.
+      //
+      // Measured before it was relied on: 0 of 62 item documents across prod,
+      // staging and dev carry an `id` that differs from their document id
+      // (scripts/audit-shopping-list-fields.mjs, 2026-09-03), so nothing
+      // observable changes today.
+      project: (item, id) => ({ ...item, id }),
     },
     onItems,
     onError,
@@ -47,7 +63,10 @@ export async function listShoppingListItems(
     const snap = await getDocs(collection(db, LISTS_COLLECTION, listId, ITEMS_SUB));
     // Same parse loop as the subscription above (#928, B2-006).
     return success(
-      parseDocuments(snap.docs, ShoppingListItemSchema, 'ShoppingListItemSchema', (item) => item),
+      parseDocuments(snap.docs, ShoppingListItemSchema, 'ShoppingListItemSchema', (item, id) => ({
+        ...item,
+        id,
+      })),
     );
   } catch (err) {
     return failure(classifyFirestoreError(err));
