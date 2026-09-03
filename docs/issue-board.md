@@ -87,7 +87,15 @@ is the one thing the band is for. This is an invariant, so per CLAUDE.md rule 12
 it is mechanical rather than remembered — `node scripts/board.mjs check` goes red
 when a Recommended item's blocker is absent from Recommended or ordered below it.
 
-`check` covers three more things — plus the `Epic` rule below:
+`check` covers four more things — plus the `Epic` rule below:
+
+- **An open issue on the board has a `Queue`.** GitHub's own "add item to
+  project" workflow puts every new issue on the board with every field empty,
+  and an item with no `Queue` shows up in no queue view — so an issue filed and
+  never triaged is not sitting in a pile marked Triage, it is invisible, and it
+  stays invisible until somebody scrolls the unfiltered board. That is what the
+  agent commands' `board.mjs add --queue …` line is for, and this is what makes
+  skipping it visible. Ledgers are exempt; see below.
 
 - **No two options of a field share a name.** Everything in `board.mjs` resolves
   options by name at call time and takes the first match, so a field carrying the
@@ -128,9 +136,51 @@ filter carries `-queue:Epic`. `The queue` needs nothing, because grouping by
 is genuinely product work, so it is left visible there.
 
 `board.mjs check` enforces the half of this that is mechanical: **an open issue
-with sub-issues must be in the `Epic` band.** Only one direction is checkable —
-#894, #913 and #941 predate GitHub's sub-issues and hold their children as body
-links, so an `Epic` with no sub-issues is legal and stays unflagged.
+titled `epic:` must be in the `Epic` band.**
+
+That test used to be "an open issue with sub-issues", and it was wrong. It read
+a parent link as proof of an epic, and a parent link is nothing of the kind: it
+is the ordinary way to group an issue with the work it came out of. #1122 and
+#1202 each hold their own phase issues while correctly sitting in a work band,
+and both were failing this check on live data. Every epic this repo has had
+titles itself `epic:` (#778, #894, #913, #941, #1129), so that is what is
+actually checkable — and it catches the epic with no children at all, which the
+old form's "one direction only" carve-out had to let through.
+
+## A parent is not an epic
+
+`node scripts/board.mjs parent <issue> --of <parent>` writes a GitHub sub-issue
+link **and touches no field**. Grouping and priority are separate questions:
+attaching a follow-up to the work it came out of claims nothing about how urgent
+it is, and the child keeps whatever band `add` gave it.
+
+It exists because nothing could set that link before, so an issue an agent filed
+mid-flight was only ever attached if a human went back and did it. `/campaign`
+now attaches everything it files — see **Filing an issue** in
+[`campaign.md`](../.claude/commands/campaign.md) for which parent each of its
+four filings takes. `/spec`, `/defect` and `/refactor-spec` attach only when
+another command spawned them and named the parent: invoked directly, what a
+piece of work belongs to is a call for Daniel to make on the board.
+
+**It refuses to re-parent.** `addSubIssue` takes a `replaceParent` flag and this
+never passes it. An agent cannot tell "unattached" from "attached to something I
+cannot see", and silently moving a child out from under a parent a human chose
+is the one mistake here that leaves no trace. Re-running with the parent an
+issue already has is a no-op, which is what makes a retried campaign step safe;
+anything else is a deliberate `removeSubIssue`.
+
+**Ask GraphQL whether an issue has a parent.** The REST issue endpoint
+(`gh api repos/{owner}/{repo}/issues/N`) reports `parent: null` for every issue
+in this repo, sub-issues of #1202 included — a REST sweep will tell you nothing
+is attached, confidently, and be wrong. `issue.parent` over GraphQL is the field
+that is populated.
+
+**A `/campaign` ledger is neither.** An issue titled `campaign:` is a
+coordination artefact: no `Queue`, no `Class`, closed by hand rather than by a
+PR, and it is the parent the campaign hangs its own filings off. `check` skips
+it in both the untriaged rule and the closed-at-a-shipping-status rule, or every
+campaign that ever ran would sit in its output forever. `campaign follow-ups:`
+gets no such exemption — that one is ordinary work and is triaged like any.
 
 ---
 

@@ -37,6 +37,35 @@ The success condition is a clean tree when Daniel comes back: every issue merged
 - **Never open a shell command with `cd`, and never with a variable assignment.** Use `git -C <worktree>` and absolute paths; for a non-git command that needs a directory, `(cd <path> && …)` only when nothing else will do. The permission allowlist matches command strings, so `cd <path> && cat x && sed -n y` and `W=<path>; grep -rn foo $W/src` match none of the `cat`/`sed`/`grep` entries that would have let each part through unprompted — these two shapes are the largest source of permission stops in this command outside the merge queue, and every one of them blocks the fleet on a human. Redirection counts too: prefer `pnpm test | tail -20` to `pnpm test 2>&1 | tail -20`, since the allowlist carries the plain form. This applies to every brief you write, not just your own calls.
 - **There is one command that lands a branch, and you do not compose around it.** `node scripts/campaign-land.mjs <pr>` — see **Merge queue**. It is allowlisted, it applies the queue-eligibility rule itself, and it derives every path and branch name from the PR. A hand-written `gh pr merge` still works and is still gated by `~/.claude/hooks/gh-merge-guard.mjs`, but that gate can only clear a line it recognises in full, and an agent composing fresh shell each time will always eventually write one it does not. That was ten stopped runs. Use the command.
 
+## Filing an issue
+
+This command files issues of its own — the ledger, a `BLOCKED: oversized` split, an adjudicated blocking finding, and the follow-ups checklist at **Finish**. Creating one is two thirds of the job. **Every one of them except the ledger is triaged and attached in the same breath as it is created:**
+
+```
+gh issue create --title "…" --body-file <file>       # take the number out of the URL it prints
+node scripts/board.mjs add <new> --class <Class> --queue <band> --size <S|M|L>
+node scripts/board.mjs parent <new> --of <parent>
+```
+
+Neither of those lines is somebody else's job later. GitHub's own project workflow puts a new issue on the board with **every field empty**, and an item with no `Queue` appears in no queue view — so an issue filed and not triaged is not "waiting in Triage", it is invisible, and it stays invisible until someone happens to scroll the unfiltered board. `board.mjs check` fails on one now, which is how you find out you skipped this.
+
+| What you filed                    | `--class`                                 | `--queue`                                                    | `--size`                    | `parent --of`       |
+| --------------------------------- | ----------------------------------------- | ------------------------------------------------------------ | --------------------------- | ------------------- |
+| the **ledger**                    | — none of it —                            |                                                              |                             | — none —            |
+| **`BLOCKED: oversized`** split    | the split issue's own Class               | the split issue's own band                                   | `M` or `L`                  | the issue it splits |
+| **adjudicated blocking finding**  | `Defect`                                  | `Medium`, or `Recommended` only per the rule below           | `S`                         | the ledger          |
+| **follow-ups checklist** (Finish) | `Refactor`, or `Defect` if most lines are | `Low`; `Medium` if a line has a real user-facing consequence | `S` up to 3 lines, else `M` | the ledger          |
+
+**The ledger is the one exception, and it is deliberate.** It is not work: it carries no priority, it closes by hand rather than through a PR, and it exists to be resumed from and then finished with. `board.mjs check` skips any issue titled `campaign:` for exactly that reason — so putting fields on one is not merely unnecessary, it puts a coordination artefact into a work queue. `campaign follow-ups:` does **not** get that exemption and is ordinary work.
+
+**A parent is not an epic**, and this command never creates one. `parent` writes the sub-issue link and touches no field, so attaching the follow-ups to the ledger groups them without claiming the campaign was a programme of work. The split is the exception in the other direction: it is the remaining work of the issue it came out of, so it hangs off that issue and inherits whatever epic that issue already sits under.
+
+**`Recommended` still means proven.** A review finding that is real, agreed and never once triggered is `Low`, however alarming the reviewer made it sound — [docs/issue-board.md](../../docs/issue-board.md) has the discriminator and #1056 as the worked example. You are filing at the end of a long unattended run and there is nobody to correct an inflated band; err low, and say in the issue what would prove it higher.
+
+**`gh` absent (a cloud session).** Both `board.mjs` lines are refused there for the reason **Standing rules** gives — GraphQL never reaches GitHub — so each becomes a **Board dispatch** ([`board-dispatch.yml`](../../.github/workflows/board-dispatch.yml)) through the **GitHub MCP server**: `command: add` with `issue`, `class`, `queue`, `size`, then `command: parent` with `issue` (the new one) and `of` (the parent). A dispatch is fire-and-forget — **a request, not a confirmation.** Name the route in the ledger and never report an issue as triaged or attached on the strength of one.
+
+---
+
 ## Reporting — five moments, and silence in between
 
 You are unattended, so everything you say is read later, out of order, by someone catching up. Narration is worthless to that reader and it is what makes a campaign unreadable: the last run spoke **68 times in 88 minutes**, median 144 characters, mostly "checking main's health" / "confirmed" / "waiting on #1021" — and closed with four messages in three minutes that all said the campaign had finished.
@@ -156,7 +185,7 @@ If no issue is currently startable (everything left is blocked behind something 
 gh issue create --title "campaign: <slug> (#a #b #c)" --body "<the plan below>"
 ```
 
-No label — the `campaign:` title prefix is the discoverable marker, and it is what the resume search matches. The body is the live state of the campaign and it is what a fresh session reads. Keep it current with `gh issue edit <ledger> --body-file <file>` on every transition:
+No label, no board fields and no parent — see **Filing an issue**; the `campaign:` title prefix is the discoverable marker, it is what the resume search matches, and it is what `board.mjs check` recognises to leave the ledger out of triage. The body is the live state of the campaign and it is what a fresh session reads. Keep it current with `gh issue edit <ledger> --body-file <file>` on every transition:
 
 ```
 ## Plan
@@ -246,7 +275,7 @@ The slot is the smaller half of this. A worker you left running still holds a wo
 
 **BLOCKED non-empty** → park the issue, log it, start the next startable issue. Do not diagnose it yourself; that is diff-reading.
 
-**`BLOCKED: oversized`** is the one blocked reason that gets an action rather than a bare park: file a follow-up issue proposing the split (the phases that landed, the phases that didn't, and the ceiling it hit), reference it from the parked branch, and move on. The branch stays parked either way — you do not decide the split yourself, because how an issue divides is a spec question and /spec is where it belongs.
+**`BLOCKED: oversized`** is the one blocked reason that gets an action rather than a bare park: file a follow-up issue proposing the split (the phases that landed, the phases that didn't, and the ceiling it hit), **triage and attach it per Filing an issue** — it is the remaining work of the issue it came out of, so it hangs off that issue, not off the ledger — reference it from the parked branch, and move on. The branch stays parked either way — you do not decide the split yourself, because how an issue divides is a spec question and /spec is where it belongs.
 
 **FLAGS naming another campaign issue** → record it in the ledger and re-check the conflict graph. A flag is the one signal that can reveal an overlap the footprints did not.
 
@@ -335,13 +364,15 @@ Rounds are capped at two. Round 1 is the full review. Round 2 may only verify th
 gh issue create --title "campaign follow-ups: <slug> (#<ledger>)" --body-file <checklist>
 ```
 
+Then triage and attach it per **Filing an issue** — `add` with a Class, band and size, then `parent --of <ledger>`. A list nobody can find is the failure this whole section exists to prevent, and an untriaged issue is not findable.
+
 Body is a `- [ ]` checklist, one line per finding, PR number on each line. Notes are dropped entirely, and so is anything already fixed in round 1 under the `[trivial]` rule above. File it even when the list is short; skip it only when the list is empty.
 
 This is a correction to a rule that lost its own output. The previous version said to put the list in the ledger's closing comment — but **Finish** closes the ledger when nothing is parked, so the list landed in a closed issue and left no trace anywhere a human looks. Campaign #1040 lost seven that way, two of them live prod risks.
 
 That rule's stated grounds were also wrong, and the record is checkable: it claimed campaign #1009's seventeen filed follow-ups were "never actioned". Most were closed within a day — and #1021, #1023 and #1030, the entire contents of campaign #1040, were three of them. Filing is the mechanism that feeds the next campaign. One issue per campaign rather than seventeen is the concession to noise; not filing at all is not.
 
-Two findings still get their own `gh issue create` at the time rather than waiting for the list, because they are structural rather than taste:
+Two findings still get their own `gh issue create` at the time rather than waiting for the list — each triaged and attached per **Filing an issue** — because they are structural rather than taste:
 
 - **`BLOCKED: oversized`** — the split proposal, as described in **Dispatch**.
 - **a blocking finding you adjudicated as real but chose not to hold the queue for** — that is a known defect shipping to main, and it needs a number before the merge, not after the campaign.
@@ -489,7 +520,8 @@ On a full stop: leave every branch pushed and every worktree intact, write the s
 When the queue is empty:
 
 1. **File the should-fix issue first**, before anything closes — `campaign follow-ups: <slug> (#<ledger>)`, a `- [ ]` checklist, one line and one PR number per finding (see **Review**). Skip only if the list is empty. Its number goes in the closing comment below, so the ledger points at it rather than containing it.
-2. Final ledger comment, and set the body's table to its terminal state:
+2. **Confirm every issue this campaign filed is triaged and attached** — `node scripts/board.mjs check`. It fails on any open board item with no `Queue`, so a filing where you skipped **Filing an issue** shows up here by number. Fix yours; findings naming issues this campaign did not file are not your business and go unmentioned. Where `board.mjs` cannot run (a cloud session — see **Standing rules**), say so in the closing comment rather than reporting a check you did not run: the dispatches were fire-and-forget and nothing has confirmed them.
+3. Final ledger comment, and set the body's table to its terminal state:
    ```
    ## Campaign complete
    **Landed:** #a (PR #1), #b (PR #2)
@@ -498,5 +530,5 @@ When the queue is empty:
    **Decisions taken:** [one line each]
    ```
    Close the ledger issue only if nothing is parked. A parked issue is unfinished business and the open ledger is where it lives. Nothing that must outlive the campaign may live only in this comment — the ledger closes, the follow-ups issue does not.
-3. `TaskStop` any watchdog still running; `git worktree prune`; confirm no campaign worktrees remain, and that every remaining remote branch is one you deliberately parked (labelled `status: on-hold`, reason on the PR).
-4. Report **once**, and stop. Landed, parked with reasons, the follow-ups issue number, and — if there is one — the single finding worth Daniel's attention, with your recommendation. Everything else is in the ledger and the follow-ups issue; do not reproduce either. A clean campaign is a sentence. Do not follow this message with a second one that says the same thing in different words: the last run closed with four.
+4. `TaskStop` any watchdog still running; `git worktree prune`; confirm no campaign worktrees remain, and that every remaining remote branch is one you deliberately parked (labelled `status: on-hold`, reason on the PR).
+5. Report **once**, and stop. Landed, parked with reasons, the follow-ups issue number, and — if there is one — the single finding worth Daniel's attention, with your recommendation. Everything else is in the ledger and the follow-ups issue; do not reproduce either. A clean campaign is a sentence. Do not follow this message with a second one that says the same thing in different words: the last run closed with four.

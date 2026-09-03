@@ -48,9 +48,9 @@ on:
         type: choice
         required: true
         default: set
-        options: [set, add, pr, release]
+        options: [set, add, pr, parent, release]
       issue:
-        description: 'Issue number for add/set, PR number for pr. Leave empty for release.'
+        description: 'Issue number for add/set/parent, PR number for pr. Leave empty for release.'
         type: string
         required: false
         default: ''
@@ -87,6 +87,11 @@ on:
         required: false
         default: '(unchanged)'
         options: ['(unchanged)', Triage, Todo, In progress, In review, Merged, Released]
+      of:
+        description: 'Parent issue number — parent only'
+        type: string
+        required: false
+        default: ''
       sha:
         description: 'Deployed sha — release only'
         type: string
@@ -163,6 +168,7 @@ jobs:
           BOARD_CLASS: ${{ inputs.class }}
           BOARD_SIZE: ${{ inputs.size }}
           BOARD_STATUS: ${{ inputs.status }}
+          BOARD_OF: ${{ inputs.of }}
           BOARD_SHA: ${{ inputs.sha }}
         run: |
           set -euo pipefail
@@ -186,6 +192,10 @@ jobs:
           add_flag --class "$BOARD_CLASS"
           add_flag --size "$BOARD_SIZE"
           add_flag --status "$BOARD_STATUS"
+          # `--of` has no dropdown to say "(unchanged)" with, so the empty
+          # default is what add_flag skips on. A `parent` dispatch that omits it
+          # reaches board.mjs with no `--of` and prints that command's usage.
+          add_flag --of "$BOARD_OF"
           add_flag --sha "$BOARD_SHA"
 
           echo "board.mjs ${args[*]}"
