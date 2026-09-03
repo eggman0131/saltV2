@@ -4,7 +4,13 @@ name: Board status
 # whenever an EVENT already proves the move. Three of the six transitions are
 # observable; the other three are not, and are set by the agent commands instead:
 #
-#   Triage      — GitHub's own "item added to project" project workflow.
+#   Triage      — the agent commands, as the floor they park at when they cannot
+#                 judge a band. NOT automatic, whatever this comment said before:
+#                 adding an issue to the project leaves every field empty, Status
+#                 included (measured 2026-09-03 across nine open items, all four
+#                 fields unset). An item with no Queue is in no queue view, so an
+#                 issue filed and left there is invisible rather than piled up
+#                 waiting — which is why `board.mjs check` now fails on one.
 #   Todo        — a decision. /triage or Daniel. No event exists for "I have decided".
 #   In progress — /run and /campaign, when the worktree is cut. A branch push is
 #                 far too noisy to key on, and a draft PR is raised much later.

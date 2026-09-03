@@ -89,13 +89,12 @@ when a Recommended item's blocker is absent from Recommended or ordered below it
 
 `check` covers four more things — plus the `Epic` rule below:
 
-- **An open issue on the board has a `Queue`.** GitHub's own "add item to
-  project" workflow puts every new issue on the board with every field empty,
-  and an item with no `Queue` shows up in no queue view — so an issue filed and
-  never triaged is not sitting in a pile marked Triage, it is invisible, and it
-  stays invisible until somebody scrolls the unfiltered board. That is what the
-  agent commands' `board.mjs add --queue …` line is for, and this is what makes
-  skipping it visible. Ledgers are exempt; see below.
+- **An open issue on the board has a `Queue`, or is parked at the triage floor.**
+  Adding an issue to the project leaves every field empty, `Status` included —
+  it does not land in a pile marked Triage — and an item with no `Queue` shows up
+  in no queue view, so an issue filed and never triaged is invisible until
+  somebody scrolls the unfiltered board. See **The triage floor** below for the
+  two states this distinguishes. Ledgers are exempt.
 
 - **No two options of a field share a name.** Everything in `board.mjs` resolves
   options by name at call time and takes the first match, so a field carrying the
@@ -146,6 +145,61 @@ and both were failing this check on live data. Every epic this repo has had
 titles itself `epic:` (#778, #894, #913, #941, #1129), so that is what is
 actually checkable — and it catches the epic with no children at all, which the
 old form's "one direction only" carve-out had to let through.
+
+## The triage floor
+
+`Recommended` means **proven**, so an agent filing an issue at the end of a long
+unattended run frequently cannot judge the band — and the honest answer is to
+say so, not to invent one. What it does instead:
+
+```
+node scripts/board.mjs add <issue> --class <C> --size <S> --status Triage
+```
+
+`Queue` left unset, and the issue itself saying what evidence would settle it. A
+size is a property of the work and is always knowable; `Class` likewise; `Triage`
+is the workflow state that means a human owes this a decision, and the `Workflow`
+view is where it then appears.
+
+So **"no `Queue`" is two states, not one**, and `check` tells them apart —
+conflating them would make the rule useless within a fortnight, because every
+genuinely undecidable band would read as a failure and the output would be
+ignored:
+
+| Item state                  | `check` says                                  |
+| --------------------------- | --------------------------------------------- |
+| a band set                  | nothing                                       |
+| no band, `Triage`, sized    | a **note** — awaiting your triage             |
+| no band, `Triage`, no size  | **fails** — a floor unenforced is not a floor |
+| no band, any other `Status` | **fails** — not parked, abandoned             |
+
+Pinned by `triageVerdict` in [`scripts/lib/boardRules.mjs`](../scripts/lib/boardRules.mjs).
+
+---
+
+## Closing the line an issue came from
+
+An issue is often lifted out of **a line in another issue's list** — a
+`campaign follow-ups:` checklist, an epic's body list, any `- [ ]`. Once its work
+is tracked somewhere else, that line is stale, and the list is only useful if it
+says so. Two things close it, and they are complementary:
+
+- **`board.mjs parent <new> --of <that issue>`** — GitHub then renders a
+  sub-issue counter on the list's issue that ticks itself when the child closes.
+  This is the half that stays true with nobody maintaining it.
+- **Tick the line in place**, appending the number:
+  `- [x] <the finding, word for word> → #<new>`. One `gh issue edit --body-file`
+  on a body the agent is already holding.
+
+**Nothing searches for lists.** The pointer comes from the work in hand — the
+line that was lifted, which was already being read — never a sweep over open
+issues hunting for checkboxes. A list nobody read is not a list to edit.
+
+**The limit, stated rather than pretended away:** a line fixed directly in a PR
+with no issue of its own is ticked by whoever fixed it, and nothing enforces
+that. The sub-issue counter only counts the lines that became issues.
+
+---
 
 ## A parent is not an epic
 

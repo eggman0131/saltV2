@@ -61,7 +61,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { isEpicTitle, isLedger } from './lib/boardTitles.mjs';
+import { isEpicTitle, isLedger, triageVerdict } from './lib/boardRules.mjs';
 
 const OWNER = 'eggmanorg';
 const REPO = 'salt';
@@ -139,6 +139,8 @@ function loadItems(project) {
           content{ ... on Issue { number title state } }
           queue:fieldValueByName(name:"Queue"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           status:fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          size:fieldValueByName(name:"Size"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          class:fieldValueByName(name:"Class"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
           blockedBy:fieldValueByName(name:"Blocked by"){ ... on ProjectV2ItemFieldTextValue { text } } } } } } }`)
       .node.items;
     for (const n of page.nodes) {
@@ -150,6 +152,8 @@ function loadItems(project) {
         state: n.content.state,
         queue: n.queue?.name ?? null,
         status: n.status?.name ?? null,
+        size: n.size?.name ?? null,
+        class: n.class?.name ?? null,
         blockedBy: n.blockedBy?.text ?? '',
       });
     }
@@ -438,17 +442,39 @@ function cmdCheck(project) {
     );
   }
 
-  // UNTRIAGED IS A STATE THE BOARD CANNOT SHOW YOU. GitHub's own "add item to
-  // project" workflow puts every new issue on the board with every field empty,
-  // and an item with no Queue appears in no queue view — so the pile that most
-  // needs looking at is the one pile nothing surfaces. Nine agent-filed issues
-  // sat there in a week before anyone noticed. `add --queue` is what fills it,
-  // and this is what makes skipping that call visible.
+  // UNTRIAGED IS A STATE THE BOARD CANNOT SHOW YOU. Adding an issue to the
+  // project leaves EVERY field empty — Queue, Class, Size and Status alike;
+  // measured 2026-09-03 across nine open items, and note that Status is empty
+  // too rather than defaulting to Triage. An item with no Queue appears in no
+  // queue view, so the pile that most needs looking at is the one pile nothing
+  // surfaces, and it went unnoticed for a week.
+  //
+  // BUT NO QUEUE IS NOT ONE STATE, IT IS TWO, and conflating them would make
+  // this rule useless within a fortnight. `Recommended` means proven, and an
+  // agent filing at the end of an unattended run frequently cannot judge the
+  // band — the honest answer is to say so rather than to invent one. So the
+  // floor is `--class`, `--size` and `--status Triage`: a size is a property of
+  // the work and always knowable, and Triage is the workflow state that says a
+  // human owes this a decision. An item sitting at that floor is WAITING, and
+  // prints as a note; anything else with no Queue was filed and abandoned, and
+  // fails. The floor has to be enforced or it is not a floor, so an item that
+  // claims Triage without a size fails too.
   for (const item of items) {
     if (item.state !== 'OPEN' || item.queue || isLedger(item.title)) continue;
-    failures.push(
-      `#${item.number} is on the board with no Queue — triage it with \`board.mjs set ${item.number} --queue <band>\``,
-    );
+    const verdict = triageVerdict(item);
+    if (verdict === 'abandoned') {
+      failures.push(
+        `#${item.number} is on the board with no Queue and Status="${item.status ?? 'unset'}" — give it a band, or park it at the floor: \`board.mjs set ${item.number} --class <C> --size <S> --status Triage\``,
+      );
+    } else if (verdict === 'no-size') {
+      failures.push(
+        `#${item.number} is at Triage with no Size — a size is a property of the work and is the one field the floor still requires: \`board.mjs set ${item.number} --size <S|M|L>\``,
+      );
+    } else {
+      console.log(
+        `  note: #${item.number} is awaiting triage (Size=${item.size}, Class=${item.class ?? 'unset'}) — it needs a band`,
+      );
+    }
   }
 
   // TWO OPTIONS CANNOT SHARE A NAME. Everything here resolves options by name

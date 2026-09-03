@@ -1,6 +1,6 @@
-// Two title predicates `scripts/board.mjs check` decides on, extracted so they
-// can be tested. Neither is a naming convention this file invented: both prefixes
-// were already load-bearing elsewhere, which is exactly why they are checkable.
+// The pure rules `scripts/board.mjs check` decides on, extracted so they can be
+// tested. Neither title prefix is a convention this file invented: both were
+// already load-bearing elsewhere, which is exactly why they are checkable.
 
 /**
  * A `/campaign` ledger — the tracking issue that command opens so a fresh session
@@ -30,3 +30,28 @@ export const isLedger = (title) => /^campaign:/i.test(title ?? '');
  * epic this repo has had titles itself `epic:` (#778, #894, #913, #941, #1129).
  */
 export const isEpicTitle = (title) => /^epic:/i.test(title ?? '');
+
+/**
+ * What `check` should say about an open board item, given where triage got to.
+ *
+ * `Recommended` means proven, so an agent filing at the end of an unattended run
+ * frequently cannot judge the band — and the honest answer is to say so, not to
+ * invent one. The floor it parks at instead is `--class`, `--size` and
+ * `--status Triage`: a size is a property of the work and always knowable, and
+ * `Triage` is the workflow state that says a human owes this a decision.
+ *
+ * So "no Queue" is two states, not one, and conflating them makes the rule
+ * useless within a fortnight — every genuinely undecidable band would read as a
+ * failure and the output would be ignored. An item at the floor is WAITING and
+ * prints as a note. Anything else with no Queue was filed and abandoned. And a
+ * floor that is not enforced is not a floor, so claiming `Triage` without a size
+ * fails as well.
+ *
+ * @returns 'banded' · 'waiting' · 'no-size' · 'abandoned'
+ */
+export function triageVerdict({ queue, status, size }) {
+  if (queue) return 'banded';
+  if (status !== 'Triage') return 'abandoned';
+  if (!size) return 'no-size';
+  return 'waiting';
+}
