@@ -11,8 +11,16 @@ import { phaseElapsedMinutes, type RecipePhase } from '@salt/domain';
 // `segmentPercent` does on `RecipeViewPage`: `recipePhaseTotals` answers "how long
 // is this", and that answer is the same on the list, on the page and on the cook
 // plan. "How wide is that block" is true of one drawing on one screen. Nothing
-// here is ever stored, and nothing here feeds a figure the reader is shown — every
-// number on screen comes from the phases themselves.
+// here is ever stored.
+//
+// IT DOES FEED FIGURES THE READER SEES, and an earlier version of this comment
+// denied it (#1208 bullet 4). The legend prints each block's `elapsedMinutes`,
+// `handsOnMinutes` and `handsOffMinutes` — and the last two come through
+// `drawable` below rather than straight from the phase, while `elapsedMinutes`
+// comes through domain's `phaseElapsedMinutes`. That is only safe while `drawable`
+// and domain's `safeMinutes` clamp identically, which is a claim and not a
+// guarantee, so it is pinned by a test rather than by this sentence (CLAUDE.md
+// rule 12).
 //
 // THE DRAWING IS NOT TO SCALE, ON PURPOSE. An overnight prove is 720 minutes
 // beside a 15-minute knead: drawn honestly, the knead is two pixels and the strip
@@ -43,7 +51,9 @@ export type PhaseBandKind = 'hands-on' | 'wait' | 'long-wait';
 
 export interface PhaseBand {
   readonly kind: PhaseBandKind;
-  /** The true figure, never the drawn one. Shown in words in the legend. */
+  /** The band's uncapped minutes, never its drawn width. The block's own
+   *  hands-on / hands-off figures are what the legend prints; this carries the
+   *  same number at band granularity. */
   readonly minutes: number;
   /** Share of its own block, 0–100. */
   readonly widthPercent: number;
@@ -127,8 +137,10 @@ export function phaseTimelineBlocks(
 // The same bargain `recipePhaseTotals` makes one layer down, and made again here
 // because it is not exported: a `NaN`, an `Infinity` or a negative that reached a
 // stored document draws as nothing rather than poisoning every width on the strip.
-// Deliberately NOT a second summing rule — the figures the reader sees still come
-// from `recipePhaseTotals` and `phaseElapsedMinutes`.
+// Deliberately NOT a second SUMMING rule: a block's `elapsedMinutes` and the line
+// beneath the legend still come from `phaseElapsedMinutes` / `recipePhaseTotals`.
+// It IS a second CLAMP, and the two have to agree or a legend row stops adding up.
+// `phaseTimeline.test.ts` pins that for every value `RecipePhaseSchema` admits.
 function drawable(minutes: number): number {
   return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
 }
