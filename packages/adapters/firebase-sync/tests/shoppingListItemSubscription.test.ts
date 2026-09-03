@@ -281,6 +281,54 @@ describe('subscribeShoppingListItems — the delivered item', () => {
   });
 });
 
+/**
+ * The delivered `id` is the DOCUMENT id, never the `id` field (#1114).
+ *
+ * The field is a copy of the document id at every writer — `saveShoppingListItem`
+ * uses one value for both, and `moveShoppingListItems` preserves it across a
+ * move — so on real data the two disagree nowhere: 0 of 62 item documents across
+ * prod, staging and dev. What the projection buys is that a BLANK id can no
+ * longer reach a write path, and a blank id is not confined to its own row.
+ * `deleteShoppingListItems` and `moveShoppingListItems` build one `writeBatch`
+ * for the whole selection, and `doc(db, 'shoppingLists', 'L1', 'items', '')`
+ * throws, so one blank id fails "clear checked" and "move to another list" for
+ * every OTHER row in the operation too.
+ *
+ * Both reads are driven, because they are two call sites of the same decision.
+ */
+describe('subscribeShoppingListItems — the delivered id', () => {
+  const cases = [
+    { name: 'an empty id field', stored: { ...ITEM_1, id: '' } },
+    { name: 'an id field disagreeing with the document', stored: { ...ITEM_1, id: 'stale-id' } },
+  ];
+
+  it.each(cases)('the subscription delivers the document id despite $name', ({ stored }) => {
+    const delivered: ShoppingListItem[][] = [];
+    subscribeShoppingListItems(
+      'list-1',
+      (items) => delivered.push(items),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
+      firstSnapshot([{ id: 'item-1', data: () => stored }]),
+    );
+
+    expect(delivered).toEqual([[ITEM_1]]);
+  });
+
+  it.each(cases)(
+    'listShoppingListItems delivers the document id despite $name',
+    async ({ stored }) => {
+      mockGetDocs.mockResolvedValue({ docs: [{ id: 'item-1', data: () => stored }] });
+
+      const result = await listShoppingListItems('list-1');
+
+      expect(result).toEqual({ kind: 'ok', value: [ITEM_1] });
+    },
+  );
+});
+
 describe('subscribeShoppingListItems — the stream-error path', () => {
   it('classifies a stream error and forwards the raw one alongside it', () => {
     const calls: unknown[][] = [];

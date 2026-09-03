@@ -127,8 +127,12 @@ describe('subscribeShoppingLists', () => {
     // Defaults, not a rejection. The parse loop SKIPS an invalid document, so a
     // schema that refused this one would take a legacy list off the screen
     // instead of showing it unnamed.
+    //
+    // The `id` is the one field that does NOT default here: it comes from the
+    // document id now (#1114), so an empty `id` FIELD can no longer reach the
+    // screen even on a document that carries nothing else.
     expect(delivered).toEqual([
-      [{ id: '', name: '', schemaVersion: 1, createdAt: '', updatedAt: '' }],
+      [{ id: 'legacy', name: '', schemaVersion: 1, createdAt: '', updatedAt: '' }],
     ]);
   });
 
@@ -144,6 +148,48 @@ describe('subscribeShoppingLists', () => {
 
     // TWO arguments — see the header (#928 finding B2-009).
     expect(calls).toEqual([[{ kind: 'AuthError', reason: 'forbidden' }, raw]]);
+  });
+});
+
+/**
+ * The delivered `id` is the DOCUMENT id, never the `id` field (#1114).
+ *
+ * The field is a copy of the document id at every writer, so on real data these
+ * two disagree nowhere — the audit found 0 of 12 list documents differing
+ * across prod, staging and dev. What the projection buys is that a blank
+ * `listId` is now structurally impossible rather than merely unobserved, and a
+ * blank `listId` is the worst id in the feature: it is the path segment every
+ * row read and write inside the list is built from.
+ *
+ * Both reads are driven, because they are two call sites of the same decision
+ * and only a test of each stops one drifting from the other.
+ */
+describe('shopping lists — the delivered id', () => {
+  const cases = [
+    { name: 'an empty id field', stored: { ...LIST_1, id: '' } },
+    { name: 'an id field disagreeing with the document', stored: { ...LIST_1, id: 'stale-id' } },
+  ];
+
+  it.each(cases)('the subscription delivers the document id despite $name', ({ stored }) => {
+    const delivered: ShoppingList[][] = [];
+    subscribeShoppingLists(
+      (lists) => delivered.push(lists),
+      () => {},
+    );
+
+    (mockOnSnapshot.mock.calls[0]![1] as SnapCallback)(
+      firstSnapshot([{ id: 'list-1', data: () => stored }]),
+    );
+
+    expect(delivered).toEqual([[LIST_1]]);
+  });
+
+  it.each(cases)('listShoppingLists delivers the document id despite $name', async ({ stored }) => {
+    mockGetDocs.mockResolvedValue({ docs: [{ id: 'list-1', data: () => stored }] });
+
+    const result = await listShoppingLists();
+
+    expect(result).toEqual({ kind: 'ok', value: [LIST_1] });
   });
 });
 
