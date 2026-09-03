@@ -310,12 +310,11 @@ describe('diffRecipe', () => {
     expect(diff.hasChanges).toBe(true);
   });
 
-  // Kept — this is not the phase-5 deletion the field comment above describes —
-  // because `recipeAmend.ts` still merges these three fields, so the review gate
-  // still needs to say when one of them moved (PR #1231 review, blocking finding
-  // 2). Coverage of the rendered card for a time-only diff lives in
-  // `RecipeChangeSummary.test.ts`.
-  it('detects each time-field change independently', () => {
+  // The three time fields are NOT reported (issue #1233): nothing proposes them
+  // any more, so a diff that moved one would be offering the cook a change to a
+  // number no screen shows. They were restored in PR #1231 only for as long as
+  // `recipeAmend.ts` went on merging them.
+  it('reports no prep, cook or total change — nothing proposes them', () => {
     const before = withMetadata(recipe(), {
       totalTimeMinutes: 40,
       prepTimeMinutes: 10,
@@ -327,9 +326,8 @@ describe('diffRecipe', () => {
       cookTimeMinutes: 45,
     });
     const diff = diffRecipe(before, after);
-    expect(diff.metadata.totalTimeMinutes).toEqual({ from: 40, to: 55 });
-    expect(diff.metadata.cookTimeMinutes).toEqual({ from: 30, to: 45 });
-    expect(diff.metadata.prepTimeMinutes).toBeUndefined();
+    expect(diff.metadata).toEqual({});
+    expect(diff.hasChanges).toBe(false);
   });
 
   it('detects a null → number metadata change', () => {

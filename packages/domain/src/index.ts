@@ -202,7 +202,6 @@ export type {
   RecipeKind,
   RecipeMetadata,
   RecipePhase,
-  RecipeTimes,
   RecipePhaseStrip,
 } from './recipe/index.js';
 export {
@@ -217,7 +216,6 @@ export {
   normaliseTags,
   // The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
   // flows and the re-estimate trigger had a copy each, and they disagreed.
-  reconcileRecipeTimes,
   // The one merge of a fresh phase strip against a stored one (issue #1122
   // review) — the strip and its summary move together, or not at all.
   reconcileRecipePhases,

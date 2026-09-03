@@ -6,7 +6,6 @@ import {
   type EstimateRecipeTimesInput,
   type EstimateRecipeTimesOutput,
 } from '@salt/domain/schemas';
-import { reconcileRecipeTimes } from '@salt/domain';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { PHASE_RULES } from './recipeFieldRules.js';
 import { ai } from '../genkit.js';
@@ -93,48 +92,6 @@ doing only this.
 
 Do not comment, do not explain, and do not return anything about the recipe other than its timing.`;
 
-/**
- * Impose the arithmetic contract on a model's three numbers, and fold the zeros.
- *
- * A thin wrapper over the ONE implementation of that arithmetic, in
- * `packages/domain` (issue #1116) — the rule, the reconcile-then-fold ordering and
- * the zero fold are all argued there. Kept as a named export because it is applied
- * INSIDE the flow rather than at the trigger, for the reason CLAUDE.md gives about
- * wrapping AI calls: the flow is the one place every caller passes through, so a
- * second caller cannot forget it.
- *
- * `deriveMissingTotal: true` — the opposite of what `assembleRecipeDraft` passes in
- * edit mode, and right here for a reason that does not apply there. This path
- * always runs against an ALREADY-STORED recipe, so refusing to derive would write
- * `null` over a perfectly good stored total. `floorTotalAtStoredWait` in
- * `onRecipeWritten` is what protects a stored total that recorded a real
- * unattended wait on this path; it does not cover the case where the stored total
- * recorded none, which is exactly the case "never derive" would erase.
- */
-export function reconcileEstimatedTimes(
-  raw: Readonly<EstimateRecipeTimesAIOutput>,
-): EstimateRecipeTimesOutput {
-  // The phases pass through UNTOUCHED, and that is the point of them (issue
-  // #1122): their arithmetic is a sum computed where it is read, so there is no
-  // second representation here to reconcile against and nothing to zero-fold.
-  // Absent becomes empty here, which is the ONE place that conversion happens on
-  // this path — the trigger writes what this returns.
-  // `?? null` because the model is no longer asked for the three (issue #1233), so
-  // the AI output schema accepts them absent; absent and null mean the same thing.
-  return {
-    ...reconcileRecipeTimes(
-      {
-        prepTimeMinutes: raw.prepTimeMinutes ?? null,
-        cookTimeMinutes: raw.cookTimeMinutes ?? null,
-        totalTimeMinutes: raw.totalTimeMinutes ?? null,
-      },
-      { deriveMissingTotal: true },
-    ),
-    phases: raw.phases ?? [],
-    timingSummary: raw.timingSummary ?? null,
-  };
-}
-
 export const estimateRecipeTimesFlow = ai.defineFlow(
   {
     name: 'estimateRecipeTimes',
@@ -197,6 +154,15 @@ export const estimateRecipeTimesFlow = ai.defineFlow(
       throw new Error(`estimateRecipeTimes returned invalid output: ${parsed.error.message}`);
     }
 
-    return reconcileEstimatedTimes(parsed.data);
+    // The strip passes through untouched, and that is the whole of what is left
+    // to do (issue #1233 retired `reconcileEstimatedTimes` with the three numbers
+    // it reconciled): the phases carry their own arithmetic — elapsed is a sum,
+    // computed where it is read — so there is nothing here to reconcile and
+    // nothing to zero-fold. Absent becomes empty HERE, which is the one place
+    // that conversion happens on this path; the trigger writes what this returns.
+    return {
+      phases: parsed.data.phases ?? [],
+      timingSummary: parsed.data.timingSummary ?? null,
+    };
   },
 );

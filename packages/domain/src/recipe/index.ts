@@ -24,11 +24,6 @@ export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 // flows are different apps that cannot import each other, so the rule that
 // decides what a typed or generated tag becomes lives here.
 export { normaliseTags } from './commands/normaliseTags.js';
-// The one `total >= prep + cook` reconciliation (issue #1116) — the authoring
-// flows and the re-estimate trigger each had a copy, identical apart from the
-// clause that is now the `deriveMissingTotal` argument.
-export { reconcileRecipeTimes } from './commands/reconcileRecipeTimes.js';
-export type { RecipeTimes } from './commands/reconcileRecipeTimes.js';
 // The one merge of a fresh phase strip against a stored one (issue #1122
 // review) — the strip and its one-line summary move together, or not at all.
 export { reconcileRecipePhases } from './commands/reconcileRecipePhases.js';

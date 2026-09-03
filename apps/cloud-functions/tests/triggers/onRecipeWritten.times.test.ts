@@ -1,22 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RecipeDoc } from '@salt/domain/schemas';
 
-// Blocking finding 1 (issue #952 phase 2 review): the sweep can silently destroy
-// a correct `totalTimeMinutes`. The flow is deliberately never shown the stored
-// triple, and for `prep`/`cook` that is right — the stored numbers are wrong in a
-// KNOWN direction, low. But when the STORED total already exceeds stored
-// `prep + cook`, the excess is a real unattended wait (a prove, a marinade, a
-// chill) that is frequently recorded ONLY in that number, and the flow's inputs
-// (title/description/servings/ingredients/step text+timer) contain no route back
-// to it when the wait is prose with no `step.timer` — exactly the reviewer's
-// Overnight No Knead Focaccia example: stored 30 / 12 / 762, the model returns
-// ~45, and an unconditional overwrite loses the 762 for good, irreversibly, on a
-// production sweep. Covers the same loss for a returned `totalTimeMinutes: null`.
+// The re-estimate branch's WRITE (issue #1233). It used to write five
+// `metadata.*` leaves; it now writes two — the phase strip and its summary — and
+// the three retired time fields are left exactly as the document already holds
+// them. That is the whole of what changed here: the branch's edge trigger, its
+// guards and its best-effort posture are unaffected, and are covered below and in
+// onRecipeWritten.phases.test.ts.
 //
-// Fix: floor the WRITTEN total at the stored total whenever the stored total
-// already exceeded stored prep + cook — that excess is exactly the signal "this
-// document records a real wait". Only the total is floored; prep/cook are still
-// overwritten unconditionally (that direction is correct — see the flow header).
+// This file replaces the `floorTotalAtStoredWait` suite (#952 phase 2 review,
+// blocking 1), which protected a stored `totalTimeMinutes` recording an
+// unattended wait from being overwritten by a model answer that had no route back
+// to it. Nothing writes that field any more, so there is nothing left to protect
+// — and the wait it recorded now lives in the strip's hands-off minutes, which
+// `reconcileRecipePhases` already guards.
 
 vi.mock('firebase-functions/v2/firestore', () => ({
   onDocumentWritten: (_opts: unknown, handler: unknown) => handler,
@@ -140,14 +137,14 @@ beforeEach(() => {
   delete process.env['FUNCTIONS_AI_FAKE'];
 });
 
-describe('onRecipeWritten — time branch floors the total at a recorded wait (B1)', () => {
-  it('does not overwrite a stored total that exceeds stored prep+cook with a lower model answer', async () => {
-    // The model has no route back to 762 from the flow's inputs and returns ~45,
-    // reconciled against its OWN parts (30 + 12 = 42, so 45 stands).
+describe('onRecipeWritten — what the time branch writes (issue #1233)', () => {
+  it('writes the strip and the summary, and LEAVES the stored prep/cook/total alone', async () => {
     mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 30,
-      cookTimeMinutes: 12,
-      totalTimeMinutes: 45,
+      phases: [
+        { label: 'Mix', handsOnMinutes: 30, handsOffMinutes: 0 },
+        { label: 'Prove overnight', handsOnMinutes: 0, handsOffMinutes: 720 },
+      ],
+      timingSummary: 'About half an hour of you, spread over a night.',
     });
 
     const before = { timesRequestedAt: undefined };
@@ -155,79 +152,20 @@ describe('onRecipeWritten — time branch floors the total at a recorded wait (B
     await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
 
     // EXACT, not `objectContaining`. The safety property this branch rests on is
-    // that the write is five `metadata.*` LEAF paths plus the stamp — never a
-    // document `set`, and never a whole `metadata` map, because recipes are
-    // last-write-wins per WHOLE document and this branch is driven by a sweep of
-    // the entire library. `objectContaining` passes a payload that keeps the
-    // five leaves and adds a sixth key beside them, which is most of the way
-    // back to the clobber the shape was chosen to avoid. Only the clock is
-    // loosened. `focaccia()`'s stored metadata carries no phase strip, and the
-    // mock's response carries none either, so `phases`/`timingSummary` resolve
-    // to "nothing to report" here — see onRecipeWritten.phases.test.ts for the
-    // branch that protects a STORED strip.
+    // that the write is `metadata.*` LEAF paths plus the stamp — never a document
+    // `set`, and never a whole `metadata` map, because recipes are last-write-wins
+    // per WHOLE document and this branch is driven by a sweep of the entire
+    // library. `objectContaining` would pass a payload that keeps the leaves and
+    // adds another key beside them, which is most of the way back to the clobber
+    // the shape was chosen to avoid. It is also what pins the #1233 claim: the
+    // stored 30 / 12 / 762 that used to be rewritten here are not in this payload,
+    // so they survive on the document untouched.
     expect(mockUpdate).toHaveBeenCalledWith({
-      'metadata.prepTimeMinutes': 30,
-      'metadata.cookTimeMinutes': 12,
-      // 762 must survive — the excess over stored prep+cook (30+12=42) is a
-      // real unattended wait, and the model's 45 has no way to know about it.
-      'metadata.totalTimeMinutes': 762,
-      'metadata.phases': [],
-      'metadata.timingSummary': null,
-      timesEstimatedAt: expect.any(Number),
-    });
-  });
-
-  it('does not let a returned totalTimeMinutes: null erase a stored total that recorded a wait', async () => {
-    mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 30,
-      cookTimeMinutes: 12,
-      totalTimeMinutes: null,
-    });
-
-    const before = { timesRequestedAt: undefined };
-    const after = focaccia({ timesRequestedAt: 1_700_000_000_000 });
-    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
-
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'metadata.prepTimeMinutes': 30,
-      'metadata.cookTimeMinutes': 12,
-      'metadata.totalTimeMinutes': 762,
-      'metadata.phases': [],
-      'metadata.timingSummary': null,
-      timesEstimatedAt: expect.any(Number),
-    });
-  });
-
-  it('still writes the model total as-is when the stored total never recorded a wait', async () => {
-    // Stored total (35) does NOT exceed stored prep+cook (10 + 35 = 45) — nothing
-    // to float above, so the model's reconciled answer is written unchanged. This
-    // is the issue's OTHER worked example (Paneer Makhanwala: 10 + 35 → 35),
-    // which this fix must keep fixing.
-    mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 35,
-      totalTimeMinutes: 45,
-    });
-
-    const before = { timesRequestedAt: undefined };
-    const after = focaccia({
-      timesRequestedAt: 1_700_000_000_000,
-      metadata: {
-        servings: null,
-        prepTimeMinutes: 10,
-        cookTimeMinutes: 35,
-        totalTimeMinutes: 35,
-        tags: [],
-      },
-    });
-    await (onRecipeWritten as unknown as (e: unknown) => Promise<void>)(makeEvent(after, before));
-
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'metadata.prepTimeMinutes': 10,
-      'metadata.cookTimeMinutes': 35,
-      'metadata.totalTimeMinutes': 45,
-      'metadata.phases': [],
-      'metadata.timingSummary': null,
+      'metadata.phases': [
+        { label: 'Mix', handsOnMinutes: 30, handsOffMinutes: 0 },
+        { label: 'Prove overnight', handsOnMinutes: 0, handsOffMinutes: 720 },
+      ],
+      'metadata.timingSummary': 'About half an hour of you, spread over a night.',
       timesEstimatedAt: expect.any(Number),
     });
   });

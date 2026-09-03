@@ -177,9 +177,11 @@ describe('extractRecipeFromPhoto — the draft it assembles', () => {
     expect(recipe.source).toEqual({ type: 'book' });
   });
 
-  it('derives a total time from prep + cook, as a printed page rarely states one', async () => {
+  it('stores no prep, cook or total — nothing asks for them or reads them (#1233)', async () => {
     const recipe = await invoke({ images: [PAGE_ONE] });
-    expect(recipe.metadata.totalTimeMinutes).toBe(200);
+    expect(recipe.metadata.totalTimeMinutes).toBeNull();
+    expect(recipe.metadata.prepTimeMinutes).toBeNull();
+    expect(recipe.metadata.cookTimeMinutes).toBeNull();
   });
 
   it('keeps the book’s own ingredient grouping', async () => {

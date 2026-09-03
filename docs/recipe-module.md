@@ -103,8 +103,11 @@ RecipeKitEntry { label: string, stepIds: string[] }   // a LABEL, never a `kitch
                                    // "Schema extensions (kit)". stepIds is plural: a pan used at
                                    // steps 3-7 stays on the hob the whole time
 
-RecipeMetadata { servings, totalTimeMinutes, prepTimeMinutes, cookTimeMinutes: number | null,
+RecipeMetadata { servings: number | null, phases: RecipePhase[], timingSummary: string | null,
                  tags: string[] }
+                 // totalTimeMinutes / prepTimeMinutes / cookTimeMinutes are still
+                 // declared and still parsed, read and written by NOTHING as of
+                 // issue #1233. #1211 removes them.
 
 RecipeSource { type:'url'|'book'|'manual', url?, book?:{ title, author, page } }
 ```
@@ -239,10 +242,10 @@ as BOTH SIDES WHOLE rather than a per-phase breakdown, and `RecipeChangeSummary`
 renders it as a single "Timing" card: the strip is one fact — a sequence — and a
 reorder drawn as six row edits would bury the one question the gate is asked.
 **A pure reorder IS reported**, deliberately unlike a reordered ingredient or step,
-because the order of a phase list is the order you do the work in. Issue #1213
-retired the key-off path entirely: `diffRecipe` no longer reports a
-`prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes` change at all, so the
-Timing card is now the only thing this gate can say about a recipe's timing.
+because the order of a phase list is the order you do the work in. Issue #1233
+finished the retirement: `diffRecipe` reports no `prepTimeMinutes` /
+`cookTimeMinutes` / `totalTimeMinutes` change, because nothing proposes them, so
+the Timing card is the only thing this gate can say about a recipe's timing.
 
 The card shows only the half that actually moved. `RecipeDiff` carries changed
 fields and nothing else, so an unchanged strip is not available to draw — filling
@@ -277,22 +280,18 @@ old definitions read as they did.
 
 Two decisions worth keeping:
 
-- **The arithmetic rule is both asked for and enforced.** `recipeFieldRules.ts`
-  states it to the model; `reconcileRecipeTimes` (`domain/recipe/commands/`)
-  re-imposes it on the numbers, deriving a missing total from the parts and raising
-  a stated total that is below them. It lives in the domain because both write
-  paths need it and had a copy each (issue #1116): `assembleRecipeDraft` calls it
-  for the authoring flows, `reconcileEstimatedTimes` for the re-estimate trigger.
-  They differ on one input — both parts known, no total stated — and that
-  difference is the function's `deriveMissingTotal` argument, argued at each call
-  site and pinned by a single test asserting both answers. Asking alone is not enough — the library holds recipes stored with
-  `prep: 10, cook: 35, total: 35` — and enforcing alone is not either, because the
-  repaired number is only as honest as the parts it is built from. Note the repair
-  raises a floor and never caps a ceiling, so an overnight prove keeps its 762.
+- **The arithmetic rule was both asked for and enforced, and is now neither.**
+  `recipeFieldRules.ts` stated `total >= prep + cook` to the model and
+  `reconcileRecipeTimes` (`domain/recipe/commands/`) re-imposed it on the numbers,
+  because asking is not guaranteeing — the library holds recipes stored with
+  `prep: 10, cook: 35, total: 35`. Issue #1233 deleted both, along with
+  `reconcileRecipeTimes` and its two call sites: the property cannot be violated
+  once elapsed time is a sum of the phases by construction, and a reconciler for
+  three fields nothing reads is dead code that looks alive.
 - **An import re-estimates the times; it never rewrites the content.** The JSON-LD
   prompt's faithfulness rule used to name "times" alongside ingredients and steps,
   which made a URL import inherit the publisher's optimistic number by explicit
-  instruction. It now exempts the three time fields and nothing else. The rationale
+  instruction. It now exempts the timing and nothing else. The rationale
   is comparability: a library where half the recipes use blog convention and half
   use ours has a "quickest first" sort that means nothing. Ingredients, steps and
   servings stay verbatim.

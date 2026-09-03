@@ -105,11 +105,26 @@ describe('mergeAmendedRecipe — a metadata field the librarian omitted is prese
     expect(merged.metadata.servings).toBe(4);
   });
 
-  it('keeps all three times the draft left null', () => {
+  it('keeps all three retired times, whatever the draft carries (#1233)', () => {
+    // Not a `??` fallback any more: the merge takes these three from the STORED
+    // recipe unconditionally, because nothing proposes them and nothing reads
+    // them, but dropping the keys would DELETE them from the document. A draft
+    // that somehow carries values must not be able to write them.
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);
     expect(merged.metadata.totalTimeMinutes).toBe(45);
     expect(merged.metadata.prepTimeMinutes).toBe(15);
     expect(merged.metadata.cookTimeMinutes).toBe(30);
+
+    const withTimes = mergeAmendedRecipe(
+      existingRecipe(),
+      draftWithoutMetadata({ totalTimeMinutes: 60, prepTimeMinutes: 20, cookTimeMinutes: 40 }),
+      NOW,
+    );
+    expect(withTimes.metadata).toMatchObject({
+      totalTimeMinutes: 45,
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 30,
+    });
   });
 
   it('keeps the tag list the draft returned empty', () => {
@@ -122,20 +137,9 @@ describe('mergeAmendedRecipe — a metadata field the librarian omitted is prese
 });
 
 describe('mergeAmendedRecipe — a metadata value the librarian DID return wins', () => {
-  it('takes the draft servings and times', () => {
-    const draft = draftWithoutMetadata({
-      servings: 6,
-      totalTimeMinutes: 60,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 40,
-    });
-    const merged = mergeAmendedRecipe(existingRecipe(), draft, NOW);
-    expect(merged.metadata).toMatchObject({
-      servings: 6,
-      totalTimeMinutes: 60,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 40,
-    });
+  it('takes the draft servings', () => {
+    const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata({ servings: 6 }), NOW);
+    expect(merged.metadata.servings).toBe(6);
   });
 
   it('takes the draft tag list, including a shorter one', () => {

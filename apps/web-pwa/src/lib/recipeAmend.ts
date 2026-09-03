@@ -109,9 +109,13 @@ export function mergeAmendedRecipe(existing: Recipe, draft: RecipeDoc, updatedAt
     source: existing.source,
     metadata: {
       servings: draft.metadata.servings ?? existing.metadata.servings,
-      totalTimeMinutes: draft.metadata.totalTimeMinutes ?? existing.metadata.totalTimeMinutes,
-      prepTimeMinutes: draft.metadata.prepTimeMinutes ?? existing.metadata.prepTimeMinutes,
-      cookTimeMinutes: draft.metadata.cookTimeMinutes ?? existing.metadata.cookTimeMinutes,
+      // The three retired time fields (issue #1233): carried over from the
+      // stored recipe verbatim, never from the draft. Nothing proposes them and
+      // nothing reads them, but a key omitted from this object is a key DELETED
+      // from the document — see the note below — and #1211 is what removes them.
+      totalTimeMinutes: existing.metadata.totalTimeMinutes,
+      prepTimeMinutes: existing.metadata.prepTimeMinutes,
+      cookTimeMinutes: existing.metadata.cookTimeMinutes,
       // The phase strip and its summary (issue #1122), paired above rather than
       // merged here. This merge builds `metadata` field by field rather than
       // spreading, so a key omitted here is a key silently DELETED from the
