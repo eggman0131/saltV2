@@ -23,7 +23,12 @@ vi.mock('firebase-functions', () => ({
 // chefChat.ts pulls in Genkit at module scope; stub it so importing the module
 // costs nothing. The flow itself is not under test here.
 vi.mock('../../src/genkit.js', () => ({
-  ai: { defineFlow: (_config: unknown, handler: unknown) => handler },
+  ai: {
+    defineFlow: (_config: unknown, handler: unknown) => handler,
+    // chefChat defines its findRecipes tool at module load (issue #840); the
+    // identity stub keeps importing the module free for tests that are not about it.
+    defineTool: (_config: unknown, handler: unknown) => handler,
+  },
 }));
 vi.mock('../../src/ai/fakeModel.js', () => ({ flowModel: vi.fn(async () => 'fake-model') }));
 

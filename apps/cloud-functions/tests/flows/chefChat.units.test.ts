@@ -29,6 +29,9 @@ const mockGenerateStream = vi.fn();
 vi.mock('../../src/genkit.js', () => ({
   ai: {
     defineFlow: (_config: unknown, handler: unknown) => handler,
+    // chefChat defines its findRecipes tool at module load (issue #840); the
+    // identity stub keeps importing the module free for tests that are not about it.
+    defineTool: (_config: unknown, handler: unknown) => handler,
     generateStream: mockGenerateStream,
   },
 }));
