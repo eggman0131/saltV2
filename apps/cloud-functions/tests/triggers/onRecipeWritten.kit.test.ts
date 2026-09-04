@@ -112,9 +112,6 @@ function makeRecipe(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     steps: [{ id: 's1', text: 'Blitz the potatoes in a food processor.', timer: null, note: null }],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

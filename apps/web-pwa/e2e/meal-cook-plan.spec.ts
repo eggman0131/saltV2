@@ -69,11 +69,8 @@ function recipe(
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
       // Deliberately contradicts the strip: nothing reads it any more, and if
       // anything did the start times asserted below would move.
-      cookTimeMinutes: 5,
       phases:
         opts.elapsedMinutes === undefined
           ? []

@@ -104,9 +104,6 @@ function guidedRecipe(): Recipe {
     ],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

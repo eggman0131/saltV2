@@ -93,9 +93,6 @@ function recipe(id: string, title: string, overrides: Partial<Recipe> = {}): Rec
     steps: [],
     metadata: {
       servings: 2,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

@@ -105,9 +105,9 @@ RecipeKitEntry { label: string, stepIds: string[] }   // a LABEL, never a `kitch
 
 RecipeMetadata { servings: number | null, phases: RecipePhase[], timingSummary: string | null,
                  tags: string[] }
-                 // totalTimeMinutes / prepTimeMinutes / cookTimeMinutes are still
-                 // declared and still parsed, read and written by NOTHING as of
-                 // issue #1233. #1211 removes them.
+                 // The strip is the WHOLE of a recipe's timing. Issue #1211 deleted
+                 // totalTimeMinutes / prepTimeMinutes / cookTimeMinutes; stored
+                 // documents may still carry them and Zod strips them on read.
 
 RecipeSource { type:'url'|'book'|'manual', url?, book?:{ title, author, page } }
 ```
@@ -242,10 +242,9 @@ as BOTH SIDES WHOLE rather than a per-phase breakdown, and `RecipeChangeSummary`
 renders it as a single "Timing" card: the strip is one fact — a sequence — and a
 reorder drawn as six row edits would bury the one question the gate is asked.
 **A pure reorder IS reported**, deliberately unlike a reordered ingredient or step,
-because the order of a phase list is the order you do the work in. Issue #1233
-finished the retirement: `diffRecipe` reports no `prepTimeMinutes` /
-`cookTimeMinutes` / `totalTimeMinutes` change, because nothing proposes them, so
-the Timing card is the only thing this gate can say about a recipe's timing.
+because the order of a phase list is the order you do the work in. The Timing card
+is the only thing this gate can say about a recipe's timing — there is no second
+timing field left for it to report.
 
 The card shows only the half that actually moved. `RecipeDiff` carries changed
 fields and nothing else, so an unchanged strip is not available to draw — filling
@@ -259,24 +258,20 @@ component row is the same row on two screens and the two copies were byte-for-by
 identical, where the list chip and the cook-plan line genuinely say different
 things and keep their own words.
 
-### The three time fields — definition and arithmetic (issue #952)
+### How the three prep / cook / total fields were retired (issues #952, #1233, #1211)
 
-The field set is unchanged (`schemaVersion` stays `1`, no migration); what was
-missing was any statement of what the numbers **mean**. Every authoring path used
-to receive one line of guidance — "integers in minutes, or null" — which is a type,
-not a definition, so the model fell back on published-recipe convention. That
-convention is the optimistic one: a food writer's "prep: 5 minutes" starts from an
-already-weighed counter and stops before the washing up.
+Kept as a record of what the strip replaced, because the same trap is available to
+anyone adding a second timing figure beside it.
 
-**Issue #1233 retired all three rather than redefining them again.** The model is
-no longer asked for `prepTimeMinutes`, `cookTimeMinutes` or `totalTimeMinutes` on
-any path, and the `totalTimeMinutes >= prepTimeMinutes + cookTimeMinutes` rule went
-with them — it is definitional once elapsed time is a sum of the phases by
-construction. The three AI output schemas keep the keys as `.optional()` so a model
-that stops returning them cannot fail `.safeParse` at the trust boundary and take
-every authoring call with it; #1211 deletes them. What the paths ask for instead is
-the phase strip, defined above. The rest of this section is the record of why the
-old definitions read as they did.
+A recipe used to store `prepTimeMinutes`, `cookTimeMinutes` and `totalTimeMinutes`,
+and every authoring path received one line of guidance about them — "integers in
+minutes, or null", which is a type and not a definition. The model fell back on
+published-recipe convention, which is the optimistic one: a food writer's "prep: 5
+minutes" starts from an already-weighed counter and stops before the washing up.
+Issue #952 wrote real definitions; **#1233 retired the fields rather than defining
+them a third time**, and **#1211 deleted them** from the schema, the three AI output
+schemas and every fixture. Stored documents may still carry the values; Zod strips
+unknown keys on read, and LWW clears them on the next full-document save.
 
 Two decisions worth keeping:
 
@@ -288,10 +283,12 @@ Two decisions worth keeping:
   `reconcileRecipeTimes` and its two call sites: the property cannot be violated
   once elapsed time is a sum of the phases by construction, and a reconciler for
   three fields nothing reads is dead code that looks alive.
-- **An import re-estimates the times; it never rewrites the content.** The JSON-LD
+- **An import re-estimates the timing; it never rewrites the content.** The JSON-LD
   prompt's faithfulness rule used to name "times" alongside ingredients and steps,
   which made a URL import inherit the publisher's optimistic number by explicit
-  instruction. It now exempts the timing and nothing else. The rationale
+  instruction. It now exempts the timing and nothing else — a scraped page's own
+  `prepTime` / `cookTime` / `totalTime` reach the estimator as evidence and are
+  never stored (`jsonLdRecipe.ts`, the one place those names survive). The rationale
   is comparability: a library where half the recipes use blog convention and half
   use ours has a "quickest first" sort that means nothing. Ingredients, steps and
   servings stay verbatim.

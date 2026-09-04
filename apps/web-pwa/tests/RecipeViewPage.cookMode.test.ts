@@ -143,9 +143,6 @@ function makeRecipe(): Recipe {
     steps: [{ id: 'step-1', text: 'Cook it.', timer: null, note: null }],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,

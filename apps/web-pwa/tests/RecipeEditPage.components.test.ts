@@ -52,9 +52,6 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,
@@ -288,7 +285,7 @@ describe('RecipeEditPage — hero URL rule at the sub-recipe thumbnail (issue #9
     };
     const potatoesWithNoStrip: Recipe = {
       ...POTATOES,
-      metadata: { ...POTATOES.metadata, phases: undefined, cookTimeMinutes: 45 },
+      metadata: { ...POTATOES.metadata, phases: undefined },
     };
     mockRecipes._set([
       { ...ROAST, componentRecipeIds: ['gravy', 'potatoes'] },

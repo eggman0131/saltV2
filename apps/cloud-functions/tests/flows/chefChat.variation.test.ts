@@ -88,9 +88,6 @@ function pilaf() {
     steps: [{ id: 's1', text: 'Fry the chorizo until the oil runs.', timer: null, note: null }],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 40,
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 30,
       tags: ['rice'],
     },
     source: { type: 'manual' as const },

@@ -59,9 +59,6 @@ const SEEDED_METADATA = {
   // Null since #1212: the editor's three time boxes are gone with the phase key
   // on, and this dish is authored through the editor. Servings and the tag carry
   // the "the librarian dropped it, the merge kept it" assertion.
-  prepTimeMinutes: null,
-  cookTimeMinutes: null,
-  totalTimeMinutes: null,
   // Stamped by `emptyRecipe` on every new recipe (issue #1122), so it is part of
   // the seeded document even though nobody typed it. Its presence here is what
   // pins `mergeAmendedRecipe` carrying the strip through an amend rather than
@@ -88,9 +85,6 @@ const STUB_AUTHOR = {
   title: AMENDED_TITLE,
   description: 'The pilaf, with chilli.',
   servings: null,
-  totalTimeMinutes: null,
-  prepTimeMinutes: null,
-  cookTimeMinutes: null,
   tags: [],
   ingredientGroups: [
     {

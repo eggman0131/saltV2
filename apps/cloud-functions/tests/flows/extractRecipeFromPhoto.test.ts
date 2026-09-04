@@ -79,9 +79,6 @@ const AI_OUTPUT = {
   ],
   steps: [{ text: 'Brown the mince.', timerMinutes: null, timerLabel: null, note: null }],
   servings: 4,
-  totalTimeMinutes: null,
-  prepTimeMinutes: 20,
-  cookTimeMinutes: 180,
   tags: ['italian', 'main'],
   notes: null,
   book: { title: 'The Silver Spoon', author: null, page: 212 },
@@ -175,13 +172,6 @@ describe('extractRecipeFromPhoto — the draft it assembles', () => {
     const recipe = await invoke({ images: [PAGE_ONE] });
 
     expect(recipe.source).toEqual({ type: 'book' });
-  });
-
-  it('stores no prep, cook or total — nothing asks for them or reads them (#1233)', async () => {
-    const recipe = await invoke({ images: [PAGE_ONE] });
-    expect(recipe.metadata.totalTimeMinutes).toBeNull();
-    expect(recipe.metadata.prepTimeMinutes).toBeNull();
-    expect(recipe.metadata.cookTimeMinutes).toBeNull();
   });
 
   it('keeps the book’s own ingredient grouping', async () => {

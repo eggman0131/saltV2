@@ -35,9 +35,6 @@ const RECIPE = {
   steps: [{ id: 'step-1', text: 'Mix.', timer: null, note: null }],
   metadata: {
     servings: 1,
-    totalTimeMinutes: null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
     tags: [],
   },
   source: null,

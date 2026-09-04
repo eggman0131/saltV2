@@ -315,16 +315,8 @@ describe('diffRecipe', () => {
   // number no screen shows. They were restored in PR #1231 only for as long as
   // `recipeAmend.ts` went on merging them.
   it('reports no prep, cook or total change — nothing proposes them', () => {
-    const before = withMetadata(recipe(), {
-      totalTimeMinutes: 40,
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 30,
-    });
-    const after = withMetadata(recipe(), {
-      totalTimeMinutes: 55,
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 45,
-    });
+    const before = withMetadata(recipe(), {});
+    const after = withMetadata(recipe(), {});
     const diff = diffRecipe(before, after);
     expect(diff.metadata).toEqual({});
     expect(diff.hasChanges).toBe(false);

@@ -157,9 +157,6 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     steps: [],
     metadata: {
       servings: 6,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 240,
-      totalTimeMinutes: 260,
       tags: ['sunday'],
     },
     source: { type: 'manual' },

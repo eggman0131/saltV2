@@ -86,9 +86,6 @@ function placeholderRecipe(id: string, mood: 'bright' | 'comfort'): Recipe {
     steps: [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [mood],
     },
     source: null,
@@ -375,9 +372,6 @@ function shoppableRecipe(id: string, title: string, item: string): Recipe {
     steps: [],
     metadata: {
       servings: 2,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

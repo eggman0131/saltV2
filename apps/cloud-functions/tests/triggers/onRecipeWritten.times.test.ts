@@ -9,9 +9,9 @@ import type { RecipeDoc } from '@salt/domain/schemas';
 // onRecipeWritten.phases.test.ts.
 //
 // This file replaces the `floorTotalAtStoredWait` suite (#952 phase 2 review,
-// blocking 1), which protected a stored `totalTimeMinutes` recording an
-// unattended wait from being overwritten by a model answer that had no route back
-// to it. Nothing writes that field any more, so there is nothing left to protect
+// blocking 1), which protected a stored total time recording an unattended wait
+// from being overwritten by a model answer that had no route back to it. That
+// field is gone entirely (#1211), so there is nothing left to protect
 // — and the wait it recorded now lives in the strip's hands-off minutes, which
 // `reconcileRecipePhases` already guards.
 
@@ -101,9 +101,6 @@ function focaccia(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     ],
     metadata: {
       servings: null,
-      prepTimeMinutes: 30,
-      cookTimeMinutes: 12,
-      totalTimeMinutes: 762,
       tags: [],
     },
     source: null,

@@ -34,9 +34,6 @@ function recipe(
     description?: string | null;
     ingredients?: string[];
     steps?: string[];
-    cookTimeMinutes?: number | null;
-    prepTimeMinutes?: number | null;
-    totalTimeMinutes?: number | null;
     /** Elapsed minutes of the dish's phase strip — the timing anything reads (#1233). */
     elapsedMinutes?: number;
     componentRecipeIds?: string[];
@@ -79,9 +76,6 @@ function recipe(
     })),
     metadata: {
       servings: 4,
-      totalTimeMinutes: opts.totalTimeMinutes ?? null,
-      prepTimeMinutes: opts.prepTimeMinutes ?? null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
       phases:
         opts.elapsedMinutes === undefined
           ? []
@@ -106,9 +100,6 @@ const CHICKEN = recipe('chicken', 'Roast chicken', {
   description: 'A whole bird, hot oven then rested.',
   ingredients: ['1 whole chicken, 1.6 kg', '30 g butter, softened'],
   steps: ['Heat the oven to 200 °C.', 'Roast for 90 minutes, then rest for 20.'],
-  cookTimeMinutes: 90,
-  prepTimeMinutes: 15,
-  totalTimeMinutes: 125,
   elapsedMinutes: 125,
 });
 
@@ -119,8 +110,6 @@ const POTATOES = recipe('potatoes', 'Roast potatoes', {
   description: 'Parboiled and roughed up before roasting.',
   ingredients: ['1.5 kg Maris Piper potatoes', '4 tbsp goose fat'],
   steps: ['Parboil for 8 minutes and rough up the edges.', 'Roast for 50 minutes at 200 °C.'],
-  cookTimeMinutes: 50,
-  totalTimeMinutes: 70,
   elapsedMinutes: 70,
 });
 
@@ -293,7 +282,6 @@ describe('componentSectionForChef', () => {
       description: 'Low and slow.',
       ingredients: ['1.2 kg beef shin'],
       steps: ['Brown the shin hard.', 'Braise until it pulls apart.'],
-      cookTimeMinutes: 180,
       tags: ['slow', 'winter'],
       stepTimer: { durationMinutes: 180, description: 'Braise the shin' },
       stepNote: 'Dry the meat first or it will steam.',

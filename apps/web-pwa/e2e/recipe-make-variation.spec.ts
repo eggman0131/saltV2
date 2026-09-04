@@ -53,9 +53,6 @@ const STUB_AUTHOR = {
   title: VARIATION_TITLE,
   description: 'A prawn take on the pilaf.',
   servings: 4,
-  totalTimeMinutes: 40,
-  prepTimeMinutes: 10,
-  cookTimeMinutes: 30,
   tags: ['weeknight'],
   ingredientGroups: [
     {

@@ -176,9 +176,6 @@ function makeRecipe(items: Ingredient[]): Recipe {
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: { type: 'manual' },

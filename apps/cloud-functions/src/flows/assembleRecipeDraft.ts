@@ -267,12 +267,6 @@ export async function assembleRecipeDraft(
     steps,
     metadata: {
       servings: raw.servings,
-      // Literal null, the same way `emptyRecipe` writes them (issue #1233).
-      // Nothing asks the model for these, nothing reads them, and #1211 removes
-      // the keys — but `RecipeMetadataSchema` still requires them until it does.
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       // The phase strip and its summary (issue #1122) — one merged fact, computed
       // above by `reconcileRecipePhases`. See that function for the edit-mode
       // carry-through argument (a cook's hand-edit must survive an amend that

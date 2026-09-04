@@ -85,7 +85,6 @@ function makeRecipe(over: {
   id: string;
   title: string;
   tags: string[];
-  totalTimeMinutes: number | null;
   servings: number | null;
   ingredientCount: number;
   image: Recipe['image'];
@@ -127,9 +126,6 @@ function makeRecipe(over: {
     steps: [],
     metadata: {
       servings: over.servings,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: over.totalTimeMinutes,
       tags: over.tags,
       ...(over.phases === undefined ? {} : { phases: over.phases }),
     },
@@ -160,7 +156,6 @@ const APPLE = makeRecipe({
     { label: 'Pastry', handsOnMinutes: 25, handsOffMinutes: 5 },
     { label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 55 },
   ],
-  totalTimeMinutes: 20,
   servings: 8,
   ingredientCount: 5,
   image: { url: 'http://img.test/apple.jpg', source: 'ai' },
@@ -170,7 +165,6 @@ const BANANA = makeRecipe({
   id: 'banana',
   title: 'Banana Bread',
   tags: ['baking', 'quick'],
-  totalTimeMinutes: 60,
   servings: 6,
   ingredientCount: 3,
   image: null, // → fallback tile
@@ -180,7 +174,6 @@ const CARROT = makeRecipe({
   id: 'carrot',
   title: 'Carrot Soup',
   tags: ['soup', 'quick'],
-  totalTimeMinutes: 30,
   servings: 4,
   ingredientCount: 4,
   image: { url: 'http://img.test/carrot.jpg', source: 'ai' },
@@ -248,7 +241,6 @@ describe('RecipeListPage', () => {
       id: 'peach',
       title: 'Peach Cobbler',
       tags: ['dessert'],
-      totalTimeMinutes: 45,
       servings: 6,
       ingredientCount: 4,
       image: { url: 'http://img.test/peach.jpg', source: 'ai' },
@@ -346,7 +338,6 @@ describe('RecipeListPage', () => {
       id: 'many',
       title: 'Kitchen Sink',
       tags: Array.from({ length: 12 }, (_, i) => `tag${String(i).padStart(2, '0')}`),
-      totalTimeMinutes: 20,
       servings: 2,
       ingredientCount: 2,
       image: null,
@@ -396,7 +387,6 @@ const TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'Takeaway — Indian',
   tags: ['friday', 'quick'],
-  totalTimeMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -407,7 +397,6 @@ const PICNIC = makeRecipe({
   kind: 'outing',
   title: 'Picnic food',
   tags: ['summer'],
-  totalTimeMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -419,7 +408,6 @@ const NEGRONI = makeRecipe({
   kind: 'cocktail',
   title: 'Negroni',
   tags: ['aperitivo'],
-  totalTimeMinutes: 5,
   servings: 1,
   ingredientCount: 3,
   image: null,
@@ -434,7 +422,6 @@ const SUNDAY_ROAST = makeRecipe({
   id: 'roast',
   title: 'Sunday roast',
   tags: ['sunday'],
-  totalTimeMinutes: 120,
   servings: 4,
   ingredientCount: 4,
   image: null,
@@ -446,7 +433,6 @@ const NEGRONI_WITH_SYRUP = makeRecipe({
   kind: 'cocktail',
   title: 'Negroni with house syrup',
   tags: ['aperitivo'],
-  totalTimeMinutes: 5,
   servings: 1,
   ingredientCount: 3,
   image: null,
@@ -797,7 +783,6 @@ const MY_PIE = makeRecipe({
   id: 'my-pie',
   title: 'My Pie',
   tags: ['dessert', 'quick'],
-  totalTimeMinutes: 40,
   servings: 4,
   ingredientCount: 3,
   image: null,
@@ -810,7 +795,6 @@ const THEIR_BREAD = makeRecipe({
   id: 'their-bread',
   title: 'Their Bread',
   tags: ['baking'],
-  totalTimeMinutes: 180,
   servings: 8,
   ingredientCount: 5,
   image: null,
@@ -823,7 +807,6 @@ const THEIR_SOUP = makeRecipe({
   id: 'their-soup',
   title: 'Their Soup',
   tags: ['quick'],
-  totalTimeMinutes: 25,
   servings: 2,
   ingredientCount: 4,
   image: null,
@@ -836,7 +819,6 @@ const MY_TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'My Takeaway',
   tags: ['friday'],
-  totalTimeMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -849,7 +831,6 @@ const THEIR_TAKEAWAY = makeRecipe({
   kind: 'outing',
   title: 'Their Takeaway',
   tags: ['friday'],
-  totalTimeMinutes: null,
   servings: null,
   ingredientCount: 0,
   image: null,
@@ -1032,7 +1013,6 @@ describe('RecipeListPage — authorship filters', () => {
         id: 'hers',
         title: 'Hers',
         tags: [],
-        totalTimeMinutes: null,
         servings: null,
         ingredientCount: 1,
         image: null,
@@ -1044,7 +1024,6 @@ describe('RecipeListPage — authorship filters', () => {
         id: 'the-other-kates',
         title: 'The Other Kates',
         tags: [],
-        totalTimeMinutes: null,
         servings: null,
         ingredientCount: 1,
         image: null,
@@ -1240,7 +1219,6 @@ describe('RecipeListPage — silent match problems', () => {
       id: 'r-citrus',
       title: 'Margarita',
       tags: [],
-      totalTimeMinutes: null,
       servings: null,
       ingredientCount: 1,
       image: null,
@@ -1428,7 +1406,6 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
       id: 'hero-rule',
       title: 'Hero Rule',
       tags: [],
-      totalTimeMinutes: null,
       servings: null,
       ingredientCount: 0,
       image: { url, source: 'ai' },
@@ -1450,7 +1427,6 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
         id: 'hero-none',
         title: 'Hero None',
         tags: [],
-        totalTimeMinutes: null,
         servings: null,
         ingredientCount: 0,
         image: null,
@@ -1466,8 +1442,9 @@ describe('RecipeListPage — hero URL rule (issue #933 characterisation)', () =>
 
 // ─── Timing on the card, and in the sort (issue #1122) ────────────────────────
 // The list is the surface where the two accounts of a recipe's timing were most
-// obviously the same fact twice: a card labelled from `totalTimeMinutes` and a
-// Quickest sort ordering by it. Both now read the phase sum where there is one.
+// obviously the same fact twice: a card labelled from a stored total and a
+// Quickest sort ordering by it. Both now read the phase sum where there is one,
+// and since #1211 there is no second figure left to read.
 //
 // The feature key reads ON throughout the unit suite — with no PostHog key
 // nothing can be gated (`isObservabilityFeatureEnabled`) — so the fixtures
@@ -1484,7 +1461,6 @@ function timed(id: string, title: string, over: Partial<Parameters<typeof makeRe
     id,
     title,
     tags: [],
-    totalTimeMinutes: null,
     servings: null,
     ingredientCount: 0,
     image: null,
@@ -1494,19 +1470,15 @@ function timed(id: string, title: string, over: Partial<Parameters<typeof makeRe
 }
 
 describe('RecipeListPage — how long it takes', () => {
-  // Issue #1213 removed the `?? totalTimeMinutes` fallback under the chip. Both
-  // fixtures store a total of 20; only the one with a strip gets a chip, which is
-  // the mechanical half of "the list shows no total time for anyone".
+  // #1213 removed the fallback under the chip and #1211 the field it fell back
+  // to: only a recipe with a strip gets a chip, which is the mechanical half of
+  // "the list shows no total time for anyone".
   it('labels the card from the phase sum, and shows nothing without one', () => {
-    seed([
-      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
-      timed('plain', 'Plain Dish', { totalTimeMinutes: 20 }),
-    ]);
+    seed([timed('phased', 'Phased Dish', { phases: STRIP_65 }), timed('plain', 'Plain Dish')]);
     render(RecipeListPage);
 
     const cards = screen.getAllByTestId('recipe-list-item');
     expect(normalized(cards[0]!)).toContain('1 hr 5 min');
-    expect(normalized(cards[0]!)).not.toContain('20 min');
     expect(normalized(cards[1]!)).not.toContain('min');
   });
 
@@ -1518,18 +1490,17 @@ describe('RecipeListPage — how long it takes', () => {
   });
 
   // The chip and the sort go through one function, and this is what says so: the
-  // 65-minute strip sorts BEHIND the 30-minute strip even though the stored field
-  // the sort used to read says 20. `Half Hour` carries no stored total at all, so
-  // the ordering can only have come from its strip.
+  // 65-minute strip sorts BEHIND the 30-minute strip, and `Untimed Dish` — which
+  // carries no strip at all — cannot be placed by a figure it does not have.
   // `fireEvent`, not `userEvent`: the popover primitive marks the page inert while
   // it opens, and user-event refuses to click through `pointer-events: none`.
   it('orders Quickest by the same figure the card shows', async () => {
     seed([
-      timed('phased', 'Phased Dish', { totalTimeMinutes: 20, phases: STRIP_65 }),
+      timed('phased', 'Phased Dish', { phases: STRIP_65 }),
       timed('half', 'Half Hour', {
         phases: [{ label: 'Simmer', handsOnMinutes: 5, handsOffMinutes: 25 }],
       }),
-      timed('untimed', 'Untimed Dish', { totalTimeMinutes: 5 }),
+      timed('untimed', 'Untimed Dish'),
     ]);
     render(RecipeListPage);
 

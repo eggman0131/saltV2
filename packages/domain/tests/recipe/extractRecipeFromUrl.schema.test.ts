@@ -2,18 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { ExtractRecipeAIOutputSchema } from '../../src/schemas/index.js';
 
 // The gate the URL and book-photo imports both feed their model output through.
-// Issue #739: it used to reject `cookTimeMinutes: 0`, which is the CORRECT answer
-// for anything assembled rather than cooked — so a Greek salad failed its import
-// on the model getting it right.
+// What it still constrains is `servings` and the phase strip: issue #1211 removed
+// the three time fields it once gated, and issue #739's asymmetry — a strict 0 on
+// servings against a permissive 0 on the times — went with them.
 
 const BASE = {
   isRecipe: true,
   title: 'Greek salad',
   description: 'Chunky, quick, no cooking at all.',
   servings: 4,
-  totalTimeMinutes: 15,
-  prepTimeMinutes: 15,
-  cookTimeMinutes: 0,
   tags: ['greek'],
   ingredientGroups: [
     {
@@ -25,28 +22,13 @@ const BASE = {
   notes: null,
 };
 
-describe('ExtractRecipeAIOutputSchema — zero on the time fields', () => {
-  it('accepts cookTimeMinutes: 0 — a no-cook recipe is a real recipe', () => {
-    const parsed = ExtractRecipeAIOutputSchema.safeParse(BASE);
-
-    expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data.cookTimeMinutes).toBe(0);
+describe('ExtractRecipeAIOutputSchema — the base shape', () => {
+  it('accepts a well-formed extraction', () => {
+    expect(ExtractRecipeAIOutputSchema.safeParse(BASE).success).toBe(true);
   });
 
-  it('accepts prepTimeMinutes: 0 — nothing to prepare is a real answer too', () => {
-    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, prepTimeMinutes: 0 }).success).toBe(
-      true,
-    );
-  });
-
-  it('still accepts null on both — "not stated" keeps its own sentinel', () => {
-    const parsed = ExtractRecipeAIOutputSchema.safeParse({
-      ...BASE,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-    });
-
-    expect(parsed.success).toBe(true);
+  it('accepts servings: null — "not stated" keeps its own sentinel', () => {
+    expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, servings: null }).success).toBe(true);
   });
 });
 
@@ -57,36 +39,5 @@ describe('ExtractRecipeAIOutputSchema — the glitch guard that stays strict', (
 
   it('rejects a negative servings count', () => {
     expect(ExtractRecipeAIOutputSchema.safeParse({ ...BASE, servings: -1 }).success).toBe(false);
-  });
-});
-
-// Issue #1233 review, blocking 1: the extraction prompt no longer asks for these
-// three, and nothing reads them (they go entirely with #1211), so a value that
-// fails their range now degrades to null instead of failing the whole import —
-// there is no retry on this path, and a field invisible to the user must never be
-// able to cost the user their extraction. Same posture `AuthoredRecipePhasesSchema`
-// takes on `phases` (`packages/domain/src/schemas/recipe.ts`).
-describe('ExtractRecipeAIOutputSchema — a malformed retired time field degrades, never fails the parse', () => {
-  it('degrades totalTimeMinutes: 0 to null rather than rejecting the import', () => {
-    const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, totalTimeMinutes: 0 });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.totalTimeMinutes).toBeNull();
-  });
-
-  it('degrades a negative time on every retired field to null', () => {
-    for (const field of ['totalTimeMinutes', 'prepTimeMinutes', 'cookTimeMinutes'] as const) {
-      const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, [field]: -1 });
-      expect(result.success).toBe(true);
-      if (result.success) expect(result.data[field]).toBeNull();
-    }
-  });
-
-  it('degrades a fractional time to null, and keeps the rest of the import', () => {
-    const result = ExtractRecipeAIOutputSchema.safeParse({ ...BASE, cookTimeMinutes: 2.5 });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.cookTimeMinutes).toBeNull();
-      expect(result.data.title).toBe('Greek salad');
-    }
   });
 });

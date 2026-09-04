@@ -58,14 +58,14 @@ describe('estimateRecipeTimesFlow', () => {
     // HEURISTICS below PHASE_RULES are a separate, flow-local half not covered
     // by this assertion — see the "FIELD DEFINITIONS... ESTIMATION HEURISTICS"
     // header comment in estimateRecipeTimes.ts.
-    respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55 });
+    respond({});
     await estimateRecipeTimesFlow(input);
     const { system } = mockGenerate.mock.calls[0]![0] as { system: string };
     expect(system).toContain(PHASE_RULES);
   });
 
   it('sends the ingredient lines and the step timers as the evidence', async () => {
-    respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55 });
+    respond({});
     await estimateRecipeTimesFlow(input);
     const { prompt } = mockGenerate.mock.calls[0]![0] as { prompt: string };
     expect(prompt).toContain('2 large onions, finely sliced');
@@ -77,17 +77,18 @@ describe('estimateRecipeTimesFlow', () => {
     // The stored triple is wrong in a known direction (low), so quoting it back is
     // an anchor towards the number being corrected. The input schema has no field
     // for it; this pins that the prompt has no back door either.
-    respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55 });
+    respond({});
     await estimateRecipeTimesFlow(input);
     const { prompt } = mockGenerate.mock.calls[0]![0] as { prompt: string };
     expect(prompt).not.toMatch(/current|stored|existing/i);
   });
 
   it('returns the strip and the summary, and nothing else', async () => {
-    // Issue #1233: the flow's whole answer is the timing the app displays. The
-    // model may still echo the three retired numbers — they are `.optional()` on
-    // the output schema until #1211 deletes them — and they must not reach the
-    // caller, because the trigger writes what this returns.
+    // Issue #1233: the flow's whole answer is the timing the app displays, and
+    // #1211 deleted the three retired numbers from the output schema outright.
+    // A model still echoing them under their old names is an UNKNOWN key now, and
+    // this is what pins that Zod strips it rather than letting it through to the
+    // trigger, which writes whatever this returns.
     respond({ prepTimeMinutes: 10, cookTimeMinutes: 35, totalTimeMinutes: 45 });
     await expect(estimateRecipeTimesFlow(input)).resolves.toEqual({
       phases: [],
@@ -99,9 +100,6 @@ describe('estimateRecipeTimesFlow', () => {
   // zero-fold — because their arithmetic is a sum computed where they are read.
   it('returns the phase strip and its summary untouched', async () => {
     respond({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 35,
-      totalTimeMinutes: 55,
       phases: [
         { label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 },
         { label: 'Cook', handsOnMinutes: 5, handsOffMinutes: 30 },
@@ -121,9 +119,6 @@ describe('estimateRecipeTimesFlow', () => {
   // to fold away. This goes red if anyone adds a zero-fold over the strip.
   it('keeps a phase with no hands-on time rather than folding it away', async () => {
     respond({
-      prepTimeMinutes: 5,
-      cookTimeMinutes: 0,
-      totalTimeMinutes: 725,
       phases: [
         { label: 'Mix', handsOnMinutes: 5, handsOffMinutes: 0 },
         { label: 'Prove overnight', handsOnMinutes: 0, handsOffMinutes: 720 },
@@ -146,9 +141,6 @@ describe('estimateRecipeTimesFlow', () => {
   // — never as a reason to fail the call and force a backfill retry.
   it('degrades a strip longer than six blocks to no strip, rather than failing', async () => {
     respond({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 35,
-      totalTimeMinutes: 55,
       phases: Array.from({ length: 7 }, (_, i) => ({
         label: `Phase ${i + 1}`,
         handsOnMinutes: 5,
@@ -166,9 +158,6 @@ describe('estimateRecipeTimesFlow', () => {
   // same class of lapse as the cap, and degrades the same way.
   it('degrades a strip with a malformed minute to no strip, rather than failing', async () => {
     respond({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 35,
-      totalTimeMinutes: 55,
       phases: [{ label: 'Prep', handsOnMinutes: 7.5, handsOffMinutes: 0 }],
       timingSummary: null,
     });
@@ -186,9 +175,6 @@ describe('estimateRecipeTimesFlow', () => {
   // invisible to the user.
   it('degrades a malformed retired time field to null, rather than failing', async () => {
     respond({
-      prepTimeMinutes: 12.5,
-      cookTimeMinutes: 35,
-      totalTimeMinutes: 0,
       phases: [{ label: 'Prep', handsOnMinutes: 20, handsOffMinutes: 0 }],
       timingSummary: 'About 20 minutes.',
     });
@@ -199,11 +185,10 @@ describe('estimateRecipeTimesFlow', () => {
   });
 
   it('throws on an output that fails the trust-boundary parse', async () => {
-    // `phases` is the one field left whose shape the flow actually depends on —
-    // a summary of the wrong TYPE (not a string or null) is not a range the
-    // decorative time fields' `.catch(null)` can absorb, because it never reaches
-    // that gate: the object itself is malformed.
-    respond({ prepTimeMinutes: 20, cookTimeMinutes: 35, totalTimeMinutes: 55, timingSummary: 42 });
+    // `phases` and `timingSummary` are the whole of what this flow returns, so a
+    // summary of the wrong TYPE (not a string or null) has nothing to degrade to:
+    // the object itself is malformed and the parse fails.
+    respond({ timingSummary: 42 });
     await expect(estimateRecipeTimesFlow(input)).rejects.toThrow(/invalid output/);
   });
 });

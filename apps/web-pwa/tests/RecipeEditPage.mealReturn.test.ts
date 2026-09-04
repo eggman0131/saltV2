@@ -54,9 +54,6 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,

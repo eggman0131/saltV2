@@ -101,9 +101,6 @@ function makeRecipe(): Recipe {
     ],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,

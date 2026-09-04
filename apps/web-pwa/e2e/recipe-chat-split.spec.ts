@@ -169,9 +169,6 @@ function buildRecipe(id: string, title: string, kind: 'recipe' | 'outing'): Reci
       : [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

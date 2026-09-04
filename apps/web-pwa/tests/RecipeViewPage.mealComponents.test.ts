@@ -142,9 +142,6 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     steps: [],
     metadata: {
       servings: 4,
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 20,
-      totalTimeMinutes: 30,
       tags: [],
     },
     source: null,

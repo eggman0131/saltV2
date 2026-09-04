@@ -20,9 +20,9 @@ function dish(id: string, phases: RecipePhase[] | undefined): Recipe {
     title: id,
     kind: 'recipe',
     componentRecipeIds: [],
-    // `cookTimeMinutes` deliberately contradicts the strip on every row here: if
-    // any of it were still read, the expectations below would move.
-    metadata: { servings: 4, cookTimeMinutes: 5, phases },
+    // The strip is the only timing a recipe carries (#1211), so every expectation
+    // below is reachable from it and from nothing else.
+    metadata: { servings: 4, phases },
     ingredients: [],
     steps: [],
     createdAt: '2026-08-01T09:00:00.000Z',

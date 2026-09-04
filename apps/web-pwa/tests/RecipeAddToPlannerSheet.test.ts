@@ -41,9 +41,6 @@ const RECIPE: Recipe = {
   steps: [],
   metadata: {
     servings: 4,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
-    totalTimeMinutes: null,
     tags: [],
   },
   source: null,

@@ -85,9 +85,6 @@ function recipeWithPhoto(id: string, title: string): Recipe {
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

@@ -27,8 +27,8 @@ export const EstimateRecipeTimesInputSchema = z.object({
   ingredients: z.array(z.string()),
   // Step text with the step's own timer, when it has one. The timers are FACT
   // rather than estimate (a cook set them, or the authoring path read them off
-  // the source), so they anchor `cookTimeMinutes` and the unattended waits that
-  // `totalTimeMinutes` has to contain.
+  // the source), so they anchor the strip's phases — both the hands-on work and
+  // the unattended waits a phase's hands-off minutes have to contain.
   steps: z.array(z.object({ text: z.string(), timerMinutes: z.number().nullable() })),
 });
 
@@ -38,21 +38,7 @@ export type EstimateRecipeTimesInput = z.infer<typeof EstimateRecipeTimesInputSc
 // paths (LibrarianOutputSchema, ExtractRecipeAIOutputSchema) because it is
 // answering the same question against the same definition — a third set of
 // constraints for the same shape is how the three drift apart.
-//
-// The three time numbers are NO LONGER ASKED FOR (issue #1233): the prompt names
-// the phase strip and nothing else, so the model stops returning them and
-// `.optional()` is what keeps that from failing `.safeParse` and taking every
-// re-estimate with it. A value that DOES arrive and FAILS its range now degrades
-// to null (`.catch(null)`) rather than failing the parse — the same posture
-// `AuthoredRecipePhasesSchema` takes on `phases` below, and for the same reason:
-// this flow has no retry, so a stray `12.5` or `0` on a field nobody asked for
-// must not cost the recipe a perfectly good strip. They stay declared, with their
-// ranges, only until #1211 removes them; the 0 rule they encode (issue #739) is
-// recorded on the authoring schemas.
 export const EstimateRecipeTimesAIOutputSchema = z.object({
-  prepTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  cookTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
   // The ordered phase strip (issue #1122), and since #1233 the whole of what this
   // flow is for.
   //
@@ -70,12 +56,6 @@ export const EstimateRecipeTimesAIOutputSchema = z.object({
 // and parseRecipeIngredients name theirs — they are the same shape today, and the
 // seam is what keeps them free to differ.
 export const EstimateRecipeTimesOutputSchema = z.object({
-  // `.optional().catch(null)` alongside the AI output's, so the flow may stop
-  // producing the three without a second schema move (issue #1233). Nothing
-  // reads them.
-  prepTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
-  cookTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
-  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
   // Passed through untouched: the phases carry their own arithmetic (elapsed is a
   // sum, computed at the point of use), so there is nothing here to reconcile and
   // nothing to zero-fold. A phase of 0 hands-on is an unattended wait, which is a

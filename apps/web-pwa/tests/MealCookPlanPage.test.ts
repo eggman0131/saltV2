@@ -108,17 +108,13 @@ function dish(id: string, title: string, overrides: Partial<Recipe> = {}): Recip
 /**
  * A dish whose phase strip elapses `minutes`, or which has no strip at all when
  * `minutes` is null. Since issue #1233 that strip is what both the row's time
- * line and its start clock are worked from; the stored `cookTimeMinutes` beside
- * it deliberately says something else, so a reader that regressed onto it would
- * move every clock time asserted here.
+ * line and its start clock are worked from, and since #1211 it is the only
+ * timing a recipe carries — there is no longer a second field to regress onto.
  */
 function withElapsed(id: string, title: string, minutes: number | null): Recipe {
   return dish(id, title, {
     metadata: {
       servings: 4,
-      cookTimeMinutes: 5,
-      prepTimeMinutes: null,
-      totalTimeMinutes: null,
       phases:
         minutes === null
           ? undefined
@@ -341,8 +337,8 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     const rows = getAllByTestId('cook-plan-row-title').map((n) => n.textContent?.trim());
     const potatoIndex = rows.indexOf('Roast potatoes');
     expect(getAllByTestId('cook-plan-row-cook-time')[potatoIndex]).toHaveTextContent('1 hr 5 min');
-    // 19:00 less the 65 minutes the line states — not the 30 the stored
-    // `cookTimeMinutes` would have given, which is what moved in #953.
+    // 19:00 less the 65 minutes the line states — the whole process rather than
+    // the cooking alone, which is what moved in #953.
     const expected = CLOCK.format(new Date('2026-08-16T17:55:00.000Z'));
     expect(getAllByTestId('cook-plan-row-start')[potatoIndex]).toHaveTextContent(
       `start ${expected}`,

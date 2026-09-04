@@ -18,7 +18,7 @@ export interface ScheduledRow {
  *
  * THE WHOLE PROCESS, START TO SERVE — `recipePhaseTotals(...).elapsedMinutes`,
  * every phase of the strip summed, hands-on and hands-off alike. Until issue #1233
- * this worked back from a stored `cookTimeMinutes` alone, which quietly assumed
+ * this worked back from a stored cook time alone, which quietly assumed
  * the chopping and weighing had already happened at some earlier point in the day;
  * with a phase strip there is nothing left to assume, so the app stops guessing and
  * start times move earlier (#953). `insertComponentByElapsedTime` orders the "Made

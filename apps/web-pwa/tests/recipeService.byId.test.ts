@@ -49,10 +49,7 @@ function nsId(id: string): string {
   return `t${ns}-${id}`;
 }
 
-function recipe(
-  id: string,
-  opts: { cookTimeMinutes?: number | null; componentRecipeIds?: string[] } = {},
-): Recipe {
+function recipe(id: string, opts: { componentRecipeIds?: string[] } = {}): Recipe {
   return {
     kit: [],
     createdBy: '',
@@ -66,9 +63,6 @@ function recipe(
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: opts.cookTimeMinutes ?? null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,

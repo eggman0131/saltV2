@@ -143,9 +143,6 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,
@@ -202,9 +199,6 @@ function withThreeFields(phases: RecipePhase[] | undefined): Recipe {
     metadata: {
       ...makeRecipe().metadata,
       servings: 4,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
-      totalTimeMinutes: 45,
       ...(phases === undefined ? {} : { phases, timingSummary: null }),
     },
   });
@@ -322,19 +316,18 @@ describe('RecipeViewPage — the phase strip', () => {
   });
 
   // The "Made from" row (issue #752) reads the same rule as everything else: the
-  // phase sum when the dish has a strip, its stored cook time otherwise — and the
-  // fallback keeps the raw `n min` spelling it has always had.
+  // phase sum when the dish has a strip, and nothing at all when it has none.
   it("shows a component's phase sum on the Made from row", () => {
-    mockRecipes._set(meal(dish({ cookTimeMinutes: 20, phases: PHASES, timingSummary: null })));
+    mockRecipes._set(meal(dish({ phases: PHASES, timingSummary: null })));
     const { getByTestId } = renderPage();
 
     expect(getByTestId('recipe-component-cook-time').textContent).toContain('2 hr 22 min');
   });
 
-  // Issue #1213 removed the fallback: the dish still stores a cook time of 20 and
-  // its row shows no time at all.
+  // Issue #1213 removed the fallback and #1211 the field it fell back to: a dish
+  // with no strip has no timing to show, so the row is absent entirely.
   it('shows no time on the Made from row when the component has no strip', () => {
-    mockRecipes._set(meal(dish({ cookTimeMinutes: 20 })));
+    mockRecipes._set(meal(dish({})));
     const { queryByTestId } = renderPage();
 
     expect(queryByTestId('recipe-component-cook-time')).toBeNull();

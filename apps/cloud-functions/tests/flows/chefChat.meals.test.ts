@@ -87,9 +87,6 @@ function recipeDoc(id: string, title: string, over: Record<string, unknown> = {}
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     componentRecipeIds: [],
@@ -135,9 +132,6 @@ beforeEach(() => {
       steps: [{ id: 'cs1', text: CHICKEN_STEP, timer: null, note: null }],
       metadata: {
         servings: 4,
-        totalTimeMinutes: 125,
-        prepTimeMinutes: 15,
-        cookTimeMinutes: 90,
         phases: [{ label: 'Roast & rest', handsOnMinutes: 15, handsOffMinutes: 110 }],
         tags: [],
       },
@@ -149,9 +143,6 @@ beforeEach(() => {
       ingredients: group('potatoes', [POTATO_INGREDIENT]),
       metadata: {
         servings: 4,
-        totalTimeMinutes: 70,
-        prepTimeMinutes: 10,
-        cookTimeMinutes: 50,
         phases: [{ label: 'Parboil & roast', handsOnMinutes: 10, handsOffMinutes: 60 }],
         tags: [],
       },
@@ -211,9 +202,6 @@ describe('chefChat — meal components', () => {
         ],
         metadata: {
           servings: 4,
-          totalTimeMinutes: 125,
-          prepTimeMinutes: 15,
-          cookTimeMinutes: 90,
           tags: ['sunday', 'roast'],
         },
         notes: 'The bird comes out at 4:30 whatever else happens.',

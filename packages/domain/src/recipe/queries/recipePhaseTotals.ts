@@ -6,7 +6,7 @@ import type { RecipePhase } from '../entities/Recipe.js';
 // percentages, no CSS — the timeline is one rendering of this, the list chip is
 // another, and the meal cook plan's start clock is a third.
 //
-// WHY EVERY CONSUMER COMES THROUGH HERE. `totalTimeMinutes` was a stored number
+// WHY EVERY CONSUMER COMES THROUGH HERE. The retired total time was a stored number
 // that could disagree with the parts beneath it, and that disagreement is the
 // whole defect this issue closes. The replacement is a sum computed at the point
 // of use, so "how long does this take" has exactly one answer and it is the same

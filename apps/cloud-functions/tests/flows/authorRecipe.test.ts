@@ -85,9 +85,6 @@ function librarianOutput() {
     title: 'Garlic Pasta',
     description: null,
     servings: 2,
-    totalTimeMinutes: null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
     tags: [],
     ingredientGroups: [
       {
@@ -197,9 +194,6 @@ function baseRecipeDoc() {
     ],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 15,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: null,
       tags: ['turkish', 'salad'],
     },
     source: { type: 'manual' as const },
@@ -791,8 +785,6 @@ describe('authorRecipe — meal components', () => {
       steps: [{ id: 'cs1', text: CHICKEN_STEP, timer: null, note: null }],
       metadata: {
         ...baseRecipeDoc().metadata,
-        cookTimeMinutes: 90,
-        totalTimeMinutes: 125,
         phases: [{ label: 'Roast & rest', handsOnMinutes: 15, handsOffMinutes: 110 }],
       },
     };

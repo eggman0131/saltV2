@@ -36,10 +36,10 @@ grate cheese. A subset were also arithmetically impossible: Paneer Makhanwala st
 
 **Second pass (#1210).** #1122 replaced those three numbers with a phase strip —
 `metadata.phases`, the blocks the recipe page draws a timeline from. Recipes authored
-since then have one; everything older does not, and nothing has re-asked them. Until a
-recipe has a strip it falls back to its old prep/cook/total numbers on every screen, which
-is why the library stays readable half-backfilled — and why the strip cannot be relied on
-anywhere until this pass has finished in production.
+since then have one; everything older does not, and nothing has re-asked them. Issues
+#1233 and #1211 then removed the three numbers a strip-less recipe used to fall back to,
+so a recipe with no strip now shows **no timing at all** — which is why this pass has to
+have finished in an environment before the strip can be relied on there.
 
 ## Order, and why it is this order
 
@@ -116,10 +116,10 @@ do.` while the library still has no phase strips at all — which looks exactly 
 
 ## What a verified run leaves behind
 
-- `metadata.prepTimeMinutes`, `metadata.cookTimeMinutes`, `metadata.totalTimeMinutes`,
-  `metadata.phases` and `metadata.timingSummary` rewritten — the phase strip and its
-  sentence (issue #1122) write unconditionally alongside the three numbers, with no
-  stored-total guard equivalent protecting them — and `timesEstimatedAt` stamped.
+- `metadata.phases` and `metadata.timingSummary` rewritten — the phase strip and its
+  sentence (issue #1122) write unconditionally, with nothing guarding a strip already
+  there — and `timesEstimatedAt` stamped. The three prep/cook/total fields are **not**
+  written: #1233 stopped the trigger writing them and #1211 deleted them outright.
 - **Nothing else.** The write is a field-level update on those paths (recipes are
   last-write-wins per whole document), and the flow has no output field for a title, an
   ingredient or a step, so `rawText`, steps, timers, tags, images, `createdBy` and
@@ -134,25 +134,23 @@ do.` while the library still has no phase strips at all — which looks exactly 
 
 What exit code 0 from `--verify` does **not** claim: that the strips are any good, or that
 the other two environments are done. It says every cookable recipe in that one project is
-stamped, stores a strip, and reconciles arithmetically.
+stamped and stores a strip. (`--verify` also reports on any stale prep/cook/total values
+still sitting in the stored documents; those are read-only leftovers that no longer reach
+any screen, and LWW clears them on the next ordinary save.)
 
 ## Residue: recipes a re-ask does not fill
 
-Expect a few. The model can return three sensible numbers and omit the strip.
-`reconcileRecipePhases` does **not** leave the document as it found it in that case — the
-same `update` (`onRecipeWritten.ts:495-507`) still rewrites `metadata.prepTimeMinutes`,
-`cookTimeMinutes` and `totalTimeMinutes` from the fresh answer; only `phases` stays `[]`
-and `timingSummary` carries forward. For a residue recipe those three numbers are its
-only timing and the only thing on screen, so each additional pass that asks it changes
-what a cook sees, not just the (still-missing) strip. Those recipes stay in `--verify`'s
-`No phase strip` list and are selected again by the next `--missing-phases` run, so
-nothing is lost, but the count stops falling.
+Expect a few. The model can answer and omit the strip. `phases` then stays `[]` and
+`timingSummary` carries forward, so the recipe is left exactly as it was — and since
+#1211 there is no prep/cook/total left for it to fall back on, so it shows no timing at
+all. Those recipes stay in `--verify`'s `No phase strip` list and are selected again by
+the next `--missing-phases` run, so nothing is lost, but the count stops falling.
 
 When `--verify` still lists a handful after a second apply:
 
 1. **Run the pass once more.** A different sampling of the model often answers. Cheap in
-   AI calls — it only asks the recipes still missing a strip — but not free of churn:
-   each pass rewrites that recipe's prep/cook/total again, per the overwrite above.
+   AI calls — it only asks the recipes still missing a strip — and it writes nothing at
+   all to a recipe whose answer omits one.
 2. **If the same recipes survive a third pass, fix them by hand** in the recipe's phase
    editor (#1202 phase 2). Two or three named blocks with rough minutes is a better
    answer than none, and a hand-authored strip is exactly what this pass then leaves

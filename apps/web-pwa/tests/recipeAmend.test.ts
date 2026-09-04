@@ -54,9 +54,6 @@ function existingRecipe(): Recipe {
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 45,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
       tags: ['midweek', 'one-pan'],
     },
     source: { type: 'url', url: 'https://example.com/pilaf' },
@@ -84,9 +81,6 @@ function draftWithoutMetadata(overrides: Partial<RecipeDoc['metadata']> = {}): R
     steps: [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
       ...overrides,
     },
@@ -103,28 +97,6 @@ describe('mergeAmendedRecipe — a metadata field the librarian omitted is prese
   it('keeps servings the draft left null', () => {
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);
     expect(merged.metadata.servings).toBe(4);
-  });
-
-  it('keeps all three retired times, whatever the draft carries (#1233)', () => {
-    // Not a `??` fallback any more: the merge takes these three from the STORED
-    // recipe unconditionally, because nothing proposes them and nothing reads
-    // them, but dropping the keys would DELETE them from the document. A draft
-    // that somehow carries values must not be able to write them.
-    const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata(), NOW);
-    expect(merged.metadata.totalTimeMinutes).toBe(45);
-    expect(merged.metadata.prepTimeMinutes).toBe(15);
-    expect(merged.metadata.cookTimeMinutes).toBe(30);
-
-    const withTimes = mergeAmendedRecipe(
-      existingRecipe(),
-      draftWithoutMetadata({ totalTimeMinutes: 60, prepTimeMinutes: 20, cookTimeMinutes: 40 }),
-      NOW,
-    );
-    expect(withTimes.metadata).toMatchObject({
-      totalTimeMinutes: 45,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
-    });
   });
 
   it('keeps the tag list the draft returned empty', () => {
@@ -154,7 +126,6 @@ describe('mergeAmendedRecipe — a metadata value the librarian DID return wins'
   it('preserves each field independently — one returned value does not carry the rest', () => {
     const merged = mergeAmendedRecipe(existingRecipe(), draftWithoutMetadata({ servings: 6 }), NOW);
     expect(merged.metadata.servings).toBe(6);
-    expect(merged.metadata.totalTimeMinutes).toBe(45);
     expect(merged.metadata.tags).toEqual(['midweek', 'one-pan']);
   });
 });

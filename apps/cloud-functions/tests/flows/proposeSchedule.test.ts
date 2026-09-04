@@ -122,9 +122,6 @@ const LOAF_RECIPE = {
   ],
   metadata: {
     servings: 1,
-    totalTimeMinutes: null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
     tags: [],
   },
   source: null,

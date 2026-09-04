@@ -74,8 +74,8 @@ test.describe('recipes — hand-editing the phase strip', () => {
     await page.getByTestId('recipe-title-input').fill(DISH);
 
     // The phase editor is the ONLY timing control on the page (issue #1233): the
-    // three Prep/Cook/Total boxes went when the last reader of `cookTimeMinutes`
-    // did, so there is no number a cook can type here that nothing consumes.
+    // three Prep/Cook/Total boxes went with the last reader of the stored times,
+    // and the fields themselves went with #1211.
     await expect(page.getByTestId('recipe-phase-editor')).toBeVisible();
     await expect(page.getByTestId('recipe-prep-input')).toHaveCount(0);
     await expect(page.getByTestId('recipe-cook-input')).toHaveCount(0);
