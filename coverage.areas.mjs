@@ -328,11 +328,18 @@ export const coverageThresholds = {
   // moved the right way at once — lines 77.46 → 79.34, branches 65.86 → 67.08,
   // uncovered lines 2080 → 1915, uncovered branches 1859 → 1799. Measured by
   // `pnpm test:coverage` on this branch and pasted from the ratchet's own block.
+  // RE-PINNED in #1221, and every figure moved the GOOD way — this is banking
+  // coverage that was earned, which is the staleness half of the ratchet doing
+  // exactly its job. `RecipeEditPage.minuteBoxes.test.ts` put 21 cases through
+  // three minute boxes in `RecipeEditPage.svelte`, one of which (the step timer's
+  // duration) had no unit coverage at all before it, and the new
+  // `MinutesField.svelte` arrives fully covered. Branches rose 1.02 points, past
+  // the 1.00 tolerance, which is what tripped CI.
   'apps/web-pwa/src/routes/**': {
-    lines: 79.34,
-    branches: 67.08,
-    uncoveredLines: 1915,
-    uncoveredBranches: 1799,
+    lines: 80.28,
+    branches: 68.1,
+    uncoveredLines: 1846,
+    uncoveredBranches: 1759,
   },
   // RE-PINNED in #1233, and it is the dedup shape this file's header and
   // `scripts/check-coverage-ratchet.mjs` both name (the #1113 precedent): the

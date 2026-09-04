@@ -21,6 +21,7 @@
     TextField,
     type ComboboxItemType,
   } from '@salt/ui-components';
+  import MinutesField from './MinutesField.svelte';
   import { push, router } from 'svelte-spa-router';
   import { goBack } from '../../lib/nav.js';
   import { readMealParam } from '../../lib/mealReturn.js';
@@ -553,8 +554,15 @@
     );
   }
 
-  function setStepTimerMinutes(stepId: string, value: string): void {
-    const minutes = parseNumberOrNull(value) ?? 0;
+  // Deliberately NOT `phaseMinutesOrZero`: that one floors and clamps negatives
+  // and this one never has. Issue #1221 moved where the parse is CALLED FROM, not
+  // what it does — a step timer that accepted `-5` before still does, and tying
+  // the two rules together is a behaviour change for a different issue.
+  function stepTimerMinutes(value: string): number {
+    return parseNumberOrNull(value) ?? 0;
+  }
+
+  function setStepTimerMinutes(stepId: string, minutes: number): void {
     setSteps(
       draft.steps.map((s) =>
         s.id === stepId && s.timer ? { ...s, timer: { ...s.timer, durationMinutes: minutes } } : s,
@@ -1111,11 +1119,11 @@
                 onCheckedChange={(c) => toggleStepTimer(step.id, c)}
               />
               {#if step.timer}
-                <TextField
+                <MinutesField
                   label="Minutes"
-                  inputmode="numeric"
-                  value={String(step.timer.durationMinutes)}
-                  onValueChange={(v) => setStepTimerMinutes(step.id, v)}
+                  value={step.timer.durationMinutes}
+                  parse={stepTimerMinutes}
+                  onValueChange={(m) => setStepTimerMinutes(step.id, m)}
                   class="w-28"
                   data-testid="recipe-step-timer-minutes"
                 />
@@ -1241,20 +1249,18 @@
               </div>
 
               <div class="grid grid-cols-2 gap-3 pl-6">
-                <TextField
+                <MinutesField
                   label="Hands-on (min)"
-                  inputmode="numeric"
-                  value={String(phase.handsOnMinutes)}
-                  onValueChange={(v) =>
-                    updatePhase(pIdx, { handsOnMinutes: phaseMinutesOrZero(v) })}
+                  value={phase.handsOnMinutes}
+                  parse={phaseMinutesOrZero}
+                  onValueChange={(m) => updatePhase(pIdx, { handsOnMinutes: m })}
                   data-testid="recipe-phase-hands-on-input"
                 />
-                <TextField
+                <MinutesField
                   label="Hands-off (min)"
-                  inputmode="numeric"
-                  value={String(phase.handsOffMinutes)}
-                  onValueChange={(v) =>
-                    updatePhase(pIdx, { handsOffMinutes: phaseMinutesOrZero(v) })}
+                  value={phase.handsOffMinutes}
+                  parse={phaseMinutesOrZero}
+                  onValueChange={(m) => updatePhase(pIdx, { handsOffMinutes: m })}
                   data-testid="recipe-phase-hands-off-input"
                 />
               </div>
