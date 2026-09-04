@@ -112,6 +112,7 @@
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import { formatMinutes } from '../../lib/durationDisplay.js';
   import { SPLIT_QUERY, createMediaQuery } from '../../lib/mediaQuery.svelte.js';
+  import { recipeChatPanePrefs } from '../../lib/recipeChatPanePrefs.svelte.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
@@ -785,6 +786,20 @@
   const split = createMediaQuery(SPLIT_QUERY);
   const docked = $derived(split.matches);
 
+  // Is the chat column actually on screen? Two independent facts, and the layout
+  // needs the conjunction (issue #1141): there has to be ROOM for a second column
+  // (`docked`) AND the cook has to want one (`recipeChatPanePrefs`, an in-memory
+  // session preference — see its header for the Rule 3 reasoning).
+  //
+  // This is a derived boolean OVER the existing seam, not a second spelling of it:
+  // no media query is added anywhere by this feature, and
+  // `tests/sharedHelperGuard.test.ts` fails if one ever is. Everything that used to
+  // branch on `docked` for LAYOUT now branches on this, so `fill`, the grid classes
+  // and the column cannot disagree (ui-spec-v07 §1.4). The DRAWER deliberately does
+  // not: it is the phone surface and stays on `docked` alone, so switching the pane
+  // off on a wide screen never raises a sheet over the recipe.
+  const chatPaneShown = $derived(docked && recipeChatPanePrefs.on);
+
   // The drawer's stop is in-memory only and so is whether it is open — Rule 3, and
   // nothing here is worth restoring across a reload anyway.
   let drawerOpen = $state(false);
@@ -793,6 +808,12 @@
   // already beside it, so selecting is the whole action; below it, the drawer rises.
   function openChat(session: ChatSessionDoc): void {
     selectedSessionId = session.id;
+    // Selecting a conversation is never a dead press (issue #1141). With the pane
+    // switched off the list sits at the foot of the recipe, and picking from it has
+    // to bring the pane back — otherwise the chat is selected into a column that is
+    // not there. Unconditional: below the seam nothing reads this value, and the
+    // "Chat" header/⋮ action reaches the pane through here too.
+    recipeChatPanePrefs.show();
     if (!docked) {
       drawerOpen = true;
       void scrollRecipeToBody();
@@ -1371,21 +1392,26 @@
     {/if}
   </div>
 {:else}
-  <!-- `fill` from the fold up (issue #737): the recipe and the chat are two panes that
-       must scroll independently, which needs a real height chain rather than a guessed
-       one. There is deliberately NO `calc(100dvh - …)` anywhere below — every height
-       here comes from `DetailPage`'s fill (ui-spec-v07 §1) resolving against AppShell's
-       <main>. `docked` is reused rather than adding a second gate: it reads the same
-       media query as the `split:` variant, so the classes and the prop cannot disagree.
-       Its `false` default on SSR/no-`matchMedia` means one frame as an ordinary
-       scrolling page before it fills — the same honest default the drawer suppression
-       already accepts. -->
+  <!-- `fill` whenever the chat pane is actually beside the recipe (issues #737, #1141):
+       two panes that must scroll independently need a real height chain rather than a
+       guessed one. There is deliberately NO `calc(100dvh - …)` anywhere below — every
+       height here comes from `DetailPage`'s fill (ui-spec-v07 §1) resolving against
+       AppShell's <main>. `chatPaneShown` is reused rather than adding a second gate: the
+       same value drives the grid's responsive classes, so the classes and the prop cannot
+       disagree (ui-spec-v07 §1.4). Its `false` default on SSR/no-`matchMedia` means one
+       frame as an ordinary scrolling page before it fills — the same honest default the
+       drawer suppression already accepts.
+
+       With the chat switched OFF there is one pane, so `fill` no longer earns its place:
+       ui-spec-v07 §1.6 is explicit that it is not a way to make a page fit one screen, and
+       an ordinary long detail page wants <main>'s native momentum, real scrollbar,
+       find-in-page and zoom reflow instead. -->
   <DetailPage
     title={recipe.title}
     onBack={() => goBack('/recipes')}
     backLabel="Back"
     class="p-4 sm:p-6"
-    fill={docked}
+    fill={chatPaneShown}
   >
     {#snippet actions()}
       <!-- Nine actions is far too many to shout at once, so they are ranked and
@@ -1504,6 +1530,33 @@
         >
           {#snippet leading()}<Icon name="CalendarPlus" size={16} />{/snippet}
           Plan
+        </Button>
+      {/if}
+      <!-- The chat pane's own switch (issue #1141). The TENTH action, and it is allowed
+           inline only because it is icon-only and renders from `split` up — never on the
+           narrowest phone the row above is sized to, where it would have nothing to do
+           anyway (the chat is already a dismissible drawer there). Gated on `docked`
+           rather than `chatPaneShown`, because it is the one control that must still be
+           there when the pane is off; the row it joins therefore still reads
+           Cook · Shop · Plan · ⋮ at every width the budget was set for.
+
+           A labelled button was rejected: a fifth word pushes the row off the edge, and
+           this is flipped repeatedly, which also rules out the ⋮ menu (two presses, and
+           effectively undiscoverable). The accessible name says which way it will go. -->
+      {#if docked}
+        <Button
+          size="sm"
+          variant="ghost"
+          class="px-2"
+          onclick={() => recipeChatPanePrefs.toggle()}
+          ariaLabel={chatPaneShown ? 'Hide chef chat' : 'Show chef chat'}
+          title={chatPaneShown ? 'Hide chef chat' : 'Show chef chat'}
+          data-testid="recipe-chat-pane-toggle"
+          data-state={chatPaneShown ? 'shown' : 'hidden'}
+        >
+          {#snippet leading()}
+            <Icon name={chatPaneShown ? 'PanelRightClose' : 'PanelRightOpen'} size={16} />
+          {/snippet}
         </Button>
       {/if}
       <!-- Overflow (⋮), at every width since #735. Cook, Shop and Plan are never in
@@ -1813,9 +1866,20 @@
          directly. `gap-10` is the settled gutter, the same number #663 landed on for the
          planner. Above `lg` there is no crease and the recipe deserves the room, so the
          page keeps the 2fr/1fr it has always had. The nav seam stays at `lg`: the fold
-         keeps its bottom bar AND gets two columns. -->
+         keeps its bottom bar AND gets two columns.
+
+         With the chat switched off (issue #1141) there is one column and the responsive
+         classes go with it — the same `chatPaneShown` that drives `fill`, because
+         ui-spec-v07 §1.4 requires one gate for both and the pane's on/off state is only
+         knowable in JS, so this cannot be expressed as a `split:` variant. `max-w-4xl`
+         (896px) is the cap: it is what the recipe already gets from `2fr` of a `2fr_1fr`
+         grid on a 1440px monitor, so the collapsed page reads at the width it reads at
+         today rather than stretching a method step across the whole screen. `mx-auto`
+         centres what is left. -->
     <div
-      class="grid gap-4 split:min-h-0 split:flex-1 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
+      class={chatPaneShown
+        ? 'grid gap-4 split:min-h-0 split:flex-1 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6'
+        : 'mx-auto grid w-full max-w-4xl gap-4'}
       data-testid="recipe-view"
     >
       <!-- Left column: main recipe content. `min-w-0` because a grid item's automatic
@@ -1823,9 +1887,15 @@
            `white-space: nowrap` — a chat titled "<a long recipe name> chat" in the list
            below would size this column to the untruncated title and take the whole page
            wider than the phone with it. -->
-      <!-- From `split` up this column owns its own scrolling, so reading down the method
-           does not move the conversation beside it (#737). -->
-      <div class="flex min-w-0 flex-col gap-4 split:min-h-0 split:overflow-y-auto">
+      <!-- With the chat beside it this column owns its own scrolling, so reading down the
+           method does not move the conversation (#737). With the chat off there is no
+           second pane to hold still and no `fill` above to resolve a height against, so
+           the classes come off with it — the page scrolls as an ordinary detail page. -->
+      <div
+        class={chatPaneShown
+          ? 'flex min-w-0 flex-col gap-4 split:min-h-0 split:overflow-y-auto'
+          : 'flex min-w-0 flex-col gap-4'}
+      >
         <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
              recipe below is fully usable. Amber matches the canon review idiom. -->
         {#if recipe.needs_approval}
@@ -2695,20 +2765,40 @@
           </Card>
         {/if}
 
-        <!-- Every chat about this dish (issue #696). Below the seam there is no second
-             column, so the list lives at the foot of the recipe; from `split` up it
-             moves into the chat column above the conversation it selects. Rendered in
-             one place or the other, never both — one `recipe-chat-list` on the page. -->
-        {#if !docked}
+        <!-- Every chat about this dish (issue #696). With no chat column — below the
+             seam, or above it with the pane switched off (#1141) — the list lives at the
+             foot of the recipe; otherwise it moves into that column, above the
+             conversation it selects. Rendered in one place or the other, never both and
+             never neither — one `recipe-chat-list` on the page. That is also what keeps
+             past conversations reachable with the pane off, and why picking one from here
+             turns the pane back on rather than being a dead press. -->
+        {#if !chatPaneShown}
           {@render chatListCard()}
         {/if}
       </div>
 
-      <!-- Right column: the chat, docked from `split` up. Below that it does not render
-           at all and Phase 3's drawer is the whole story — the reveal hack this column
-           used to need is gone with it. -->
+      <!-- Right column: the chat, docked from `split` up. Below that it is `hidden` and
+           Phase 3's drawer is the whole story — the reveal hack this column used to need
+           is gone with it.
+
+           Switching the pane off drops the `split:flex` that reveals it, leaving the
+           `hidden` it already carries below the seam — a CLASS, deliberately, not an
+           `{#if}`. Issue #1141 requires that restoring the pane land on the same
+           conversation scrolled where you left it, and `ChatThread` auto-scrolls to the
+           newest message when it mounts: unmounting the column would therefore lose the
+           transcript's scroll position AND anything half-typed in the composer. Keeping
+           it mounted-but-hidden is also what this page already does below the seam (see
+           `sidebarChatActions` / `drawerChatActions`, which carry distinct testids
+           precisely because both surfaces can be mounted at once).
+
+           `display: none` is a real hide, not a paint-over: the column leaves the
+           accessibility tree, takes no grid track, and nothing inside it stays focusable.
+           The preference alone gates it rather than `chatPaneShown`, because the `split:`
+           variant is already the other half of that conjunction. -->
       <div
-        class="hidden min-w-0 flex-col split:flex split:min-h-0"
+        class={recipeChatPanePrefs.on
+          ? 'hidden min-w-0 flex-col split:flex split:min-h-0'
+          : 'hidden'}
         data-testid="recipe-chat-sidebar"
       >
         <!-- The card fills this column and the transcript inside it does the scrolling.
@@ -2748,7 +2838,7 @@
                  is no transcript to put it above yet — without it a recipe whose chats
                  are all closed would list none of them. -->
             <CardContent class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-              {#if docked}
+              {#if chatPaneShown}
                 <div class="shrink-0">{@render chatListCard()}</div>
               {/if}
               <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -2772,15 +2862,16 @@
             <!-- The list rides INSIDE the transcript's scroll box (`aboveTranscript`), so
                  it scrolls off as the conversation grows and a long reply gets the whole
                  column. Scroll the pane back to the top to switch conversations. Guarded
-                 on `docked` because below the seam the list lives at the foot of the
-                 recipe instead — one `recipe-chat-list` on the page, never two. -->
+                 on `chatPaneShown` because whenever this column is not on screen the list
+                 lives at the foot of the recipe instead — one `recipe-chat-list` on the
+                 page, never two. -->
             <ChatThread
               session={activeSession}
               thread={chat}
               layout="panel"
               emptyText="Ask me anything about this recipe."
               starters={recipeStarters}
-              aboveTranscript={docked ? dockedChatList : undefined}
+              aboveTranscript={chatPaneShown ? dockedChatList : undefined}
             />
           {/if}
         </Card>
