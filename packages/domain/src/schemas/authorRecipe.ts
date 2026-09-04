@@ -34,17 +34,41 @@ export const AuthorRecipeOutputSchema = RecipeSchema;
 // The model uses 0-based step ordinals for ingredient links; the flow resolves
 // them to step IDs before returning the final RecipeDoc to the client.
 //
-// The three sub-shapes are the EXTRACTOR's (issue #932, B3-003 structural half).
+// The sub-shapes are the EXTRACTOR's (issue #932, B3-003 structural half).
 // `LibrarianIngredientSchema` / `LibrarianGroupSchema` / `LibrarianStepSchema`
 // were byte-identical restatements of `ExtractedIngredientSchema` /
-// `ExtractedIngredientGroupSchema` / `ExtractedStepSchema`, so they are gone and
-// this consumes those directly — one declaration per shape.
+// `ExtractedIngredientGroupSchema` / `ExtractedStepSchema`, so this consumes
+// those directly — one declaration per shape. `LibrarianStepSchema` came back in
+// #1178, but as an `.extend` of the extractor's step carrying one amend-only
+// field, not as a restatement: see its declaration below.
 //
 // The four top-level numeric fields carry the EXTRACTOR's constraints — the three
 // time fields since #952, `servings` since #1123 — so the two schemas accept and
 // reject the same numbers. `authorRecipe.schema.test.ts` runs one value matrix
 // through both and asserts they agree, because "they match" is otherwise a
 // sentence nothing falsifies when one of them is edited alone.
+// The librarian's step shape: the extractor's, plus the one field only an AMEND
+// can answer (issue #1178). In edit mode the prompt renders each existing step as
+// `N. [<id>] text` and asks the model to cite, verbatim, the id of the step each
+// returned step was rewritten FROM — null for a step it is adding. That citation
+// is what lets `diffRecipe`'s id-equality pass recognise a reworded step as one
+// edit rather than a deletion beside an addition.
+//
+// `.extend` rather than a second declaration of the whole shape: #932 deleted the
+// librarian's byte-identical restatements of the extractor sub-shapes precisely so
+// the two could not drift, and one named addition on top keeps that. It is NOT on
+// `ExtractedStepSchema` itself because the URL and photo importers have no existing
+// recipe to cite — the field could only ever be null there.
+//
+// `.nullable().optional()` is load-bearing back-compat: a model that ignores the
+// instruction, an older response, and every `FUNCTIONS_AI_FAKE` fixture all still
+// parse. And the field NEVER PERSISTS — `assembleRecipeDraft` consumes it to decide
+// which id a step gets and discards it, so no recipe document gains a field and no
+// migration exists.
+export const LibrarianStepSchema = ExtractedStepSchema.extend({
+  sourceStepId: z.string().nullable().optional(),
+});
+
 export const LibrarianOutputSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
@@ -71,7 +95,7 @@ export const LibrarianOutputSchema = z.object({
   timingSummary: AuthoredTimingSummarySchema.optional(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(ExtractedIngredientGroupSchema),
-  steps: z.array(ExtractedStepSchema),
+  steps: z.array(LibrarianStepSchema),
   notes: z.string().nullable(),
 });
 

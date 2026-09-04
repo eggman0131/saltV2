@@ -23,6 +23,12 @@ vi.mock('../../src/observability/reportServerError.js', () => ({
   reportServerError: mockReport,
 }));
 
+const mockLogInfo = vi.fn();
+const mockLogWarn = vi.fn();
+vi.mock('firebase-functions', () => ({
+  logger: { info: mockLogInfo, warn: mockLogWarn, error: vi.fn() },
+}));
+
 vi.stubGlobal('crypto', { randomUUID: mockUUID });
 
 const { assembleRecipeDraft } = await import('../../src/flows/assembleRecipeDraft.js');
@@ -760,5 +766,93 @@ describe('assembleRecipeDraft — the phase strip', () => {
     // come from the base, not just the one the model happened to omit.
     expect(doc.metadata.phases).toEqual(base.metadata.phases);
     expect(doc.metadata.timingSummary).toBe(base.metadata.timingSummary);
+  });
+});
+
+// ─── step citations, observed only (issue #1178, Phase 1) ─────────────────────
+
+// Phase 1 asks the librarian which existing step each returned step came from and
+// then throws the answer away — the point is to find out whether the model cites
+// reliably before Phase 2 makes anything depend on it. So the assertions here are
+// about the COUNTS being right and the assembled recipe being untouched.
+describe('assembleRecipeDraft — librarian step citations', () => {
+  function citations() {
+    const call = mockLogInfo.mock.calls.find(
+      (c) => c[0] === 'assembleRecipeDraft: librarian step citations',
+    );
+    return call?.[1] as
+      | { steps: number; baseSteps: number; cited: number; known: number; duplicated: number }
+      | undefined;
+  }
+
+  function withCitations(...ids: (string | null)[]) {
+    const steps = rawOutput().steps.map((step, i) => ({ ...step, sourceStepId: ids[i] ?? null }));
+    return rawOutput({ steps });
+  }
+
+  it('counts a citation that names a step of the recipe being amended', async () => {
+    await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(citations()).toEqual({
+      steps: 2,
+      baseSteps: 1,
+      cited: 1,
+      known: 1,
+      duplicated: 0,
+    });
+  });
+
+  it('counts a citation to an id the base recipe does not have as cited but not known', async () => {
+    await assembleRecipeDraft(withCitations('hallucinated', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(citations()).toMatchObject({ cited: 1, known: 0, duplicated: 0 });
+  });
+
+  it('counts the second claim on one id as a duplicate', async () => {
+    await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(citations()).toMatchObject({ cited: 2, known: 2, duplicated: 1 });
+  });
+
+  it('says nothing at all when there is no recipe being amended', async () => {
+    // Create and variation mode both assemble with `baseRecipe: null`. There is
+    // nothing a citation could name, so a line per import would be pure noise.
+    await assembleRecipeDraft(withCitations('old-step'), { source: MANUAL });
+
+    expect(citations()).toBeUndefined();
+  });
+
+  it('logs counts only — never a word of the recipe', async () => {
+    // Same rule as the parse-failure report above: free-form user content stays
+    // out of anything we emit, and a citation sits right beside it.
+    await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    const serialised = JSON.stringify(citations());
+    expect(serialised).not.toContain('pasta');
+    expect(serialised).not.toContain('garlic');
+    expect(serialised).not.toContain('old-step');
+  });
+
+  it('leaves every assembled step id freshly minted, citation or not', async () => {
+    // Phase 1 observes and does not act. Honouring the citation is Phase 2's job;
+    // until then a cited step is exactly as new as an uncited one.
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(doc.steps.map((s) => s.id)).toEqual(['id-1', 'id-2']);
   });
 });

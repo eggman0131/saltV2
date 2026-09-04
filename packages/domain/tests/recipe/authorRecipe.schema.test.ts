@@ -115,3 +115,55 @@ describe('LibrarianOutputSchema — a malformed strip degrades, never fails the 
     if (result.success) expect(result.data.phases).toEqual([]);
   });
 });
+
+// ─── sourceStepId (issue #1178) ────────────────────────────────────────────────
+
+// The librarian's one amend-only field. Everything here is about it NOT being a
+// hard requirement: the model can omit it, null it, or answer with a shape from
+// before the field existed, and the recipe still parses. That is what makes the
+// whole feature safe to ship without a flag — the worst case is the behaviour we
+// had yesterday, not a failed amend.
+describe('LibrarianOutputSchema — sourceStepId', () => {
+  it('parses a step that cites the id it came from', () => {
+    const steps = [{ ...BASE.steps[0]!, sourceStepId: 'step-abc' }];
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, steps });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.steps[0]!.sourceStepId).toBe('step-abc');
+  });
+
+  it('parses a step that explicitly cites nothing', () => {
+    const steps = [{ ...BASE.steps[0]!, sourceStepId: null }];
+    const result = LibrarianOutputSchema.safeParse({ ...BASE, steps });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.steps[0]!.sourceStepId).toBeNull();
+  });
+
+  it('parses a response that has never heard of the field, and leaves it undefined', () => {
+    // Back-compat, and the shape every FUNCTIONS_AI_FAKE fixture and every model
+    // that ignores the instruction returns. `BASE.steps` carries no sourceStepId.
+    const result = LibrarianOutputSchema.safeParse(BASE);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.steps[0]!.sourceStepId).toBeUndefined();
+  });
+
+  it('rejects a non-string citation rather than coercing it', () => {
+    const steps = [{ ...BASE.steps[0]!, sourceStepId: 7 }];
+    expect(LibrarianOutputSchema.safeParse({ ...BASE, steps }).success).toBe(false);
+  });
+
+  it('keeps the field off the extractor contract, where it could only ever be null', () => {
+    // Decision 2 on #1178, made mechanical: adding `sourceStepId` to
+    // `ExtractedStepSchema` itself would put an amend-only field in the URL and
+    // photo importers' wire shape. Zod strips unknown keys, so a citation offered
+    // there is dropped rather than carried.
+    const result = ExtractRecipeAIOutputSchema.safeParse({
+      isRecipe: true,
+      ...BASE,
+      steps: [{ ...BASE.steps[0]!, sourceStepId: 'step-abc' }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.steps[0]!).not.toHaveProperty('sourceStepId');
+    }
+  });
+});
