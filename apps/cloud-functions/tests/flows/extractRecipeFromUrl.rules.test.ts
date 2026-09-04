@@ -168,3 +168,26 @@ describe('extractRecipeFromUrl — shared field rules (#785)', () => {
     expect(system).not.toContain('tablespoons and teaspoons');
   });
 });
+
+// ─── the step-citation clause is not here (issue #1178) ───────────────────────
+
+// #1178 asks the LIBRARIAN, in edit mode only, which existing step each rewrite
+// came from. "The blast radius is edit mode alone" is a sentence unless the
+// prompts it must not have reached say so themselves, and an import prompt is
+// where it would land by accident: `recipeFieldRules` and `STEP_RULES` are shared
+// with the librarian since #785, so a clause put there instead would arrive here
+// silently and be asking a question a web page cannot answer.
+describe('extractRecipeFromUrl — no step-provenance clause (#1178)', () => {
+  it('never asks an import to cite a step it came from, on either prompt', async () => {
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+    expect(systemPromptFrom()).not.toContain('sourceStepId');
+    expect(systemPromptFrom()).not.toContain('Where each step came from');
+
+    vi.clearAllMocks();
+    mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
+    mockJsonLd.mockReturnValue(JSON_LD);
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+    expect(systemPromptFrom()).not.toContain('sourceStepId');
+    expect(systemPromptFrom()).not.toContain('Where each step came from');
+  });
+});
