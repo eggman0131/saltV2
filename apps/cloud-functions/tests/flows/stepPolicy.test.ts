@@ -23,8 +23,15 @@
  *  - The two source files are read and asserted to interpolate rather than
  *    re-type (UT-E2). Editing the sentence in place inside a consumer, instead
  *    of in the constant, is the second way this regresses.
- *  - The Svelte component is asserted to declare neither canned prompt — #934's
- *    "Done when" — and to reach them through the subpath.
+ *
+ * ── Where the component half lives ───────────────────────────────────────────
+ *
+ * #934's other "Done when" — that no web-pwa component re-declares a canned
+ * prompt — is pinned in `apps/web-pwa/tests/stepPolicyPrompts.test.ts`. It was
+ * asserted here, by reading the component off disk through a repo-root path,
+ * which is the cross-app reach CLAUDE.md hard rule 6 forbids and which no gate
+ * can see (a `readFileSync` is not an edge in the import graph). It moved into
+ * the app that owns the file it reads (#1250).
  *
  * ── The honest boundary: what a green run here does NOT prove ────────────────
  *
@@ -53,7 +60,6 @@ const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
 const STEP_RULES_SRC = 'apps/cloud-functions/src/flows/stepRules.ts';
 const CHAT_PROMPTS_SRC = 'packages/domain/src/prompts/recipeChatPrompts.ts';
 const DECLARATION_SRC = 'packages/domain/src/prompts/stepPolicy.ts';
-const RECIPE_PAGE = 'apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte';
 
 describe('the step policy reaches both registers from one statement', () => {
   it('is present in the field-list prompt and the chat turn alike', () => {
@@ -82,28 +88,5 @@ describe('the step policy reaches both registers from one statement', () => {
     expect(ONE_OPERATION_PER_STEP_PRINCIPLE.length).toBeGreaterThan(100);
     // A near-miss: the label alone is NOT the policy, and must not read as a copy.
     expect('ONE COHERENT OPERATION PER STEP.').not.toContain(ONE_OPERATION_PER_STEP_PRINCIPLE);
-  });
-});
-
-describe('no policy prose is left in the Svelte component (#934 Done when)', () => {
-  it('declares neither canned prompt and imports both from the shared subpath', () => {
-    const page = read(RECIPE_PAGE);
-    expect(page).not.toMatch(/const\s+REFRESH_PROMPT\s*=/);
-    expect(page).not.toMatch(/const\s+OPTIMISE_FOR_KITCHEN_PROMPT\s*=/);
-    expect(page).toContain("from '@salt/domain/prompts'");
-    // Still sent, though — a component that dropped the prompts entirely would
-    // pass every assertion above and have broken both menu items.
-    expect(page).toContain('OPTIMISE_FOR_KITCHEN_PROMPT');
-    expect(page).toContain('REFRESH_PROMPT');
-  });
-
-  it('would catch a re-declared prompt — the matcher is exercised', () => {
-    expect('  const REFRESH_PROMPT = `Write this recipe out again`;').toMatch(
-      /const\s+REFRESH_PROMPT\s*=/,
-    );
-    // A near-miss: importing or sending the constant is not declaring it.
-    expect("  import { REFRESH_PROMPT } from '@salt/domain/prompts';").not.toMatch(
-      /const\s+REFRESH_PROMPT\s*=/,
-    );
   });
 });
