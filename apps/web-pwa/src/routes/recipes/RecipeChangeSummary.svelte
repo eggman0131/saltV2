@@ -268,22 +268,37 @@
     if (phases || summary) {
       const before = timingSide(phases ? phases.from : null, summary ? summary.from : undefined);
       const after = timingSide(phases ? phases.to : null, summary ? summary.to : undefined);
-      // `diffRecipe` reports a field that moved; this card can only report what
-      // a reviewer can SEE move. `timingSide` deliberately collapses null, ""
-      // and whitespace to the one literal `no summary` (and trims a real
-      // sentence), so a stored `timingSummary` going null → "" is a change to
-      // the document and no change at all on screen — a card asserting movement
-      // while printing the same string in both columns, over a live Apply
-      // (#1217). Identical sides therefore yield no card, exactly as
-      // `textOrNull` declines to draw a prose field moving null ↔ "".
+      // A strip movement ALWAYS draws. `diffRecipe` has already compared the two
+      // strips field by field (`phasesEqual`), so `phases` being present is proof
+      // the stored document moved — proof computed on the data, which this
+      // component cannot improve on by re-deriving it from its own prose. When it
+      // tried, it lost: `phasesValue` collapses a blank label to `Untitled` and
+      // never prints hands-off at all, so `'' → 'Untitled'` and `-5 → 0` rendered
+      // alike, the card was dropped, and with no other card in the diff
+      // `hasAnyCards` took the Apply button with it — a real change, plainly
+      // visible on the recipe page, that nobody could accept (#1239).
       //
-      // The rule is stated on the RENDERED strings rather than on blankness so
-      // it cannot be outflanked by a second identical-looking pair: printing
-      // hands-on beside elapsed (#1216) exists to make sure a real strip change
-      // never lands here, and if a future rendering loses a distinction, this
-      // drops the unreadable card instead of showing it. Its known weakness is
-      // #1228.
-      if (before !== after) cards.push(makeCard('timing', 'Timing', 'edit', before, after));
+      // The rendered comparison therefore governs the SENTENCE alone, which is
+      // the half #1217 was written about: `timingSide` collapses null, "" and
+      // whitespace to the one literal `no summary` and trims the rest, so a
+      // stored `timingSummary` going null → "" is a change to the document and no
+      // change at all on screen. That collapse is enumerable and is the whole of
+      // the rule; nothing here claims `phasesValue` is injective, and nothing
+      // needs it to be.
+      //
+      // Accepted cost: a strip pair that happens to render alike now draws a card
+      // whose two columns read the same. That is the lesser failure — #1216's
+      // complaint was a card asserting a change invisible EVERYWHERE, whereas
+      // this change is visible on the recipe page, so the reviewer can act on it.
+      // Its boundary, stated rather than asserted away: a stored NaN minute makes
+      // `phasesEqual` report a change on every comparison (NaN !== NaN), which
+      // would draw that identical-looking card on every proposal. No write path
+      // can produce one — the editor and `AuthoredRecipePhasesSchema` both clamp
+      // to non-negative integers — but `RecipePhaseSchema` is deliberately
+      // permissive on read (#1123), so this is a limit of that boundary rather
+      // than an impossibility.
+      if (phases || before !== after)
+        cards.push(makeCard('timing', 'Timing', 'edit', before, after));
     }
     return cards;
   });
@@ -310,7 +325,8 @@
   // Whether the sheet has anything to show at all. Deliberately NOT
   // `diff?.hasChanges`: `diffRecipe` reports a change whenever a field moved,
   // but a section renders only what THIS component chose to draw from it — the
-  // Timing card declines to draw a pair whose two sides render identically — so
+  // Timing card declines to draw a SENTENCE-only pair whose two sides render
+  // identically (the strip half always draws, #1239) — so
   // the two can disagree, and when they do, `hasChanges` alone would draw the
   // "here's what will change" sheet with a live Apply button over zero cards
   // (#1216). Deciding from the cards actually built keeps this exact everywhere
