@@ -182,7 +182,7 @@ If no issue is currently startable (everything left is blocked behind something 
 ### 5. Open the ledger, then go
 
 ```
-gh issue create --title "campaign: <slug> (#a #b #c)" --body "<the plan below>"
+gh issue create --title "campaign: <slug> (#a #b #c)" --body-file <file>   # write the plan below to a file first
 ```
 
 No label, no board fields and no parent — see **Filing an issue**; the `campaign:` title prefix is the discoverable marker, it is what the resume search matches, and it is what `board.mjs check` recognises to leave the ledger out of triage. The body is the live state of the campaign and it is what a fresh session reads. Keep it current with `gh issue edit <ledger> --body-file <file>` on every transition:
@@ -226,7 +226,7 @@ Explicitly, with `git worktree add` — **not** the Agent tool's `isolation: "wo
 `.husky/post-checkout` fires `ensure-checkout.mjs` on `worktree add`, which installs dependencies, writes the gitignored dev env files, and — the invisible one — restores `core.hooksPath` so the pre-commit gates actually run. A worktree created any other way has dead commit hooks.
 
 - **One worker per worktree.** Never two agents in one checkout; they share a HEAD.
-- **Workers run the safe gate set only.** `lint`, `typecheck`, `check`, `test`, `depcruise`, `boundary:test`, `format:check`, `docsmap:check`, `theme:check`, `provenance:check`. The guarded commands — `dev`, `dev:emulators`, `test:emulator`, `e2e*` — seize host-global singletons and `scripts/host-guard.mjs` refuses them in a linked worktree. That refusal is correct. Never set `SALT_TAKE_HOST=1` to get past it: from a worktree it kills whatever Daniel is sitting in. The heavy suites are CI's job, at merge time.
+- **Workers run the safe gate set only.** `lint`, `typecheck`, `check`, `test:coverage`, `depcruise`, `boundary:test`, `format:check`, `docsmap:check`, `theme:check`, `provenance:check`, and then `coverage:files:check` + `coverage:ratchet:check` on the report `test:coverage` just wrote. The suite runs **with** coverage: the two coverage gates block CI's `unit` job, they run with near-zero slack, and a worker that skips them goes green locally and red in CI minutes later — that cost this campaign one CI cycle on #1140 and two on #1137. The guarded commands — `dev`, `dev:emulators`, `test:emulator`, `e2e*` — seize host-global singletons and `scripts/host-guard.mjs` refuses them in a linked worktree. That refusal is correct. Never set `SALT_TAKE_HOST=1` to get past it: from a worktree it kills whatever Daniel is sitting in. The heavy suites are CI's job, at merge time.
 - **On merge:** remove the worktree and delete the local branch (see the queue for the ordering — it matters).
 - **On park:** the branch must survive and be findable. Push it (`git push -u origin <branch>` — a WIP commit first if the tree is dirty), label the PR `status: on-hold` (the repo's parked label — do not invent a new one), comment the reason on the PR as well as the ledger, then remove the worktree. A parked issue whose state exists only in a ledger comment is a parked issue nobody finds.
 - Finish the campaign with `git worktree prune`. This repo currently carries four stale prunable worktrees and an orphaned `integration/current-sprint` branch from an earlier attempt; do not add to them.
@@ -450,9 +450,17 @@ together, and `pnpm mergequeue:check` fails if the ruleset's contexts stop
 reporting at all.)
 
 ```
-gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run list --limit 25 --json databaseId,event,headBranch,status,conclusion \
+  --jq '[.[] | select(.event=="merge_group")][0].databaseId'
 gh run view <id> --json jobs --jq '.jobs[] | select(.name | test("E2E|integration")) | "\(.name): \(.conclusion)"'
 ```
+
+**Do not reach for `--branch main` here.** A merge-queue build's `headBranch` is
+`gh-readonly-queue/main/pr-<n>-<sha>`, not `main`, so `--branch main --limit 1`
+returns the post-merge `push` run instead — which at that moment is still
+`in_progress` with empty job conclusions. Read as written, campaign.md's own
+"empty output → park" rule then parks a perfectly good merge. Select on
+`event == "merge_group"` and the right run is unambiguous.
 
 - `success` → land it in the ledger.
 - `skipped`, and the batch's changed files are only docs/CI/meta paths →
