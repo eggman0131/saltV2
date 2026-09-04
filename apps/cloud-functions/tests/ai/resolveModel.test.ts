@@ -99,21 +99,16 @@ describe('resolveModel', () => {
     });
   });
 
-  // ─── The two flows the registry was missing (#935) ────────────────────────
-  // Both resolved a model with no registry entry before this issue, so neither
-  // could be overridden from /admin/app-settings at all. These are the cases
-  // that were impossible to write.
-  describe('newly registered flows', () => {
-    it('categoriseRecipe resolves on `fast` and honours its own override', async () => {
-      mockGet.mockResolvedValue({
-        exists: true,
-        data: () => ({ fast: 'role-fast', perFlow: { categoriseRecipe: 'flow-categorise' } }),
-      });
-      expect(await resolveModel('categoriseRecipe')).toBe('flow-categorise');
-      // ...and the sibling on the same tier is untouched by it.
-      expect(await resolveModel('authorRecipe')).toBe('role-fast');
-    });
-
+  // ─── A per-flow override does not leak to its tier sibling (lite) ─────────
+  // #935 added the registry so a flow that resolved a model could be overridden
+  // from /admin/app-settings at all; this is the `lite`-tier case that was
+  // impossible to write before it — the override and the role default are read
+  // from the same doc, and the bug worth catching is one moving the other.
+  // `fast` is pinned separately in Phase 2's `authorRecipe` cases below, so this
+  // block carries only the tier Phase 2 doesn't reach. It was the
+  // `categoriseRecipe` case until #1249 retired that key with the flow it named;
+  // `arbitrateProductForm` is the same shape on the same tier.
+  describe('per-flow override does not leak to its tier sibling (lite)', () => {
     it('arbitrateProductForm resolves on `lite` and honours its own override', async () => {
       mockGet.mockResolvedValue({
         exists: true,

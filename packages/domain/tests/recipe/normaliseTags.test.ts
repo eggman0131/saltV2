@@ -4,10 +4,10 @@ import { normaliseTags } from '../../src/recipe/commands/normaliseTags.js';
 /**
  * The one tag normalisation (issue #1054, Phase 5).
  *
- * The first row is `categoriseRecipe.test.ts:46`'s table, ported here so the
+ * The first row was ported from the `categoriseRecipe` flow's own test, so the
  * rule is pinned where it now lives rather than only through the flow that
- * happened to own it. That CF test stays green untouched, which is what proves
- * the server side did not move.
+ * happened to own it. That porting is what let #1249 retire that flow — and
+ * delete its test — without losing the table.
  */
 describe('normaliseTags', () => {
   it('lowercases, kebab-cases, comma-splits and dedupes — the ported model-output table', () => {

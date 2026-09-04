@@ -99,7 +99,7 @@ describe('cloud-functions: every AI call is guarded by a timeout', () => {
         expect(
           HAS_WRAP.test(file.code),
           `${file.path} calls ai.generate/ai.embed but has no withAiTimeout guard. ` +
-            `Wrap the call in withAiTimeout (see categoriseRecipe.ts). The deadline ` +
+            `Wrap the call in withAiTimeout (see identifyRecipeKit.ts). The deadline ` +
             `belongs in the file that makes the call — a caller applying one from ` +
             `outside only covers the callers that remember, and a flow exported as ` +
             `its own callable has no caller to remember.`,

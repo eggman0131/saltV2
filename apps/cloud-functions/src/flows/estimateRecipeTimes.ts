@@ -126,8 +126,8 @@ export const estimateRecipeTimesFlow = ai.defineFlow(
         : null,
     ].filter((p): p is string => p !== null);
 
-    // `fast` + temperature 0, the same posture as identifyRecipeKit and
-    // categoriseRecipe. Two cooks reading the same recipe should reach the same
+    // `fast` + temperature 0, the same posture as identifyRecipeKit.
+    // Two cooks reading the same recipe should reach the same
     // half-hour, and a backfill that returns a different answer each time it is
     // re-run is not a backfill.
     const model = await flowModel('estimateRecipeTimes');

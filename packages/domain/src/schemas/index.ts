@@ -245,11 +245,6 @@ export type {
 } from './estimateRecipeTimes.js';
 
 export {
-  CategoriseRecipeInputSchema,
-  CategoriseRecipeAIOutputSchema,
-  CategoriseRecipeOutputSchema,
-} from './categoriseRecipe.js';
-export {
   DescribeRecipeSceneInputSchema,
   DescribeRecipeSceneOutputSchema,
 } from './describeRecipeScene.js';

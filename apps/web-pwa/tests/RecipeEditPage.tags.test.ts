@@ -8,8 +8,9 @@ import type { Recipe } from '@salt/domain';
  *
  * WHY THIS EXISTS. The editor has six suites and none of them touches tags, so
  * the rule that turns what you type into a stored tag was unasserted on the
- * client side while the server's `normaliseTags` was pinned by
- * `categoriseRecipe.test.ts`. Issue #1054 Phase 5 deletes the client copy and
+ * client side while the server's `normaliseTags` was pinned only through the
+ * `categoriseRecipe` flow's test (that flow is retired, #1249; the table it
+ * carried now lives in `normaliseTags.test.ts`). Issue #1054 Phase 5 deletes the client copy and
  * points both apps at one domain function, which changes one of the answers
  * below. Pinning the CURRENT answers first is what makes that change a one-line
  * diff to a test rather than something absorbed silently (#941 Track B).
