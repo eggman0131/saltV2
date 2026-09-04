@@ -85,13 +85,7 @@ export function resolveEquipmentItem(
     const head = tokens[0];
     if (!head || !labelTokens.has(head)) continue;
     const own = new Set(tokens);
-    let subset = true;
-    for (const word of labelTokens) {
-      if (!own.has(word)) {
-        subset = false;
-        break;
-      }
-    }
+    let subset = ownNameExplains(labelTokens, own);
     if (!subset) {
       // The item's own name does not cover every word — maybe the rest is one
       // of ITS owned accessories, named alongside the item's leading word.
@@ -106,4 +100,40 @@ export function resolveEquipmentItem(
     match = item;
   }
   return match;
+}
+
+// PART 2 OF THE RULE, WRITTEN ONCE (issue #1196). Does the item's own name carry
+// every word the label carries? Both the loop above and `namesItemItself` below
+// need exactly this test, and they had a copy each — nothing tied them together
+// but the header claiming they agreed, so either could have been loosened alone.
+// Takes tokens rather than strings because the caller above already has both
+// sides folded and must not fold them twice per item.
+function ownNameExplains(labelTokens: Iterable<string>, own: ReadonlySet<string>): boolean {
+  for (const word of labelTokens) {
+    if (!own.has(word)) return false;
+  }
+  return true;
+}
+
+/**
+ * Is this label spelled out of the item's OWN name, rather than out of one of its
+ * accessories?
+ *
+ * Not a resolver and not a second opinion on one: the caller has already
+ * established that `label` names `item` — `resolveEquipmentItem` returned it — and
+ * this asks the one thing that return value cannot say, which half of the two-part
+ * rule got it there. The item is a given, never searched for, so loosening or
+ * tightening this cannot make a label resolve to something it otherwise would not.
+ *
+ * The membership test is the resolver's own (`ownNameExplains`), not a copy of it,
+ * and both sides fold through the same `normaliseName` — so the two cannot disagree
+ * about which words count, nor about case, punctuation, plurals or model numbers.
+ * `groupKitByEquipment` is the caller; see its header for what it does with the
+ * answer.
+ */
+export function namesItemItself(label: string, item: EquipmentItem): boolean {
+  return ownNameExplains(
+    normaliseName(label).split(' ').filter(Boolean),
+    new Set(normaliseName(item.name).split(' ').filter(Boolean)),
+  );
 }

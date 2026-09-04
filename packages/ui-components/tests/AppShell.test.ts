@@ -150,6 +150,42 @@ describe('AppShell collapsible SideNav (ui-spec-v15 §1)', () => {
     expect(toggle(container)!.getAttribute('aria-expanded')).toBe('true');
   });
 
+  // ui-spec-v15 §1.5, the row of that table no static render can reach.
+  // `navCollapsed` is NOT cleared on the way in or out of a full-viewport route:
+  // `AppShell` is mounted once for the app's whole life, so a user who collapsed
+  // the nav, went into cook mode and came back finds it still collapsed. Every
+  // other case in this file renders fixed props, and fixed props cannot say
+  // anything about what SURVIVES a change — this one flips `chrome` underneath a
+  // live shell, which is what the route change actually does.
+  //
+  // Uncontrolled on purpose: `App.svelte` passes no `navCollapsed` (it is the only
+  // caller, and it never has), so this is the path the app runs. Passing the prop
+  // and then re-rendering would pin the FIXTURE instead of the shell —
+  // `@testing-library/svelte` re-derives every prop from one reactive props object
+  // on each `rerender`, so a passed `navCollapsed={false}` would overwrite the
+  // toggled value and the test would fail while the app was fine.
+  it('keeps the SideNav collapsed across a full-viewport route and back', async () => {
+    const { container, rerender } = render(AppShell, { props: { navItems, currentPath: '/' } });
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeTruthy();
+
+    await fireEvent.click(toggle(container)!);
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeNull();
+
+    // Into cook mode. `chrome` dominates: no TopBar, no navs, nothing focusable.
+    await rerender({ currentPath: '/recipes/r1/cook', chrome: false });
+    expect(container.querySelector('header')).toBeNull();
+    expect(focusables(container)).toHaveLength(0);
+
+    // …and back out. The chrome returns; the SideNav does not come back with it,
+    // and the control still says which way it goes.
+    await rerender({ currentPath: '/', chrome: true });
+    expect(container.querySelector('header')).toBeTruthy();
+    expect(container.querySelector('nav.fixed.bottom-0')).toBeTruthy();
+    expect(container.querySelector(`#${SIDE_NAV_ID}`)).toBeNull();
+    expect(toggle(container)!.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(container)!.getAttribute('aria-label')).toBe('Show navigation');
+  });
+
   it('renders no control when there is no chrome to toggle', () => {
     const { container } = render(AppShell, {
       props: { navItems, currentPath: '/recipes/r1/cook', chrome: false, navCollapsed: true },

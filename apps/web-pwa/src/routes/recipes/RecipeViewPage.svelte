@@ -1868,6 +1868,17 @@
          page keeps the 2fr/1fr it has always had. The nav seam stays at `lg`: the fold
          keeps its bottom bar AND gets two columns.
 
+         The two crease-shaped classes are spelled as NARROWED `split:max-lg:` rather
+         than left for the `lg:` pair below to override, and that is not a style
+         preference (#1143 hit the same thing in the planner). Tailwind emits the
+         `split:` utilities AFTER the `lg:` ones and both are single-class selectors, so
+         at a size matching both media queries `split:` wins on source order — written
+         unnarrowed, `lg:grid-cols-[2fr_1fr]` and `lg:gap-6` were silently dead and every
+         wide screen got equal halves with a 40px gutter. `max-lg` is not a new
+         breakpoint, it is the standard `lg` seam read from the other side, so below
+         `lg` this compiles to exactly what it compiled to before — which is why this
+         spec's 755px cases cannot see the change and a wide case had to be added.
+
          With the chat switched off (issue #1141) there is one column and the responsive
          classes go with it — the same `chatPaneShown` that drives `fill`, because
          ui-spec-v07 §1.4 requires one gate for both and the pane's on/off state is only
@@ -1878,7 +1889,7 @@
          centres what is left. -->
     <div
       class={chatPaneShown
-        ? 'grid gap-4 split:min-h-0 split:flex-1 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6'
+        ? 'grid gap-4 split:min-h-0 split:flex-1 split:max-lg:grid-cols-2 split:max-lg:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6'
         : 'mx-auto grid w-full max-w-4xl gap-4'}
       data-testid="recipe-view"
     >

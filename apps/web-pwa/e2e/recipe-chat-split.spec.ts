@@ -344,3 +344,59 @@ test.describe('recipes — putting the chef away', () => {
     await expect(page.getByTestId('chat-input')).toBeVisible();
   });
 });
+
+// ─── Above the nav seam, the recipe gets the room (issue #1197) ───────────────
+
+// Well clear of `lg` (1024px) and of the `split` height floor — Playwright's stock
+// `Desktop Chrome` size, which is the shape an actual desktop browser has.
+const WIDE_VIEWPORT = { width: 1280, height: 720 };
+
+// The gutter above `lg` (`lg:gap-6`). Narrower than the fold's 40px on purpose:
+// there is no crease up here for it to cover, only two columns to separate.
+const WIDE_GUTTER_PX = 24;
+
+/**
+ * Above `lg` the columns are 2fr/1fr, not the fold's equal halves.
+ *
+ * This is the case the 755px runs above are structurally blind to, and it stayed
+ * broken in production because of it: the `split:` utilities are emitted AFTER the
+ * `lg:` ones at equal specificity, so an unnarrowed `split:grid-cols-2` silently
+ * beat `lg:grid-cols-[2fr_1fr]` at every width that matched both, and a desktop got
+ * equal halves with a 40px gutter. Narrowing the crease classes to `split:max-lg:`
+ * is the fix; this is the assertion that goes red if either the narrowing or the
+ * ratio is undone.
+ */
+test.describe('recipes — the recipe takes two thirds above the nav seam', () => {
+  test.use({ viewport: WIDE_VIEWPORT });
+
+  test('the columns are 2:1 with the wider gutter, not equal halves', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const recipe = buildRecipe('e2e-1197-wide', 'Wide Split Dahl', 'recipe');
+    await openSeeded(page, recipe, uniqueEmail(testInfo.testId));
+
+    const grid = page.getByTestId('recipe-view');
+    const recipeColumn = grid.locator('> div').first();
+    const chatColumn = page.getByTestId('recipe-chat-sidebar');
+    await expect(chatColumn).toBeVisible();
+
+    const recipeBox = (await recipeColumn.boundingBox())!;
+    const chatBox = (await chatColumn.boundingBox())!;
+
+    // Two thirds against one. Doubling the chat's width doubles its rounding error
+    // too, hence twice the slack — still far tighter than the 4:3 the bug produced.
+    expect(Math.abs(recipeBox.width - chatBox.width * 2)).toBeLessThanOrEqual(EPSILON * 2);
+    // And emphatically NOT equal halves, which is what the defect rendered.
+    expect(recipeBox.width).toBeGreaterThan(chatBox.width + WIDE_GUTTER_PX);
+
+    // The 24px gutter, not the fold's 40px.
+    expect(
+      Math.abs(chatBox.x - (recipeBox.x + recipeBox.width) - WIDE_GUTTER_PX),
+    ).toBeLessThanOrEqual(EPSILON);
+
+    // Still a pane at this size, and still never a drawer or a dialog.
+    await expect(page.getByTestId('recipe-chat-drawer')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});
