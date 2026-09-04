@@ -23,6 +23,12 @@ vi.mock('../../src/observability/reportServerError.js', () => ({
   reportServerError: mockReport,
 }));
 
+const mockLogInfo = vi.fn();
+const mockLogWarn = vi.fn();
+vi.mock('firebase-functions', () => ({
+  logger: { info: mockLogInfo, warn: mockLogWarn, error: vi.fn() },
+}));
+
 vi.stubGlobal('crypto', { randomUUID: mockUUID });
 
 const { assembleRecipeDraft } = await import('../../src/flows/assembleRecipeDraft.js');
@@ -760,5 +766,132 @@ describe('assembleRecipeDraft — the phase strip', () => {
     // come from the base, not just the one the model happened to omit.
     expect(doc.metadata.phases).toEqual(base.metadata.phases);
     expect(doc.metadata.timingSummary).toBe(base.metadata.timingSummary);
+  });
+});
+
+// ─── step citations (issue #1178) ─────────────────────────────────────────────
+
+// One test per rule the comment at the id-assignment site states, because that
+// comment is the only place three of them are written down (CLAUDE.md rule 12).
+// Every one of these ends by asserting the ids are UNIQUE: a duplicate step id
+// inside one recipe is the failure that would actually corrupt a document —
+// `firstUsedInStepId` resolves an ingredient chip onto whichever step the lookup
+// reaches first, and cook mode pages by id.
+describe('assembleRecipeDraft — the step id a citation asks for', () => {
+  function citations() {
+    const call = mockLogInfo.mock.calls.find(
+      (c) => c[0] === 'assembleRecipeDraft: librarian step citations',
+    );
+    return call?.[1] as
+      { steps: number; baseSteps: number; cited: number; reused: number } | undefined;
+  }
+
+  function withCitations(...ids: (string | null)[]) {
+    const steps = rawOutput().steps.map((step, i) => ({ ...step, sourceStepId: ids[i] ?? null }));
+    return rawOutput({ steps });
+  }
+
+  function ids(doc: RecipeDoc) {
+    return doc.steps.map((step) => step.id);
+  }
+
+  it('reuses the cited id, so the diff can pair the reword as one edit', async () => {
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    // `id-1`, not `id-2`: the mock counter only advances for a step that actually
+    // minted, and the first step reused its cited id instead.
+    expect(ids(doc)).toEqual(['old-step', 'id-1']);
+    expect(new Set(ids(doc)).size).toBe(2);
+  });
+
+  it('mints a fresh id for a citation the base recipe has never heard of, and keeps the step', async () => {
+    const doc = await assembleRecipeDraft(withCitations('hallucinated', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(doc.steps).toHaveLength(2);
+    expect(doc.steps[0]!.text).toBe('Boil the pasta.');
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+  });
+
+  it('honours one id once — the second claim on it gets a fresh id', async () => {
+    // The rule that is a correctness requirement rather than tidiness. First wins,
+    // in output order.
+    const doc = await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(ids(doc)).toEqual(['old-step', 'id-1']);
+    expect(new Set(ids(doc)).size).toBe(2);
+  });
+
+  it('ignores a citation in create mode, where there is nothing to cite', async () => {
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), { source: MANUAL });
+
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+  });
+
+  it('ignores a citation in variation mode, which assembles with no base recipe', async () => {
+    // Variation mode GROUNDS the prompt on the original but calls this with
+    // `baseRecipe: null` on purpose (issue #763), so the new dish does not inherit
+    // the original's identity. `authorRecipe` also withholds the ids from that
+    // prompt, so this is the second of two independent reasons a variation cannot
+    // reuse an id — either alone would do, and neither is relied on.
+    const doc = await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
+      source: MANUAL,
+      baseRecipe: null,
+    });
+
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+    expect(new Set(ids(doc)).size).toBe(2);
+  });
+
+  it('still assembles when the librarian cites nothing at all', async () => {
+    // The back-compat floor: an older response, a FUNCTIONS_AI_FAKE fixture, or a
+    // model that ignored the instruction. `rawOutput()` carries no citations.
+    const doc = await assembleRecipeDraft(rawOutput(), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+  });
+
+  it('hangs an ingredient on the step it names even when that step kept its old id', async () => {
+    // `firstUsedInStepId` resolves by ORDINAL into the assembled list, so a reused
+    // id must not change which step an ingredient lands on. `rawOutput()` puts the
+    // pasta on ordinal 0 and the garlic on ordinal 1.
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    const items = doc.ingredients[0]!.items;
+    expect(items[0]!.firstUsedInStepId).toBe('old-step');
+    expect(items[1]!.firstUsedInStepId).toBe('id-1');
+  });
+
+  it('logs how well the librarian cited, in counts and never a word of the recipe', async () => {
+    await assembleRecipeDraft(withCitations('old-step', 'hallucinated'), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(citations()).toEqual({ steps: 2, baseSteps: 1, cited: 2, reused: 1 });
+    const serialised = JSON.stringify(citations());
+    expect(serialised).not.toContain('pasta');
+    expect(serialised).not.toContain('garlic');
+    expect(serialised).not.toContain('old-step');
+  });
+
+  it('says nothing at all when there is no recipe being amended', async () => {
+    await assembleRecipeDraft(withCitations('old-step'), { source: MANUAL });
+
+    expect(citations()).toBeUndefined();
   });
 });

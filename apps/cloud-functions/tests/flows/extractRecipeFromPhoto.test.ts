@@ -142,6 +142,18 @@ describe('extractRecipeFromPhoto — the pages reach the model as images', () =>
     await invoke({ images: [PAGE_ONE] });
     expect(mockGenerate.mock.calls[0]![0].config).toEqual({ temperature: 0 });
   });
+
+  it('never asks a photo import to cite the step it came from (#1178)', async () => {
+    // The librarian's edit mode asks that, and only its edit mode. A cookbook page
+    // has no existing recipe to cite, so a clause reaching here would be asking an
+    // unanswerable question — which is what putting it in the SHARED rules module
+    // would have done, since #785 made that module common to all five paths.
+    await invoke({ images: [PAGE_ONE] });
+
+    const system = mockGenerate.mock.calls[0]![0].system as string;
+    expect(system).not.toContain('sourceStepId');
+    expect(system).not.toContain('Where each step came from');
+  });
 });
 
 describe('extractRecipeFromPhoto — the draft it assembles', () => {

@@ -953,3 +953,78 @@ describe('authorRecipe — parsed threading', () => {
     expect(items.every((i: { parsed: unknown }) => i.parsed === null)).toBe(true);
   });
 });
+
+// ─── step provenance citation (issue #1178) ─────────────────────────────────────
+
+// The blast radius of this feature is EDIT MODE AND NOTHING ELSE, and that is a
+// sentence rather than a mechanism unless the other two compositions are pinned
+// against it here. Variation mode matters most: it grounds on a base recipe just
+// as firmly as edit mode does, but assembles with `baseRecipe: null`, so a
+// citation there would be honoured against nothing at all.
+describe('authorRecipe — step provenance citation', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  it('shows edit mode every existing step id, and asks it to cite one per step', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [], recipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    // A model cannot cite an id it was never shown, so both halves are asserted:
+    // the ids beside the words they belong to…
+    expect(system).toContain('1. [s1] Dice the vegetables.');
+    expect(system).toContain('2. [s2] Toss with dressing.');
+    // …and the instruction that says what to do with them.
+    expect(system).toContain('Where each step came from');
+    expect(system).toContain('sourceStepId');
+  });
+
+  it('shows variation mode no step ids and no citation instruction', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      basedOnRecipeId: 'r1',
+    });
+
+    const system = systemPromptFrom();
+    // Still fully grounded on the base recipe — the step text is there…
+    expect(system).toContain('Dice the vegetables.');
+    // …but with no identity to inherit, so nothing to cite.
+    expect(system).not.toContain('[s1]');
+    expect(system).not.toContain('sourceStepId');
+    expect(system).not.toContain('Where each step came from');
+  });
+
+  it('shows create mode no citation instruction', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = systemPromptFrom();
+    expect(system).not.toContain('sourceStepId');
+    expect(system).not.toContain('Where each step came from');
+  });
+
+  it('still assembles a draft from a librarian response that cites nothing', async () => {
+    // Back-compat and the fallback floor in one: `librarianOutput()` carries no
+    // `sourceStepId` on any step, exactly as a FUNCTIONS_AI_FAKE fixture and a
+    // model that ignored the instruction both do.
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    const doc = await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      recipeId: 'r1',
+    });
+
+    expect(doc.steps).toHaveLength(2);
+    expect(doc.steps[0].text).toBe('Boil the pasta.');
+  });
+});

@@ -171,6 +171,18 @@ describe('chefChat — the chef reads the whole recipe, not a summary of it', ()
     expect(system).toContain('- a handful of parsley, to finish (optional)');
   });
 
+  it('shows the method with no step ids in it (issue #1178)', async () => {
+    // `formatRecipeForPrompt` grew a `stepIds` option so the LIBRARIAN's edit mode
+    // can ask the model which step each rewrite came from. It is opt-in, and this
+    // is what "the chef's prompt is unchanged" means mechanically: the chef is
+    // holding a conversation, not producing a citation, and a UUID threaded through
+    // the method is both noise and something it can read out loud.
+    const system = await systemPromptFor('r1');
+    expect(system).toContain('1. Brown the shin hard on every side.');
+    expect(system).not.toContain('[s1]');
+    expect(system).not.toContain('[s2]');
+  });
+
   it('still says nothing at all about a recipe it cannot read', async () => {
     // Rule 10 at the prompt level: a missing dish degrades to an ordinary chat.
     const system = await systemPromptFor('gone');

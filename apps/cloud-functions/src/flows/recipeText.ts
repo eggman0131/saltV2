@@ -15,7 +15,18 @@ import type { RecipeDoc } from '@salt/domain/schemas';
 // particular flow assembles — the meal's component dishes, the equipment
 // manifest — is appended by the caller (see `withComponents`), so this stays a
 // pure rendering of one document and each flow keeps its own framing.
-export function formatRecipeForPrompt(r: RecipeDoc): string {
+export interface FormatRecipeOptions {
+  /** Render each step as `N. [<id>] text` instead of `N. text` (issue #1178).
+   *  OFF by default, and deliberately opt-in: the only caller that wants it is the
+   *  librarian's EDIT mode, where the model is asked to cite the id of the step
+   *  each rewrite came from and cannot cite an id it was never shown. The chef
+   *  chat is having a conversation rather than producing a citation — UUIDs
+   *  threaded through the method there are tokens spent on noise, and something
+   *  the chef can read aloud. Pinned by `chefChat.recipeFidelity.test.ts`. */
+  stepIds?: boolean;
+}
+
+export function formatRecipeForPrompt(r: RecipeDoc, options: FormatRecipeOptions = {}): string {
   const parts: string[] = [`Title: ${r.title}`];
   if (r.description) parts.push(`Description: ${r.description}`);
 
@@ -57,7 +68,12 @@ export function formatRecipeForPrompt(r: RecipeDoc): string {
         }]`
       : '';
     const note = s.note ? ` (note: ${s.note})` : '';
-    return `  ${i + 1}. ${s.text}${timer}${note}`;
+    // The id travels WITH the step text rather than in a separate list, for the
+    // reason identifyRecipeKit.ts:130-137 states: a model answering with ids keeps
+    // them straight only when it never has to align two lists. Same position as
+    // generateGuidedPlan.ts:66-69, so the four id-citing prompts render alike.
+    const id = options.stepIds ? `[${s.id}] ` : '';
+    return `  ${i + 1}. ${id}${s.text}${timer}${note}`;
   });
   if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
 

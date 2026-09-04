@@ -325,26 +325,55 @@ function step(id: string, text: string) {
   return { id, text, timer: null, note: null };
 }
 
-function amendmentWith(existingStepIds: string[], updatedStepIds: string[]): RecipeAmendment {
+// `updatedText` defaults to the existing wording, so a call that says nothing
+// about text is asking purely about identity. Since issue #1178 the two are
+// separable questions — an id can now survive a step being rewritten — and a
+// helper that silently reworded every step would make half the rule untestable.
+function amendmentWith(
+  existingStepIds: string[],
+  updatedStepIds: string[],
+  updatedText = 'Chop.',
+): RecipeAmendment {
   const existing = { ...existingRecipe(), steps: existingStepIds.map((id) => step(id, 'Chop.')) };
-  const updated = { ...existing, steps: updatedStepIds.map((id) => step(id, 'Chop finely.')) };
+  const updated = { ...existing, steps: updatedStepIds.map((id) => step(id, updatedText)) };
   return { existing, updated, diff: diffRecipe(existing, updated) };
 }
 
 describe('applyRecipeAmendment — whether the guided plan survives the write', () => {
   it('discards the plan when the write re-mints the step ids its notes point at', async () => {
-    // What `assembleRecipeDraft` actually does on every amend: a fresh
-    // `crypto.randomUUID()` for EVERY step, changed or not.
+    // Still the outcome whenever the librarian cites nothing usable — an omitted
+    // citation, a hallucinated id, a duplicate — because `assembleRecipeDraft`
+    // then falls back to a fresh `crypto.randomUUID()` for that step (issue #1178).
     const result = await applyRecipeAmendment(amendmentWith(['s1', 's2'], ['new-1', 'new-2']));
 
     expect(result.kind).toBe('ok');
     expect(discardGuidedPlan).toHaveBeenCalledExactlyOnceWith('pilaf');
   });
 
-  it('leaves the plan alone when every step id survives', async () => {
-    // An edit that touches only metadata or ingredient text keeps its ids, and
-    // the plan's `stepNotes` still resolve. Deleting it would be a plain loss.
+  it('leaves the plan alone when every step survives, wording and all', async () => {
+    // An edit that touches only metadata or ingredient text keeps its ids AND its
+    // step wording, and the plan's `stepNotes` still resolve onto the words they
+    // were written against. Deleting it would be a plain loss.
     await applyRecipeAmendment(amendmentWith(['s1', 's2'], ['s1', 's2']));
+
+    expect(discardGuidedPlan).not.toHaveBeenCalled();
+  });
+
+  it('discards the plan when a step kept its id but was reworded (issue #1178)', async () => {
+    // The half that did not exist before the librarian started citing. A surviving
+    // id used to be proof the step was untouched; now it only proves the librarian
+    // said this step CAME FROM that one, which a complete rewrite also satisfies.
+    // A note left annotating wording it was not written against is worse than a
+    // note that is gone, because nothing shows it.
+    await applyRecipeAmendment(amendmentWith(['s1', 's2'], ['s1', 's2'], 'Chop very finely.'));
+
+    expect(discardGuidedPlan).toHaveBeenCalledExactlyOnceWith('pilaf');
+  });
+
+  it('leaves the plan alone when a new step is added beside untouched ones', async () => {
+    // A genuine addition annotates nothing, so it invalidates nothing. The rule
+    // asks only about the steps the plan could already be pointing at.
+    await applyRecipeAmendment(amendmentWith(['s1'], ['s1', 'new-1']));
 
     expect(discardGuidedPlan).not.toHaveBeenCalled();
   });

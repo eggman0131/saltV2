@@ -822,3 +822,53 @@ describe('diffRecipe — phases and timingSummary', () => {
     expect(diff.hasChanges).toBe(false);
   });
 });
+
+// ─── a preserved step id (issue #1178) ────────────────────────────────────────
+
+// The point of asking the librarian which step each rewrite came from is that
+// Pass 1 then does the pairing, with no new matching code at all. That is stated
+// in `diffRecipe`'s header and in #1178's architecture notes, and until now
+// nothing asserted it: the fuzzy passes would pair a MILD reword anyway, so a
+// test using one would pass whether the id was honoured or not. These use a total
+// rewrite — no shared identity word, so Pass 4 scores 0 — which makes the id the
+// only thing that can be doing the work.
+describe('diffRecipe — a step that kept its id', () => {
+  const REWRITTEN = 'Warm the pan over a gentle flame until it shimmers';
+
+  it('reports a totally rewritten step as one change, not a removal and an addition', () => {
+    const before = withSteps(recipe(), [newStep('s-1', 'Chop the carrots')]);
+    const after = withSteps(recipe(), [newStep('s-1', REWRITTEN)]);
+
+    const diff = diffRecipe(before, after);
+    expect(diff.steps.changed).toHaveLength(1);
+    expect(diff.steps.changed[0]!.id).toBe('s-1');
+    expect(diff.steps.changed[0]!.text).toEqual({ from: 'Chop the carrots', to: REWRITTEN });
+    expect(diff.steps.added).toEqual([]);
+    expect(diff.steps.removed).toEqual([]);
+  });
+
+  it('still splits the same rewrite into a removal and an addition without the id', () => {
+    // The floor this feature raises the ceiling above, and the proof the test
+    // above is measuring the id rather than the fuzzy passes.
+    const before = withSteps(recipe(), [newStep('s-1', 'Chop the carrots')]);
+    const after = withSteps(recipe(), [newStep('s-2', REWRITTEN)]);
+
+    const diff = diffRecipe(before, after);
+    expect(diff.steps.changed).toEqual([]);
+    expect(diff.steps.added).toHaveLength(1);
+    expect(diff.steps.removed).toHaveLength(1);
+  });
+
+  it('keeps a genuine addition beside a rewritten step in the right column', () => {
+    const before = withSteps(recipe(), [newStep('s-1', 'Chop the carrots')]);
+    const after = withSteps(recipe(), [
+      newStep('s-1', REWRITTEN),
+      newStep('s-9', 'Season and serve'),
+    ]);
+
+    const diff = diffRecipe(before, after);
+    expect(diff.steps.changed).toHaveLength(1);
+    expect(diff.steps.added.map((s) => s.text)).toEqual(['Season and serve']);
+    expect(diff.steps.removed).toEqual([]);
+  });
+});

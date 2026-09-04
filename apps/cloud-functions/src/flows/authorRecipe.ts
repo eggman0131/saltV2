@@ -84,7 +84,13 @@ export const authorRecipeFlow = ai.defineFlow(
       : '';
 
     const closing = baseRecipe
-      ? editModeSection(withComponents(formatRecipeForPrompt(baseRecipe), componentSection))
+      ? // `stepIds: true` for edit mode ALONE (issue #1178): this is the only
+        // composition where "which existing step did this come from?" has an
+        // answer. Variation mode assembles with `baseRecipe: null`, so a citation
+        // there would be honoured against nothing; create mode has no base at all.
+        editModeSection(
+          withComponents(formatRecipeForPrompt(baseRecipe, { stepIds: true }), componentSection),
+        )
       : variationBase
         ? variationModeSection(
             withComponents(formatRecipeForPrompt(variationBase), componentSection),
@@ -172,6 +178,16 @@ count, tag, and detail the conversation does not change — keep the original wo
 (rawText) of unchanged ingredients verbatim. Do not drop anything that was not discussed. \
 Integrate additions (e.g. a new ingredient) into the appropriate group and reference them \
 from the relevant steps.
+
+### Where each step came from
+Each step of the current recipe is written below as \`N. [id] text\`. For every step you return, \
+set \`sourceStepId\` to the id of the EXISTING step it came from, copied verbatim from the method \
+below — even when you have reworded it completely, and even when it has moved to a different \
+position. Null ONLY for a step you are genuinely adding, which no existing step became. If you \
+split one existing step into two, give BOTH halves that step's id. Do not repeat an id across \
+steps that came from different originals, and never invent an id that is not in the list below. \
+Do NOT write the \`[id]\` markers into the step text you return — the text is the step's wording \
+and nothing else.
 
 ### Current recipe
 ${baseRecipe}`;
