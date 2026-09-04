@@ -186,7 +186,11 @@
     const saved = await runSave(session, null);
     if (!saved) return;
     if (await returnToMeal(saved)) return;
-    addToast('New recipe saved!', 'success');
+    // Same rule as "Save as recipe" above (issue #765): this is a CREATE path
+    // (`null` base), so the librarian can classify what it wrote as a cocktail —
+    // ask a chat what would go with the dish and it may well produce one. The
+    // toast is copy, so it comes from `KIND_COPY` and never from a comparison.
+    addToast(KIND_COPY[kindOf(saved)].createdToast, 'success');
     push(`/recipes/${saved.id}`);
   }
 
