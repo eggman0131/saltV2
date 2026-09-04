@@ -34,6 +34,13 @@
 // Phase 1 fixed the authoring paths. Nothing re-asks the recipes already stored,
 // which is what this is.
 //
+// Those three numbers are gone as a SCHEMA — #1233 stopped the trigger writing
+// them and #1211 deleted them from `RecipeMetadataSchema`; a recipe states its
+// timing as a phase strip now. Documents written before then still carry them,
+// inert, until an ordinary save rewrites the document (LWW per whole document,
+// CLAUDE.md → Data model conventions). This script neither reads nor writes
+// them — #1248, and scripts/lib/recipeTimesVerdict.mjs says why.
+//
 // SAFE TO RE-RUN. A document that already carries `timesEstimatedAt` is skipped,
 // so a second run reports "0 to ask" and writes nothing. An interrupted run
 // resumes. `--redo` overrides the skip when a deliberate second pass is wanted
@@ -89,14 +96,15 @@
 //      between, so a library's worth of AI calls is a trickle rather than a spike.
 //
 // The cost is that per-recipe reporting is about the REQUEST, not the answer: this
-// tells you the nonce landed. `--verify` is what tells you the numbers changed and
-// that they reconcile.
+// tells you the nonce landed. `--verify` is what tells you the answer came back —
+// that the recipe is stamped and carries a phase strip.
 //
 // ─── Why a field-level PATCH and not a document `set` ─────────────────────────
 //
 // Recipes are last-write-wins per WHOLE document (CLAUDE.md → Data model
 // conventions), and `onRecipeWritten` writes back to the same document partially
-// (`image`, `imageBrief`, `kit`, and now the three time fields). A full-document
+// (`image`, `imageBrief`, `kit`, and the times branch's `metadata.phases`,
+// `metadata.timingSummary` and `timesEstimatedAt`). A full-document
 // write from here would clobber whatever had landed concurrently — and a sweep of
 // the entire library is the worst possible place to take that risk. So every write
 // is a REST `PATCH` carrying `updateMask.fieldPaths=timesRequestedAt` and a
@@ -123,9 +131,11 @@
 
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { recipeAskedLine } from './lib/recipeAskedLine.mjs';
 import { decodeRecipePhases, hasPhaseStrip } from './lib/recipePhaseStrip.mjs';
 import { selectRecipesToAsk } from './lib/recipeSelection.mjs';
 import { isTimesEstimated } from './lib/recipeTimesEstimated.mjs';
+import { recipeTimesVerdict } from './lib/recipeTimesVerdict.mjs';
 
 // Mirrors scripts/backfill-recipe-kit.mjs, including the env-var names, so the
 // three environments are named the same way wherever they are named.
@@ -192,7 +202,7 @@ function die(message) {
   );
   console.error('       (dry run by default — nothing is written without --apply)');
   console.error(
-    '       --verify re-reads the three fields and the phase strip, and reports what is outstanding',
+    '       --verify re-reads the timesEstimatedAt stamp and the phase strip, and reports what is outstanding',
   );
   console.error('       --redo also asks recipes that already carry timesEstimatedAt');
   console.error(
@@ -247,9 +257,11 @@ async function api(url, init = {}) {
 
 // Firestore's REST encoding puts an integer in `integerValue` AS A STRING, a
 // non-integer in `doubleValue` as a number, and an explicit null in `nullValue`.
-// An ABSENT field and a null one both have to read as null here: a pre-#240
-// document may simply not carry `cookTimeMinutes` at all, and for every purpose
-// this script has ("is it stated?") that is the same answer.
+// An ABSENT field and a null one both have to read as null here: a recipe never
+// asked by this script carries no `timesRequestedAt` at all, and for every
+// purpose this script has ("is it stated?") that is the same answer.
+//
+// Since #1248 its only callers are the two millisecond stamps below.
 function readNumber(field) {
   if (!field) return null;
   if (field.integerValue !== undefined) return Number(field.integerValue);
@@ -257,31 +269,17 @@ function readNumber(field) {
   return null;
 }
 
-function timesOf(doc) {
-  const metadata = doc.fields?.metadata?.mapValue?.fields ?? {};
-  return {
-    prep: readNumber(metadata.prepTimeMinutes),
-    cook: readNumber(metadata.cookTimeMinutes),
-    total: readNumber(metadata.totalTimeMinutes),
-  };
-}
-
-// The strip lives in the same `metadata` map as the three numbers, so the mask
-// at `listRecipes` already fetches it — no extra read and no mask change. The
-// decode and the "is this a strip?" rule are in scripts/lib/recipePhaseStrip.mjs
-// so they can be tested; the header there says why they are a hand-copy.
+// The strip lives in the `metadata` map, which the mask at `listRecipes` already
+// fetches — no extra read and no mask change. The decode and the "is this a
+// strip?" rule are in scripts/lib/recipePhaseStrip.mjs so they can be tested;
+// the header there says why they are a hand-copy.
+//
+// The retired prep/cook/total minutes used to be decoded out of that same map
+// and printed beside every recipe. Nothing has written them since #1233 and
+// #1211, so #1248 stopped reading them: scripts/lib/recipeTimesVerdict.mjs holds
+// the reasoning, and its test pins that no reference to them comes back here.
 function phasesOf(doc) {
   return decodeRecipePhases(doc.fields?.metadata?.mapValue?.fields?.phases);
-}
-
-const show = (n) => (n === null ? '—' : String(n));
-const triple = (t) => `prep ${show(t.prep)} / cook ${show(t.cook)} / total ${show(t.total)}`;
-
-// The arithmetic contract, applied to a stored triple. Only meaningful when both
-// parts are stated — a recipe with no prep figure cannot contradict one.
-function reconciles(t) {
-  if (t.prep === null || t.cook === null || t.total === null) return true;
-  return t.total >= t.prep + t.cook;
 }
 
 console.log(`Project : ${env.project} (${env.label})`);
@@ -326,7 +324,6 @@ async function listRecipes() {
           readNumber(doc.fields?.timesRequestedAt),
           readNumber(doc.fields?.timesEstimatedAt),
         ),
-        times: timesOf(doc),
         // #1210: the second pass selects on this, and `--verify` counts it.
         hasStrip: hasPhaseStrip(phasesOf(doc)),
       });
@@ -341,45 +338,43 @@ const cookable = recipes.filter((r) => COOKABLE_KINDS.has(r.kind));
 
 // ─── Verify ───────────────────────────────────────────────────────────────────
 //
-// The issue's closing check, and the reason it is in this file rather than in a
-// human's head: "after the production run, no recipe has total < prep + cook,
-// verified by a re-query of the collection". Run it after every apply — including
-// on an environment you believe already done, since it is also how you notice the
-// functions were never deployed.
+// The closing check for both passes, and the reason it is in this file rather
+// than in a human's head: "after the production run, every cookable recipe is
+// stamped and carries a phase strip, verified by a re-query of the collection".
+// Run it after every apply — including on an environment you believe already
+// done, since it is also how you notice the functions were never deployed.
+//
+// It reports ONLY what a documented run can change, which is the fix in #1248:
+// until then it also required `total >= prep + cook` over three fields nothing
+// writes any more, so a legacy document could hold the exit code at 1 forever.
+// scripts/lib/recipeTimesVerdict.mjs states the verdict and its boundary.
 
 if (args.verify) {
-  const broken = cookable.filter((r) => !reconciles(r.times));
-  const pending = cookable.filter((r) => !r.estimated);
-  // #1210: phase coverage joins the arithmetic check rather than replacing it.
-  // The three old fields are still stored, still written by the trigger and
-  // still the mid-migration fallback until #1202's phase 4, so `total >= prep +
-  // cook` is still a real property of the data this script's writes produce.
-  const noStrip = cookable.filter((r) => !r.hasStrip);
+  const { pending, noStrip, ok } = recipeTimesVerdict(cookable);
   for (const r of cookable) {
     console.log(
-      `  ${r.estimated ? 'done   ' : 'PENDING'}  ${r.hasStrip ? 'strip   ' : 'NO STRIP'}  ${reconciles(r.times) ? ' ' : '✖'} ${triple(r.times)}  ${r.title}`,
+      `  ${r.estimated ? 'done   ' : 'PENDING'}  ${r.hasStrip ? 'strip   ' : 'NO STRIP'}  ${r.title}`,
     );
   }
   console.log(`\nCookable recipes    : ${cookable.length}`);
   console.log(`Re-estimated        : ${cookable.length - pending.length}`);
-  console.log(`Still pending       : ${pending.length}`);
+  console.log(`Still pending       : ${pending.length}${pending.length === 0 ? ' ✔' : ' ✖'}`);
   console.log(`With a phase strip  : ${cookable.length - noStrip.length}`);
   console.log(`No phase strip      : ${noStrip.length}${noStrip.length === 0 ? ' ✔' : ' ✖'}`);
-  console.log(`Do not reconcile    : ${broken.length}${broken.length === 0 ? ' ✔' : ' ✖'}`);
-  if (broken.length > 0) {
-    console.error('\n✖ These still have total < prep + cook:');
-    for (const r of broken) console.error(`    ${r.id}  ${triple(r.times)}  ${r.title}`);
+  if (pending.length > 0) {
+    console.error('\n✖ These have no answered estimate (the default pass asks exactly these):');
+    for (const r of pending) console.error(`    ${r.id}  ${r.title}`);
   }
   if (noStrip.length > 0) {
     console.error('\n✖ These have no phase strip (--missing-phases asks exactly these):');
-    for (const r of noStrip) console.error(`    ${r.id}  ${triple(r.times)}  ${r.title}`);
+    for (const r of noStrip) console.error(`    ${r.id}  ${r.title}`);
   }
   // Non-zero on ANY failing condition, so a CI-style "did it work" reads off the
   // exit code rather than off the prose above it. Note what 0 does and does not
-  // claim: every cookable recipe in THIS project is stamped, carries a strip and
-  // reconciles. It says nothing about the other two environments, and nothing
-  // about whether a strip is any good — only that one is stored.
-  process.exit(broken.length === 0 && pending.length === 0 && noStrip.length === 0 ? 0 : 1);
+  // claim: every cookable recipe in THIS project is stamped and carries a strip.
+  // It says nothing about the other two environments, and nothing about whether
+  // a strip is any good — only that one is stored.
+  process.exit(ok ? 0 : 1);
 }
 
 const notCookable = recipes.filter((r) => !COOKABLE_KINDS.has(r.kind));
@@ -411,10 +406,8 @@ if (toAsk.length === 0) {
 }
 
 if (!args.apply) {
-  for (const r of toAsk) console.log(`  would ask  ${r.id}  ${triple(r.times)}  ${r.title}`);
-  const broken = toAsk.filter((r) => !reconciles(r.times));
+  for (const r of toAsk) console.log(`  would ask  ${r.id}  ${r.title}`);
   console.log(`\n✔ Dry run: ${toAsk.length} recipe(s) would be re-estimated.`);
-  console.log(`  ${broken.length} of them currently store a total below their own prep + cook.`);
   console.log('  Nothing was written. Re-run with --apply to do it.');
   process.exit(0);
 }
@@ -459,7 +452,7 @@ for (const r of toAsk) {
       body: JSON.stringify({ fields: { timesRequestedAt: { integerValue: String(Date.now()) } } }),
     });
     asked += 1;
-    console.log(`  asked   ${r.id}  ${triple(r.times)}  ${r.title}`);
+    console.log(recipeAskedLine(r));
   } catch (err) {
     // Keep going: one unwritable document must not strand the rest, and the run is
     // re-runnable, so anything that fails here is simply picked up next time.
