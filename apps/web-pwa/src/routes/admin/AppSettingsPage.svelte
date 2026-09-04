@@ -184,9 +184,13 @@
   // as a job with no callable, no trigger and no client caller (#1249). It now
   // has one: `apps/cloud-functions/tests/ai/registryIsDeployed.test.ts` asserts
   // every registry id resolves its model in a file reachable by static import
-  // from `apps/cloud-functions/src/index.ts`, i.e. inside the deployed bundle.
-  // Its boundary in turn: reachability is not invocation, so a flow imported by
-  // index.ts but wired to no callable or trigger would still pass.
+  // from `apps/cloud-functions/src/index.ts`, i.e. inside the deployed bundle —
+  // and it credits the id's resolution to the FLOW that names it (a
+  // `defineIconFlow` descriptor counts for the three icon families that resolve
+  // through a variable), not merely any file that happens to read the id, so a
+  // read-only surface like `getImagePrompt.ts` cannot stand in for a retired
+  // flow. Its boundary in turn: reachability is not invocation, so a flow
+  // imported by index.ts but wired to no callable or trigger would still pass.
   //
   // Joined with a middot rather than a comma because several labels contain one
   // ("Process stages (bread, ferments, cures)") — with commas the reader cannot

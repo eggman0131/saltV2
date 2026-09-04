@@ -3,7 +3,8 @@ import { AI_FLOW_ROLES } from '@salt/domain/schemas';
 
 // describeRecipeScene: the cheap text step that reads the WHOLE recipe and writes
 // the art-direction brief the hero prompt is built from. Mirrors the
-// identifyRecipeKit flow tests (same input shape, same mocking seam).
+// identifyRecipeKit flow tests' mocking seam — the input shape differs
+// (`steps: string[]` here vs. `{ id, text }[]` plus `equipmentContext` there).
 
 const mockGenerate = vi.fn();
 

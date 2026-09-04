@@ -19,9 +19,15 @@
  * Firebase deploys what `src/index.ts` exports, so a module no import path
  * reaches from `index.ts` is not in the deployed bundle at all. The test builds
  * that reachable set by walking static import specifiers from `index.ts`, then
- * requires every registry id to resolve its model — `flowModel('id')` or
- * `resolveModel('id')`, the only two signatures that accept one — from inside
- * it.
+ * requires every registry id to resolve its model from inside it, via one of
+ * THREE literal signatures: `flowModel('id')`, `resolveModel('id')` — each only
+ * counted in a file that also calls `ai.defineFlow`, so a call site that merely
+ * reads a model for display (`callables/getImagePrompt.ts`, a prompt-preview
+ * callable) cannot stand in for the flow — or a `defineIconFlow({ name: 'id' })`
+ * descriptor, the shape `generateCanonIcon`/`generateEquipmentIcon`/
+ * `generateKitchenToolIcon` use: they resolve through a variable
+ * (`resolveModel(name)` in `defineIconFlow.ts:96`), so the descriptor literal in
+ * each flow's OWN file is what stands in for a literal call there.
  *
  * This is a source scan: it reads bytes off disk and never imports the modules
  * it checks, so the CF unit-test convention of stubbing `defineFlow` and
@@ -37,14 +43,21 @@
  * bigger instrument than the defect warrants; what is pinned here is the case
  * that actually occurred, where the module was in no deployed bundle at all.
  *
- * Two further limits, both deliberate:
- *   - only STATIC relative imports are followed. CF's only dynamic imports are
- *     of `sharp` (a bare specifier, in `src/imaging/*`), so nothing local is
- *     invisible today — a future `await import('./flows/x.js')` would be.
- *   - an id resolved through a variable rather than a literal (as
- *     `defineIconFlow.ts` does with `resolveModel(name)`) is not seen by the
- *     literal scan. Every id has a literal site as well today, which the first
- *     assertion below pins so this cannot rot into a vacuous pass.
+ * One further limit, deliberate: only STATIC relative imports are followed.
+ * CF's only dynamic imports are of `sharp` (a bare specifier, in
+ * `src/imaging/*`), so nothing local is invisible today — a future
+ * `await import('./flows/x.js')` would be.
+ *
+ * An id resolved through a variable rather than a literal (as `defineIconFlow`
+ * does with `resolveModel(name)`) is invisible to the plain call scan on its
+ * own — that is why the `defineIconFlow` descriptor is a second, explicit
+ * resolution signature above rather than a gap this test just notes and
+ * accepts: without it, the three ids built by that factory were pinned only by
+ * `getImagePrompt.ts`'s literal calls, a prompt-preview callable that never
+ * runs a flow, so the guard could stay green with the flow itself retired
+ * (#1249's own defect, reproduced against this guard in review). Every id has
+ * a literal site under one of the two shapes today, which the first assertion
+ * below pins so this cannot rot into a vacuous pass.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
@@ -100,10 +113,32 @@ function reachableFromEntrypoint(): Set<string> {
   return seen;
 }
 
-/** The files that resolve `flowId`'s model by literal, comments already stripped. */
+const DEFINES_A_FLOW = /\bai\.defineFlow\s*\(/;
+
+/**
+ * The files that resolve `flowId`'s model by literal, comments already
+ * stripped — under either of the two shapes the header describes.
+ *
+ * A bare `flowModel('id')`/`resolveModel('id')` call only counts in a file
+ * that also calls `ai.defineFlow`: that is what makes the site the flow
+ * itself rather than a call site that merely reads the id for something
+ * else — `callables/getImagePrompt.ts` resolves every icon id this same way
+ * to show an admin the prompt, and is not a flow. The `defineIconFlow`
+ * descriptor is checked on its own terms, because the three flows built by
+ * that factory never call `resolveModel` with a literal themselves — the
+ * descriptor's `name` field is the only literal they have, and it lives in
+ * the flow's own file regardless of what `ai.defineFlow` calls it wraps.
+ */
 function resolutionSites(flowId: string): string[] {
   const call = new RegExp(String.raw`\b(?:flowModel|resolveModel)\s*\(\s*'${flowId}'\s*\)`);
-  return files.filter((file) => call.test(source.get(file) as string));
+  const iconFlowDescriptor = new RegExp(
+    String.raw`defineIconFlow\(\s*\{\s*name:\s*'${flowId}'\s*,`,
+  );
+  return files.filter((file) => {
+    const src = source.get(file) as string;
+    if (iconFlowDescriptor.test(src)) return true;
+    return call.test(src) && DEFINES_A_FLOW.test(src);
+  });
 }
 
 const deployed = reachableFromEntrypoint();
@@ -123,10 +158,11 @@ describe('every registered AI flow ships in the deployed bundle', () => {
     const unresolved = AI_FLOW_IDS.filter((flowId) => resolutionSites(flowId).length === 0);
     expect(
       unresolved,
-      `No \`flowModel('id')\`/\`resolveModel('id')\` literal found for: ${unresolved.join(', ')}. ` +
-        `Either the flow resolves its model through a variable — which this guard cannot see, ` +
-        `and which needs the scan widened rather than the id excused — or the id is orphaned ` +
-        `and belongs out of AI_FLOW_ROLES.`,
+      `No \`flowModel('id')\`/\`resolveModel('id')\` literal (in a file that defines a flow) and no ` +
+        `\`defineIconFlow({ name: 'id' })\` descriptor found for: ${unresolved.join(', ')}. ` +
+        `Either the flow resolves its model through some other indirection — which this guard ` +
+        `cannot see, and which needs the scan widened rather than the id excused — or the id is ` +
+        `orphaned and belongs out of AI_FLOW_ROLES.`,
     ).toEqual([]);
   });
 
