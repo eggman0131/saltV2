@@ -64,9 +64,9 @@ five steps as the first, with `--missing-phases` added to steps 2 and 3:
 4. **Wait a minute or two.** The script's last line is the request landing, not the
    answer. The estimates arrive as the trigger works through them.
 5. **Verify**: `node scripts/backfill-recipe-times.mjs --project dev --verify`
-   Exit code 0 means every cookable recipe is stamped, **carries a phase strip**, and
-   stores no `total < prep + cook`. Anything else prints what is outstanding, listed by
-   id.
+   Exit code 0 means every cookable recipe is stamped and **carries a phase strip** —
+   the two things a run of this script can change, and nothing else (#1248). Anything
+   else prints what is outstanding, listed by id, under the pass that asks for it.
 
 Do not start `staging` until `dev` verifies clean, and do not start `prod` until
 `staging` does. Dev is a copy of staging data and staging a copy of prod
@@ -134,9 +134,14 @@ do.` while the library still has no phase strips at all — which looks exactly 
 
 What exit code 0 from `--verify` does **not** claim: that the strips are any good, or that
 the other two environments are done. It says every cookable recipe in that one project is
-stamped and stores a strip. (`--verify` also reports on any stale prep/cook/total values
-still sitting in the stored documents; those are read-only leftovers that no longer reach
-any screen, and LWW clears them on the next ordinary save.)
+stamped and stores a strip.
+
+Pre-#1211 documents still carry stale `prepTimeMinutes` / `cookTimeMinutes` /
+`totalTimeMinutes`, some of them arithmetically impossible. **`--verify` does not look at
+them and they cannot fail a run** (#1248): nothing writes them, so no re-ask could ever
+clear them, and a gate on them would hold the exit code at 1 with no action available.
+They are read-only leftovers that reach no screen, and LWW clears them on the next
+ordinary save of the recipe. Do not write, delete or migrate them.
 
 ## Residue: recipes a re-ask does not fill
 
