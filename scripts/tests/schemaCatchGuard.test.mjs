@@ -19,12 +19,15 @@
  * afterwards (#1122 review, blocking 3), it guards an AI OUTPUT rather than a
  * stored document, and `recipe.ts` was on #1114's must-not-touch list. The same
  * reasoning grew three more on the retired prep/cook/total time fields (#1233
- * review, blocking 1); issue #1211 then deleted those fields, and this list came
- * back down to one — the fall the equality half below exists to make visible
- * rather than silent. Shipping the unqualified absolute anyway — in a
- * comment, a DoD tick or a test name — is precisely the defect class CLAUDE.md
- * Rule 12 exists for, so the claim is made with its real boundary instead: the
- * known instances, named here with their reasons, and any other one reds.
+ * review, blocking 1); issue #1211 then deleted those fields and the list fell
+ * back to one — the fall the equality half below exists to make visible rather
+ * than silent — before #1244 added `AuthoredRecipeKindSchema`. It stands at TWO,
+ * and that count went stale for a release exactly because the sentence stating
+ * it was not the thing being edited. Shipping the unqualified absolute anyway —
+ * in a comment, a DoD tick or a test name — is precisely the defect class
+ * CLAUDE.md Rule 12 exists for, so the claim is made with its real boundary
+ * instead: the known instances, named here with their reasons, and any other one
+ * reds.
  *
  * ── Why EQUALITY, not `<=` ─────────────────────────────────────────────────
  *
@@ -38,18 +41,25 @@
  *
  * ── Honest limits ──────────────────────────────────────────────────────────
  *
- * It reads source TEXT. It sees `.catch(` written literally and would miss one
- * reached through a variable, built by a helper, or composed from outside this
- * directory — and it says nothing about schemas anywhere else in the repo.
- * Comments are stripped, so a file may DISCUSS `.catch()` without tripping it,
- * which both `shoppingListItem.ts` and `recipe.ts` now do; a guard a comment can
- * trip is one an author silences by rewording.
+ * It reads source, one file at a time, with no type information — never the
+ * schemas themselves, which this directory's own header forbids importing into a
+ * script. `scripts/lib/schemaCatchSites.mjs` parses each file with TypeScript's
+ * parser and carries the full list of what that does and does not see; the two
+ * that matter here are that a `.catch()` reached through a variable or applied by
+ * a helper is invisible, and that a file may DISCUSS `.catch()` freely because a
+ * comment cannot produce a call expression. Both `shoppingListItem.ts` and
+ * `recipe.ts` do discuss it.
+ *
+ * The scan is `packages/domain/src/schemas/` and nothing else, so it says nothing
+ * about the app-local schemas CLAUDE.md's #932 narrowing permits.
  */
 
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { findCatchSites } from '../lib/schemaCatchSites.mjs';
 
 /** The sanctioned instances: file → why it is there. */
 const ALLOWED = new Map([
@@ -72,12 +82,9 @@ const schemaDir = join(
   'schemas',
 );
 
-const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-
 const files = readdirSync(schemaDir).filter((f) => f.endsWith('.ts'));
-const withCatch = files.filter((f) =>
-  stripComments(readFileSync(join(schemaDir, f), 'utf8')).includes('.catch('),
-);
+const sites = files.flatMap((f) => findCatchSites(readFileSync(join(schemaDir, f), 'utf8'), f));
+const withCatch = [...new Set(sites.map((site) => site.file))];
 
 describe('.catch() under packages/domain/src/schemas', () => {
   it('reads a real, non-empty set of schema files', () => {
