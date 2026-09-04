@@ -7,16 +7,37 @@ foundation (#179).
 
 ## Design principles (load-bearing — do not violate)
 
-1. **The chef speaks in plain text.** Conversational turns have **no structured
-   output schema and no tools**. Structure is the librarian's job, applied only at
-   save time. Forcing structure or tool-use onto the chat is exactly what made the
-   earlier prototype feel constrained and produce sub-Gemini answers. Keep the chat
-   free.
-2. **Equipment is ambient context, never a tool.** The user's kit is small enough to
-   drop straight into the chef's system prompt ("here's the equipment available —
-   draw on it when it genuinely helps, ignore it otherwise"). No retrieval tool,
-   nothing the model feels obliged to call. The assistant must never be _bound_ to
-   the user's equipment.
+1. **The chef speaks in plain text — and it has tools.** Conversational turns have
+   **no structured output schema**. Structure is the librarian's job, applied only at
+   save time; forcing structure onto the chat is what made the earlier prototype feel
+   constrained and produce sub-Gemini answers, and that half of this principle is not
+   negotiable.
+
+   **The "and no tools" half was overturned in #840, deliberately.** The chef can
+   search the recipe library and read a saved dish, because a chef that cannot name
+   one of the household's own fifty-nine recipes is not a kitchen assistant. What the
+   original principle was protecting is real and survives as a constraint rather than
+   a prohibition: a model with tools reaches for them, and every turn spent searching
+   is a turn not spent being a chef. So — **two tools, no more** (`findRecipes`,
+   `readRecipe`), every tool description carries an explicit _when not to call_
+   clause, and the chef still **writes nothing**. Saving, planning and shopping-list
+   adds stay manual. A third tool is a new issue with its own justification.
+
+2. **Small and fixed stays ambient; large and growing gets a tool.** Equipment,
+   household favourites and kitchen memory go straight into the chef's system prompt
+   ("here's the equipment available — draw on it when it genuinely helps, ignore it
+   otherwise"). No retrieval tool, nothing the model feels obliged to call, and the
+   assistant is never _bound_ to the user's equipment.
+
+   **This is a SIZE test, not a matter of taste** — which is why the recipe library
+   is on the other side of it (#840). The library fails the test in both directions:
+   it was 59 dishes after two months of real use and grows without bound, so an
+   ambient index is paid on every single turn forever; and an index can only ever
+   carry a summary line per dish, so the moment the chef needs the ingredients or the
+   method of a dish it did not open with, ambient cannot help it at all. Apply the
+   same two questions — _is it bounded?_ and _is a summary enough?_ — before making
+   anything else ambient or a tool.
+
 3. **Pro-tier model for the chef.** Conversation quality is the whole point — use a
    Pro-tier Gemini for the chef, not Flash. The librarian (structured extraction)
    stays on Flash + `temperature: 0`, consistent with the other parse flows.
@@ -178,7 +199,15 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   in. There is deliberately no mode flag, no wire field, and no chat UI for it.
   Absent or empty counts omit the section entirely, so the chef behaves exactly
   as it did before the feature existed.
-- Plain text out. **No `output` schema. No tools.** Guard the model call with
+- It searches the **recipe library** on the turns that need it (issue #840), via the
+  `findRecipes` tool rather than an ambient index — principle #2 says why. The tool
+  is one projected Firestore read (`title`, `description`, `kind`, `metadata`, so a
+  search never pulls a recipe's ingredients or method off the wire) wrapped around
+  the pure ranking in `packages/domain/src/recipe/queries/searchRecipes.ts`. A tool
+  round-trip is silence to the stream guard below, which is why the handler must
+  stay fast; a failure degrades to no matches and the chef answers from its own
+  knowledge, exactly as it did before the tool existed.
+- Plain text out. **No `output` schema**, ever — and, since #840, tools. Guard the model call with
   `withAiStreamTimeout`, not `withAiTimeout` — this is the one streaming flow, and
   a promise wrapper cannot bound a stream. `withAiTimeout` around the aggregated
   response sits _after_ the drain loop, so a model that goes quiet mid-answer

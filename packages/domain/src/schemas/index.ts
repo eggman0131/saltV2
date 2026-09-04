@@ -202,6 +202,18 @@ export type { PushSubscriptionDoc } from './pushSubscription.js';
 export { ChefChatInputSchema, ChefChatOutputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
+// findRecipes (issue #840) — the chef's library-search tool. The `.describe()`
+// strings on the input schema are PROMPT TEXT the model reads every turn, not
+// documentation; see the header.
+export {
+  FindRecipesInputSchema,
+  FindRecipesMatchSchema,
+  FindRecipesOutputSchema,
+  RecipeSearchProjectionSchema,
+  RECIPE_SEARCH_PROJECTION_FIELDS,
+} from './findRecipes.js';
+export type { FindRecipesInput, FindRecipesOutput, RecipeSearchProjection } from './findRecipes.js';
+
 // identifyRecipeKit (issue #882) — "what do I need to get out?", inferred from the
 // whole stored recipe. Labels are FREE TEXT on purpose; read the header before
 // reaching for an enum over the drawn vocabulary.

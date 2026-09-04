@@ -247,6 +247,11 @@ export {
   kitByStep,
   groupKitByEquipment,
   findProducingRecipes,
+  // Keyword search over the library (issue #840) — what the chef's findRecipes
+  // tool ranks with, once the CF has done the projected read.
+  searchRecipes,
+  RECIPE_SEARCH_DEFAULT_MAX_RESULTS,
+  RECIPE_SEARCH_RESULT_CEILING,
   diffRecipe,
   diffWords,
   unchangedRatio,
@@ -255,6 +260,7 @@ export {
   PLACEHOLDER_MOODS,
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
+export type { RecipeSearchCandidate, RecipeSearchFilters } from './recipe/index.js';
 export type { RecipePhaseTotals } from './recipe/index.js';
 export type { KitEquipmentGroup } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';

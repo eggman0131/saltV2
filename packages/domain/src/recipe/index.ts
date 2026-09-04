@@ -80,6 +80,15 @@ export { kitByStep } from './queries/kitByStep.js';
 export { groupKitByEquipment } from './queries/groupKitByEquipment.js';
 export type { KitEquipmentGroup } from './queries/groupKitByEquipment.js';
 export { findProducingRecipes } from './queries/producers.js';
+// Keyword search over the library (issue #840) — the ranking half of the chef's
+// findRecipes tool. Pure; the Cloud Function does the projected Firestore read
+// and nothing else.
+export {
+  searchRecipes,
+  RECIPE_SEARCH_DEFAULT_MAX_RESULTS,
+  RECIPE_SEARCH_RESULT_CEILING,
+} from './queries/searchRecipes.js';
+export type { RecipeSearchCandidate, RecipeSearchFilters } from './queries/searchRecipes.js';
 export { diffRecipe } from './queries/diffRecipe.js';
 // The diff's own contract, beside the function that produces it since #973 (it
 // was zod in `schemas/` until then, and validated nothing). Only the three names
