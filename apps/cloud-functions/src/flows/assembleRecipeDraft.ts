@@ -55,26 +55,68 @@ export async function assembleRecipeDraft(
   const now = new Date().toISOString();
 
   // Assign stable IDs to steps first so we can resolve step ordinals → IDs.
-  const steps = raw.steps.map((s) => ({
-    id: crypto.randomUUID(),
-    text: s.text,
-    timer:
-      s.timerMinutes !== null
-        ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
-        : null,
-    note: s.note,
-  }));
-
-  // OBSERVE ONLY (issue #1178, Phase 1). Every step above still gets a fresh
-  // UUID; this counts what the librarian said about where each step came from
-  // and throws the answer away. The point is to find out whether the model cites
-  // reliably BEFORE anything depends on it — the same posture `authorRecipe.ts:30`
-  // took before its output schema was allowed to reject a draft.
   //
-  // Counts only, never text: the citation sits beside free-form user content and
-  // the reporting convention keeps that out of logs (see the raw-ingredient-text
-  // test in assembleRecipeDraft.test.ts).
-  logStepCitations(raw, baseRecipe);
+  // In edit mode a step may cite `sourceStepId` — the id of the existing step the
+  // librarian rewrote it FROM (issue #1178). Honouring it is the whole feature:
+  // `diffRecipe`'s id-equality pass then pairs a reworded step as ONE edit rather
+  // than a deletion beside an unrelated addition, and a guided plan survives an
+  // amendment that left its steps alone.
+  //
+  // THREE CITATIONS ARE REFUSED, all silently, and each loses the CITATION rather
+  // than the step — `proposeSchedule.ts:285-299`'s precedent, for its reason: a
+  // step with a fresh id is still a perfectly good step, so failing the amend
+  // because the model hallucinated an id would turn a cosmetic improvement into a
+  // broken feature.
+  //
+  //  1. An id that is not a step of `baseRecipe`. It names nothing.
+  //  2. An id an earlier step in this output already claimed. First wins, in
+  //     output order. This one is a CORRECTNESS rule, not tidiness: two steps
+  //     sharing an id inside one recipe would corrupt the `firstUsedInStepId`
+  //     resolution below (an ingredient chip landing on whichever step the lookup
+  //     reached first) and cook mode's paging.
+  //  3. Any citation at all when `baseRecipe` is null. Create mode has no base;
+  //     variation mode deliberately passes null so the new dish does not inherit
+  //     the original's identity (issue #763), so a citation there would be
+  //     honoured against a recipe that is not being edited.
+  //
+  // A refused citation therefore yields a fresh UUID and falls back to exactly
+  // what happened before this existed: `diffRecipe`'s Passes 3 and 4 guess, as
+  // they always did. That fallback is permanent (issue #1178, Decision 5) — the id
+  // is model-supplied and therefore fallible, and this raises the ceiling without
+  // removing the floor.
+  const baseStepIds = new Set((baseRecipe?.steps ?? []).map((step) => step.id));
+  const claimedStepIds = new Set<string>();
+  let citedCount = 0;
+  const steps = raw.steps.map((s) => {
+    const cited = s.sourceStepId ?? null;
+    if (cited !== null && baseRecipe) citedCount += 1;
+    const reused =
+      cited !== null && baseStepIds.has(cited) && !claimedStepIds.has(cited) ? cited : null;
+    if (reused !== null) claimedStepIds.add(reused);
+    return {
+      id: reused ?? crypto.randomUUID(),
+      text: s.text,
+      timer:
+        s.timerMinutes !== null
+          ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
+          : null,
+      note: s.note,
+    };
+  });
+
+  // How well the librarian cited, as counts and never a word of the recipe (the
+  // same rule the parse-failure report keeps — free-form user content stays out of
+  // anything we emit). This is the measurement #1178 Phase 3 reports against, and
+  // the standing signal for whether the model has stopped citing after a model
+  // upgrade. Silent outside edit mode, where there is nothing a citation could name.
+  if (baseRecipe) {
+    logger.info('assembleRecipeDraft: librarian step citations', {
+      steps: raw.steps.length,
+      baseSteps: baseRecipe.steps.length,
+      cited: citedCount,
+      reused: claimedStepIds.size,
+    });
+  }
 
   // Edit mode: index the base recipe's ingredients by rawText. The librarian is
   // told to keep unchanged ingredients' rawText verbatim, so a byte-identical
@@ -357,40 +399,4 @@ export async function assembleRecipeDraft(
   }
 
   return draft;
-}
-
-// What the librarian said about step provenance, as four numbers (issue #1178,
-// Phase 1). `cited` counts steps that named a source; `known` how many of those
-// ids are actually steps of the recipe being amended; `duplicated` how many cited
-// an id another step had already claimed — the three failure modes Phase 2 has to
-// be safe against, measured before it is written.
-//
-// Silent in create and variation mode: `baseRecipe` is null in both, there is
-// nothing a citation could name, and a log line per recipe import would be noise.
-function logStepCitations(raw: LibrarianOutput, baseRecipe: RecipeDoc | null): void {
-  if (!baseRecipe) return;
-
-  const baseStepIds = new Set(baseRecipe.steps.map((step) => step.id));
-  const claimed = new Set<string>();
-  let cited = 0;
-  let known = 0;
-  let duplicated = 0;
-
-  for (const step of raw.steps) {
-    const sourceStepId = step.sourceStepId;
-    if (sourceStepId == null) continue;
-    cited += 1;
-    if (!baseStepIds.has(sourceStepId)) continue;
-    known += 1;
-    if (claimed.has(sourceStepId)) duplicated += 1;
-    else claimed.add(sourceStepId);
-  }
-
-  logger.info('assembleRecipeDraft: librarian step citations', {
-    steps: raw.steps.length,
-    baseSteps: baseRecipe.steps.length,
-    cited,
-    known,
-    duplicated,
-  });
 }

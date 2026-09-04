@@ -769,20 +769,21 @@ describe('assembleRecipeDraft — the phase strip', () => {
   });
 });
 
-// ─── step citations, observed only (issue #1178, Phase 1) ─────────────────────
+// ─── step citations (issue #1178) ─────────────────────────────────────────────
 
-// Phase 1 asks the librarian which existing step each returned step came from and
-// then throws the answer away — the point is to find out whether the model cites
-// reliably before Phase 2 makes anything depend on it. So the assertions here are
-// about the COUNTS being right and the assembled recipe being untouched.
-describe('assembleRecipeDraft — librarian step citations', () => {
+// One test per rule the comment at the id-assignment site states, because that
+// comment is the only place three of them are written down (CLAUDE.md rule 12).
+// Every one of these ends by asserting the ids are UNIQUE: a duplicate step id
+// inside one recipe is the failure that would actually corrupt a document —
+// `firstUsedInStepId` resolves an ingredient chip onto whichever step the lookup
+// reaches first, and cook mode pages by id.
+describe('assembleRecipeDraft — the step id a citation asks for', () => {
   function citations() {
     const call = mockLogInfo.mock.calls.find(
       (c) => c[0] === 'assembleRecipeDraft: librarian step citations',
     );
     return call?.[1] as
-      | { steps: number; baseSteps: number; cited: number; known: number; duplicated: number }
-      | undefined;
+      { steps: number; baseSteps: number; cited: number; reused: number } | undefined;
   }
 
   function withCitations(...ids: (string | null)[]) {
@@ -790,69 +791,107 @@ describe('assembleRecipeDraft — librarian step citations', () => {
     return rawOutput({ steps });
   }
 
-  it('counts a citation that names a step of the recipe being amended', async () => {
-    await assembleRecipeDraft(withCitations('old-step', null), {
+  function ids(doc: RecipeDoc) {
+    return doc.steps.map((step) => step.id);
+  }
+
+  it('reuses the cited id, so the diff can pair the reword as one edit', async () => {
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
       source: MANUAL,
       baseRecipe: baseRecipe(),
     });
 
-    expect(citations()).toEqual({
-      steps: 2,
-      baseSteps: 1,
-      cited: 1,
-      known: 1,
-      duplicated: 0,
-    });
+    // `id-1`, not `id-2`: the mock counter only advances for a step that actually
+    // minted, and the first step reused its cited id instead.
+    expect(ids(doc)).toEqual(['old-step', 'id-1']);
+    expect(new Set(ids(doc)).size).toBe(2);
   });
 
-  it('counts a citation to an id the base recipe does not have as cited but not known', async () => {
-    await assembleRecipeDraft(withCitations('hallucinated', null), {
+  it('mints a fresh id for a citation the base recipe has never heard of, and keeps the step', async () => {
+    const doc = await assembleRecipeDraft(withCitations('hallucinated', null), {
       source: MANUAL,
       baseRecipe: baseRecipe(),
     });
 
-    expect(citations()).toMatchObject({ cited: 1, known: 0, duplicated: 0 });
+    expect(doc.steps).toHaveLength(2);
+    expect(doc.steps[0]!.text).toBe('Boil the pasta.');
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
   });
 
-  it('counts the second claim on one id as a duplicate', async () => {
-    await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
+  it('honours one id once — the second claim on it gets a fresh id', async () => {
+    // The rule that is a correctness requirement rather than tidiness. First wins,
+    // in output order.
+    const doc = await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
       source: MANUAL,
       baseRecipe: baseRecipe(),
     });
 
-    expect(citations()).toMatchObject({ cited: 2, known: 2, duplicated: 1 });
+    expect(ids(doc)).toEqual(['old-step', 'id-1']);
+    expect(new Set(ids(doc)).size).toBe(2);
   });
 
-  it('says nothing at all when there is no recipe being amended', async () => {
-    // Create and variation mode both assemble with `baseRecipe: null`. There is
-    // nothing a citation could name, so a line per import would be pure noise.
-    await assembleRecipeDraft(withCitations('old-step'), { source: MANUAL });
+  it('ignores a citation in create mode, where there is nothing to cite', async () => {
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), { source: MANUAL });
 
-    expect(citations()).toBeUndefined();
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
   });
 
-  it('logs counts only — never a word of the recipe', async () => {
-    // Same rule as the parse-failure report above: free-form user content stays
-    // out of anything we emit, and a citation sits right beside it.
-    await assembleRecipeDraft(withCitations('old-step', null), {
+  it('ignores a citation in variation mode, which assembles with no base recipe', async () => {
+    // Variation mode GROUNDS the prompt on the original but calls this with
+    // `baseRecipe: null` on purpose (issue #763), so the new dish does not inherit
+    // the original's identity. `authorRecipe` also withholds the ids from that
+    // prompt, so this is the second of two independent reasons a variation cannot
+    // reuse an id — either alone would do, and neither is relied on.
+    const doc = await assembleRecipeDraft(withCitations('old-step', 'old-step'), {
+      source: MANUAL,
+      baseRecipe: null,
+    });
+
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+    expect(new Set(ids(doc)).size).toBe(2);
+  });
+
+  it('still assembles when the librarian cites nothing at all', async () => {
+    // The back-compat floor: an older response, a FUNCTIONS_AI_FAKE fixture, or a
+    // model that ignored the instruction. `rawOutput()` carries no citations.
+    const doc = await assembleRecipeDraft(rawOutput(), {
       source: MANUAL,
       baseRecipe: baseRecipe(),
     });
 
+    expect(ids(doc)).toEqual(['id-1', 'id-2']);
+  });
+
+  it('hangs an ingredient on the step it names even when that step kept its old id', async () => {
+    // `firstUsedInStepId` resolves by ORDINAL into the assembled list, so a reused
+    // id must not change which step an ingredient lands on. `rawOutput()` puts the
+    // pasta on ordinal 0 and the garlic on ordinal 1.
+    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    const items = doc.ingredients[0]!.items;
+    expect(items[0]!.firstUsedInStepId).toBe('old-step');
+    expect(items[1]!.firstUsedInStepId).toBe('id-1');
+  });
+
+  it('logs how well the librarian cited, in counts and never a word of the recipe', async () => {
+    await assembleRecipeDraft(withCitations('old-step', 'hallucinated'), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(citations()).toEqual({ steps: 2, baseSteps: 1, cited: 2, reused: 1 });
     const serialised = JSON.stringify(citations());
     expect(serialised).not.toContain('pasta');
     expect(serialised).not.toContain('garlic');
     expect(serialised).not.toContain('old-step');
   });
 
-  it('leaves every assembled step id freshly minted, citation or not', async () => {
-    // Phase 1 observes and does not act. Honouring the citation is Phase 2's job;
-    // until then a cited step is exactly as new as an uncited one.
-    const doc = await assembleRecipeDraft(withCitations('old-step', null), {
-      source: MANUAL,
-      baseRecipe: baseRecipe(),
-    });
+  it('says nothing at all when there is no recipe being amended', async () => {
+    await assembleRecipeDraft(withCitations('old-step'), { source: MANUAL });
 
-    expect(doc.steps.map((s) => s.id)).toEqual(['id-1', 'id-2']);
+    expect(citations()).toBeUndefined();
   });
 });

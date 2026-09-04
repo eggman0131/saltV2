@@ -41,12 +41,20 @@ interface MatchResult<T> {
 }
 
 // ── Reconciling a reworded item (Passes 3 and 4) ─────────────────────────────
-// Passes 1 and 2 (id, then exact content) only fire for items the AI author flow
-// left byte-identical: `assembleRecipeDraft` mints a fresh `crypto.randomUUID()`
-// for every step on every amend, and reuses an ingredient id ONLY on an unchanged
-// `rawText`. So every genuine reword arrives with a fresh id AND changed content,
-// matches neither pass, and would otherwise surface as remove + add. Passes 3 and
-// 4 are what stop that (issue #1137).
+// Passes 1 and 2 (id, then exact content) fire only when the AI author flow left
+// an item's id or its content intact. `assembleRecipeDraft` reuses an ingredient
+// id ONLY on an unchanged `rawText`, so every genuine ingredient reword arrives
+// with a fresh id AND changed content, matches neither pass, and would otherwise
+// surface as remove + add. Passes 3 and 4 are what stop that (issue #1137).
+//
+// Steps used to be worse: every one was re-minted on every amend, so Pass 1 never
+// fired for them at all. Since issue #1178 the librarian is asked which existing
+// step each rewrite came from and the assembler honours a valid citation, so a
+// reworded step normally reaches Pass 1 with its id intact and pairs there. That
+// is a CEILING, not a floor: the citation is model-supplied and can be absent,
+// wrong or duplicated, and each of those is turned into "no citation" by the
+// assembler. Passes 3 and 4 are what an uncited step still falls back to, and
+// they stay permanently (issue #1178, Decision 5).
 //
 // Pass 3 — canon identity. `identityKey` supplies a per-item EXACT signal:
 // `canonId` for ingredients WHEN canonicalisation resolved one — null on a

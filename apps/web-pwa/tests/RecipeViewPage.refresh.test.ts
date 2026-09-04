@@ -17,11 +17,14 @@ import type { ChatSessionDoc } from '@salt/domain/schemas';
 // the librarian (`authorRecipeTraced`) and the write (`saveRecipe`), exactly as
 // the "save as new recipe" suite does.
 //
-// The load-bearing case is the guided plan. Applying ANY amendment re-mints every
-// step id, so the plan's `stepNotes` point at steps that no longer exist and the
-// plan is silently WRONG rather than merely stale. That is decided here by asking
-// whether the ids survived — not by where the proposal came from, which is what
-// #784 asked and which was wrong about the chat path all along.
+// The load-bearing case is the guided plan. An amendment that re-mints a step id
+// leaves the plan's `stepNotes` pointing at steps that no longer exist, so the plan
+// is silently WRONG rather than merely stale. Since issue #1178 an id can also
+// survive a step being rewritten from end to end, which is wrong in the same silent
+// way — the note resolves, onto words it was not written against. So the question
+// asked here is about the steps themselves, id AND wording, not about where the
+// proposal came from, which is what #784 asked and which was wrong about the chat
+// path all along.
 
 const {
   mockRecipes,
@@ -170,9 +173,9 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   };
 }
 
-// What the librarian hands back. The title moves so the diff has something to
-// show, and the step id is FRESH — which is precisely why the guided plan cannot
-// survive an applied refresh.
+// What the librarian hands back. The title moves so the diff has something to show,
+// and the step arrives both re-minted AND reworded — the ordinary shape of a refresh,
+// and why the guided plan cannot survive one. The two tests below peel those apart.
 function librarianDraft(): RecipeDoc {
   return {
     producesCanonId: null,
@@ -465,10 +468,33 @@ describe('RecipeViewPage — an applied amendment takes the guided plan with it'
     await waitFor(() => expect(discardGuidedPlan).toHaveBeenCalledWith(RECIPE_ID));
   });
 
-  it('keeps the plan when the amendment leaves every step id standing', async () => {
-    // The other half of the same question. An amendment that touched only the
-    // title hands back the SAME step ids, so every `stepNotes` reference still
-    // resolves and the plan is merely stale — which the banner already covers.
+  it('keeps the plan when the amendment leaves every step untouched', async () => {
+    // The other half of the same question. An amendment that touched only the title
+    // hands the steps back unchanged — same id, same wording — so every `stepNotes`
+    // reference still resolves onto the words it was written against, and the plan
+    // is merely stale, which the banner already covers.
+    const draft = librarianDraft();
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: {
+        ...draft,
+        steps: [{ ...draft.steps[0]!, id: 'step-1', text: 'Fry the chorizo.' }],
+      },
+    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+    mockSessions._set([makeSession(CHAT_TURNS)]);
+    renderPage();
+
+    await amendAndReview();
+    await fireEvent.click(screen.getByTestId('recipe-change-apply'));
+
+    await waitFor(() => expect(saveRecipe).toHaveBeenCalledTimes(1));
+    expect(discardGuidedPlan).not.toHaveBeenCalled();
+  });
+
+  it('discards the plan when a step kept its id but the wording moved (issue #1178)', async () => {
+    // The case the librarian's step citation newly creates: the id is honoured
+    // because the model said this step came from that one, and the words changed
+    // anyway. A surviving id is no longer evidence the note still applies.
     const draft = librarianDraft();
     vi.mocked(authorRecipeTraced).mockResolvedValue({
       kind: 'ok',
@@ -481,7 +507,7 @@ describe('RecipeViewPage — an applied amendment takes the guided plan with it'
     await fireEvent.click(screen.getByTestId('recipe-change-apply'));
 
     await waitFor(() => expect(saveRecipe).toHaveBeenCalledTimes(1));
-    expect(discardGuidedPlan).not.toHaveBeenCalled();
+    await waitFor(() => expect(discardGuidedPlan).toHaveBeenCalledWith(RECIPE_ID));
   });
 });
 

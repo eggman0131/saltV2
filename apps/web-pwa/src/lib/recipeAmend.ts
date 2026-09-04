@@ -170,23 +170,35 @@ async function propose(
  * only one of which knew the rule, which is the #764 shape exactly. It lives
  * here now because here is the one door both surfaces come through.
  *
- * Whether the plan survives is decided by the one fact that actually governs it:
- * are the step ids its `stepNotes` point at still there? This used to ask a
- * different question — did the proposal come from Refresh rather than from the
- * chat (issue #784) — on the belief that a chat amendment preserved the ids of
- * steps it did not change. It does not: `assembleRecipeDraft` mints a fresh
- * `crypto.randomUUID()` for EVERY step on every amend, ingredients being the
- * only things reused by content. So a chat amendment left the plan pointing at
- * steps that no longer existed, silently, and the stale-recipe banner cannot
- * help with references that do not resolve. Asking about the ids covers every
- * door and cannot drift when a new one opens (issue #890).
+ * Whether the plan survives is decided by what the amendment actually did to the
+ * steps the plan annotates. It used to ask a different question — did the
+ * proposal come from Refresh rather than from the chat (issue #784) — on the
+ * belief that a chat amendment preserved the ids of steps it did not change. It
+ * did not, so a chat amendment left the plan pointing at steps that no longer
+ * existed, silently, and the stale-recipe banner cannot help with references
+ * that do not resolve. Asking about the steps themselves covers every door and
+ * cannot drift when a new one opens (issue #890).
+ *
+ * Asking about the IDS ALONE was enough only while every id was re-minted on
+ * every amend: `assembleRecipeDraft` used to hand each step a fresh
+ * `crypto.randomUUID()`, ingredients being the only things reused. Since issue
+ * #1178 the librarian cites the step each rewrite came from and the assembler
+ * honours it, so an id can now survive a step being rewritten from end to end —
+ * and a plan whose notes still resolve, onto WORDS THEY WERE NOT WRITTEN
+ * AGAINST, is worse than a plan that is gone, because nothing shows it. Hence
+ * the second half of the condition below: text as well as identity.
  */
 export async function applyRecipeAmendment(
   amendment: RecipeAmendment,
 ): Promise<ReadResult<void, DomainError>> {
-  const survivingStepIds = new Set(amendment.updated.steps.map((step) => step.id));
+  // Both halves of the rule in one lookup: a step that is GONE has no entry, so
+  // `get` returns undefined and never equals its old text; a step that survived
+  // but was reworded returns the new wording, which does not equal it either.
+  // Only a step still present AND still saying the same thing leaves the plan
+  // standing.
+  const survivingTextById = new Map(amendment.updated.steps.map((step) => [step.id, step.text]));
   const planStepsInvalidated = amendment.existing.steps.some(
-    (step) => !survivingStepIds.has(step.id),
+    (step) => survivingTextById.get(step.id) !== step.text,
   );
 
   const saveResult = await saveRecipeDoc(stampRecipeAttribution(amendment.updated));
