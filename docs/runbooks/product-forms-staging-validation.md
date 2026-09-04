@@ -6,9 +6,36 @@ capability (issues #500/#501/#504/#505) end-to-end against the **staging** proje
 UI and inspects Firestore directly, so it catches integration/AI/rollup behaviour
 that unit + e2e tests don't.
 
-Last run: 2026-07-17 (against `main` incl. #518 — sum-per-form then MAX. **#518
+Last run: 2026-07-17 in full. **Partially re-run 2026-09-04** — see the next block.
+
+Last full run: 2026-07-17 (against `main` incl. #518 — sum-per-form then MAX. **#518
 CONFIRMED on staging**: Lime ×5 and Free Range Egg ×4 both observed, and each
 verified against `formDemand` in Firestore rather than the rendered number alone).
+
+> ⚠️ **Partial re-run, 2026-09-04**, against staging rebuilt wholesale from production
+> on 2026-09-03 — so on **real recipes, not the A–D fixtures below**, which the rebuild
+> replaced. Two rows on the Weekly Shop list, both verified against `formDemand` in
+> Firestore rather than the rendered number:
+>
+> - **Garlic Bulbs ×1** — `2 cloves` + `3 cloves` across two recipes, one form (`garlic
+clove`, yield 10 cloves/bulb). 0.2 + 0.3 = 0.5 → 1. Proves same-form demand is not
+>   double-counted; a per-recipe round would also give 1, so it does **not** discriminate
+>   round-once.
+> - **Lime ×9** — `90 ml` + `180 ml` juice across two recipes (one form, yield **30
+>   ml/lime**) sums to 9; `2 tbsp` zest in one recipe (yield 5 g/lime, stored already
+>   converted to `10 g` at parse time) gives 2. MAX(9, 2) = 9. **The cross-form MAX is
+>   working**: the zest's 2 is present in `formDemand` and correctly absorbed. Note ×9
+>   looks like 6 + 3 summing two forms; it is not — both juice contributions carry the
+>   same `formId`. A genuine cross-form sum here would read **×11**.
+>
+> **What this run did NOT cover**, and what a full run still owes: the **round-once**
+> clause (neither row discriminates it), whole/direct-sums-on-top, and every A–D
+> fixture row below. Two changes to which form an ingredient binds to have landed since
+> the last full run — #1181 and #1192 — and neither is exercised by these two rows.
+>
+> The two yields above are AI-seeded and were taken as truth, per the standing rule in
+> finding #4. 30 ml/lime is generous for a UK lime (~25–30 ml), so ×9 for 270 ml is a
+> lower bound: if a shop comes up short on limes, correct the seeded yield, not the code.
 
 > ✅ **All expected numbers below were observed on staging 2026-07-17**, superseding the
 > "derived but not yet observed" warning that stood here. Every row was verified against
