@@ -93,6 +93,49 @@ const CATCHES = [
       { symbol: 'B', field: 'b', line: 2 },
     ],
   },
+  {
+    // PR #1257 review, blocking 1: a chain rooted at a Zod value const that is
+    // neither `z` nor `*Schema` used to return no site at all. `WeekdayEnum`
+    // (mealPlanDay.ts) is imported into two stored-document schemas
+    // (mealPlanConfig.ts, mealPlanTemplate.ts) — this is that shape.
+    what: 'a lone-handler .catch() on an imported Zod const that is neither `z` nor `*Schema`',
+    source: [
+      'export const MealPlanConfigSchema = z.object({',
+      "  firstDayOfWeek: WeekdayEnum.catch(() => 'mon'),",
+      '});',
+    ].join('\n'),
+    sites: [{ symbol: 'MealPlanConfigSchema', field: 'firstDayOfWeek', line: 2 }],
+  },
+  {
+    what: 'a lone-handler .catch() on a locally aliased schema',
+    source: [
+      'const Base = z.string();',
+      "export const S = z.object({ a: Base.catch(() => '') });",
+    ].join('\n'),
+    sites: [{ symbol: 'S', field: 'a', line: 2 }],
+  },
+  {
+    what: 'a lone-handler .catch() on a schema read out of a record',
+    source: 'export const S = z.object({ a: SHAPES.thing.catch(() => null) });',
+    sites: [{ symbol: 'S', field: 'a', line: 1 }],
+  },
+  {
+    what: 'a lone-handler .catch() on a schema read out of an array element',
+    source: 'export const S = z.object({ a: VARIANTS[0].catch(() => null) });',
+    sites: [{ symbol: 'S', field: 'a', line: 1 }],
+  },
+  {
+    what: 'a lone-handler .catch() on a schema returned from a function call',
+    source: "export const S = makeEnum(KINDS).catch(() => 'recipe');",
+    sites: [{ symbol: 'S', field: null, line: 1 }],
+  },
+  {
+    what: 'a lone-handler .catch() on a namespace-imported zod',
+    source: ["import * as zod from 'zod';", "export const S = zod.string().catch(() => '');"].join(
+      '\n',
+    ),
+    sites: [{ symbol: 'S', field: null, line: 2 }],
+  },
 ];
 
 /** Sources containing the text `.catch(` that must produce no site at all. */
@@ -121,6 +164,14 @@ const MISSES = [
   {
     what: 'a .catch( inside a string literal',
     source: "export const advice = 'reach for .catch(value) only on an AI output';",
+  },
+  {
+    what: 'a Promise chain rooted at the global Promise',
+    source: 'Promise.resolve().catch(() => {});',
+  },
+  {
+    what: 'a Promise .then().catch() chain',
+    source: 'fetchThing().then((r) => r).catch(() => null);',
   },
 ];
 

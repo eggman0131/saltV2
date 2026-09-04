@@ -79,8 +79,9 @@
  *   new key in THAT file and reds, which is the safe direction; the same line
  *   inside a helper this scanner cannot follow is not seen at all.
  *
- * The scan is `packages/domain/src/schemas/` and nothing else, so it says nothing
- * about the app-local schemas CLAUDE.md's #932 narrowing permits.
+ * The scan is `packages/domain/src/schemas/`'s whole tree (`readdirSync` with
+ * `recursive: true`) and nothing outside it, so it says nothing about the
+ * app-local schemas CLAUDE.md's #932 narrowing permits.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -89,6 +90,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { findCatchSites } from '../lib/schemaCatchSites.mjs';
+import { stripComments } from '../lib/unitTestSpec.mjs';
 
 /**
  * The sanctioned instances: `file#Symbol` (or `file#Symbol.field`) → why it is
@@ -114,9 +116,15 @@ const schemaDir = join(
   'schemas',
 );
 
-const files = readdirSync(schemaDir).filter((f) => f.endsWith('.ts'));
+const files = readdirSync(schemaDir, { recursive: true }).filter((f) => f.endsWith('.ts'));
 const sites = files.flatMap((f) => findCatchSites(readFileSync(join(schemaDir, f), 'utf8'), f));
 const withCatch = [...new Set(sites.map((site) => site.file))];
+
+/** How many call sites share each key — a key an `ALLOWED` `Map` cannot split. */
+const keyCounts = sites.reduce((counts, site) => {
+  counts.set(site.key, (counts.get(site.key) ?? 0) + 1);
+  return counts;
+}, new Map());
 
 /** What a red run should tell a reader to do, per side of the mismatch. */
 const verdict = () => {
@@ -137,6 +145,14 @@ const verdict = () => {
           `  GONE          ${key} is in ALLOWED but no call site matches it. ` +
           'Delete the entry (or rename it, if the symbol was renamed) — until you ' +
           'do, that line exempts nothing and hides that the guard stopped guarding it.',
+      ),
+    ...[...keyCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(
+        ([key, count]) =>
+          `  DUPLICATE     ${key} names ${count} .catch() call sites, not one. ` +
+          'ALLOWED is a Map, so one entry can never exempt more than one of them — ' +
+          'give each site a distinguishing field so its key is unique.',
       ),
   ];
   return lines.length === 0 ? '' : `\n.catch() allowlist mismatch:\n${lines.join('\n')}\n`;
@@ -165,5 +181,21 @@ describe('.catch() under packages/domain/src/schemas', () => {
   it('has none on either shopping schema — the narrowing #1114 shipped', () => {
     expect(withCatch).not.toContain('shoppingListItem.ts');
     expect(withCatch).not.toContain('shoppingList.ts');
+  });
+
+  it('reds on every file the old text scan reds, or more — never fewer', () => {
+    // Pins #1251's own Behavior Contract ("the guard must red on everything it
+    // reds on today, plus strictly more") directly against the real tree,
+    // rather than trusting the fixture suite alone. The retired guard was
+    // `stripComments(...).includes('.catch(')` per file; any file it would have
+    // flagged must still show up in `withCatch` — narrowing may only replace a
+    // file-shaped exemption with a symbol-shaped one, never drop a file the
+    // coarse scan caught.
+    const oldScanFlagged = files.filter((f) =>
+      stripComments(readFileSync(join(schemaDir, f), 'utf8')).includes('.catch('),
+    );
+    for (const f of oldScanFlagged) {
+      expect(withCatch).toContain(f);
+    }
   });
 });

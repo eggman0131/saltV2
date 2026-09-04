@@ -30,11 +30,16 @@
  * ── Zod `.catch(value)` vs Promise `.catch(handler)` ───────────────────────
  *
  * Both spell `.catch(`, and only the first has anything to do with #1114. A call
- * is treated as Zod's unless BOTH of these hold: its argument list is a lone
- * function (arrow or `function` expression) or empty, AND the chain it hangs off
- * does not root at `z` or at an identifier ending in `Schema`. Erring towards
- * "Zod" is deliberate — a misclassified Promise `.catch()` reds a guard someone
- * then reads, a misclassified Zod one is silent.
+ * is treated as a Promise's only when it carries positive evidence of one:
+ * either its argument list is empty (Zod's `.catch()` always requires an
+ * argument — a fallback value or a callback — so an empty one cannot be Zod's),
+ * or the chain it hangs off is rooted at the identifier `Promise`, passes
+ * through a `.then(`, or the call itself is the direct operand of an `await`.
+ * Everything else — including a lone-handler argument on a chain rooted at
+ * `WeekdayEnum`, a local alias, a record/array element, or a function call — is
+ * Zod's. Erring towards "Zod" is deliberate — a misclassified Promise `.catch()`
+ * reds a guard someone then reads, a misclassified Zod one is silent, so the
+ * classifier fails CLOSED: proof of Promise is required, not proof of Zod.
  *
  * No schema file holds a Promise `.catch()` today, so this closes a latent false
  * positive rather than fixing a live one.
@@ -47,8 +52,12 @@
  *   a variable (`const m = 'catch'; s[m](…)`), applied by a helper
  *   (`withCatch(schema)`), or composed into this directory from outside it, is
  *   not seen at all.
- * - The Zod/Promise split above is a heuristic over syntax, not a type. A Promise
- *   chain rooted at an identifier ending in `Schema` is reported as a Zod catch.
+ * - The Zod/Promise split above is a heuristic over syntax, not a type. A
+ *   genuine Promise `.catch(handler)` whose promise is neither rooted at
+ *   `Promise`, chained through `.then(`, nor `await`ed at the call site itself
+ *   — stored in a variable and awaited on a later line, say — is reported as a
+ *   Zod catch. That is the safe direction stated above: it reds a guard someone
+ *   reads rather than silently waving a Zod `.catch()` through.
  * - Attribution needs an enclosing `VariableDeclaration` or `FunctionDeclaration`.
  *   A call with neither — a bare `export default …` — reports the symbol
  *   `<anonymous>`, which is a real key and will red the guard rather than vanish
@@ -86,19 +95,73 @@ const chainRoot = (node) => {
   }
 };
 
-/** `z.string()…` or `SomeSchema.…` — the two shapes a Zod chain starts with here. */
-const rootsInZod = (expression) => {
-  const root = chainRoot(expression);
-  return ts.isIdentifier(root) && (root.text === 'z' || root.text.endsWith('Schema'));
+/** Does the chain `.catch` hangs off pass through a `.then(` anywhere? */
+const chainHasThen = (expression) => {
+  let current = expression;
+  for (;;) {
+    if (ts.isPropertyAccessExpression(current)) {
+      if (current.name.text === 'then') return true;
+      current = current.expression;
+      continue;
+    }
+    if (
+      ts.isElementAccessExpression(current) ||
+      ts.isCallExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isParenthesizedExpression(current) ||
+      ts.isAwaitExpression(current)
+    ) {
+      current = current.expression;
+      continue;
+    }
+    return false;
+  }
 };
 
-/** `.catch(err => …)` / `.catch(function (e) {…})` / `.catch()` — the Promise shape. */
-const takesOnlyAHandler = (call) =>
-  call.arguments.length === 0 ||
-  (call.arguments.length === 1 &&
-    (ts.isArrowFunction(call.arguments[0]) || ts.isFunctionExpression(call.arguments[0])));
+/**
+ * Is this `.catch(...)` call itself the direct operand of an `await` —
+ * `await x.catch(...)`, or `await x.catch(...).y()` — walking up through the
+ * chain built on top of it? A promise merely stored in a variable and awaited
+ * on a later line is not seen; that is the documented, safe-direction limit.
+ */
+const isAwaitedDirectly = (call) => {
+  let current = call;
+  for (;;) {
+    const { parent } = current;
+    if (!parent) return false;
+    if (ts.isAwaitExpression(parent)) return true;
+    if (
+      ts.isPropertyAccessExpression(parent) ||
+      ts.isElementAccessExpression(parent) ||
+      ts.isNonNullExpression(parent) ||
+      ts.isParenthesizedExpression(parent)
+    ) {
+      current = parent;
+      continue;
+    }
+    if (ts.isCallExpression(parent) && parent.expression === current) {
+      current = parent;
+      continue;
+    }
+    return false;
+  }
+};
 
-const isZodCatch = (call) => rootsInZod(call.expression) || !takesOnlyAHandler(call);
+/**
+ * Positive evidence that a `.catch(...)` call is a Promise's, not Zod's. Zod's
+ * `.catch()` always takes an argument, so an empty argument list can only be a
+ * Promise's; otherwise the chain must root at `Promise`, run through `.then(`,
+ * or be `await`ed directly — see the header's Zod/Promise section.
+ */
+const isPromiseCatch = (call) => {
+  if (call.arguments.length === 0) return true;
+  const root = chainRoot(call.expression);
+  if (ts.isIdentifier(root) && root.text === 'Promise') return true;
+  if (chainHasThen(call.expression)) return true;
+  return isAwaitedDirectly(call);
+};
+
+const isZodCatch = (call) => !isPromiseCatch(call);
 
 const propertyName = (name) =>
   ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
