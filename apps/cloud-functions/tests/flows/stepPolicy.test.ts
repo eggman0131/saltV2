@@ -23,8 +23,30 @@
  *  - The two source files are read and asserted to interpolate rather than
  *    re-type (UT-E2). Editing the sentence in place inside a consumer, instead
  *    of in the constant, is the second way this regresses.
- *  - The Svelte component is asserted to declare neither canned prompt — #934's
- *    "Done when" — and to reach them through the subpath.
+ *  - Every file this reads is asserted non-empty (UT-E2). A `not.toContain` over
+ *    a string that silently came back empty is the shape that passes forever.
+ *
+ * ── How the domain files are located, and why not by a relative path ────────
+ *
+ * `packages/domain/src/prompts/` is found through `import.meta.resolve` on the
+ * `@salt/domain/prompts` specifier, which works with no build step because that
+ * package's exports map points at real source (`"./prompts"` →
+ * `"./src/prompts/index.ts"`), not at a `dist`. UT-E4: a `../../../../packages/`
+ * escape encodes the repo layout and breaks on any file move — and the split
+ * form this file used to spell (a repo root in one expression, `packages/…` in
+ * another) is a shape the UT-E4 matcher deliberately cannot see, so it was a
+ * live violation of a rule pinned at 0 in every area (#1250).
+ *
+ * `stepRules.ts` stays resolved relative to this test. It is in this app.
+ *
+ * ── Where the component half lives ───────────────────────────────────────────
+ *
+ * #934's other "Done when" — that no web-pwa component re-declares a canned
+ * prompt — is pinned in `apps/web-pwa/tests/stepPolicyPrompts.test.ts`. It was
+ * asserted here, by reading the component off disk through a repo-root path,
+ * which is the cross-app reach CLAUDE.md hard rule 6 forbids and which no gate
+ * can see (a `readFileSync` is not an edge in the import graph). It moved into
+ * the app that owns the file it reads (#1250).
  *
  * ── The honest boundary: what a green run here does NOT prove ────────────────
  *
@@ -47,18 +69,29 @@ import { dirname, join } from 'node:path';
 import { ONE_OPERATION_PER_STEP_PRINCIPLE, REFRESH_PROMPT } from '@salt/domain/prompts';
 import { STEP_RULES } from '../../src/flows/stepRules.js';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
+const promptsDir = dirname(fileURLToPath(import.meta.resolve('@salt/domain/prompts')));
+const here = dirname(fileURLToPath(import.meta.url));
 
-const STEP_RULES_SRC = 'apps/cloud-functions/src/flows/stepRules.ts';
-const CHAT_PROMPTS_SRC = 'packages/domain/src/prompts/recipeChatPrompts.ts';
-const DECLARATION_SRC = 'packages/domain/src/prompts/stepPolicy.ts';
-const RECIPE_PAGE = 'apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte';
+const read = (path: string) => readFileSync(path, 'utf8');
+
+const STEP_RULES_SRC = join(here, '../../src/flows/stepRules.ts');
+const CHAT_PROMPTS_SRC = join(promptsDir, 'recipeChatPrompts.ts');
+const DECLARATION_SRC = join(promptsDir, 'stepPolicy.ts');
 
 describe('the step policy reaches both registers from one statement', () => {
   it('is present in the field-list prompt and the chat turn alike', () => {
     expect(STEP_RULES).toContain(ONE_OPERATION_PER_STEP_PRINCIPLE);
     expect(REFRESH_PROMPT).toContain(ONE_OPERATION_PER_STEP_PRINCIPLE);
+  });
+
+  it('reads three real source files, none of them empty', () => {
+    // UT-E2, and the reason it is its own test: every assertion below is either a
+    // `not.toContain` or a `toContain` over text read off disk, and the negative
+    // half of that pair passes just as happily over an empty string. A specifier
+    // that resolved somewhere harmless would green the guard silently.
+    for (const src of [DECLARATION_SRC, STEP_RULES_SRC, CHAT_PROMPTS_SRC]) {
+      expect(read(src).length, `${src} read as empty`).toBeGreaterThan(100);
+    }
   });
 
   it('is declared in exactly one source file, and interpolated by the other two', () => {
@@ -82,28 +115,5 @@ describe('the step policy reaches both registers from one statement', () => {
     expect(ONE_OPERATION_PER_STEP_PRINCIPLE.length).toBeGreaterThan(100);
     // A near-miss: the label alone is NOT the policy, and must not read as a copy.
     expect('ONE COHERENT OPERATION PER STEP.').not.toContain(ONE_OPERATION_PER_STEP_PRINCIPLE);
-  });
-});
-
-describe('no policy prose is left in the Svelte component (#934 Done when)', () => {
-  it('declares neither canned prompt and imports both from the shared subpath', () => {
-    const page = read(RECIPE_PAGE);
-    expect(page).not.toMatch(/const\s+REFRESH_PROMPT\s*=/);
-    expect(page).not.toMatch(/const\s+OPTIMISE_FOR_KITCHEN_PROMPT\s*=/);
-    expect(page).toContain("from '@salt/domain/prompts'");
-    // Still sent, though — a component that dropped the prompts entirely would
-    // pass every assertion above and have broken both menu items.
-    expect(page).toContain('OPTIMISE_FOR_KITCHEN_PROMPT');
-    expect(page).toContain('REFRESH_PROMPT');
-  });
-
-  it('would catch a re-declared prompt — the matcher is exercised', () => {
-    expect('  const REFRESH_PROMPT = `Write this recipe out again`;').toMatch(
-      /const\s+REFRESH_PROMPT\s*=/,
-    );
-    // A near-miss: importing or sending the constant is not declaring it.
-    expect("  import { REFRESH_PROMPT } from '@salt/domain/prompts';").not.toMatch(
-      /const\s+REFRESH_PROMPT\s*=/,
-    );
   });
 });
