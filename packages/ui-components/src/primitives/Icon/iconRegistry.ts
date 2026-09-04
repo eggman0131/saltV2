@@ -66,6 +66,8 @@ import Lock from '@lucide/svelte/icons/lock';
 import Martini from '@lucide/svelte/icons/martini';
 import Merge from '@lucide/svelte/icons/merge';
 import Minus from '@lucide/svelte/icons/minus';
+import PanelRightClose from '@lucide/svelte/icons/panel-right-close';
+import PanelRightOpen from '@lucide/svelte/icons/panel-right-open';
 import Pencil from '@lucide/svelte/icons/pencil';
 import Percent from '@lucide/svelte/icons/percent';
 import Plus from '@lucide/svelte/icons/plus';
@@ -142,6 +144,8 @@ export const iconRegistry = {
   Martini,
   Merge,
   Minus,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
   Percent,
   Plus,

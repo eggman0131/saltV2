@@ -276,3 +276,71 @@ test.describe('recipes — the dish and its chef scroll separately', () => {
     expect(await mainScrollRange(page)).toBeLessThanOrEqual(EPSILON);
   });
 });
+
+// ─── Putting the chef away (issue #1141) ──────────────────────────────────────
+
+/**
+ * The same two-column screen, with the chat switched off. Only e2e can see this:
+ * "one column, capped and centred" is layout, and jsdom lays nothing out.
+ *
+ * The two facts worth pinning are the ones a wrong gate breaks silently — the chat
+ * column really goes (rather than leaving an empty track), and turning it back on
+ * restores the equal halves the gutter-over-the-crease depends on.
+ */
+test.describe('recipes — putting the chef away', () => {
+  test.use({ viewport: VIEWPORT });
+
+  test('the toggle collapses the page to one column and restores the equal halves', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const recipe = buildRecipe('e2e-1141-toggle', 'Chef Away Dahl', 'recipe');
+    await openSeeded(page, recipe, uniqueEmail(testInfo.testId));
+
+    const grid = page.getByTestId('recipe-view');
+    const recipeColumn = grid.locator('> div').first();
+    const chatColumn = page.getByTestId('recipe-chat-sidebar');
+    const toggle = page.getByTestId('recipe-chat-pane-toggle');
+
+    // ── It starts on, exactly as it always has ───────────────────────────────
+    await expect(chatColumn).toBeVisible();
+    await expect(toggle).toHaveAccessibleName('Hide chef chat');
+    const halfWidth = (await recipeColumn.boundingBox())!.width;
+
+    // ── Off: the chat column goes and the recipe takes the room ──────────────
+    await toggle.click();
+    await expect(chatColumn).toBeHidden();
+    await expect(toggle).toHaveAccessibleName('Show chef chat');
+
+    // Genuinely wider — not merely a hidden neighbour leaving an empty track.
+    const wide = (await recipeColumn.boundingBox())!;
+    expect(wide.width).toBeGreaterThan(halfWidth + GUTTER_PX);
+    // And nothing overflows sideways: the cap is a ceiling, never a floor.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(EPSILON);
+
+    // The list of past chats came with it, and there is still exactly one.
+    await expect(page.getByTestId('recipe-chat-list')).toHaveCount(1);
+    await expect(recipeColumn.getByTestId('recipe-chat-list')).toBeVisible();
+
+    // Still not a drawer — the phone surface must not appear on a wide screen
+    // merely because the pane is switched off.
+    await expect(page.getByTestId('recipe-chat-drawer')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    // ── On again: equal halves, gutter on the crease ─────────────────────────
+    await toggle.click();
+    await expect(chatColumn).toBeVisible();
+
+    const recipeBox = (await recipeColumn.boundingBox())!;
+    const chatBox = (await chatColumn.boundingBox())!;
+    expect(Math.abs(recipeBox.width - chatBox.width)).toBeLessThanOrEqual(EPSILON);
+    expect(Math.abs(chatBox.x - (recipeBox.x + recipeBox.width) - GUTTER_PX)).toBeLessThanOrEqual(
+      EPSILON,
+    );
+    // The conversation survived the round trip — the column was hidden, not rebuilt.
+    await expect(page.getByTestId('chat-input')).toBeVisible();
+  });
+});

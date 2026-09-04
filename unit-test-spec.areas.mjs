@@ -125,9 +125,18 @@ export const violationCeilings = {
   // the one case the UT-B1 note in `scripts/lib/unitTestSpec.mjs` sanctions. The
   // alternative on offer was to hide the phase tests inside an unrelated suite
   // that already breaches both, which buys the counter and costs the reader.
+  // UT-B1 45 → 46, and UT-C2 stays at 34 (issue #1141). ONE new file:
+  // `RecipeViewPage.chatPane.test.ts`, covering the chef-chat pane's on/off
+  // switch. Same reasoning as the row above — the page cannot render without the
+  // twelve-mock preamble every RecipeViewPage suite carries, and folding these
+  // tests into `RecipeViewPage.docked.test.ts` (which already breaches both)
+  // would buy the counter at the reader's expense: that file is #933's
+  // characterisation net for the media query, and this is a feature's behaviour.
+  // UT-C2 does NOT move, because this suite builds its recipe with `@salt/domain`'s
+  // `emptyRecipe` rather than copying the sibling's hand-rolled factory.
   'apps/web-pwa': {
     'UT-A1': 5,
-    'UT-B1': 45,
+    'UT-B1': 46,
     'UT-C1': 0,
     'UT-C2': 34,
     'UT-C3': 31,
