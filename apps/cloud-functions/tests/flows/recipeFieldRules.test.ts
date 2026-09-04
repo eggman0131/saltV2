@@ -202,3 +202,44 @@ describe('recipeFieldRules — unconditional rules', () => {
     }
   });
 });
+
+describe('recipeFieldRules — is it a drink you mix, or something you eat (#765)', () => {
+  // The classification lives here rather than in each of the four prompts that
+  // interpolate this module, for the reason the module exists: three copies of a
+  // rule are three rules one edit apart from disagreeing (#785). These assertions
+  // are what make "every AI creation path asks the same question" checkable.
+  it('asks every path for a kind, and names the one thing a cocktail is', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('- kind:');
+      expect(rules).toContain('a drink that is MIXED and served in a glass');
+    }
+  });
+
+  it('states the tie-break as loudly as the question, on every path', () => {
+    // The asymmetry the issue argues: a cocktail filed under Recipes still works,
+    // a dinner filed under Cocktails can never be planned and `kind` is
+    // immutable. So the doubtful cases are named explicitly and sent to `recipe`
+    // — a prompt that merely asked the question would leave them to the model's
+    // taste.
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('including everything you merely have doubts about');
+      expect(rules).toContain('When it is not clearly a mixed drink in a glass, answer "recipe"');
+      // The named ambiguities, each one a real case from the issue.
+      expect(rules).toContain('tiramisu');
+      expect(rules).toContain('cordial');
+      expect(rules).toContain('hot chocolate');
+      expect(rules).toContain('mocktail');
+    }
+  });
+
+  it('never offers the model an outing or a placeholder', () => {
+    // The prompt must not name a kind the schema will not accept: a model told it
+    // may answer "outing" is a model whose answer is silently rewritten, and the
+    // two kinds it would name are exactly the ones with no ingredients and no
+    // method. Bounded by AUTHORABLE_RECIPE_KINDS on the wire; not mentioned here.
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).not.toContain('outing');
+      expect(rules).not.toContain('placeholder');
+    }
+  });
+});

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AuthoredRecipePhasesSchema, AuthoredTimingSummarySchema, RecipeSchema } from './recipe.js';
+import { AUTHORABLE_RECIPE_KINDS } from '../recipe/queries/capabilities.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phase 1).
 //
@@ -71,10 +72,37 @@ export const ExtractedStepSchema = z.object({
   note: z.string().nullable(),
 });
 
+// WHAT KIND OF THING did the model just read (issue #765) — a dish you eat, or a
+// drink you mix? Shared by both AI authoring shapes: `ExtractRecipeAIOutputSchema`
+// below and `LibrarianOutputSchema`, so the URL import, the photo import and the
+// chat librarian all answer one question against one definition, and
+// `assembleRecipeDraft` can read `raw.kind` off either of them.
+//
+// BOUNDED to `AUTHORABLE_RECIPE_KINDS`, not to `RecipeKindSchema`: `outing` and
+// `placeholder` are never even offered to the model, so it cannot mint an entry
+// whose `takesIngredients` is `false` and then write an ingredient list onto it.
+// The set is read off the capability table, so this bound moves only when that
+// table's `isAuthorable` column does.
+//
+// `.catch('recipe')` is the FLOOR, and it is the schema's job rather than the
+// prompt's. A missing field, a null, a typo, `"Cocktail"`, `"outing"` — every one
+// of them degrades to `'recipe'` and NONE of them fails the parse. That matters
+// because a failed parse here is a failed import: on the extractor paths it costs
+// the user their retry, and on the librarian path (which has no retry at all) it
+// throws away a whole conversation. It also encodes the asymmetry the issue
+// argues: a cocktail filed under Recipes still works, a dinner filed under
+// Cocktails can never be planned, so the fallback leans to the recoverable one.
+export const AuthoredRecipeKindSchema = z.enum(AUTHORABLE_RECIPE_KINDS).catch('recipe');
+
 export const ExtractRecipeAIOutputSchema = z.object({
   // false when the page is not a recipe at all → maps to the not-a-recipe
   // failure. true with a populated recipe otherwise.
   isRecipe: z.boolean(),
+  // The SECOND classification, and a different question from `isRecipe` (issue
+  // #765): given that this IS a recipe, is it a drink you mix or something you
+  // eat? It sits here because the two are read together — #739's reasoning about
+  // a cocktail as the zero-cook-time case is the same page of the same argument.
+  kind: AuthoredRecipeKindSchema,
   title: z.string(),
   description: z.string().nullable(),
   // A positive integer or null — null is the "not stated" sentinel, and is what an

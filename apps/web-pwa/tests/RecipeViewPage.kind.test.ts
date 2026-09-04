@@ -573,11 +573,10 @@ describe('RecipeViewPage — duplicate', () => {
 });
 
 // "Make a variation" (issue #763). Gated on `isAuthorable` — "can the librarian
-// WRITE this kind?" — which is a different question from `isCookable`, and the
-// distinction is the whole reason the predicate exists. A cocktail is cookable
-// and still cannot be varied, because no AI authoring path can emit a cocktail
-// yet; the day one can, the row flips in `capabilities.ts` and this page needs no
-// edit at all. That is what the per-kind case below is protecting.
+// WRITE this kind?" — and never on the kind itself. #765 is the proof that gate
+// was the right one: the librarian learned to write cocktails, the `cocktail` row
+// flipped in `capabilities.ts`, and this page inherited the change with no edit of
+// its own. The per-kind case below is what would have gone red had it not.
 describe('RecipeViewPage — make a variation', () => {
   beforeEach(() => {
     vi.mocked(createChatSession).mockResolvedValue({
@@ -606,7 +605,7 @@ describe('RecipeViewPage — make a variation', () => {
 
   it.each([
     ['recipe', true],
-    ['cocktail', false],
+    ['cocktail', true],
     ['outing', false],
     ['placeholder', false],
   ] as const)('is offered for a %s: %s', async (kind, offered) => {

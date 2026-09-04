@@ -149,6 +149,26 @@ describe('ChatSessionPage — save as recipe', () => {
     await waitFor(() => expect(authorRecipeTraced).toHaveBeenCalled());
     expect(claimRecipe).not.toHaveBeenCalled();
   });
+
+  // The toast names what the librarian actually wrote (issue #765). ONE button
+  // still, exactly as before — the model has already worked out which kind it is,
+  // so splitting "Save as recipe" into two would ask the user a question that is
+  // already answered. The words come from KIND_COPY, never from a comparison.
+  it.each([
+    ['recipe', 'Recipe created'],
+    ['cocktail', 'Cocktail created'],
+  ] as const)('says the right thing after saving a %s', async (kind, toast) => {
+    mockSessions._set([makeSession({ recipeId: null })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: { ...emptyRecipe('recipe-new', NOW), kind },
+    });
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-recipe-btn'));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith(toast, 'success'));
+  });
 });
 
 // "Save as new recipe" (issue #798): the counterpart on a chat that is ATTACHED

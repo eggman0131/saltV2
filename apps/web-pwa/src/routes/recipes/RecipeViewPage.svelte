@@ -1063,7 +1063,11 @@
       );
       return;
     }
-    addToast('New recipe saved!', 'success');
+    // The sidebar twin of the chat page's "Save as new recipe" (issue #765):
+    // `basedOnRecipeId: null` makes it a CREATE path, so the librarian may
+    // classify the accompaniment it just wrote as a cocktail. Copy comes from
+    // `KIND_COPY`, never from a comparison on the kind.
+    addToast(KIND_COPY[kindOf(result.value)].createdToast, 'success');
     push(`/recipes/${result.value.id}`);
   }
 

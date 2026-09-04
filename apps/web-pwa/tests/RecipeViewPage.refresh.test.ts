@@ -514,9 +514,9 @@ describe('RecipeViewPage — an applied amendment takes the guided plan with it'
 // Refresh is gated on `isAuthorable` — "can the librarian WRITE this kind?" —
 // the same predicate "Make a variation" uses, and never on the kind directly. An
 // outing has no ingredients and no method to write out; a placeholder is a
-// photograph of a good dinner and not a dish at all. A cocktail is cookable and
-// still not authorable, which is the case that proves the gate is the predicate
-// rather than a hand-written list of the two obvious kinds.
+// photograph of a good dinner and not a dish at all. Cocktails joined the
+// authorable set in #765 and turned up here with no edit to this page, which is
+// what a predicate gate buys over a hand-written list of the obvious kinds.
 describe('RecipeViewPage — Refresh carries no equipment gate', () => {
   it('is offered to a household that owns nothing', async () => {
     // Optimise is hidden with an empty manifest, because it asks a question about
@@ -537,7 +537,7 @@ describe('RecipeViewPage — Refresh carries no equipment gate', () => {
 describe('RecipeViewPage — Refresh is offered only where the librarian can write', () => {
   it.each([
     ['recipe', true],
-    ['cocktail', false],
+    ['cocktail', true],
     ['outing', false],
     ['placeholder', false],
   ] as const)('is offered for a %s: %s', async (kind, offered) => {

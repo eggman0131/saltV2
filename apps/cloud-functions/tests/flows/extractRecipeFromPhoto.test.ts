@@ -267,3 +267,48 @@ describe('extractRecipeFromPhoto — failures', () => {
     await expect(invoke({ images: [PAGE_ONE] })).rejects.toMatchObject({ code: 'import-failed' });
   });
 });
+
+// ─── recipe or cocktail (issue #765) ─────────────────────────────────────────
+//
+// The photo import's half. Its AI output schema is
+// `ExtractRecipeAIOutputSchema.extend({ book })`, so it inherits `kind` for free
+// — which is exactly why it is asserted here: an inheritance that quietly stopped
+// working would leave this path silently classifying everything as dinner while
+// the URL import's tests stayed green.
+describe('extractRecipeFromPhoto — recipe or cocktail', () => {
+  it('asks the question and states the tie-break', async () => {
+    await invoke({ images: [PAGE_ONE] });
+
+    const system = mockGenerate.mock.calls[0]![0].system as string;
+    expect(system).toContain('- kind:');
+    expect(system).toContain('a drink that is MIXED and served in a glass');
+    expect(system).toContain('When it is not clearly a mixed drink in a glass, answer "recipe"');
+  });
+
+  it('lands a page from a cocktail book in the Cocktails section', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { ...AI_OUTPUT, kind: 'cocktail', title: 'Negroni' },
+    });
+
+    const recipe = await invoke({ images: [PAGE_ONE] });
+
+    expect(recipe.kind).toBe('cocktail');
+  });
+
+  it('lands an ordinary cookbook page as a recipe, exactly as before', async () => {
+    // AI_OUTPUT carries no `kind` — the pre-#765 payload, so this is the
+    // back-compat assertion as well as the happy path.
+    const recipe = await invoke({ images: [PAGE_ONE] });
+
+    expect(recipe.kind).toBe('recipe');
+  });
+
+  it('does not fail the import when the model answers a kind that does not exist', async () => {
+    mockGenerate.mockResolvedValue({ output: { ...AI_OUTPUT, kind: 'nightcap' } });
+
+    const recipe = await invoke({ images: [PAGE_ONE] });
+
+    expect(recipe.kind).toBe('recipe');
+    expect(recipe.title).toBe('Ragù alla bolognese');
+  });
+});

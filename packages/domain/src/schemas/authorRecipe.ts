@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { MessageSchema } from './chatSession.js';
 import { AuthoredRecipePhasesSchema, AuthoredTimingSummarySchema, RecipeSchema } from './recipe.js';
-import { ExtractedIngredientGroupSchema, ExtractedStepSchema } from './extractRecipeFromUrl.js';
+import {
+  AuthoredRecipeKindSchema,
+  ExtractedIngredientGroupSchema,
+  ExtractedStepSchema,
+} from './extractRecipeFromUrl.js';
 
 // Input to the librarian (authorRecipe) flow: the full conversation that the
 // user wants to turn into a recipe (issue #206, Phase 4).
@@ -71,6 +75,14 @@ export const LibrarianStepSchema = ExtractedStepSchema.extend({
 
 export const LibrarianOutputSchema = z.object({
   title: z.string(),
+  // Which kind of entry the conversation described (issue #765) — the extractor's
+  // field, for the extractor's reason, so `assembleRecipeDraft` reads one name off
+  // whichever of the two shapes it was handed. Bounded to the authorable kinds and
+  // floored at `'recipe'`; see `AuthoredRecipeKindSchema`.
+  //
+  // Load-bearing on THIS path specifically: the librarian has no retry, so a kind
+  // the model got wrong must degrade rather than throw away the conversation.
+  kind: AuthoredRecipeKindSchema,
   description: z.string().nullable(),
   // The extractor's constraint, for the extractor's reason (issue #739): a recipe
   // that serves nobody is a model glitch, not an answer. It is also the one of

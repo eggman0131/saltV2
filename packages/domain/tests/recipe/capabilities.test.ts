@@ -5,8 +5,10 @@ import {
   isPlannable,
   isAuthorable,
   takesComponents,
+  AUTHORABLE_RECIPE_KINDS,
 } from '@salt/domain';
 import type { RecipeKind } from '@salt/domain';
+import { RecipeKindSchema } from '@salt/domain/schemas';
 
 // The capability table (issue #637), pinned cell by cell. This is the contract
 // every screen inherits: nothing outside packages/domain branches on the kind,
@@ -41,7 +43,7 @@ describe('recipe kind capabilities', () => {
       takesIngredients: true,
       isCookable: true,
       isPlannable: false,
-      isAuthorable: false,
+      isAuthorable: true,
       takesComponents: true,
     },
     {
@@ -72,27 +74,71 @@ describe('recipe kind capabilities', () => {
     expect(isCookable('outing')).toBe(false);
   });
 
-  it('a recipe is the only kind the librarian can author — for now (issue #763)', () => {
-    // Named separately because the three `false`s here mean "not yet", not "by
-    // design", and the distinction is the whole reason the predicate is called
-    // `isAuthorable` rather than something named after a feature. No AI authoring
-    // path can emit a non-`recipe` kind today (assembleRecipeDraft hardcodes it),
-    // so a cocktail authored from a chat would land in the dinner list forever —
-    // `kind` is immutable. The day the librarian carries `kind` through, the
-    // cocktail row flips here and every consumer inherits it untouched.
+  it('the librarian can author a recipe and a cocktail, and nothing else (issue #765)', () => {
+    // Named separately because these two `false`s are the ones that MEAN
+    // something. The cocktail row was `false` only while `assembleRecipeDraft`
+    // hardcoded `kind: 'recipe'` — "not yet", not "by design" — and #765 removed
+    // that constraint, so it is `true` now and every consumer inherited it with
+    // no edit of its own (⋮ → Make a variation, ⋮ → Refresh, both imports, chat).
     expect(isAuthorable('recipe')).toBe(true);
-    expect(isAuthorable('cocktail')).toBe(false);
+    expect(isAuthorable('cocktail')).toBe(true);
     // These two are false on their own merits and stay false: an outing is a
-    // hand-written night off, a placeholder is a photograph and a title.
+    // hand-written night off with nothing to author, a placeholder is a
+    // photograph and a title.
     expect(isAuthorable('outing')).toBe(false);
     expect(isAuthorable('placeholder')).toBe(false);
   });
 
-  it('authorable is not the same question as cookable', () => {
-    // The trap this predicate exists to avoid: a cocktail IS cookable, so gating
-    // "Make a variation" on `isCookable` would have offered it there.
+  it('cookable and authorable now COINCIDE on all four kinds — recorded, not relied on', () => {
+    // Stated honestly, because #765 changed it. While the cocktail row was
+    // `false` these two columns differed on exactly one kind, and that difference
+    // was the evidence they were separate questions. They no longer differ at
+    // all.
+    //
+    // That is a coincidence of today's four kinds, not an identity, and this test
+    // exists to make it VISIBLE rather than to lock it: a fifth kind that is
+    // cookable but not authorable (or the reverse) turns this red, and the right
+    // response is to delete this test, not to merge the two predicates. The gate
+    // on ⋮ → Make a variation and ⋮ → Refresh stays `isAuthorable` because the
+    // question it asks is "can the librarian WRITE this?", which is what those
+    // two menu items depend on however the columns happen to line up.
+    for (const kind of RecipeKindSchema.options) {
+      expect(isAuthorable(kind)).toBe(isCookable(kind));
+    }
+    // The pair that has NOT collapsed, and the reason the table has five columns:
+    // an outing is planned and never cooked, a cocktail is cooked and never
+    // planned. No single predicate expresses that.
+    expect(isPlannable('outing')).toBe(true);
+    expect(isCookable('outing')).toBe(false);
+    expect(isPlannable('cocktail')).toBe(false);
     expect(isCookable('cocktail')).toBe(true);
-    expect(isAuthorable('cocktail')).toBe(false);
+  });
+
+  // ─── AUTHORABLE_RECIPE_KINDS (issue #765) ──────────────────────────────────
+  //
+  // The tuple is what bounds the `kind` the AI flows may emit, and it is written
+  // out by hand because Zod needs a literal tuple. `satisfies` in capabilities.ts
+  // pins ONE direction at compile time — every member listed really is authorable.
+  // This is the other direction, which the type system cannot express: an
+  // authorable kind that nobody remembered to add to the tuple would silently
+  // never be offered to the model, and the flip that was the whole of #765 would
+  // have shipped as a no-op.
+  describe('AUTHORABLE_RECIPE_KINDS', () => {
+    it('is exactly the set of kinds whose isAuthorable is true', () => {
+      const fromTable = RecipeKindSchema.options.filter((kind) => isAuthorable(kind));
+      expect([...AUTHORABLE_RECIPE_KINDS].sort()).toEqual([...fromTable].sort());
+    });
+
+    it('offers the model neither an outing nor a placeholder', () => {
+      // The concrete harm the bound exists to prevent: an entry whose
+      // `takesIngredients` is false, carrying an ingredient list and a method the
+      // editor and the view page then hide.
+      const members: readonly string[] = AUTHORABLE_RECIPE_KINDS;
+      expect(members).not.toContain('outing');
+      expect(members).not.toContain('placeholder');
+      expect(takesIngredients('outing')).toBe(false);
+      expect(takesIngredients('placeholder')).toBe(false);
+    });
   });
 
   it('a cocktail is made like a recipe but is never dinner', () => {

@@ -54,6 +54,12 @@ import { fileURLToPath } from 'node:url';
 /** The sanctioned instances: file → why it is there. */
 const ALLOWED = new Map([
   ['recipe.ts', 'AuthoredRecipePhasesSchema — an AI output, not a stored document (#1122)'],
+  [
+    'extractRecipeFromUrl.ts',
+    'AuthoredRecipeKindSchema — an AI output, not a stored document (#765). The ' +
+      'floor that makes a bad `kind` degrade to `recipe` rather than fail an ' +
+      'import; the librarian path has no retry, so a throw costs a whole conversation.',
+  ],
 ]);
 
 const schemaDir = join(
@@ -84,7 +90,12 @@ describe('.catch() under packages/domain/src/schemas', () => {
   it('finds exactly the sanctioned instances, and no others', () => {
     // Equality both ways — see the header. The message names the reason so a
     // reader of a red run knows whether to fix the code or edit ALLOWED.
-    expect(withCatch).toEqual([...ALLOWED.keys()]);
+    //
+    // Both sides SORTED: `withCatch` follows `readdirSync` order, which is
+    // alphabetical on APFS and hash order on ext4 — so an order-sensitive compare
+    // would pass on a Mac and fail in CI the moment this list held more than one
+    // entry, which it has since #765.
+    expect([...withCatch].sort()).toEqual([...ALLOWED.keys()].sort());
   });
 
   it('has none on either shopping schema — the narrowing #1114 shipped', () => {

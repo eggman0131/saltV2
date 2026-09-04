@@ -413,6 +413,127 @@ describe('authorRecipe — variation-mode grounding', () => {
   });
 });
 
+// ─── what kind the librarian wrote (issue #765) ─────────────────────────────────
+//
+// The chat path's half of "every route that can make a recipe can make a
+// cocktail". The librarian classifies, `assembleRecipeDraft` carries it, and an
+// amend never re-types the entry it is editing — that last one is a safety
+// property (`kind` is immutable), so it is asserted for every kind rather than
+// for the two the librarian can write.
+describe('authorRecipe — the kind it writes', () => {
+  beforeEach(() => {
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  it('asks the model which kind it is looking at, and states the tie-break', async () => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+    // Whole-constant, not a paraphrase: the classification reaches this prompt via
+    // the shared field rules, so a hand-rolled twin here has to fail this test.
+    expect(system).toContain(recipeFieldRules({ measures: 'preserve' }));
+    expect(system).toContain('a drink that is MIXED and served in a glass');
+    expect(system).toContain('When it is not clearly a mixed drink in a glass, answer "recipe"');
+  });
+
+  it('saves a cocktail when the conversation was about one', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { ...librarianOutput(), kind: 'cocktail', title: 'Negroni' },
+    });
+
+    const draft = await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(draft.kind).toBe('cocktail');
+  });
+
+  it('saves a recipe when the model said nothing at all about the kind', async () => {
+    // The floor, end to end: the schema fills the gap and the import still
+    // succeeds. The librarian has no retry, so a throw here would cost the user
+    // the whole conversation.
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+
+    const draft = await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(draft.kind).toBe('recipe');
+  });
+
+  it('saves a recipe when the model invented a kind it was never offered', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { ...librarianOutput(), kind: 'placeholder' },
+    });
+
+    const draft = await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(draft.kind).toBe('recipe');
+  });
+
+  // AMENDING NEVER RE-TYPES. All four kinds, with the model deliberately
+  // disagreeing each time — an outing or a placeholder is not reachable from the
+  // chat amend UI today, and is asserted anyway because `kind` being immutable is
+  // a property of the document, not of which buttons currently exist.
+  it.each(['recipe', 'outing', 'cocktail', 'placeholder'] as const)(
+    'leaves an existing %s exactly that kind when the chat amends it',
+    async (kind) => {
+      mockGet.mockResolvedValue({ exists: true, data: () => ({ ...baseRecipeDoc(), kind }) });
+      mockGenerate.mockResolvedValue({
+        output: { ...librarianOutput(), kind: kind === 'cocktail' ? 'recipe' : 'cocktail' },
+      });
+
+      const draft = await (authorRecipeFlow as Function)({
+        messages: [],
+        existingTags: [],
+        recipeId: 'r1',
+      });
+
+      expect(draft.kind).toBe(kind);
+    },
+  );
+
+  it('gives a variation on a cocktail the base cocktail kind, not the model answer', async () => {
+    // Variation mode passes `baseRecipe: null` on purpose, so the kind would
+    // otherwise come from inference over a transcript. The base is sitting right
+    // there and its kind is a fact — passed as `kindHint`, which carries nothing
+    // else of the original's identity.
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...baseRecipeDoc(), kind: 'cocktail' }),
+    });
+    mockGenerate.mockResolvedValue({ output: { ...librarianOutput(), kind: 'recipe' } });
+
+    const draft = await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      basedOnRecipeId: 'r1',
+    });
+
+    expect(draft.kind).toBe('cocktail');
+    // Still an independent dish — the hint is the ONLY thing inherited.
+    expect(draft.id).not.toBe('r1');
+    expect(draft.producesCanonId).toBe(null);
+  });
+
+  it.each(['outing', 'placeholder'] as const)(
+    'ignores a %s base as a variation hint and uses the model answer instead',
+    async (kind) => {
+      // Neither is reachable from ⋮ → Make a variation, which is gated on the same
+      // `isAuthorable` the hint is narrowed by. If one ever were, the answer must
+      // not be an entry carrying a method its kind is not allowed to have.
+      mockGet.mockResolvedValue({ exists: true, data: () => ({ ...baseRecipeDoc(), kind }) });
+      mockGenerate.mockResolvedValue({ output: { ...librarianOutput(), kind: 'cocktail' } });
+
+      const draft = await (authorRecipeFlow as Function)({
+        messages: [],
+        existingTags: [],
+        basedOnRecipeId: 'r1',
+      });
+
+      expect(draft.kind).toBe('cocktail');
+    },
+  );
+});
+
 // ─── step rules ─────────────────────────────────────────────────────────────────
 
 // The one-operation + no-quantities rules are shared with the URL-import prompt, so

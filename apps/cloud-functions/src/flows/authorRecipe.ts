@@ -8,6 +8,7 @@ import {
   RecipeSchema,
 } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
+import { isAuthorable } from '@salt/domain';
 import { setActiveSpanName } from '@salt/observability/server';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
@@ -135,7 +136,18 @@ export const authorRecipeFlow = ai.defineFlow(
     // `baseRecipe` is null in BOTH create and variation mode — that is what makes
     // a variation an independent dish rather than a second copy of the original.
     // Do not pass `variationBase` here (issue #763).
-    return assembleRecipeDraft(parsed.data, { source: { type: 'manual' }, baseRecipe });
+    //
+    // Its KIND is the one thing a variation does inherit (issue #765): a variation
+    // on a Negroni is a cocktail, and the base is sitting right there, so there is
+    // no reason to make the model infer it from a conversation about gin. Passed
+    // as a hint rather than as `baseRecipe` so nothing else about the original's
+    // identity comes with it. `isAuthorable` narrows the type as well as gating
+    // it — a base the librarian may not write (an outing, a placeholder) is not
+    // reachable from the variation menu, which is gated on the same predicate, and
+    // if one ever were, the model's own answer is used rather than minting an
+    // entry with a method its kind is not allowed to have.
+    const kindHint = variationBase && isAuthorable(variationBase.kind) ? variationBase.kind : null;
+    return assembleRecipeDraft(parsed.data, { source: { type: 'manual' }, baseRecipe, kindHint });
   },
 );
 
