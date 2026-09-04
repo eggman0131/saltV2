@@ -139,7 +139,6 @@
     arbitrateCanon: 'Canon arbitration',
     arbitrateProductForm: 'Product-form arbitration',
     authorRecipe: 'Recipe author (librarian)',
-    categoriseRecipe: 'Recipe categorisation',
     chefChat: 'Chef Chat',
     describeEquipmentSubject: 'Equipment description (pictogram art direction)',
     describeRecipeScene: 'Recipe scene brief (hero art direction)',
@@ -179,6 +178,15 @@
   // that hardcoded a model literal instead would run without appearing on any
   // card, and nothing here would notice — the same boundary the registry's own
   // completeness note states.
+  //
+  // The OTHER direction — a job listed here that the app never runs — used to
+  // have no guard at all, and `categoriseRecipe` sat on the Fast card for months
+  // as a job with no callable, no trigger and no client caller (#1249). It now
+  // has one: `apps/cloud-functions/tests/ai/registryIsDeployed.test.ts` asserts
+  // every registry id resolves its model in a file reachable by static import
+  // from `apps/cloud-functions/src/index.ts`, i.e. inside the deployed bundle.
+  // Its boundary in turn: reachability is not invocation, so a flow imported by
+  // index.ts but wired to no callable or trigger would still pass.
   //
   // Joined with a middot rather than a comma because several labels contain one
   // ("Process stages (bread, ferments, cures)") — with commas the reader cannot

@@ -99,17 +99,21 @@ describe('resolveModel', () => {
     });
   });
 
-  // ─── The two flows the registry was missing (#935) ────────────────────────
-  // Both resolved a model with no registry entry before this issue, so neither
-  // could be overridden from /admin/app-settings at all. These are the cases
-  // that were impossible to write.
-  describe('newly registered flows', () => {
-    it('categoriseRecipe resolves on `fast` and honours its own override', async () => {
+  // ─── A per-flow override does not leak to its tier siblings ───────────────
+  // #935 added the registry so a flow that resolved a model could be overridden
+  // from /admin/app-settings at all; these are the cases that were impossible to
+  // write before it. One per tier, because the override and the role default are
+  // read from the same doc and the bug worth catching is one moving the other.
+  //
+  // The `fast` case was `categoriseRecipe` until #1249 retired that key with the
+  // flow it named; `identifyRecipeKit` is the same shape on the same tier.
+  describe('per-flow overrides', () => {
+    it('identifyRecipeKit resolves on `fast` and honours its own override', async () => {
       mockGet.mockResolvedValue({
         exists: true,
-        data: () => ({ fast: 'role-fast', perFlow: { categoriseRecipe: 'flow-categorise' } }),
+        data: () => ({ fast: 'role-fast', perFlow: { identifyRecipeKit: 'flow-kit' } }),
       });
-      expect(await resolveModel('categoriseRecipe')).toBe('flow-categorise');
+      expect(await resolveModel('identifyRecipeKit')).toBe('flow-kit');
       // ...and the sibling on the same tier is untouched by it.
       expect(await resolveModel('authorRecipe')).toBe('role-fast');
     });

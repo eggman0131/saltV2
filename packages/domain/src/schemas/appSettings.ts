@@ -54,13 +54,31 @@ export const AI_FLOW_ROLES = {
   // recipe import — so volume, not depth, is what sets the price.
   arbitrateProductForm: 'lite',
   authorRecipe: 'fast',
-  // `fast` (registered #935). It reads a whole recipe and returns a handful of
-  // category tags — the identifyRecipeKit/describeRecipeScene shape, not
-  // chefChat's. Not `lite`: the tags are inferred from what the dish IS across
-  // title, ingredients and method rather than copied out of the words in front
-  // of it, and they are what search and filtering run on, so a sloppy tag is
-  // visible to everyone for as long as the recipe lives.
-  categoriseRecipe: 'fast',
+  // `categoriseRecipe`, a `fast` key, is RETIRED here (issue #1249) — not
+  // renamed, and not re-used for anything else. #935 registered it as if it were
+  // deployed and it never became so: the flow had no callable, no trigger and no
+  // client caller, and its only invocation in the tree was the one-off operator
+  // script `apps/cloud-functions/scripts/recategorise-recipes.ts`. What that
+  // cost was an admin control misrepresenting itself — the "Fast model" role
+  // card named a job the app does not run, and the Advanced section offered an
+  // override for it. The flow, its schemas, its tests and that script are
+  // deleted with this key; recipes are still categorised, by the librarian and
+  // the two importers, all under the same shared `CATEGORY_TAG_RULES`.
+  //
+  // The production consequence, the same shape as the `serverEmbedding`
+  // retirement documented below: `perFlow` is a free-form
+  // `z.record(z.string(), …)`, so an override saved against this key still
+  // parses and is simply never read again. Unlike `serverEmbedding` there is
+  // nothing an orphan could corrupt — no code resolves this id any more, and no
+  // vectors were written under it — so the worst case is a dead map entry.
+  //
+  // The evidence, and its boundary. Daniel (repo owner) states on 2026-09-04
+  // that `recategorise-recipes.ts --apply` has been run to completion against
+  // production and the flow is no longer needed. That is a dated statement from
+  // the owner, in the same form the `serverEmbedding` note took; it is not a
+  // re-read of production recipe tags. What would falsify it is a recipe still
+  // carrying pre-rules tag soup, and the repair then is to re-author or hand-edit
+  // that recipe — the librarian applies the same tag rules this flow did.
   chefChat: 'pro',
   // The cheap text half of the equipment pictogram pair (issue #877): turns a
   // make and model into a brand-free visual brief. `fast` for the same reason

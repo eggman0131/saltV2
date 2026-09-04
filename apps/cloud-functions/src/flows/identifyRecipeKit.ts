@@ -137,7 +137,7 @@ export const identifyRecipeKitFlow = ai.defineFlow(
         : null,
     ].filter((p): p is string => p !== null);
 
-    // `fast` + temperature 0: the same posture as categoriseRecipe. Two cooks
+    // `fast` + temperature 0: the same posture as estimateRecipeTimes. Two cooks
     // reading the same recipe should reach for the same pans, and a kit list is
     // not a place for invention.
     const model = await flowModel('identifyRecipeKit');

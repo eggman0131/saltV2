@@ -322,11 +322,27 @@ export const coverageThresholds = {
   // `chefChat.readRecipe.test.ts` (the shared renderer, the not-found mapping).
   // Ten lines and fifteen branches of `chefChat.ts` went from uncovered to
   // covered; banking stops a later PR deleting those tests and landing green.
+  //
+  // RE-PINNED in #1249, and it is the #1113/#1056 shape this file's header and
+  // `scripts/check-coverage-ratchet.mjs` both name: BOTH RATIOS FELL while
+  // nothing became less tested. #1249 retired the `categoriseRecipe` flow — a
+  // job the app never ran, listed on the admin Fast-model card as if it did —
+  // and `src/flows/categoriseRecipe.ts` was WELL covered by the flow test
+  // deleted alongside it, so its covered lines left the denominator:
+  // 86.49 → 86.43 and 79.11 → 79.07.
+  //
+  // The invariant this file names for telling a moved basis from a regression
+  // wearing its clothes holds on both sides: uncovered lines are UNCHANGED at
+  // 380, and uncovered branches FELL 353 → 352 (the deleted file carried one).
+  // No test was removed from any surviving file and no untested code was added.
+  // The branch ceiling is banked at the lower figure rather than left slack.
+  // All four measured by `pnpm test:coverage` on this branch and pasted from
+  // the ratchet's own block.
   'apps/cloud-functions/src/**': {
-    lines: 86.49,
-    branches: 79.11,
+    lines: 86.43,
+    branches: 79.07,
     uncoveredLines: 380,
-    uncoveredBranches: 353,
+    uncoveredBranches: 352,
   },
   // Banked by #935: `AppSettingsPage.svelte` had no test at all and now has one
   // (the role cards' job lists are generated from the registry, and that claim

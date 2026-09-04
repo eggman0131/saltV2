@@ -29,7 +29,7 @@ export const IdentifyRecipeKitInputSchema = z.object({
   // block of parmesan" each imply a tool the method may never name.
   ingredients: z.array(z.string()),
   // The steps WITH their ids, which is the one place this input differs from
-  // categoriseRecipe's and describeRecipeScene's. The flow has to say which steps
+  // describeRecipeScene's. The flow has to say which steps
   // use each piece of kit, so it needs the ids the recipe document actually
   // carries — it can neither invent them nor be handed ordinals to map back.
   steps: z.array(z.object({ id: z.string(), text: z.string() })),
@@ -59,8 +59,8 @@ export const IdentifyRecipeKitAIOutputSchema = z.object({
 
 // The flow's output: the same shape, sanitised against the recipe it was asked
 // about. Named separately from the AI output for the reason parseRecipeIngredients
-// and categoriseRecipe name theirs — the two are the same today, and the seam is
-// what keeps them free to differ.
+// names its pair — the two are the same today, and the seam is what keeps them
+// free to differ.
 export const IdentifyRecipeKitOutputSchema = z.object({
   kit: z.array(RecipeKitEntrySchema),
 });
