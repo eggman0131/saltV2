@@ -207,6 +207,14 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   round-trip is silence to the stream guard below, which is why the handler must
   stay fast; a failure degrades to no matches and the chef answers from its own
   knowledge, exactly as it did before the tool existed.
+- It reads one dish in full through `readRecipe`, which is `readRecipeContext` and
+  **no second rendering** — so it is `formatRecipeForPrompt` (#890) and it is
+  component-aware (#838) for free, and a dish read this way carries the dishes it is
+  built from. A dish that is missing or corrupt comes back `{ found: false }` rather
+  than throwing; the empty render `readRecipeContext` returns for one is unambiguous
+  because a recipe that parses always renders at least a `Title:` line, which
+  `chefChat.readRecipe.test.ts` pins. **Do not add a third recipe renderer** —
+  `authorRecipe.ts` already admits one duplicate exists.
 - Plain text out. **No `output` schema**, ever — and, since #840, tools. Guard the model call with
   `withAiStreamTimeout`, not `withAiTimeout` — this is the one streaming flow, and
   a promise wrapper cannot bound a stream. `withAiTimeout` around the aggregated

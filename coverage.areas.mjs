@@ -316,11 +316,17 @@ export const coverageThresholds = {
     uncoveredLines: 54,
     uncoveredBranches: 34,
   },
+  // Banked by #840: the chef's two tools arrived with the two suites that pin
+  // their claims — `chefChat.findRecipes.test.ts` (the projected read, the
+  // trimmed line, the skip-invalid and degrade paths) and
+  // `chefChat.readRecipe.test.ts` (the shared renderer, the not-found mapping).
+  // Ten lines and fifteen branches of `chefChat.ts` went from uncovered to
+  // covered; banking stops a later PR deleting those tests and landing green.
   'apps/cloud-functions/src/**': {
-    lines: 85.97,
-    branches: 77.96,
-    uncoveredLines: 390,
-    uncoveredBranches: 368,
+    lines: 86.49,
+    branches: 79.11,
+    uncoveredLines: 380,
+    uncoveredBranches: 353,
   },
   // Banked by #935: `AppSettingsPage.svelte` had no test at all and now has one
   // (the role cards' job lists are generated from the registry, and that claim

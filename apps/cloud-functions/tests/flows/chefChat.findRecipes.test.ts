@@ -58,7 +58,7 @@ vi.mock('../../src/observability/reportServerError.js', () => ({
 const mockGetFirestore = vi.fn();
 vi.mock('firebase-admin/firestore', () => ({ getFirestore: () => mockGetFirestore() }));
 
-const { findRecipesInLibrary, findRecipesTool, chefChatFlow } =
+const { findRecipesInLibrary, findRecipesTool, readRecipeTool, chefChatFlow } =
   await import('../../src/flows/chefChat.js');
 
 beforeEach(() => {
@@ -304,8 +304,11 @@ describe('findRecipes — degrading', () => {
 describe('findRecipes — the tool the model is shown', () => {
   const tool = defineToolCalls.find((c) => c.config.name === 'findRecipes');
 
-  it('is registered as exactly one tool named findRecipes', () => {
-    expect(defineToolCalls.map((c) => c.config.name)).toEqual(['findRecipes']);
+  it('is registered, alongside the one other tool the chef has', () => {
+    // Exact, and it stays exact: two is the whole surface (issue #840), and a
+    // third arriving without its own issue should turn this red. The same list
+    // is asserted from the readRecipe side in `chefChat.readRecipe.test.ts`.
+    expect(defineToolCalls.map((c) => c.config.name)).toEqual(['findRecipes', 'readRecipe']);
     expect(findRecipesTool).toMatchObject({ __tool: 'findRecipes' });
   });
 
@@ -326,9 +329,10 @@ describe('findRecipes — the tool the model is shown', () => {
     expect(description).toMatch(/keywords/i);
   });
 
-  it('says the results carry no ingredients and no method', () => {
+  it('says the results carry no ingredients and no method, and where to get them', () => {
     const description = tool?.config.description ?? '';
     expect(description).toMatch(/does NOT include ingredients or a method/i);
+    expect(description).toMatch(/read the dish with readRecipe/i);
   });
 });
 
@@ -351,9 +355,9 @@ describe('chefChat — the tool in the flow', () => {
     return mockGenerateStream.mock.calls[0]?.[0] as Record<string, unknown>;
   }
 
-  it('passes the findRecipes tool to the model', async () => {
+  it('passes both of the chef’s tools to the model', async () => {
     const options = await runTurn();
-    expect(options['tools']).toEqual([findRecipesTool]);
+    expect(options['tools']).toEqual([findRecipesTool, readRecipeTool]);
   });
 
   it('gives the chef NO structured output schema — half of principle #1 survives', async () => {
@@ -367,6 +371,8 @@ describe('chefChat — the tool in the flow', () => {
     const system = String(options['system']);
     expect(system).toContain('(#/recipes/');
     expect(system).toContain('NEVER READ THE LIBRARY BACK AS A LIST');
+    // And that reading a dish is a separate, deliberate act (phase 2).
+    expect(system).toMatch(/Search to FIND a dish; read one when/);
     // The FAVOURITES_FRAMING lesson, restated for the library: "something
     // different" must not be answered with what they already own.
     expect(system).toMatch(/something DIFFERENT/);

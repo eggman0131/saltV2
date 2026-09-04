@@ -10,7 +10,13 @@ import {
   RecipeSearchProjectionSchema,
   RECIPE_SEARCH_PROJECTION_FIELDS,
 } from '@salt/domain/schemas';
-import type { FindRecipesInput, FindRecipesOutput } from '@salt/domain/schemas';
+import { ReadRecipeInputSchema, ReadRecipeOutputSchema } from '@salt/domain/schemas';
+import type {
+  FindRecipesInput,
+  FindRecipesOutput,
+  ReadRecipeInput,
+  ReadRecipeOutput,
+} from '@salt/domain/schemas';
 import { recipePhaseTotals, searchRecipes } from '@salt/domain';
 import type { RecipeSearchCandidate } from '@salt/domain';
 import {
@@ -214,7 +220,8 @@ Turn a vibe into keywords BEFORE calling: search for the words a recipe would ac
 not the mood. "Something warming for a cold night" is a search for "stew braise soup roast".
 
 What comes back is shallow — a title, its kind, tags, timings and the opening of its description. \
-That is enough to name a dish, link it and suggest it. It does NOT include ingredients or a method.`;
+That is enough to name a dish, link it and suggest it. It does NOT include ingredients or a method: \
+when you need those, read the dish with readRecipe.`;
 
 /**
  * The `findRecipes` tool.
@@ -241,9 +248,13 @@ export const findRecipesTool = ai.defineTool(
 // library, and "never read it back as a list", which is the same instinct that
 // makes an index feel like an index.
 const LIBRARY_FRAMING = `## Their own recipe library
-This household has its own saved recipes, and the findRecipes tool searches them. They are the \
-dishes this family chose to keep, so reaching for one is often a better answer than inventing \
-something — it is already theirs, and they already know they like it.
+This household has its own saved recipes. findRecipes searches them and readRecipe opens one in \
+full. They are the dishes this family chose to keep, so reaching for one is often a better answer \
+than inventing something — it is already theirs, and they already know they like it.
+
+Search to FIND a dish; read one when you are going to reason about what is actually in it. \
+Building a dinner out of two saved dishes means reading both — you cannot say what clashes for \
+the oven or what to prep the night before from a title.
 
 ALWAYS LINK A SAVED DISH. Every library entry you name is written as a Markdown link built from \
 the id the search returned: [Roast chicken traybake](#/recipes/abc123). Never name a saved dish \
@@ -258,6 +269,64 @@ one they already have.
 
 When they ask for something DIFFERENT, their library is part of what they already own — the same \
 rule the section on what they buy states. Use it to know what to steer AWAY from, not what to offer.`;
+
+/**
+ * Reads one saved dish in full for the chef.
+ *
+ * REUSES `readRecipeContext` and adds NO SECOND RENDERING. That is the whole
+ * shape of this tool: `readRecipeContext` is already the rendering the chef reads
+ * a dish through, it is already `formatRecipeForPrompt` (issue #890, so the chef
+ * and the librarian see the same document), and it is already component-aware
+ * (issue #838, so a meal read this way carries its dishes with it). A third
+ * renderer here would have re-opened both holes at once — `authorRecipe.ts`
+ * already admits one duplicate exists, and that is one too many.
+ *
+ * `readRecipeContext` returns '' for a dish that is missing, corrupt or
+ * unreadable, and cannot return '' for one that is fine — `formatRecipeForPrompt`
+ * always emits at least a `Title:` line. So the empty string is exactly "no such
+ * dish", which becomes `found: false` here rather than a throw: the chef says so
+ * out loud and carries on, which is what a stale id from earlier in the
+ * conversation deserves. Pinned by `chefChat.readRecipe.test.ts`.
+ */
+export async function readRecipeForChef(
+  db: ReturnType<typeof getFirestore>,
+  input: ReadRecipeInput,
+): Promise<ReadRecipeOutput> {
+  const recipe = await readRecipeContext(db, input.id);
+  return recipe ? { found: true, recipe } : { found: false, recipe: null };
+}
+
+// The SECOND tool, and the last one. Its description has to answer a question
+// findRecipes's does not: not just when to reach for the library, but when the
+// shallow line is already enough — a chef that reads three dishes in full to
+// suggest one of them has spent the turn on reading rather than on cooking.
+const READ_RECIPE_DESCRIPTION = `Read ONE saved dish in full — every ingredient, every step, the timings, the notes, and the \
+dishes it is built from if it is a meal. Takes the id findRecipes returned.
+
+CALL THIS when you need what is actually IN the dish or how it is actually made:
+- building a meal out of two saved dishes — what clashes for the oven, what to prep the night \
+before, what to double
+- "what can I get done ahead for this?", answered from that dish's real steps
+- scaling, substituting or adapting a dish they already have
+- anything where being wrong about an ingredient or a step would matter
+
+DO NOT CALL IT when the line from findRecipes already answers the question. Naming a dish, \
+suggesting it, saying roughly what it is, judging whether it fits the night — the title, tags, \
+timings and description already carry all of that. Reading three dishes to propose one is a turn \
+spent reading instead of cooking. Read the ones you are actually going to reason about, and no \
+more.
+
+If found comes back false the dish is gone. Say so plainly; never invent its contents.`;
+
+export const readRecipeTool = ai.defineTool(
+  {
+    name: 'readRecipe',
+    description: READ_RECIPE_DESCRIPTION,
+    inputSchema: ReadRecipeInputSchema,
+    outputSchema: ReadRecipeOutputSchema,
+  },
+  (input) => readRecipeForChef(getFirestore(), input),
+);
 
 // ─── Household favourites (issue #726) ───────────────────────────────────────
 //
@@ -476,16 +545,19 @@ export const chefChatFlow = ai.defineFlow(
         system: systemPrompt,
         messages: history,
         prompt: input.newMessage,
-        // The chef's ONE tool (issue #840). Genkit runs the tool loop inside this
-        // call and keeps streaming across it, so the reply still arrives in
-        // fragments; the gap while a tool runs is silence, which is what the idle
-        // timer below bounds. Passed BY VALUE rather than by name so the flow and
-        // the tool cannot get out of step.
+        // The chef's TWO tools, and the whole surface (issue #840) — a third is a
+        // new issue with its own justification. Genkit runs the tool loop inside
+        // this call and keeps streaming across it, so the reply still arrives in
+        // fragments; the gaps while tools run are silence, which is what the idle
+        // timer below bounds. A turn may now search AND read, so that is two
+        // round-trips inside one stream — each is a Firestore read measured in
+        // milliseconds, nowhere near the 55 s idle budget. Passed BY VALUE rather
+        // than by name so the flow and the tools cannot get out of step.
         //
         // Note what is still absent: no `output` option, and none is coming. Half
         // of design principle #1 survives intact — the chef returns prose, and
         // structure stays the librarian's job at save time.
-        tools: [findRecipesTool],
+        tools: [findRecipesTool, readRecipeTool],
       });
 
       // The DRAIN is what needs the deadline, not what follows it (issue #915).
