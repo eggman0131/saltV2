@@ -32,27 +32,42 @@
  *    components outside `routes/` so a re-narrowing to one directory fails
  *    loudly, and the recipe page itself, which the positive assertions below
  *    are then run against — found BY the walk, not by a path constant.
- *  - The matchers are exercised against a synthetic violation and a near-miss
- *    below, so a regex broken by a later edit fails there rather than passing
- *    everything (UT-E2).
- *  - Assertions are on STRUCTURE — a `const NAME =` declaration, an import
- *    specifier — never on a sentence out of a prompt (UT-E3).
- *  - The recipe page is also asserted to still REFERENCE both prompts: one that
- *    dropped them entirely would satisfy every negative assertion and have
- *    broken both menu items.
+ *  - The matchers are exercised against synthetic violations and near-misses
+ *    below — including the typed, `let`, `var` and destructured spellings a
+ *    plain `/const\s+NAME\s*=/` used to miss — so a regex broken or narrowed by
+ *    a later edit fails there rather than passing everything (UT-E2).
+ *  - Assertions are on STRUCTURE — a `const`/`let`/`var` declaration, an import
+ *    specifier, a `chat.send` call shape — never on a sentence out of a prompt,
+ *    and never a bare substring a comment could satisfy on its own (UT-E3).
+ *  - The recipe page is also asserted to still REFERENCE both prompts, via the
+ *    same structural shapes: one that dropped the import binding and the
+ *    `chat.send` call would fail here even though the comments beside those
+ *    call sites still name both identifiers. That deletion is exercised
+ *    directly, not just asserted about.
  *
  * ── The honest boundary: what a green run here does NOT prove ────────────────
  *
- *  1. It sees a literal `const NAME =` declaration in a `.svelte` file under
+ *  1. It sees a `const`/`let`/`var` declaration of the exact identifier —
+ *     however typed or destructured — in a `.svelte` file under
  *     `apps/web-pwa/src`, and nothing else. A PARAPHRASE — a component that
  *     invents its own kitchen-optimising sentence under a different identifier —
  *     is invisible, as is a prompt assembled by a helper, a prompt in a `.ts`
- *     module, and anything outside that directory.
- *  2. Comments are NOT stripped, so a commented-out declaration counts as one.
- *     That is deliberate rather than an oversight: Svelte carries three comment
+ *     module, a second declarator sharing a `const` statement with one that
+ *     already carries an `=`, and anything outside that directory.
+ *  2. Comments are NOT stripped, and that cuts both ways. A commented-out
+ *     declaration counts as one — a false positive on the negative scan. The
+ *     same non-stripping lets the positive scan below pass on prose alone
+ *     UNLESS the check is structural: a bare `toContain` of an identifier is
+ *     satisfied by the comments beside each call site (`RecipeViewPage.svelte`
+ *     lines ~906 and ~1015) even after the real import binding and `chat.send`
+ *     call are deleted — a false negative, and the one with a live falsifier,
+ *     which is why the positive checks below match an import specifier and a
+ *     call shape rather than an identifier substring. Not stripping is still
+ *     deliberate rather than an oversight: Svelte carries three comment
  *     syntaxes plus template interpolation, and a half-correct stripper that
- *     swallowed a real declaration would be the worse failure. A canned prompt
- *     commented out in a component is a copy waiting to be uncommented anyway.
+ *     swallowed a real declaration would be the worse failure. A comment that
+ *     itself echoes the exact import or `chat.send` syntax — not just the
+ *     identifier — would still slip both directions; nothing here strips text.
  *  3. It asserts AT LEAST ONE component reaches the prompts (the recipe page),
  *     not exactly one. A second legitimate surface — the chat drawer already
  *     sends prompts — must be free to arrive without reddening this file. What
@@ -85,8 +100,25 @@ const components: Component[] = walk(srcDir).map((path) => ({
 }));
 
 const RECIPE_PAGE = 'routes/recipes/RecipeViewPage.svelte';
-const DECLARES_REFRESH = /const\s+REFRESH_PROMPT\s*=/;
-const DECLARES_OPTIMISE = /const\s+OPTIMISE_FOR_KITCHEN_PROMPT\s*=/;
+// `[^=\n]*?` between the keyword and the name (rather than requiring plain
+// whitespace) is what closes a type annotation and a destructured binding
+// alike — both stop at the first `const`/`let`/`var` on the line, so a
+// multi-declarator statement whose earlier declarator carries its own `=`
+// is outside what this pins. `\b...\b` keeps `REFRESH_PROMPT_LABEL` a
+// non-match, exercised below alongside the forms this is meant to catch.
+const DECLARES_REFRESH = /\b(?:const|let|var)\b[^=\n]*?\bREFRESH_PROMPT\b[^=\n]*=/;
+const DECLARES_OPTIMISE = /\b(?:const|let|var)\b[^=\n]*?\bOPTIMISE_FOR_KITCHEN_PROMPT\b[^=\n]*=/;
+
+// A component reaches a prompt only by importing it from the shared subpath
+// and passing it to `chat.send`. Both are STRUCTURAL — an import specifier
+// and a call shape — never a bare identifier substring, because a substring
+// check is satisfied by the prose comments beside each call site below.
+const IMPORTS_REFRESH =
+  /import\s*\{[^}]*\bREFRESH_PROMPT\b[^}]*\}\s*from\s*['"]@salt\/domain\/prompts['"]/;
+const IMPORTS_OPTIMISE =
+  /import\s*\{[^}]*\bOPTIMISE_FOR_KITCHEN_PROMPT\b[^}]*\}\s*from\s*['"]@salt\/domain\/prompts['"]/;
+const SENDS_REFRESH = /chat\.send\([^)]*\bREFRESH_PROMPT\b[^)]*\)/;
+const SENDS_OPTIMISE = /chat\.send\([^)]*\bOPTIMISE_FOR_KITCHEN_PROMPT\b[^)]*\)/;
 
 const recipePage = components.find((c) => c.path === RECIPE_PAGE);
 
@@ -116,22 +148,66 @@ describe('no policy prose is left in the Svelte components (#934 Done when)', ()
   });
 
   it('the recipe page still reaches both prompts through the shared subpath', () => {
-    // Scoped to the page the walk found, not to a path string. A component that
-    // dropped the prompts entirely would satisfy every negative assertion above
-    // and have broken both ⋮ menu items.
+    // Scoped to the page the walk found, not to a path string. Both checks are
+    // structural (an import binding, a `chat.send` call) rather than a bare
+    // substring, because the page also NAMES both identifiers in prose comments
+    // beside each call site — a substring check is satisfied by the comment
+    // alone and would not move if the real declaration and call site were both
+    // deleted. Simulating exactly that deletion (import binding, the
+    // `chat.send` call and the starter entry, comments left in place) is what
+    // the matcher-exercise `it` below pins.
     const page = recipePage?.code ?? '';
-    expect(page).toContain("from '@salt/domain/prompts'");
-    expect(page).toContain('OPTIMISE_FOR_KITCHEN_PROMPT');
-    expect(page).toContain('REFRESH_PROMPT');
+    expect(page).toMatch(IMPORTS_OPTIMISE);
+    expect(page).toMatch(IMPORTS_REFRESH);
+    expect(page).toMatch(SENDS_OPTIMISE);
+    expect(page).toMatch(SENDS_REFRESH);
   });
 
-  it('would catch a re-declared prompt — the matchers are exercised', () => {
+  it('would catch a re-declared prompt — the matchers are exercised, including the spellings that used to slip through', () => {
+    // The forms a normal author writes in a `<script lang="ts">` component: a
+    // plain declaration, a type annotation (the ordinary spelling here), `let`,
+    // `var`, and a destructured rebinding. All five used to slip past
+    // `/const\s+NAME\s*=/`; each is pinned here so a future narrowing of the
+    // regex fails on this line rather than passing everything.
     expect('  const REFRESH_PROMPT = `Write this recipe out again`;').toMatch(DECLARES_REFRESH);
-    expect('  const OPTIMISE_FOR_KITCHEN_PROMPT = `Tighten this up`;').toMatch(DECLARES_OPTIMISE);
-    // A near-miss: importing or sending the constant is not declaring it.
+    expect('  const REFRESH_PROMPT: string = `Write this recipe out again`;').toMatch(
+      DECLARES_REFRESH,
+    );
+    expect('  let REFRESH_PROMPT = `Write this recipe out again`;').toMatch(DECLARES_REFRESH);
+    expect('  var REFRESH_PROMPT = `Write this recipe out again`;').toMatch(DECLARES_REFRESH);
+    expect('  const { REFRESH_PROMPT } = prompts;').toMatch(DECLARES_REFRESH);
+    expect('  const OPTIMISE_FOR_KITCHEN_PROMPT: string = `Tighten this up`;').toMatch(
+      DECLARES_OPTIMISE,
+    );
+    // Near-misses: importing or sending the constant is not declaring it, and
+    // a longer name that merely starts with the same word is not a match.
     expect("  import { REFRESH_PROMPT } from '@salt/domain/prompts';").not.toMatch(
       DECLARES_REFRESH,
     );
     expect('  send(OPTIMISE_FOR_KITCHEN_PROMPT);').not.toMatch(DECLARES_OPTIMISE);
+    expect('  const REFRESH_PROMPT_LABEL = `Refresh`;').not.toMatch(DECLARES_REFRESH);
+  });
+
+  it('the reaches-both-prompts checks are structural, not a comment away from vacuous', () => {
+    // Exercises IMPORTS_*/SENDS_* directly against the exact shape of the
+    // regression the reviewer of #1253 simulated: the identifiers survive only
+    // in prose, everything live is gone.
+    const commentOnly =
+      '// Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn\n' +
+      '// Sends REFRESH_PROMPT as an ordinary user turn\n' +
+      "import { push } from 'svelte-spa-router';\n";
+    expect(commentOnly).not.toMatch(IMPORTS_OPTIMISE);
+    expect(commentOnly).not.toMatch(IMPORTS_REFRESH);
+    expect(commentOnly).not.toMatch(SENDS_OPTIMISE);
+    expect(commentOnly).not.toMatch(SENDS_REFRESH);
+    // The real shapes still match.
+    expect(
+      "import { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from '@salt/domain/prompts';",
+    ).toMatch(IMPORTS_OPTIMISE);
+    expect(
+      "import { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from '@salt/domain/prompts';",
+    ).toMatch(IMPORTS_REFRESH);
+    expect('await chat.send(session, OPTIMISE_FOR_KITCHEN_PROMPT);').toMatch(SENDS_OPTIMISE);
+    expect('if (!(await chat.send(session, REFRESH_PROMPT))) return;').toMatch(SENDS_REFRESH);
   });
 });
