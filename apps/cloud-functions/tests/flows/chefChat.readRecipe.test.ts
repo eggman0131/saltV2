@@ -268,6 +268,17 @@ describe('the chef’s tool surface', () => {
     expect(description).toMatch(/reading instead of cooking/i);
   });
 
+  it('never tells the model that found:false means the dish was deleted', () => {
+    // Three different causes reach `found: false` — gone, corrupt, and a read
+    // that threw (all three are pinned above). A description that says "the dish
+    // is gone" turns one transient Firestore failure into the chef announcing
+    // that a recipe the household is looking at on screen no longer exists.
+    const description = defineToolCalls.find((c) => c.name === 'readRecipe')?.description ?? '';
+    expect(description).toMatch(/could not read/i);
+    expect(description).toMatch(/never state\b.*deleted/i);
+    expect(description).not.toMatch(/the dish is gone/i);
+  });
+
   it('findRecipes points at readRecipe for the detail it does not carry', () => {
     const description = defineToolCalls.find((c) => c.name === 'findRecipes')?.description ?? '';
     expect(description).toMatch(/read the dish with readRecipe/i);

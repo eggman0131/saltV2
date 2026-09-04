@@ -174,8 +174,17 @@ describe('searchRecipes — the result cap', () => {
     dish(`r-${i}`, `Dish ${String(i).padStart(3, '0')}`),
   );
 
-  it('caps an unasked-for browse at the default', () => {
-    expect(searchRecipes(many)).toHaveLength(RECIPE_SEARCH_DEFAULT_MAX_RESULTS);
+  it('gives an unasked-for browse the whole library, up to the ceiling', () => {
+    // NOT the 25-row default, and that is the whole point: a browse is ordered by
+    // TITLE, so capping it at 25 makes every dish after the 25th invisible on
+    // every planning turn — the same dishes, forever, with nothing in the result
+    // saying so. A ranked search truncated at 25 loses its least relevant answers
+    // instead, which is what a default is for.
+    expect(searchRecipes(many)).toHaveLength(RECIPE_SEARCH_RESULT_CEILING);
+  });
+
+  it('caps an unasked-for RANKED search at the default', () => {
+    expect(searchRecipes(many, { query: 'dish' })).toHaveLength(RECIPE_SEARCH_DEFAULT_MAX_RESULTS);
   });
 
   it('honours a smaller request', () => {
@@ -186,9 +195,12 @@ describe('searchRecipes — the result cap', () => {
     expect(searchRecipes(many, { maxResults: 5000 })).toHaveLength(RECIPE_SEARCH_RESULT_CEILING);
   });
 
-  it('falls back to the default for a nonsensical request', () => {
+  it('falls back to the unasked-for limit for a nonsensical request', () => {
     for (const maxResults of [0, -4, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(searchRecipes(many, { maxResults })).toHaveLength(RECIPE_SEARCH_DEFAULT_MAX_RESULTS);
+      expect(searchRecipes(many, { maxResults })).toHaveLength(RECIPE_SEARCH_RESULT_CEILING);
+      expect(searchRecipes(many, { query: 'dish', maxResults })).toHaveLength(
+        RECIPE_SEARCH_DEFAULT_MAX_RESULTS,
+      );
     }
   });
 
@@ -233,9 +245,48 @@ describe('searchRecipes — pure and stable', () => {
     expect(searchRecipes([])).toEqual([]);
   });
 
-  it('accepts every kind as a candidate', () => {
-    const kinds: RecipeKind[] = ['recipe', 'outing', 'cocktail', 'placeholder'];
+  it('accepts every kind a household could eat as a candidate', () => {
+    const kinds: RecipeKind[] = ['recipe', 'outing', 'cocktail'];
     const all = kinds.map((kind, i) => dish(`r-${i}`, `Thing ${i}`, { kind }));
     expect(searchRecipes(all)).toHaveLength(kinds.length);
+  });
+});
+
+// ─── Placeholders are not dishes ──────────────────────────────────────────────
+
+describe('searchRecipes — placeholders', () => {
+  // The ~20 `placeholder` documents in production are stock photographs for a
+  // night planned in a sentence: no ingredients, no method, every capability in
+  // `capabilities.ts` false. They are also the WORST possible search results,
+  // because their tags are `comfort`/`cold`/`bright`/`hot` and their descriptions
+  // are evocative kitchen prose — so a search for a vibe scores them while a real
+  // recipe that never says the word scores zero and is dropped. The chef is told
+  // to name and link every entry it gets back, so leaving them in offers the
+  // household a photograph as tonight's dinner.
+  const photo = dish('r-photo', 'Placeholder — pot and ladle, grey afternoon', {
+    kind: 'placeholder',
+    description: 'A tall pot with its lid propped half off, steam curling from the gap.',
+    tags: ['comfort', 'cold', 'wet'],
+  });
+  const stew = dish('r-stew', 'Beef stew', { tags: ['comfort'] });
+
+  it('never offers one in a browse', () => {
+    expect(ids(searchRecipes([photo, stew]))).toEqual(['r-stew']);
+  });
+
+  it('never offers one for a search it would otherwise win', () => {
+    // 'ladle' appears in nothing but the photograph. Without the exclusion this
+    // returns the photograph and nothing else.
+    expect(searchRecipes([photo, stew], { query: 'ladle steam pot' })).toEqual([]);
+  });
+
+  it('never offers one for a tag filter it carries', () => {
+    expect(ids(searchRecipes([photo, stew], { tags: ['comfort'] }))).toEqual(['r-stew']);
+  });
+
+  it('returns them when they are asked for by name', () => {
+    // The exclusion is a default, not a ban: a caller that names the kind has
+    // asked for exactly these and is not the chef browsing for dinner.
+    expect(ids(searchRecipes([photo, stew], { kind: 'placeholder' }))).toEqual(['r-photo']);
   });
 });

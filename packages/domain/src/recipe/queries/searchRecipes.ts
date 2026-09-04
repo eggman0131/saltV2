@@ -61,7 +61,13 @@ export interface RecipeSearchFilters {
    * rejected, except paid only on the turns that need it.
    */
   readonly query?: string | undefined;
-  /** Restrict to one kind of entry. Absent means every kind is a candidate. */
+  /**
+   * Restrict to one kind of entry.
+   *
+   * Absent means every kind that is a dish — see `isHiddenFromSearch`, which
+   * takes `placeholder` out of an unrestricted search. Naming it here is how a
+   * caller that genuinely wants the placeholders gets them.
+   */
   readonly kind?: RecipeKind | undefined;
   /**
    * Restrict to entries carrying ALL of these tags, compared case-insensitively.
@@ -78,20 +84,22 @@ export interface RecipeSearchFilters {
 }
 
 /**
- * Rows returned when the caller does not say.
+ * Rows returned for a RANKED search when the caller does not say.
  *
  * A chef proposing five nights does not need sixty candidates, and every row is
- * paid for in the next model turn's prompt.
+ * paid for in the next model turn's prompt. Truncating a ranked list is safe
+ * because it drops the least relevant answers; a browse is ordered by title, so
+ * it does not get this default — see `resultLimit`.
  */
 export const RECIPE_SEARCH_DEFAULT_MAX_RESULTS = 25;
 
 /**
- * The hard ceiling, whatever the caller asks for.
+ * The hard ceiling, whatever the caller asks for, and the default for a browse.
  *
  * A bound on what one turn can cost, NOT a statement about how big the library
- * may get: it is above today's library (59 dishes) so an explicit browse can see
- * all of it, and a library that outgrows it degrades to "the best sixty", which
- * is the point at which the deferred vector search stops being deferred.
+ * may get: it is above today's library (59 dishes) so a browse can see all of
+ * it, and a library that outgrows it degrades to "the first sixty by title",
+ * which is the point at which the deferred vector search stops being deferred.
  */
 export const RECIPE_SEARCH_RESULT_CEILING = 60;
 
@@ -183,13 +191,14 @@ export function searchRecipes<T extends RecipeSearchCandidate>(
   const wantedTags = (filters.tags ?? []).map(normalise).filter((t) => t.length > 0);
   const filtered = candidates.filter((candidate) => {
     if (filters.kind !== undefined && candidate.kind !== filters.kind) return false;
+    if (filters.kind === undefined && isHiddenFromSearch(candidate.kind)) return false;
     if (wantedTags.length === 0) return true;
     const own = new Set(candidate.tags.map(normalise));
     return wantedTags.every((tag) => own.has(tag));
   });
 
-  const limit = resultLimit(filters.maxResults);
   const queryTokens = tokenise(filters.query ?? '');
+  const limit = resultLimit(filters.maxResults, queryTokens.length === 0);
 
   // Browse: no query, or a query that was nothing but stop words and
   // punctuation. Both mean "show me the library", and collapsing them is what
@@ -206,9 +215,40 @@ export function searchRecipes<T extends RecipeSearchCandidate>(
     .map((scored) => scored.candidate);
 }
 
-function resultLimit(requested: number | undefined): number {
+/**
+ * Kinds a library search never offers unless asked for by name.
+ *
+ * Only `placeholder`, and it is the one kind that is not a dish: a stock
+ * photograph and a title, with every capability in `capabilities.ts` set false.
+ * Left in, it is not merely noise — its tags are `comfort`/`cold`/`bright`/`hot`
+ * and its description is evocative kitchen prose, so a search for a VIBE scores
+ * it while a real recipe that never uses the word scores zero and is filtered
+ * out. The chef is told to name and link every library entry it gets back, so
+ * the household would be offered a photograph as tonight's dinner. The app's own
+ * list never mixes them in either — placeholders stand on their own shelf.
+ *
+ * A caller that passes `kind: 'placeholder'` has asked for exactly them and gets
+ * them. `outing` and `cocktail` are real entries and stay: an outing is a
+ * legitimate answer to "what is for dinner", which the tool description says.
+ */
+function isHiddenFromSearch(kind: RecipeKind): boolean {
+  return kind === 'placeholder';
+}
+
+/**
+ * How many rows come back.
+ *
+ * A BROWSE with no stated cap gets the ceiling, not the default, and the
+ * asymmetry is the point: a ranked search truncated at 25 drops the 26th-best
+ * answer, while a browse truncated at 25 drops everything after the 25th TITLE —
+ * with a library past that size, the same dishes are invisible on every planning
+ * turn, forever, and nothing in the result says so. The tool description promises
+ * the model that leaving `query` out browses the whole library; this is what
+ * keeps that true up to the ceiling.
+ */
+function resultLimit(requested: number | undefined, browsing: boolean): number {
   if (requested === undefined || !Number.isFinite(requested) || requested < 1) {
-    return RECIPE_SEARCH_DEFAULT_MAX_RESULTS;
+    return browsing ? RECIPE_SEARCH_RESULT_CEILING : RECIPE_SEARCH_DEFAULT_MAX_RESULTS;
   }
   return Math.min(Math.floor(requested), RECIPE_SEARCH_RESULT_CEILING);
 }

@@ -283,10 +283,16 @@ rule the section on what they buy states. Use it to know what to steer AWAY from
  *
  * `readRecipeContext` returns '' for a dish that is missing, corrupt or
  * unreadable, and cannot return '' for one that is fine — `formatRecipeForPrompt`
- * always emits at least a `Title:` line. So the empty string is exactly "no such
- * dish", which becomes `found: false` here rather than a throw: the chef says so
- * out loud and carries on, which is what a stale id from earlier in the
- * conversation deserves. Pinned by `chefChat.readRecipe.test.ts`.
+ * always emits at least a `Title:` line. So the empty string is exactly "I could
+ * not read that dish", which becomes `found: false` here rather than a throw: the
+ * chef says so out loud and carries on, which is what a stale id from earlier in
+ * the conversation deserves. Pinned by `chefChat.readRecipe.test.ts`.
+ *
+ * NOTE WHAT IT IS NOT. Three different causes reach the same '' — gone, corrupt,
+ * and a Firestore read that threw — so `found: false` is not "this dish has been
+ * deleted" and the tool description must not tell the model it is. One transient
+ * read failure would otherwise have the chef announce that a recipe the household
+ * is looking at on screen no longer exists.
  */
 export async function readRecipeForChef(
   db: ReturnType<typeof getFirestore>,
@@ -316,7 +322,9 @@ timings and description already carry all of that. Reading three dishes to propo
 spent reading instead of cooking. Read the ones you are actually going to reason about, and no \
 more.
 
-If found comes back false the dish is gone. Say so plainly; never invent its contents.`;
+If found comes back false you could not read that dish — it may have been deleted, or the \
+read may simply have failed. Say plainly that you cannot open it and carry on; never state \
+that it has been deleted, and never invent its contents.`;
 
 export const readRecipeTool = ai.defineTool(
   {
