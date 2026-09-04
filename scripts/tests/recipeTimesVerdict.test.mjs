@@ -11,11 +11,21 @@
 //   1. the verdict itself ignores everything but the stamp and the strip — the
 //      positive property, checked on a recipe that carries the impossible
 //      triple; and
-//   2. the SCRIPT no longer names the three retired keys at all. Claim 1 lives
-//      in a module the script imports, so on its own it cannot see a second
-//      gate re-added beside the call (`broken.length === 0 && ok`) — which is
-//      exactly the shape the bug had. Claim 2 closes that: with no reference to
-//      the keys anywhere in the file, no such term can be constructed.
+//   2. THIS FILE — backfill-recipe-times.mjs itself — no longer names the three
+//      retired keys anywhere in its own text. Claim 1 lives in a module the
+//      script imports, so on its own it cannot see a second gate re-added
+//      beside the call (`broken.length === 0 && ok`) — which is exactly the
+//      shape the bug had. Claim 2 closes that one path.
+//
+// Claim 2's boundary (CLAUDE.md hard rule 12: state it rather than pretend the
+// absolute holds): this is a grep of one file's text, not a property of the
+// dependency graph. A gate re-added behind a NEW `scripts/lib/` module — the
+// very style #1248 and #1254 both use — would leave this script naming none of
+// the three keys and this test green, because the arithmetic would live in the
+// imported module's text, not this one's. Nothing here defends against that;
+// only reading the diff on a script/lib change does. What this closes is
+// narrower and still real: the exact regression shape #1248 shipped, an
+// operator re-typing the retired field names directly into this file.
 //
 // Neither claim reaches the trigger or the schema, and neither is meant to:
 // packages/domain and apps/cloud-functions are out of scope for #1248, and the
@@ -94,12 +104,13 @@ describe('recipeTimesVerdict', () => {
   });
 });
 
-describe('backfill-recipe-times.mjs no longer reads the retired time fields', () => {
-  // Claim 2 above. A source scan rather than a behavioural test because the
-  // script has no seam — it parses argv and reaches the network at top level,
-  // which is why the verdict was extracted in the first place.
+describe('backfill-recipe-times.mjs itself no longer reads the retired time fields', () => {
+  // Claim 2 above, and its boundary: this reads ONE file's text, not the
+  // dependency graph, so it cannot see the same key re-arriving via a new
+  // scripts/lib/ module's own source. See the header comment for what that
+  // does and does not close.
   it.each(['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes'])(
-    'names %s nowhere in the script',
+    'names %s nowhere in backfill-recipe-times.mjs',
     (field) => {
       // `.includes(...)` rather than `.not.toContain(field)`: the latter dumps
       // the whole 470-line script into the failure output.

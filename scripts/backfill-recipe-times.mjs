@@ -131,6 +131,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { recipeAskedLine } from './lib/recipeAskedLine.mjs';
 import { decodeRecipePhases, hasPhaseStrip } from './lib/recipePhaseStrip.mjs';
 import { selectRecipesToAsk } from './lib/recipeSelection.mjs';
 import { isTimesEstimated } from './lib/recipeTimesEstimated.mjs';
@@ -201,7 +202,7 @@ function die(message) {
   );
   console.error('       (dry run by default — nothing is written without --apply)');
   console.error(
-    '       --verify re-reads the three fields and the phase strip, and reports what is outstanding',
+    '       --verify re-reads the timesEstimatedAt stamp and the phase strip, and reports what is outstanding',
   );
   console.error('       --redo also asks recipes that already carry timesEstimatedAt');
   console.error(
@@ -451,7 +452,7 @@ for (const r of toAsk) {
       body: JSON.stringify({ fields: { timesRequestedAt: { integerValue: String(Date.now()) } } }),
     });
     asked += 1;
-    console.log(`  asked   ${r.id}  ${triple(r.times)}  ${r.title}`);
+    console.log(recipeAskedLine(r));
   } catch (err) {
     // Keep going: one unwritable document must not strand the rest, and the run is
     // re-runnable, so anything that fails here is simply picked up next time.
