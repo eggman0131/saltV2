@@ -21,9 +21,6 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
     steps: [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       // No timing yet (issue #1122). An empty list rather than the absent key a
       // pre-#1122 document carries: this constructor is the WRITE side, and a
       // recipe built here has genuinely been asked and has no phases, which is a

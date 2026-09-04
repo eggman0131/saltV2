@@ -104,9 +104,6 @@ function recipeWithKit(id: string, ...labels: string[]): Recipe {
     steps: [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

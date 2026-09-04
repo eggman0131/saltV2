@@ -53,9 +53,6 @@ const SEEDED_METADATA = {
   // Null since #1212: the editor's three time boxes are gone with the phase key
   // on, and this dish is authored through the editor. Servings and the tag carry
   // the "the librarian dropped it, the merge kept it" assertion.
-  prepTimeMinutes: null,
-  cookTimeMinutes: null,
-  totalTimeMinutes: null,
   // Not typed by anyone: `emptyRecipe` stamps an empty phase strip on every new
   // recipe (issue #1122), so the stored document carries both keys from creation.
   // They are here because this is a whole-`metadata` equality — it is the
@@ -85,9 +82,6 @@ const STUB_AUTHOR = {
   title: REFRESHED_TITLE,
   description: 'A one-pan chorizo pilaf.',
   servings: null,
-  totalTimeMinutes: null,
-  prepTimeMinutes: null,
-  cookTimeMinutes: null,
   tags: [],
   ingredientGroups: [
     {

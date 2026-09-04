@@ -164,9 +164,6 @@ export const RecipeMetadataSchema = z.object({
   // are on the way IN — the three flows' output schemas — and `buildRecipeAddPlan`
   // treats a non-positive stored value as unstated rather than dividing by it.
   servings: z.number().nullable(),
-  totalTimeMinutes: z.number().nullable(),
-  prepTimeMinutes: z.number().nullable(),
-  cookTimeMinutes: z.number().nullable(),
   // The recipe's timing (issue #1122). Additive and OPTIONAL, the same bargain
   // `timesRequestedAt` and `RecipeSourceSchema.book` make: every document stored
   // before this shipped lacks both keys, and a required field here would skip the

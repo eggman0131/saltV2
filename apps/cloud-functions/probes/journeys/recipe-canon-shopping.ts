@@ -71,9 +71,6 @@ export const recipeCanonShopping: Journey = {
         steps: [{ id: `${recipeId}-step-1`, text: 'Probe step.', timer: null, note: null }],
         metadata: {
           servings: 2,
-          totalTimeMinutes: null,
-          prepTimeMinutes: null,
-          cookTimeMinutes: null,
           tags: [],
         },
         source: null,

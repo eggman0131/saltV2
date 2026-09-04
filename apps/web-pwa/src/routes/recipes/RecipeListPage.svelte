@@ -47,8 +47,8 @@
   // ─── How long it takes, on the card and in the sort (issue #1122) ────────────
   // The phase sum, and nothing else — one rule shared with the recipe page, the
   // component rows and the cook plan (`recipeTiming.ts`), so a recipe cannot read
-  // 45 min here and 2 hr there. Issue #1213 removed the `totalTimeMinutes`
-  // fallback that used to sit under it; a recipe with no strip now carries no
+  // 45 min here and 2 hr there. Issue #1213 removed the stored-total fallback
+  // that used to sit under it; a recipe with no strip now carries no
   // chip, which in practice is only the placeholders and outings that never had
   // one.
   //

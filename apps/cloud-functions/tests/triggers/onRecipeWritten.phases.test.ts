@@ -89,9 +89,6 @@ function recipe(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     steps: [{ id: 's1', text: 'Rub, then roast for 6 hours.', timer: null, note: null }],
     metadata: {
       servings: null,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 360,
-      totalTimeMinutes: 380,
       tags: [],
     },
     source: null,
@@ -132,9 +129,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
       { label: 'Roast', handsOnMinutes: 5, handsOffMinutes: 355 },
     ];
     mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 360,
-      totalTimeMinutes: 380,
       // No `phases` / `timingSummary` — the model forgot the strip.
     });
 
@@ -143,9 +137,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
       timesRequestedAt: 1_700_000_000_000,
       metadata: {
         servings: null,
-        prepTimeMinutes: 20,
-        cookTimeMinutes: 360,
-        totalTimeMinutes: 380,
         tags: [],
         phases: storedPhases,
         timingSummary: 'About 15 minutes of you, over six and a bit hours.',
@@ -164,9 +155,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
   it('replaces the stored strip when the re-estimate DID answer', async () => {
     const freshPhases = [{ label: 'Roast', handsOnMinutes: 5, handsOffMinutes: 355 }];
     mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 360,
-      totalTimeMinutes: 380,
       phases: freshPhases,
       timingSummary: 'Five minutes of you.',
     });
@@ -176,9 +164,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
       timesRequestedAt: 1_700_000_000_000,
       metadata: {
         servings: null,
-        prepTimeMinutes: 20,
-        cookTimeMinutes: 360,
-        totalTimeMinutes: 380,
         tags: [],
         phases: [{ label: 'Rub', handsOnMinutes: 10, handsOffMinutes: 0 }],
         timingSummary: 'Stale summary.',
@@ -200,9 +185,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
   it('does not pair a fresh strip with the stale stored summary', async () => {
     const freshPhases = [{ label: 'Roast', handsOnMinutes: 5, handsOffMinutes: 355 }];
     mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 360,
-      totalTimeMinutes: 380,
       phases: freshPhases,
       // No `timingSummary` returned alongside the fresh strip.
     });
@@ -212,9 +194,6 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
       timesRequestedAt: 1_700_000_000_000,
       metadata: {
         servings: null,
-        prepTimeMinutes: 20,
-        cookTimeMinutes: 360,
-        totalTimeMinutes: 380,
         tags: [],
         phases: [{ label: 'Rub', handsOnMinutes: 10, handsOffMinutes: 0 }],
         timingSummary: 'Stale summary describing the OLD strip.',
@@ -231,11 +210,7 @@ describe('onRecipeWritten — time branch protects a stored strip from an answer
   });
 
   it('stores an empty strip when neither the answer nor the stored recipe has one', async () => {
-    mockEstimateTimes.mockResolvedValue({
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 360,
-      totalTimeMinutes: 380,
-    });
+    mockEstimateTimes.mockResolvedValue({});
 
     const before = { timesRequestedAt: undefined };
     const after = recipe({ timesRequestedAt: 1_700_000_000_000 });

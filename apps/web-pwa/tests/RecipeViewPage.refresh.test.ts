@@ -158,9 +158,6 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     steps: [{ id: 'step-1', text: 'Fry the chorizo.', note: null, timer: null }],
     metadata: {
       servings: 4,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
-      totalTimeMinutes: 45,
       tags: ['midweek'],
     },
     source: { type: 'manual' },
@@ -198,9 +195,6 @@ function librarianDraft(): RecipeDoc {
     ],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: { type: 'manual' },

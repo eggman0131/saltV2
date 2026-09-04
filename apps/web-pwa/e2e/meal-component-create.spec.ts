@@ -51,9 +51,6 @@ function recipe(id: string, title: string, componentRecipeIds: string[] = []): R
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

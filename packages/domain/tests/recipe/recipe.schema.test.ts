@@ -88,9 +88,6 @@ function messyRecipe(): Recipe {
     ],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 45,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
       tags: ['pasta', 'dinner'],
     },
     source: { type: 'manual' },
@@ -143,6 +140,39 @@ describe('RecipeSchema — the phase strip is additive on read', () => {
       },
     };
     expect(RecipeSchema.safeParse(recipe).success).toBe(true);
+  });
+});
+
+// Issue #1211 deleted `prepTimeMinutes` / `cookTimeMinutes` / `totalTimeMinutes`
+// from `RecipeMetadataSchema`, and the whole safety of that deletion rests on one
+// property: a production document still carrying them PARSES, rather than being
+// skipped and vanishing from the library. That is Zod's unknown-key behaviour and
+// nothing in this repo enforces it, so it is pinned here rather than asserted in a
+// comment — every recipe stored before the deletion still has the three values,
+// inert, until an ordinary save rewrites the document (LWW).
+describe('RecipeSchema — a document still carrying the retired time fields', () => {
+  const storedWithRetiredTimes = () => ({
+    ...messyRecipe(),
+    metadata: {
+      ...messyRecipe().metadata,
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 30,
+      totalTimeMinutes: 45,
+    },
+  });
+
+  it('parses, rather than being skipped as a bad document', () => {
+    expect(RecipeSchema.safeParse(storedWithRetiredTimes()).success).toBe(true);
+  });
+
+  it('strips the three keys instead of carrying them through', () => {
+    const result = RecipeSchema.safeParse(storedWithRetiredTimes());
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.metadata).toEqual(messyRecipe().metadata);
+    for (const key of ['prepTimeMinutes', 'cookTimeMinutes', 'totalTimeMinutes']) {
+      expect(key in result.data.metadata).toBe(false);
+    }
   });
 });
 

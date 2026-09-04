@@ -47,9 +47,6 @@ function rawOutput(overrides: Record<string, unknown> = {}) {
     title: 'Garlic Pasta',
     description: null,
     servings: 2,
-    totalTimeMinutes: null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
     tags: [],
     ingredientGroups: [
       {
@@ -502,9 +499,6 @@ function baseRecipe(): RecipeDoc {
     steps: [{ id: 'old-step', text: 'Boil the pasta.', timer: null, note: null }],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 15,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       // A strip a cook corrected by hand (issue #1122). The two tests at the
       // bottom of this file are what make the "survives an amend" claim in
       // `assembleRecipeDraft`'s metadata block checkable rather than asserted.
@@ -635,44 +629,6 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(doc.createdBy).toBe('');
     expect(doc.lastEditedBy).toBe('');
   });
-
-  it('does not fabricate a total from prep + cook on an amend when the librarian returns null (PR #1048 regression)', async () => {
-    // The Key Lime Pie shape from the blocking review finding: a stored total of
-    // 295 (a 4-hour chill) with prep 20 / cook 35. Chatting about something else
-    // entirely, the librarian echoes prep and cook back unchanged and simply
-    // never touches total, so it comes back null — "the model forgot", not "the
-    // chill is gone". Before the fix, the reconciliation above derived
-    // max(0, 20+35)=55 from the parts regardless of edit mode, and that 55 is
-    // non-null, so it would win `mergeAmendedRecipe`'s `draft ?? existing` and
-    // silently overwrite the real 295. The fix must leave the total null here so
-    // the merge's `??` falls through to the stored value instead.
-    const base = baseRecipe();
-    base.metadata = {
-      ...base.metadata,
-      totalTimeMinutes: 295,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 35,
-    };
-
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 20, cookTimeMinutes: 35 }),
-      { source: MANUAL, baseRecipe: base },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBeNull();
-  });
-
-  it('writes a null total on an amend whatever the librarian states', async () => {
-    // Issue #1233 made the protection above unconditional: the draft writes null
-    // for all three whatever comes back, so `mergeAmendedRecipe`'s `??` always
-    // falls through to the stored value and a real chill can never be overwritten.
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 35, prepTimeMinutes: 10, cookTimeMinutes: 35 }),
-      { source: MANUAL, baseRecipe: baseRecipe() },
-    );
-
-    expect(doc.metadata.totalTimeMinutes).toBeNull();
-  });
 });
 
 // ─── document-level fields ───────────────────────────────────────────────────
@@ -709,38 +665,6 @@ describe('assembleRecipeDraft — document fields', () => {
     });
 
     expect(doc.metadata.tags).toEqual(['comfort-food', 'quick']);
-  });
-});
-
-// ─── total time: derived when missing, repaired when it contradicts its parts ─
-
-// The three time fields are never derived, reconciled or folded any more: the
-// model is not asked for them (issue #1233), nothing reads them, and the draft
-// writes literal null the way `emptyRecipe` does. #1211 removes the keys.
-describe('assembleRecipeDraft — the retired time fields', () => {
-  it('writes prep, cook and total as null whatever the model returns', async () => {
-    const doc = await assembleRecipeDraft(
-      rawOutput({ totalTimeMinutes: 45, prepTimeMinutes: 15, cookTimeMinutes: 30 }),
-      { source: MANUAL },
-    );
-
-    expect(doc.metadata).toMatchObject({
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-    });
-  });
-
-  it('writes them as null on the import path too, and when the model omits them', async () => {
-    const raw = rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 5, cookTimeMinutes: 15 });
-    delete (raw as { prepTimeMinutes?: unknown }).prepTimeMinutes;
-    const doc = await assembleRecipeDraft(raw, { source: IMPORT });
-
-    expect(doc.metadata).toMatchObject({
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-    });
   });
 });
 

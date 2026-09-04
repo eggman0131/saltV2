@@ -51,9 +51,6 @@ function recipe(id: string, title: string, phases?: RecipePhase[]): Recipe {
       servings: 2,
       // The old fields the strip replaces. The loaf's are deliberately WRONG
       // against its phases, so nothing below can pass by reading them.
-      totalTimeMinutes: 45,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
       tags: [],
       ...(phases === undefined ? {} : { phases, timingSummary: 'Half an hour of you, overnight.' }),
     },
@@ -85,11 +82,10 @@ test.describe('recipes — the planning timeline', () => {
     await page.goto('/#/recipes');
     const loafCard = page.getByTestId('recipe-list-item').filter({ hasText: 'Overnight loaf' });
     await expect(loafCard).toContainText('13 hr', { timeout: SYNC_TIMEOUT });
-    // Not the stored 45, which is still on the document and now unread.
     await expect(loafCard).not.toContainText('45 min');
-    // And the recipe with no strip carries no chip: issue #1213 took away the
-    // `?? totalTimeMinutes` fallback that used to put its stored 45 here.
-    // ("min", unqualified, would match the title.)
+    // And the recipe with no strip carries no chip: #1213 took away the fallback
+    // to a stored total, and #1211 the field it fell back to — a recipe with no
+    // strip has no timing to show. ("min", unqualified, would match the title.)
     const pastaCard = page.getByTestId('recipe-list-item').filter({ hasText: 'Ten minute pasta' });
     await expect(pastaCard).not.toContainText('45 min');
     await expect(pastaCard).not.toContainText('30 min');

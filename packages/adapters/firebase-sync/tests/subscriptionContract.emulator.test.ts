@@ -590,9 +590,6 @@ const fx = {
     steps: [],
     metadata: {
       servings: 1,
-      totalTimeMinutes: 1,
-      prepTimeMinutes: 1,
-      cookTimeMinutes: 0,
       tags: [],
     },
     source: { type: 'manual' },

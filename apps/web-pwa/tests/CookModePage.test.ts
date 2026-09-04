@@ -192,9 +192,6 @@ function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
     ],
     metadata: {
       servings: 2,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

@@ -77,7 +77,7 @@ export function canBeComponentOf(ownerId: string, candidateId: string): boolean 
 //
 // THE WHOLE PROCESS, START TO SERVE — `recipePhaseTotals(...).elapsedMinutes`, the
 // same figure `scheduleFor` works the clock times back from (issue #1233). Until
-// then this ranked on a stored `cookTimeMinutes`, which assumed the chopping had
+// then this ranked on a stored cook time, which assumed the chopping had
 // already been done at some earlier point in the day; a strip states when a dish
 // really has to begin, so nothing is assumed. The two are one argument and cannot
 // be split: rank on one figure and clock on the other, and the running order and

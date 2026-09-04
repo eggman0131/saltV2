@@ -108,9 +108,6 @@ const RECIPE = {
   ],
   metadata: {
     servings: 6,
-    totalTimeMinutes: 210,
-    prepTimeMinutes: 30,
-    cookTimeMinutes: 180,
     phases: [
       { label: 'Prep', handsOnMinutes: 30, handsOffMinutes: 0 },
       { label: 'Braise', handsOnMinutes: 0, handsOffMinutes: 180 },

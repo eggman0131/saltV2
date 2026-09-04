@@ -104,9 +104,6 @@ function makeRecipe(id: string, overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     steps: [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,
@@ -194,9 +191,6 @@ describe('onRecipeWritten — hero-image branch', () => {
         makeRecipe('r1', {
           metadata: {
             servings: null,
-            totalTimeMinutes: null,
-            prepTimeMinutes: null,
-            cookTimeMinutes: null,
             tags: ['comfort-food', 'slow-cooker'],
           },
         }),
@@ -339,9 +333,6 @@ describe('onRecipeWritten — scene brief', () => {
           kind: 'placeholder',
           metadata: {
             servings: null,
-            totalTimeMinutes: null,
-            prepTimeMinutes: null,
-            cookTimeMinutes: null,
             tags: ['comfort', 'wet'],
           },
         }),

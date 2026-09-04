@@ -71,9 +71,6 @@ function rawOutput(overrides: Record<string, unknown> = {}) {
     title: 'Garlic Pasta',
     description: null,
     servings: 2,
-    totalTimeMinutes: null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
     tags: [],
     ingredientGroups: [
       {

@@ -90,9 +90,6 @@ describe('ExtractRecipeFromPhotoAIOutputSchema — extends, never forks', () => 
     title: 'Ragù',
     description: null,
     servings: 4,
-    totalTimeMinutes: null,
-    prepTimeMinutes: 20,
-    cookTimeMinutes: 180,
     tags: ['italian'],
     ingredientGroups: [
       {

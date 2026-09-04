@@ -66,9 +66,6 @@ export const cookTimer: Journey = {
         steps: [{ id: stepId, text: 'Probe step with a timer.', timer: null, note: null }],
         metadata: {
           servings: 1,
-          totalTimeMinutes: null,
-          prepTimeMinutes: null,
-          cookTimeMinutes: null,
           tags: [],
         },
         source: null,

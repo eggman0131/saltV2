@@ -46,9 +46,6 @@ function draft(): RecipeDoc {
     steps: [],
     metadata: {
       servings: 4,
-      totalTimeMinutes: 15,
-      prepTimeMinutes: 15,
-      cookTimeMinutes: null,
       tags: ['side'],
     },
     source: { type: 'manual' },

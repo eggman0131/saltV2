@@ -70,9 +70,6 @@ const AI_OUTPUT = {
   ],
   steps: [{ text: 'Boil the pasta.', timerMinutes: null, timerLabel: null, note: null }],
   servings: 2,
-  totalTimeMinutes: 20,
-  prepTimeMinutes: 5,
-  cookTimeMinutes: 15,
   tags: ['pasta'],
   notes: null,
 };

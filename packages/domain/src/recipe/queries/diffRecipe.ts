@@ -499,10 +499,10 @@ function diffMetadata(existing: Recipe, draft: Recipe): RecipeMetadataDiff {
   // The phase strip and its sentence (issue #1212), and since issue #1233 the
   // whole of a proposal's timing: this is the only place the review gate can see
   // that a proposal rewrote the timing — or, since #1203 let an amend clear it,
-  // that a proposal deleted the sentence. `prepTimeMinutes`, `cookTimeMinutes`
-  // and `totalTimeMinutes` are not reported because nothing proposes them any
-  // more; they were restored here in PR #1231 only because `recipeAmend.ts` was
-  // still merging them, and it no longer does.
+  // that a proposal deleted the sentence. The three retired prep / cook / total
+  // fields are not reported because they no longer exist (issue #1211); they were
+  // restored here in PR #1231 only because `recipeAmend.ts` was still merging
+  // them, and it no longer does.
   const phases = phasesChange(e.phases, d.phases);
   if (phases) metadata.phases = phases;
   const summary = nullableStringChange(e.timingSummary ?? null, d.timingSummary ?? null);

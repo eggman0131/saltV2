@@ -132,9 +132,6 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     steps: [{ id: 'step-1', text: 'Carve.', note: null, timer: null }],
     metadata: {
       servings: 4,
-      prepTimeMinutes: 10,
-      cookTimeMinutes: 20,
-      totalTimeMinutes: 30,
       tags: [],
     },
     source: null,
@@ -158,9 +155,6 @@ const CHICKEN = makeComponent({
   title: 'Roast chicken',
   metadata: {
     servings: 4,
-    prepTimeMinutes: 10,
-    cookTimeMinutes: 90,
-    totalTimeMinutes: 100,
     // The row's time comes from the strip and nothing else (issue #1213). The
     // three stored numbers stay on the fixture, deliberately disagreeing, so a
     // fallback creeping back would be visible here.
@@ -176,9 +170,6 @@ const GRAVY = makeComponent({
   title: 'Onion gravy',
   metadata: {
     servings: 4,
-    prepTimeMinutes: 5,
-    cookTimeMinutes: null,
-    totalTimeMinutes: 5,
     tags: [],
   },
   image: null,

@@ -70,9 +70,6 @@ function loaf(phases?: RecipePhase[]): Recipe {
   const metadata = {
     ...base.metadata,
     servings: 4,
-    prepTimeMinutes: 15,
-    cookTimeMinutes: 30,
-    totalTimeMinutes: 45,
     ...(phases === undefined ? {} : { phases }),
   };
   if (phases === undefined) delete metadata.phases;
@@ -121,8 +118,9 @@ afterEach(() => {
 describe('RecipeEditPage — the phase editor', () => {
   // Servings and the strip, and NOTHING ELSE. Issue #1233 moved `scheduleFor` and
   // `insertComponentByElapsedTime` (packages/domain) onto `recipePhaseTotals()`,
-  // which removed the last reader of `cookTimeMinutes` and the last reason to let
-  // a cook type one — so the strip is now the only timing control on this page.
+  // which removed the last reader of the stored cook time and the last reason to
+  // let a cook type one — so the strip is now the only timing control on this
+  // page. #1211 then deleted the three fields outright.
   it('is the ONLY timing control — Servings and the strip, no Prep/Cook/Total boxes', () => {
     renderEditor([MIX]);
 
@@ -214,15 +212,6 @@ describe('RecipeEditPage — the phase editor', () => {
     expect(saved.metadata.phases).toEqual([MIX, PROVE, BAKE]);
   });
 
-  it('leaves the stored Prep / Cook / Total values alone when a save does not touch them', async () => {
-    renderEditor([MIX]);
-
-    const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(15);
-    expect(saved.metadata.cookTimeMinutes).toBe(30);
-    expect(saved.metadata.totalTimeMinutes).toBe(45);
-  });
-
   // #1123: the six-phase cap is a bound on what a MODEL may return. A production
   // document holding seven is a document to edit, not one to truncate.
   it('renders and edits an over-cap strip, and only withholds the Add button', async () => {
@@ -252,23 +241,5 @@ describe('RecipeEditPage — the phase editor', () => {
 
     await userEvent.click(screen.getAllByLabelText('Remove phase')[0]!);
     expect(screen.getByTestId('recipe-add-phase-btn')).toBeInTheDocument();
-  });
-});
-
-describe('RecipeEditPage — the three retired time boxes (issue #1233)', () => {
-  // Removing the boxes must not remove the VALUES. A recipe saved before #1233
-  // still stores prep, cook and total; nothing reads them any more, but a save
-  // from this page must leave them exactly as it found them rather than dropping
-  // or zeroing three fields the cook can no longer see.
-  it('leaves the stored prep, cook and total untouched on save', async () => {
-    renderEditor([MIX, PROVE]);
-
-    await typeInto(screen.getByTestId('recipe-servings-input'), '6');
-
-    const saved = await savedRecipe();
-    expect(saved.metadata.prepTimeMinutes).toBe(15);
-    expect(saved.metadata.cookTimeMinutes).toBe(30);
-    expect(saved.metadata.totalTimeMinutes).toBe(45);
-    expect(saved.metadata.phases).toEqual([MIX, PROVE]);
   });
 });

@@ -77,32 +77,18 @@ export const ExtractRecipeAIOutputSchema = z.object({
   isRecipe: z.boolean(),
   title: z.string(),
   description: z.string().nullable(),
-  // Integers only, never negative — null is the "not stated" sentinel (also what
-  // an isRecipe=false response uses, which is why none of these is required).
+  // A positive integer or null — null is the "not stated" sentinel, and is what an
+  // isRecipe=false response uses, which is why it is not required.
   //
-  // The 0 rule is deliberately asymmetric (issue #739). `servings: 0` describes a
-  // recipe nobody can eat, so 0 there is a model glitch and stays rejected.
-  // `prepTimeMinutes: 0` / `cookTimeMinutes: 0` are real, correct answers for
-  // anything assembled rather than cooked — a Greek salad, a dressing, overnight
-  // oats, most cocktails. Rejecting those failed the import on the model's *right*
-  // answer, and did so intermittently, because "no cooking" has three expressions
-  // (0, null, omitted) and we accepted two.
+  // 0 is REJECTED here (issue #739): a recipe nobody can eat is a model glitch,
+  // and this is the number things divide by — a stored 0 scaled a shopping list by
+  // Infinity (issue #1123). That rejection was once the strict half of a
+  // deliberate asymmetry, against times where 0 was a real answer for anything
+  // assembled rather than cooked; those fields went with #1211, and a phase of 0
+  // hands-on now carries that meaning on the strip below.
   servings: z.number().int().positive().nullable(),
-  // NO LONGER ASKED FOR (issue #1233). The extraction prompt stopped naming these
-  // three, so the model stops returning them — and `.optional()` is what keeps
-  // that from failing `.safeParse` at the trust boundary and taking every import
-  // with it. Absent means the same as null; the assembler writes null. The range
-  // constraints still apply to a value that DOES arrive — but a value that FAILS
-  // them now degrades to null (`.catch(null)`) rather than failing the parse, the
-  // same posture `AuthoredRecipePhasesSchema` takes on `phases` below: these are
-  // decorative fields nothing reads, and there is no retry on this path, so a
-  // stray `12.5` or `0` from a model that was never asked for the number must not
-  // cost the user their whole import. They go entirely with #1211.
-  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
-  prepTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  cookTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  // The recipe's timing as an ordered strip (issue #1122), which is what it will
-  // BE once the three numbers above retire. Shared shape rather than a fourth
+  // The recipe's timing as an ordered strip (issue #1122), and since #1211 the
+  // whole of what this path says about it. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer
   // one question against one definition (`PHASE_RULES`), and a per-file constraint
   // is how three of them come to mean three different things (#785, #952).

@@ -64,9 +64,6 @@ function recipe(
     steps: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       // The phase strip is what `insertComponentByElapsedTime` ranks on (#1233).
       phases:
         opts.elapsedMinutes === undefined

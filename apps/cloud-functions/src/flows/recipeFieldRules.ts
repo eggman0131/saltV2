@@ -92,11 +92,12 @@ ${INGREDIENT_SUBSTITUTION_RULES}
 // #785 twin, and it would leave half the library's timelines drawn to one
 // definition of "hands-on" and half to another.
 //
-// This block used to sit UNDER definitions of `prepTimeMinutes`, `cookTimeMinutes`
-// and `totalTimeMinutes`, including a `total >= prep + cook` clause. Issue #1233
-// removed all four: nothing stores those three any more, so asking for them buys a
-// model call for an answer that is thrown away, and the reconciliation clause is
-// definitional once elapsed time is a sum of the parts by construction.
+// This block used to sit UNDER definitions of the three prep / cook / total time
+// fields, including a `total >= prep + cook` clause. Issue #1233 removed all four:
+// nothing stored those three any more, so asking for them bought a model call for
+// an answer that was thrown away, and the reconciliation clause is definitional
+// once elapsed time is a sum of the parts by construction. Issue #1211 then deleted
+// the fields themselves — `recipeFieldRules.test.ts` pins that no rule names them.
 //
 // TWO numbers per phase, never a third. Elapsed time is derived from them, and
 // asking the model for it as well is asking for a number that can contradict the

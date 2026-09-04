@@ -135,9 +135,6 @@ function makeRecipe(items: IngredientGroup['items']): Recipe {
     steps: [],
     metadata: {
       servings: 2,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,

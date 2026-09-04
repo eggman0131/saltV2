@@ -54,26 +54,8 @@ export const LibrarianOutputSchema = z.object({
   // list by Infinity (issue #1123) — so this path was the last one able to mint
   // that state.
   servings: z.number().int().positive().nullable(),
-  // NO LONGER ASKED FOR (issue #1233). The prompt stopped naming these three, so
-  // the model stops returning them — and `.optional()` is what keeps that from
-  // failing `.safeParse` at the trust boundary and taking every authoring call
-  // with it. Absent means the same as null here; the assembler writes null.
-  //
-  // The constraints below still apply to a value that DOES arrive, because the
-  // relaxation is about presence, not about range — but a value that FAILS them
-  // now degrades to null (`.catch(null)`) rather than failing the parse, the same
-  // posture `AuthoredRecipePhasesSchema` takes on `phases` below and for the same
-  // reason: these are decorative fields nothing reads, and the librarian has no
-  // retry, so a stray `12.5` or `0` from a model that was never asked for the
-  // number must not cost the user their whole chat-authored recipe. Kept rather
-  // than deleted only until #1211 removes the three keys from
-  // `RecipeMetadataSchema` and sweeps the fixtures. The 0 rule they encode (issue
-  // #739) is recorded beside the extractor's copy.
-  totalTimeMinutes: z.number().int().positive().nullable().optional().catch(null),
-  prepTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  cookTimeMinutes: z.number().int().nonnegative().nullable().optional().catch(null),
-  // The recipe's timing as an ordered strip (issue #1122), which is what it will
-  // BE once the three numbers above retire. Shared shape rather than a fourth
+  // The recipe's timing as an ordered strip (issue #1122), and since #1211 the
+  // whole of what this path says about it. Shared shape rather than a fourth
   // hand-written copy: the librarian, both extractors and the re-estimator answer
   // one question against one definition (`PHASE_RULES`), and a per-file constraint
   // is how three of them come to mean three different things (#785, #952).

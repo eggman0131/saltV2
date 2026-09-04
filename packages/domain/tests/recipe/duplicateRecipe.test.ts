@@ -46,9 +46,6 @@ function fullRecipe(overrides: Partial<Recipe> = {}): Recipe {
     ],
     metadata: {
       servings: 6,
-      totalTimeMinutes: 90,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 70,
       tags: ['comfort'],
     },
     source: { type: 'book', book: { title: 'River Cafe', author: 'Gray', page: 112 } },

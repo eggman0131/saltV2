@@ -132,9 +132,6 @@ function recipeWith(phases: readonly RecipePhase[] | undefined): Recipe {
     kit: [],
     metadata: {
       servings: null,
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 40,
-      totalTimeMinutes: 60,
       tags: [],
       ...(phases === undefined ? {} : { phases: [...phases] }),
     },

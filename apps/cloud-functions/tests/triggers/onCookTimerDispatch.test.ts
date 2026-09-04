@@ -202,9 +202,6 @@ function makeRecipe(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
     ],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     source: null,

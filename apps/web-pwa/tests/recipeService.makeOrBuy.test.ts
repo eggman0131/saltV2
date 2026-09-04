@@ -130,9 +130,6 @@ function recipe(
     ingredients: [{ id: `${id}-grp`, name: null, items: opts.ingredients ?? [] }],
     metadata: {
       servings: opts.servings ?? 2,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
       tags: [],
     },
     producesCanonId: opts.producesCanonId ?? null,

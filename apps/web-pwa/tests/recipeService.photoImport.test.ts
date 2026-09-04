@@ -90,9 +90,6 @@ const DRAFT: Recipe = {
   steps: [],
   metadata: {
     servings: 4,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
-    totalTimeMinutes: 180,
     tags: [],
   },
   source: { type: 'book', book: { title: 'The Roasting Tin', page: 62 } },

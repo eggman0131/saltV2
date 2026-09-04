@@ -55,9 +55,6 @@ const STUB_AUTHOR = {
   title: SALAD_TITLE,
   description: 'Sharp and cold, against the lamb.',
   servings: 4,
-  totalTimeMinutes: 15,
-  prepTimeMinutes: 15,
-  cookTimeMinutes: null,
   tags: ['side'],
   ingredientGroups: [
     {

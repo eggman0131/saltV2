@@ -34,12 +34,9 @@ function makeRecipe(over: {
     steps: over.steps ?? [],
     metadata: {
       servings: null,
-      totalTimeMinutes: null,
-      prepTimeMinutes: null,
       // Deliberately contradicts the strip on every fixture: issue #1233 moved the
       // ranking onto the phases, and if this field were still read the orders
       // asserted below would move.
-      cookTimeMinutes: 5,
       phases:
         over.elapsedMinutes === null || over.elapsedMinutes === undefined
           ? undefined
@@ -260,8 +257,8 @@ describe('insertComponentByElapsedTime', () => {
 
   it('ranks on the WHOLE PROCESS, not the cooking alone (#1233)', () => {
     // A dish that is 100 min of soaking and marinating before 5 min in the pan
-    // starts before the bird, not after the gravy. Every fixture's stored
-    // `cookTimeMinutes` is 5, so this order is only reachable from the strip.
+    // starts before the bird, not after the gravy — an order only the whole
+    // process gives, never the time in the pan.
     const marinated = makeRecipe({ id: 'marinated', elapsedMinutes: 105 });
     const ids = insertComponentByElapsedTime('roast', ['chicken', 'gravy'], 'marinated', [
       ...LIBRARY,

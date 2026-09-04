@@ -79,9 +79,6 @@ function makeRecipe(groups: IngredientGroup[], servings: number | null = 2): Rec
     steps: [],
     metadata: {
       servings,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
       tags: [],
     },
     source: null,
