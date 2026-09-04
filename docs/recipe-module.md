@@ -182,8 +182,11 @@ Quickest sort, the "Made from" rows on the view and edit pages, and the meal coo
 plan's per-dish line all go through it, so a recipe cannot read 45 min on one
 screen and 13 hr on another. Issue #1213 removed the old-field fallback along with
 the feature key and the `phasesEnabled` argument that threaded it: `phaseMinutes`
-now takes only the recipe, and returns `null` for a recipe with no strip — in
-practice only placeholders and outings, which never showed a timing anyway. Issue
+now takes only the recipe, and returns `null` for a recipe with no strip. Through
+the normal authoring paths only placeholders and outings reach that state — neither
+ever showed a timing — but that is the claim's boundary, not a property of the
+type: a recipe starts life with an empty strip, and the editor can remove its last
+phase (#1232). Issue
 #1233 then closed the boundary that was left open: the ORDERING and the CLOCK moved
 onto the same figure the line shows. `scheduleFor` works a start time back from
 `recipePhaseTotals().elapsedMinutes`, and `insertComponentByElapsedTime` positions a
