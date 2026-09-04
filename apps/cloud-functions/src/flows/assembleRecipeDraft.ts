@@ -7,6 +7,7 @@ import type {
 } from '@salt/domain/schemas';
 import { RecipeSchema } from '@salt/domain/schemas';
 import { normaliseTags, reconcileRecipePhases } from '@salt/domain';
+import type { AuthorableRecipeKind } from '@salt/domain';
 import { logger } from 'firebase-functions';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
@@ -36,6 +37,17 @@ export interface AssembleRecipeDraftOptions {
    *  are preserved, so an amend can never silently re-type or unlink the entry it
    *  is editing. null / omitted = author a fresh draft. */
   baseRecipe?: RecipeDoc | null;
+  /** Variation mode (issue #763 + #765): the kind of the entry this variation
+   *  STARTS FROM. A variation deliberately assembles with `baseRecipe: null` — it
+   *  is a new dish, not a second copy — but its kind is not in question: a
+   *  variation on a Negroni is a cocktail, and that is a deterministic answer
+   *  sitting right there rather than something to infer from a transcript about
+   *  gin. Ignored in edit mode, where the base recipe's own kind wins outright.
+   *
+   *  Typed as `AuthorableRecipeKind`, so a caller cannot hand this an `outing` or
+   *  a `placeholder` and mint an entry carrying a method it is not allowed to
+   *  have. Callers narrow with `isAuthorable`. */
+  kindHint?: AuthorableRecipeKind | null;
   /** Stamp `needs_approval: true` — raw AI output nobody has read yet (issue
    *  #616). Omitted/false leaves the field OFF the document entirely; absent
    *  means reviewed, and an explicit `false` is not the same thing. */
@@ -50,7 +62,7 @@ type CanonResult = Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>>
 
 export async function assembleRecipeDraft(
   raw: LibrarianOutput,
-  { source, baseRecipe = null, needsApproval = false }: AssembleRecipeDraftOptions,
+  { source, baseRecipe = null, kindHint = null, needsApproval = false }: AssembleRecipeDraftOptions,
 ): Promise<RecipeDoc> {
   const now = new Date().toISOString();
 
@@ -310,10 +322,22 @@ export async function assembleRecipeDraft(
   const draft: RecipeDoc = {
     id: recipeId,
     schemaVersion: 1,
-    // Authoring and importing both produce a cookable recipe (issue #637) —
-    // outings are written by hand and have nothing to author or extract. On an
-    // edit-mode amend the base recipe's own kind is carried through instead.
-    kind: baseRecipe?.kind ?? 'recipe',
+    // WHAT KIND OF ENTRY this is, in strict precedence (issue #765).
+    //
+    // 1. `baseRecipe.kind` — FIRST and UNCONDITIONAL. `kind` is immutable, so an
+    //    edit-mode amend must never re-type the entry it is editing, whatever the
+    //    model said and whichever of the four kinds it is. Edit mode wins over
+    //    inference, always; that is why this operand is not guarded by anything.
+    // 2. `kindHint` — variation mode, where the base is deliberately not passed
+    //    as `baseRecipe` but its kind is still a known fact rather than a guess.
+    // 3. `raw.kind` — what the model classified. Before #765 this line read
+    //    `?? 'recipe'`, which is why no AI path could produce anything but a
+    //    dinner: it was the single choke point all three creation paths funnel
+    //    through. The schema (`AuthoredRecipeKindSchema`) is what guarantees this
+    //    operand is one of the authorable kinds and floors it at `'recipe'` when
+    //    the model omits it or invents one — there is no unbounded value here to
+    //    guard against.
+    kind: baseRecipe?.kind ?? kindHint ?? raw.kind,
     title: raw.title,
     description: raw.description,
     ingredients: ingredientGroups,

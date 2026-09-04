@@ -29,20 +29,23 @@ interface Capabilities {
   // it is attached on its own when a day is planned in a sentence, never chosen.
   readonly isPlannable: boolean;
   // Whether the LIBRARIAN can produce this kind: gates every path where the AI
-  // authors a whole entry from a conversation — chat → "Save as recipe" and, on
-  // top of it, ⋮ → "Make a variation" (issue #763).
+  // authors a whole entry — chat → "Save as recipe", ⋮ → "Make a variation"
+  // (issue #763), ⋮ → "Refresh" (issue #784), and both imports (issue #765).
   //
-  // Read the `false` rows as "not yet", never as "by design". The constraint is
-  // not about any one feature: `assembleRecipeDraft` hardcodes
-  // `kind: baseRecipe?.kind ?? 'recipe'`, so no AI authoring path can currently
-  // emit anything but a `recipe` — a cocktail authored by the librarian would
-  // land in the dinner list permanently, because `kind` is immutable. The day
-  // the librarian carries `kind` through, flipping the `cocktail` row here is
-  // the only change needed and every consumer lights up with no edit of its own.
+  // `cocktail` became `true` in #765, when the librarian learned to say which
+  // kind it had written and `assembleRecipeDraft` stopped hardcoding `'recipe'`.
+  // That was the whole of the constraint: before it, a cocktail authored from a
+  // chat landed in the dinner list permanently, because `kind` is immutable.
   //
-  // `outing` and `placeholder` stay `false` on their own merits: an outing is a
-  // hand-written night off with nothing to author, and a placeholder is a
-  // photograph and a title.
+  // The two remaining `false`s are "by design", not "not yet": an outing is a
+  // hand-written night off with no ingredients and no method for anyone to
+  // author, and a placeholder is a stock photograph and a title. There is
+  // nothing for the librarian to write in either case.
+  //
+  // The `true` rows are also a WIRE CONTRACT, not just a UI gate:
+  // `AUTHORABLE_RECIPE_KINDS` below is derived from them and is what bounds the
+  // `kind` field the AI flows may emit, so this row is the only place that
+  // answers "may the model mint one of these?".
   readonly isAuthorable: boolean;
   // Whether other dishes can be hung off this entry as its components (issue
   // #752): gates the editor's component picker and, with it, whether this entry
@@ -55,7 +58,7 @@ interface Capabilities {
   readonly takesComponents: boolean;
 }
 
-const CAPABILITIES: Record<RecipeKind, Capabilities> = {
+const CAPABILITIES = {
   recipe: {
     takesIngredients: true,
     isCookable: true,
@@ -74,7 +77,7 @@ const CAPABILITIES: Record<RecipeKind, Capabilities> = {
     takesIngredients: true,
     isCookable: true,
     isPlannable: false,
-    isAuthorable: false,
+    isAuthorable: true,
     takesComponents: true,
   },
   // A placeholder is a photograph and a title, nothing else: nothing to buy,
@@ -88,7 +91,11 @@ const CAPABILITIES: Record<RecipeKind, Capabilities> = {
     isAuthorable: false,
     takesComponents: false,
   },
-};
+  // `satisfies` rather than an annotation, so the literal `true`/`false` of each
+  // cell survives for `AuthorableRecipeKind` below to read. It keeps the whole
+  // point of the `Record<RecipeKind, …>`: a new member of the enum still fails to
+  // compile here until it has answered all five questions.
+} as const satisfies Record<RecipeKind, Capabilities>;
 
 export function takesIngredients(kind: RecipeKind): boolean {
   return CAPABILITIES[kind].takesIngredients;
@@ -102,7 +109,33 @@ export function isPlannable(kind: RecipeKind): boolean {
   return CAPABILITIES[kind].isPlannable;
 }
 
-export function isAuthorable(kind: RecipeKind): boolean {
+// The set of kinds the librarian may write, READ OFF the table rather than
+// restated beside it (issue #765). This is what bounds the `kind` field on
+// `LibrarianOutputSchema` / `ExtractRecipeAIOutputSchema`, so the model is never
+// offered a kind whose `takesIngredients` is `false` — an outing carrying an
+// ingredient list is an entry every screen then hides half of.
+//
+// Derived, so it cannot drift from the rows above.
+export type AuthorableRecipeKind = {
+  [K in RecipeKind]: (typeof CAPABILITIES)[K]['isAuthorable'] extends true ? K : never;
+}[RecipeKind];
+
+// The same set as a VALUE. Zod needs a literal tuple (`z.enum`) and a mapped type
+// cannot produce one, so the members are written out — and `satisfies` then pins
+// every one of them against the table at compile time. The other direction (a
+// fifth kind marked authorable and forgotten here) is not expressible in the type
+// system and is pinned by `capabilities.test.ts` instead, which walks
+// `RecipeKindSchema.options` and asserts the two agree exactly.
+export const AUTHORABLE_RECIPE_KINDS = [
+  'recipe',
+  'cocktail',
+] as const satisfies readonly AuthorableRecipeKind[];
+
+// A type predicate, not a plain boolean, so `AUTHORABLE_RECIPE_KINDS` is
+// load-bearing rather than decorative: narrowing a `RecipeKind` to the set the
+// AI flows may emit is how the variation path passes its base's kind through
+// without the compiler letting an outing slip in.
+export function isAuthorable(kind: RecipeKind): kind is AuthorableRecipeKind {
   return CAPABILITIES[kind].isAuthorable;
 }
 

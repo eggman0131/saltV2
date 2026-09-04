@@ -48,7 +48,12 @@ export {
   isPlannable,
   isAuthorable,
   takesComponents,
+  // The kinds the librarian may WRITE, derived from the capability table (issue
+  // #765). Exported as a value because the AI output schemas bound their `kind`
+  // field to it — the one place that decides what a model may mint.
+  AUTHORABLE_RECIPE_KINDS,
 } from './queries/capabilities.js';
+export type { AuthorableRecipeKind } from './queries/capabilities.js';
 export { recipePhaseTotals, phaseElapsedMinutes } from './queries/recipePhaseTotals.js';
 export type { RecipePhaseTotals } from './queries/recipePhaseTotals.js';
 // Meals — a recipe built from several other recipes (issue #752). One level deep,

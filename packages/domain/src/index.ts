@@ -203,6 +203,7 @@ export type {
   RecipeMetadata,
   RecipePhase,
   RecipePhaseStrip,
+  AuthorableRecipeKind,
 } from './recipe/index.js';
 export {
   emptyRecipe,
@@ -229,6 +230,9 @@ export {
   isPlannable,
   isAuthorable,
   takesComponents,
+  // The kinds the librarian may write (issue #765) — read off the capability
+  // table, and what bounds the `kind` the AI authoring schemas accept.
+  AUTHORABLE_RECIPE_KINDS,
   // The one place a recipe's phases are added up (issue #1122). Every timing
   // figure in the app is this sum at the point of use; none is stored.
   recipePhaseTotals,

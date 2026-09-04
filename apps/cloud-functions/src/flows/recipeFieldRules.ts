@@ -133,9 +133,35 @@ competent cook would overlap. Round to numbers a person would say: 5, 10, 15, 20
 long the whole thing spans — "About 40 minutes of you, spread over 2¼ hours — start it the night \
 before." Null only when you have no phases.`;
 
+// IS IT A DRINK YOU MIX, OR SOMETHING YOU EAT (issue #765) — the one question
+// that decides which section of the library an AI-created entry lands in.
+//
+// UNCONDITIONAL, and it lives here rather than in each of the four prompts that
+// interpolate this module (the URL import's two, the photo import's, the
+// librarian's) for the reason the module exists: three copies of a
+// classification rule is three classifications one edit apart from disagreeing,
+// which is exactly what #785 pulled apart.
+//
+// The tie-break is stated as loudly as the question, because the two mistakes are
+// NOT symmetrical. A cocktail filed under Recipes is merely in the wrong chip and
+// works in every other way. A dinner filed under Cocktails can never be put on
+// the meal plan — `isPlannable('cocktail')` is false — and `kind` is immutable,
+// so that one is a permanent loss of function with no route back but deleting the
+// entry. Everything doubtful therefore goes to `recipe`. The schema enforces the
+// same floor independently (`AuthoredRecipeKindSchema`); this states the
+// preference, the schema guarantees it.
+const KIND_RULES = `- kind: "cocktail" ONLY for a drink that is MIXED and served in a glass — a \
+Negroni, a margarita, a highball, a punch. "recipe" for everything else, including everything you \
+merely have doubts about.
+  Anything you eat is a recipe, however boozy: a tiramisu, a rum baba, a beer-braised shoulder. So \
+is anything you brew, infuse, bottle or keep — a cordial, a syrup, a stock, a hot chocolate, a \
+smoothie, a pot of tea — and so is a mocktail. When it is not clearly a mixed drink in a glass, \
+answer "recipe".`;
+
 function fields(measures: MeasurePolicy): string {
   return `## Fields
 - title: clear, concise recipe name.
+${KIND_RULES}
 - description: 1–2 sentence summary, or null.
 - servings: integer portions, or null if not stated.
 ${PHASE_RULES}

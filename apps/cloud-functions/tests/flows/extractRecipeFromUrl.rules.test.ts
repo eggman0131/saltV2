@@ -191,3 +191,57 @@ describe('extractRecipeFromUrl — no step-provenance clause (#1178)', () => {
     expect(systemPromptFrom()).not.toContain('Where each step came from');
   });
 });
+
+// ─── recipe or cocktail (issue #765) ─────────────────────────────────────────
+//
+// The URL import's half of "every route that can make a recipe can make a
+// cocktail". Both prompts are covered, because the JSON-LD path and the HTML
+// fallback are separate system prompts and a rule added to only one of them
+// would leave half the web classifying and half not.
+describe('extractRecipeFromUrl — recipe or cocktail', () => {
+  it.each([
+    ['the HTML fallback prompt', false],
+    ['the JSON-LD prompt', true],
+  ])('asks the question and states the tie-break on %s', async (_name, withJsonLd) => {
+    if (withJsonLd) mockJsonLd.mockReturnValue(JSON_LD);
+
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('- kind:');
+    expect(system).toContain('a drink that is MIXED and served in a glass');
+    expect(system).toContain('When it is not clearly a mixed drink in a glass, answer "recipe"');
+  });
+
+  it('lands a cocktail page in the Cocktails section', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { ...AI_OUTPUT, kind: 'cocktail', title: 'Negroni' },
+    });
+
+    const recipe = await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    expect(recipe.kind).toBe('cocktail');
+  });
+
+  it('lands an ordinary dinner as a recipe, exactly as before', async () => {
+    // AI_OUTPUT carries no `kind` at all — which is also the pre-#765 payload, so
+    // this is the back-compat assertion as much as the happy path.
+    const recipe = await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    expect(recipe.kind).toBe('recipe');
+  });
+
+  it('does not fail the import when the model answers a kind that does not exist', async () => {
+    // A bad `kind` must never turn a perfectly good extraction into a failed
+    // import. The extractor validates INSIDE its retried op, so a throw here would
+    // burn the retry as well and surface as ai-failed.
+    mockGenerate.mockResolvedValue({ output: { ...AI_OUTPUT, kind: 'beverage' } });
+
+    const recipe = await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    expect(recipe.kind).toBe('recipe');
+    expect(recipe.title).toBe('Carbonara');
+    // One generate call: nothing was retried.
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+  });
+});

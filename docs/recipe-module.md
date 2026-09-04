@@ -409,15 +409,19 @@ remain are _identity and copy_, never behaviour: which section of the recipe lis
 you are looking at, whether a planner picker row wears a badge, and which
 art-direction prompt the hero pipeline reaches for.
 
-| kind          | `takesIngredients` | `isCookable` | `isPlannable` | `takesComponents` |
-| ------------- | ------------------ | ------------ | ------------- | ----------------- |
-| `recipe`      | ✓                  | ✓            | ✓             | ✓                 |
-| `outing`      | ✗                  | ✗            | ✓             | ✗                 |
-| `cocktail`    | ✓                  | ✓            | ✗             | ✓                 |
-| `placeholder` | ✗                  | ✗            | ✗             | ✗                 |
+| kind          | `takesIngredients` | `isCookable` | `isPlannable` | `takesComponents` | `isAuthorable` |
+| ------------- | ------------------ | ------------ | ------------- | ----------------- | -------------- |
+| `recipe`      | ✓                  | ✓            | ✓             | ✓                 | ✓              |
+| `outing`      | ✗                  | ✗            | ✓             | ✗                 | ✗              |
+| `cocktail`    | ✓                  | ✓            | ✗             | ✓                 | ✓              |
+| `placeholder` | ✗                  | ✗            | ✗             | ✗                 | ✗              |
 
-(`isAuthorable` is a fifth column, covered in the capabilities file itself;
-`takesComponents` arrived with meals — see below.)
+(`takesComponents` arrived with meals — see below. `isAuthorable` — "can the
+librarian WRITE this kind?" — gained its `cocktail` row in #765, and is also the
+wire bound: `AUTHORABLE_RECIPE_KINDS` is read off this column and is what the AI
+authoring schemas accept for `kind`, so the model is never offered a kind whose
+`takesIngredients` is ✗. The reasoning for each cell is in the capabilities file
+itself.)
 
 Read `isPlannable` as **"is offered in the planner picker"**, which is all it has
 ever gated. A `placeholder` is `false` and still occupies a planner slot — it is

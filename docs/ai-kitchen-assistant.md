@@ -200,22 +200,32 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 - Canon: the draft's ingredients are run through the existing
   `canonicaliseRecipeIngredients` path to fill `canonId` / `matchState`. The client
   assembles the final `RecipeDoc` and persists with the existing `saveRecipe`.
-- **The librarian only ever authors cookable kinds** (#637). A fresh draft is
-  written as `kind: 'recipe'` — ingredients and a method are the entire output, so
-  there is nothing for it to produce that is not one. On an _amend_ it carries the
-  base recipe's own kind through unchanged, so re-running the librarian against an
-  existing entry can never silently re-type it (`kind` is immutable by design).
-  A "When you CBA" outing is hand-written and has nothing to author, and the
-  Ask / amend affordance is capability-gated off its view page, so the librarian is
-  simply unreachable for one.
-- **Which kinds it may author is now a named predicate** — `isAuthorable` in
-  `packages/domain/src/recipe/queries/capabilities.ts` (#763). Only `recipe` is
-  `true`, and the `false` on `cocktail` means **not yet**: `assembleRecipeDraft`
-  hardcodes `kind: baseRecipe?.kind ?? 'recipe'`, so no AI path can emit a cocktail
-  and one authored by chat would be stuck in the dinner list forever. That is a bug
-  in its own right, with no issue yet. When it is fixed, flipping that one row is
-  the whole change — every consumer (the ⋮ entry point, the flows, the chip)
-  inherits it untouched.
+- **The librarian only ever authors cookable kinds** (#637). A "When you CBA"
+  outing is hand-written and has nothing to author, and a placeholder is a
+  photograph and a title; the Ask / amend affordance is capability-gated off both
+  view pages, so the librarian is simply unreachable for either.
+- **Which kinds it may author is a named predicate** — `isAuthorable` in
+  `packages/domain/src/recipe/queries/capabilities.ts` (#763), `true` for `recipe`
+  and, since #765, for `cocktail`. The `cocktail` row was `false` only while
+  `assembleRecipeDraft` hardcoded `kind: baseRecipe?.kind ?? 'recipe'`; flipping
+  it was the whole change, and every consumer (the two ⋮ entry points, the flows,
+  the list chip) inherited it untouched.
+- **The model says which kind it wrote** (#765), on all three creation paths — URL
+  import, photo import and chat "Save as recipe". They funnel through
+  `assembleRecipeDraft`, whose precedence is `baseRecipe?.kind ?? kindHint ??
+raw.kind`:
+  - an **edit-mode base wins unconditionally**, so an amend can never silently
+    re-type the entry it is editing (`kind` is immutable by design);
+  - `kindHint` is **variation mode** — a variation on a cocktail is a cocktail, a
+    deterministic answer that beats inferring one from the transcript;
+  - otherwise the model's own classification, asked for by the `kind` bullet in
+    `recipeFieldRules` (one text, all four prompts) and bounded on the wire to
+    `AUTHORABLE_RECIPE_KINDS`, so `outing` and `placeholder` are never offered.
+    The floor is the schema's, not the prompt's: `AuthoredRecipeKindSchema` uses
+    `.catch('recipe')`, so a missing or invented kind degrades rather than failing an
+    import — load-bearing on the librarian path, which has no retry. The tie-break
+    leans to `recipe` because the mistakes are asymmetric: a cocktail in the Recipes
+    chip still works, a dinner in Cocktails can never be planned.
 - **Three prompt closings, not two.** `CREATE_MODE_CLOSING` (the conversation is
   the only source of truth), `editModeSection` (return the COMPLETE updated recipe)
   and `variationModeSection` (#763 — build on the base, but give it a name of its
@@ -284,9 +294,9 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
     so the new recipe has no origin chat. The dish on screen is never written to.
   - The pair on an attached chat is the whole distinction: **Review changes** folds
     the conversation into THIS dish behind a diff; **Save as new recipe** makes it a
-    different dish and leaves this one alone. Everything saved this way is
-    `kind: 'recipe'` — see `isAuthorable` above; that is the pre-existing librarian
-    limitation, not something the button introduces.
+    different dish and leaves this one alone. What kind it is saved as is the
+    librarian's answer, bounded to `AUTHORABLE_RECIPE_KINDS` — see `isAuthorable`
+    above; the button introduces no choice of its own.
 - Variation chat (#763) — ⋮ → **Make a variation** on a recipe opens a NEW chat at
   `/chat/:id` carrying `basedOnRecipeId`, with a _Based on: …_ chip and an empty
   transcript. It navigates AWAY from the recipe deliberately: you are leaving that

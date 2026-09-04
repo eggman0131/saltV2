@@ -51,6 +51,10 @@ beforeEach(() => {
 function rawOutput(overrides: Record<string, unknown> = {}) {
   return {
     title: 'Garlic Pasta',
+    // What the model classified this as (issue #765). `as const` so the literal
+    // survives into the argument type — the assembler's `raw` is bounded to the
+    // authorable kinds, and a widened `string` is not assignable to it.
+    kind: 'recipe' as 'recipe' | 'cocktail',
     description: null,
     servings: 2,
     tags: [],
@@ -628,6 +632,8 @@ describe('assembleRecipeDraft — edit mode', () => {
   it('defaults to a fresh recipe with no makes-link, no components and no attribution when there is no base', async () => {
     const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
 
+    // 'recipe' here because that is what `rawOutput()` classifies, NOT because
+    // the assembler hardcodes it — see the kind-precedence suite below.
     expect(doc.kind).toBe('recipe');
     expect(doc.producesCanonId).toBeNull();
     expect(doc.componentRecipeIds).toEqual([]);
@@ -893,5 +899,96 @@ describe('assembleRecipeDraft — the step id a citation asks for', () => {
     await assembleRecipeDraft(withCitations('old-step'), { source: MANUAL });
 
     expect(citations()).toBeUndefined();
+  });
+});
+
+// ─── what kind of entry this is (issue #765) ─────────────────────────────────
+//
+// One line in the assembler decides which section of the library every
+// AI-created entry lands in, and it is the choke point all three creation paths
+// funnel through (URL import, photo import, chat "Save as recipe"). Before #765
+// it read `baseRecipe?.kind ?? 'recipe'`, which is why none of the three could
+// produce anything but a dinner.
+//
+// The precedence is what these tests exist to pin, in order:
+//   1. an edit-mode base wins UNCONDITIONALLY — `kind` is immutable, so an amend
+//      must never re-type the entry it is editing, whatever the model said;
+//   2. a variation's `kindHint` — the base's kind is a known fact, not a guess;
+//   3. the model's own classification.
+describe('assembleRecipeDraft — what kind of entry it is', () => {
+  it('honours the model on the create path', async () => {
+    const doc = await assembleRecipeDraft(rawOutput({ kind: 'cocktail' }), { source: MANUAL });
+
+    expect(doc.kind).toBe('cocktail');
+  });
+
+  // EVERY kind, including the two the librarian may not author: an outing or a
+  // placeholder amended by chat must come back an outing or a placeholder. This
+  // is the assertion that would go red if the operands were ever reordered, or if
+  // the base branch gained a condition.
+  it.each(['recipe', 'outing', 'cocktail', 'placeholder'] as const)(
+    'lets an edit-mode %s override the model, unconditionally',
+    async (kind) => {
+      const doc = await assembleRecipeDraft(
+        // The model saying the opposite of the base, on purpose.
+        rawOutput({ kind: kind === 'cocktail' ? 'recipe' : 'cocktail' }),
+        { source: MANUAL, baseRecipe: { ...baseRecipe(), kind } },
+      );
+
+      expect(doc.kind).toBe(kind);
+    },
+  );
+
+  it('lets an edit-mode base beat a kindHint as well as the model', async () => {
+    // Both non-base operands set, and both losing. Nothing in production passes
+    // this combination today — `authorRecipe` computes the hint only when there
+    // is no `recipeId` — but the precedence must not depend on that.
+    const doc = await assembleRecipeDraft(rawOutput({ kind: 'recipe' }), {
+      source: MANUAL,
+      baseRecipe: { ...baseRecipe(), kind: 'placeholder' },
+      kindHint: 'cocktail',
+    });
+
+    expect(doc.kind).toBe('placeholder');
+  });
+
+  it('takes a variation kindHint over the model, with no base recipe', async () => {
+    // Variation mode (issue #763): the base is deliberately NOT passed, so the
+    // draft gets its own identity — but a variation on a cocktail is a cocktail,
+    // which is a fact rather than something to infer from a chat about gin.
+    const doc = await assembleRecipeDraft(rawOutput({ kind: 'recipe' }), {
+      source: MANUAL,
+      kindHint: 'cocktail',
+    });
+
+    expect(doc.kind).toBe('cocktail');
+    // …and nothing else of an identity came with it: still a fresh dish.
+    expect(doc.producesCanonId).toBeNull();
+    expect(doc.componentRecipeIds).toEqual([]);
+  });
+
+  it('falls back to the model when there is neither a base nor a hint', async () => {
+    const doc = await assembleRecipeDraft(rawOutput({ kind: 'cocktail' }), {
+      source: MANUAL,
+      baseRecipe: null,
+      kindHint: null,
+    });
+
+    expect(doc.kind).toBe('cocktail');
+  });
+
+  it('lands on recipe when the model omitted the field entirely', async () => {
+    // The floor is the SCHEMA's job, not the assembler's, so this asserts the two
+    // halves meet: a raw payload with no `kind` is parsed first (exactly as the
+    // flows do) and the assembler then reads what the schema put there. A model
+    // that forgets the field must never fail an import, and must never mint a
+    // cocktail by accident.
+    const { LibrarianOutputSchema } = await import('@salt/domain/schemas');
+    const { kind: _dropped, ...withoutKind } = rawOutput();
+    const parsed = LibrarianOutputSchema.parse(withoutKind);
+
+    const doc = await assembleRecipeDraft(parsed, { source: MANUAL });
+
+    expect(doc.kind).toBe('recipe');
   });
 });

@@ -14,6 +14,7 @@
   } from '../../lib/recipeAmend.js';
   import type { Recipe } from '@salt/domain';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
+  import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
   import RecipeChangeSummary from '../recipes/RecipeChangeSummary.svelte';
   import ChatThread from './ChatThread.svelte';
   import { createChatThread } from './chatThreadState.svelte.js';
@@ -161,7 +162,12 @@
     // as a failed save.
     await claimRecipe(session.id, saved.id);
     if (await returnToMeal(saved)) return;
-    addToast('Recipe saved!', 'success');
+    // What the librarian decided it had written (issue #765). The toast is COPY,
+    // so it comes from `KIND_COPY` and never from a comparison — say "Cocktail
+    // created" when the conversation was about a Negroni. Read off the SAVED
+    // document rather than anything on this page: the kind is the flow's answer,
+    // and the chat has no opinion about it.
+    addToast(KIND_COPY[kindOf(saved)].createdToast, 'success');
     push(`/recipes/${saved.id}`);
   }
 
