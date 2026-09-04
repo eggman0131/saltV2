@@ -488,13 +488,62 @@ describe('RecipeChangeSummary — the phase strip', () => {
     expect(card.textContent).toContain('10 hands-on');
     expect(card.textContent).toContain('0 hands-on');
   });
+
+  // Issue #1239. The rule the card is drawn by is stated on `metadata.phases`
+  // being PRESENT — `diffRecipe` compared the two strips field by field, so its
+  // saying so IS the proof — and not on what the two sides happen to render as.
+  // That is the property, and it is what this table pins rather than any one
+  // case: each row is a different way `phasesValue` loses a distinction
+  // `phasesEqual` kept — the blank-label placeholder, the clamp
+  // `phaseElapsedMinutes` applies to a hands-off figure `phasesValue` never
+  // prints, and the separators a label is free to contain — and every row
+  // renders the SAME string on both sides. Before the fix each drew no card, no
+  // Apply and "No changes.", so a real movement (visible on the recipe page,
+  // where the label prints verbatim) could not be accepted at all.
+  describe.each([
+    [
+      'a blank label against the placeholder it is drawn as',
+      [{ label: '', handsOnMinutes: 20, handsOffMinutes: 0 }],
+      [{ label: 'Untitled', handsOnMinutes: 20, handsOffMinutes: 0 }],
+    ],
+    [
+      'two hands-off figures that both clamp to zero',
+      [{ label: 'Bake', handsOnMinutes: 20, handsOffMinutes: -5 }],
+      [{ label: 'Bake', handsOnMinutes: 20, handsOffMinutes: 0 }],
+    ],
+    [
+      'a non-finite hands-off figure against zero',
+      [{ label: 'Bake', handsOnMinutes: 20, handsOffMinutes: Number.NaN }],
+      [{ label: 'Bake', handsOnMinutes: 20, handsOffMinutes: 0 }],
+    ],
+    [
+      'a label carrying the separator that joins two phases',
+      [
+        { label: 'Mix', handsOnMinutes: 5, handsOffMinutes: 0 },
+        { label: 'Bake', handsOnMinutes: 5, handsOffMinutes: 0 },
+      ],
+      [{ label: 'Mix 5 min (5 hands-on) · Bake', handsOnMinutes: 5, handsOffMinutes: 0 }],
+    ],
+  ] as [string, RecipePhase[], RecipePhase[]][])(
+    'a strip movement whose two sides render identically (%s)',
+    (_name, from, to) => {
+      it('still draws exactly one Timing card, over a live Apply', () => {
+        openWithPhases({ phases: { from, to } });
+
+        const card = onlyCard();
+        expect(card.textContent).toContain('Timing');
+        expect(screen.getByTestId('recipe-change-apply')).toBeInTheDocument();
+        expect(screen.queryByTestId('recipe-change-summary-none')).toBeNull();
+      });
+    },
+  );
 });
 
 // ── The sheet matches what it drew (issue #1216) ────────────────────────────
 //
 // `diffRecipe` reports a metadata change whenever `timingSummary` moved — but
-// the Timing card declines to draw a pair whose two sides render identically
-// (#1217). `hasChanges` and "is there a card to look at" are two different
+// the Timing card declines to draw a sentence-only pair whose two sides render
+// identically (#1217; a strip movement always draws, #1239). `hasChanges` and "is there a card to look at" are two different
 // questions, and the sheet must answer from the second one: a review gate that
 // offers Apply next to zero cards would let a write through with nothing shown
 // for the reviewer to approve.
