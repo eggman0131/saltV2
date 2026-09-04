@@ -29,6 +29,24 @@
  * instead: the known instances, named here with their reasons, and any other one
  * reds.
  *
+ * ── Why entries name a SYMBOL, not a file (#1251) ──────────────────────────
+ *
+ * They used to name a file, and an exemption then blanketed everything in it.
+ * `recipe.ts` is one file with nineteen exported schemas: `.catch([])` on
+ * `AuthoredRecipePhasesSchema` is sanctioned above, and `RecipeMetadataSchema`,
+ * `RecipeImageSchema`, `RecipeKitEntrySchema` and `RecipeSchema` — the stored
+ * `recipes` document, holding real production data — sat under the same tick. A
+ * `.catch()` added to any of them was #1114 happening again on the app's largest
+ * collection, with this guard green. That was verified rather than argued:
+ * `.catch(null)` on `RecipeSchema.notes` passed the file-keyed guard and reds
+ * this one.
+ *
+ * A key is `file#Symbol`, or `file#Symbol.field` where the call sits on an object
+ * property — nested properties join with dots, so `RecipeSchema.metadata.servings`
+ * is one key. Field granularity is not decoration: #1114's own instance was
+ * `ShoppingListItemSchema.matchState`, a property rather than a top-level const,
+ * and `shoppingListItem.ts`'s comment at that field is the worked example of why.
+ *
  * ── Why EQUALITY, not `<=` ─────────────────────────────────────────────────
  *
  * Both directions matter, the same argument `coverage.areas.mjs` and
@@ -41,14 +59,25 @@
  *
  * ── Honest limits ──────────────────────────────────────────────────────────
  *
- * It reads source, one file at a time, with no type information — never the
- * schemas themselves, which this directory's own header forbids importing into a
- * script. `scripts/lib/schemaCatchSites.mjs` parses each file with TypeScript's
- * parser and carries the full list of what that does and does not see; the two
- * that matter here are that a `.catch()` reached through a variable or applied by
- * a helper is invisible, and that a file may DISCUSS `.catch()` freely because a
- * comment cannot produce a call expression. Both `shoppingListItem.ts` and
- * `recipe.ts` do discuss it.
+ * What symbol attribution does and does not see, stated rather than assumed:
+ *
+ * - It reads source, one file at a time, with no type information — never the
+ *   schemas themselves, which `scripts/`'s own contract forbids importing.
+ *   `scripts/lib/schemaCatchSites.mjs` parses each file with TypeScript's parser
+ *   and carries the full list; the two that matter here are that a `.catch()`
+ *   reached through a variable or applied by a helper is invisible, and that a
+ *   file may DISCUSS `.catch()` freely because a comment cannot produce a call
+ *   expression. Both `shoppingListItem.ts` and `recipe.ts` do discuss it.
+ * - A symbol key names a DECLARATION, not a document. `RecipeSchema` is exempt or
+ *   it is not; the guard has no way to know that `AuthoredRecipePhasesSchema`
+ *   parses an AI output and `RecipeSchema` parses a stored document. That
+ *   judgement lives in the reason strings below, and it is a human's.
+ * - The name is the key, so RENAMING an exempt schema reds — correctly, since
+ *   the reason was written for the old name. Rename the entry with it.
+ * - It cannot see a `.catch()` composed onto an exempt symbol from elsewhere:
+ *   `SomethingElse = AuthoredRecipePhasesSchema.catch([])` in another file is a
+ *   new key in THAT file and reds, which is the safe direction; the same line
+ *   inside a helper this scanner cannot follow is not seen at all.
  *
  * The scan is `packages/domain/src/schemas/` and nothing else, so it says nothing
  * about the app-local schemas CLAUDE.md's #932 narrowing permits.
@@ -61,14 +90,17 @@ import { fileURLToPath } from 'node:url';
 
 import { findCatchSites } from '../lib/schemaCatchSites.mjs';
 
-/** The sanctioned instances: file → why it is there. */
+/**
+ * The sanctioned instances: `file#Symbol` (or `file#Symbol.field`) → why it is
+ * there. One entry exempts one declaration and nothing else in its file.
+ */
 const ALLOWED = new Map([
-  ['recipe.ts', 'AuthoredRecipePhasesSchema — an AI output, not a stored document (#1122)'],
+  ['recipe.ts#AuthoredRecipePhasesSchema', 'An AI output, not a stored document (#1122).'],
   [
-    'extractRecipeFromUrl.ts',
-    'AuthoredRecipeKindSchema — an AI output, not a stored document (#765). The ' +
-      'floor that makes a bad `kind` degrade to `recipe` rather than fail an ' +
-      'import; the librarian path has no retry, so a throw costs a whole conversation.',
+    'extractRecipeFromUrl.ts#AuthoredRecipeKindSchema',
+    'An AI output, not a stored document (#765). The floor that makes a bad ' +
+      '`kind` degrade to `recipe` rather than fail an import; the librarian path ' +
+      'has no retry, so a throw costs a whole conversation.',
   ],
 ]);
 
@@ -86,6 +118,30 @@ const files = readdirSync(schemaDir).filter((f) => f.endsWith('.ts'));
 const sites = files.flatMap((f) => findCatchSites(readFileSync(join(schemaDir, f), 'utf8'), f));
 const withCatch = [...new Set(sites.map((site) => site.file))];
 
+/** What a red run should tell a reader to do, per side of the mismatch. */
+const verdict = () => {
+  const lines = [
+    ...sites
+      .filter((site) => !ALLOWED.has(site.key))
+      .map(
+        (site) =>
+          `  UNSANCTIONED  ${site.file}:${site.line} — ${site.symbol}` +
+          `${site.field === null ? '' : `, field \`${site.field}\``}` +
+          ` carries a .catch(). Remove it, or add "${site.key}" to ALLOWED with ` +
+          'the reason this is not a stored Firestore document.',
+      ),
+    ...[...ALLOWED.keys()]
+      .filter((key) => !sites.some((site) => site.key === key))
+      .map(
+        (key) =>
+          `  GONE          ${key} is in ALLOWED but no call site matches it. ` +
+          'Delete the entry (or rename it, if the symbol was renamed) — until you ' +
+          'do, that line exempts nothing and hides that the guard stopped guarding it.',
+      ),
+  ];
+  return lines.length === 0 ? '' : `\n.catch() allowlist mismatch:\n${lines.join('\n')}\n`;
+};
+
 describe('.catch() under packages/domain/src/schemas', () => {
   it('reads a real, non-empty set of schema files', () => {
     // Anti-vacuity: a guard over zero files passes for the wrong reason.
@@ -95,14 +151,15 @@ describe('.catch() under packages/domain/src/schemas', () => {
   });
 
   it('finds exactly the sanctioned instances, and no others', () => {
-    // Equality both ways — see the header. The message names the reason so a
-    // reader of a red run knows whether to fix the code or edit ALLOWED.
+    // Equality both ways — see the header. `verdict()` is empty on a pass and
+    // carries the whole diagnosis on a fail, so a reader of a red run is told
+    // which side moved and whether to fix the code or edit ALLOWED.
     //
-    // Both sides SORTED: `withCatch` follows `readdirSync` order, which is
+    // Both sides SORTED: `sites` follows `readdirSync` order, which is
     // alphabetical on APFS and hash order on ext4 — so an order-sensitive compare
     // would pass on a Mac and fail in CI the moment this list held more than one
     // entry, which it has since #765.
-    expect([...withCatch].sort()).toEqual([...ALLOWED.keys()].sort());
+    expect(sites.map((site) => site.key).sort(), verdict()).toEqual([...ALLOWED.keys()].sort());
   });
 
   it('has none on either shopping schema — the narrowing #1114 shipped', () => {
