@@ -85,10 +85,20 @@ describe('the step policy reaches both registers from one statement', () => {
   });
 
   it('reads three real source files, none of them empty', () => {
-    // UT-E2, and the reason it is its own test: every assertion below is either a
-    // `not.toContain` or a `toContain` over text read off disk, and the negative
-    // half of that pair passes just as happily over an empty string. A specifier
-    // that resolved somewhere harmless would green the guard silently.
+    // UT-E2, and the reason it is its own test — though not as a defence against
+    // a mis-resolved specifier: a path that resolved somewhere harmless would
+    // make `readFileSync` throw ENOENT right here, the first read in the file,
+    // not green the guard silently. All three files are also read successfully
+    // by the assertions below, each of which already carries a `toContain` (the
+    // declaration, or `${ONE_OPERATION_PER_STEP_PRINCIPLE}` for both consumers),
+    // so what this actually pins beyond those is narrower, and the window differs
+    // per file. For `DECLARATION_SRC` the window is EMPTY: its `toContain` is
+    // `ONE_OPERATION_PER_STEP_PRINCIPLE` itself (308 characters), already
+    // asserted `> 100` fourteen lines below, so this adds nothing there. For the
+    // two consumers the `toContain` floor is `${ONE_OPERATION_PER_STEP_PRINCIPLE}`
+    // — 35 characters, not ~65 — so the added window is 35-to-100 characters; and
+    // no module that actually compiles sits in it anyway, since one carrying both
+    // the import and the interpolation is already ~112 characters at its shortest.
     for (const src of [DECLARATION_SRC, STEP_RULES_SRC, CHAT_PROMPTS_SRC]) {
       expect(read(src).length, `${src} read as empty`).toBeGreaterThan(100);
     }
