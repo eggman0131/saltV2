@@ -189,9 +189,12 @@ const FIREBASE_SYNC_SDK_ENTRY_POINTS = [
 // imported by relative path, which a `no-restricted-imports` rule keyed on
 // `@salt/domain` cannot see. So this rule was never what kept stages 1 and 3
 // honest with each other — the agreement test in
-// `packages/domain/tests/canon/findClosestMatch.test.ts` is, and it is what
-// caught the case this list could not: the exact-name predicate written out
-// twice by hand, in two files, as an expression rather than an import.
+// `packages/domain/tests/canon/findClosestMatch.test.ts` is: it holds stages 1
+// and 3 to the same verdict on every case in its table, so if the exact-name
+// predicate written out twice by hand, in two files, as an expression rather
+// than an import, ever drifts, that test goes red. It detects future
+// divergence between the two copies — it was green against the duplication
+// itself and cannot claim to have caught that.
 //
 // Adding `packages/domain/**` here would be a different guard for a different
 // problem (another domain module reaching into canon's internals cross-package)
