@@ -11,7 +11,8 @@ import { z } from 'zod';
 // makes a delete a `deleteDoc` rather than a read-modify-write, and needs neither a
 // callable nor a transaction to be correct.
 //
-// FAMILY-SHARED, like everything except the three per-user collections: no
+// FAMILY-SHARED, like everything except the per-user collections CLAUDE.md
+// enumerates (it holds the authoritative count): no
 // `ownerUid`, no per-user scoping. Either member may add, read and remove any note —
 // it is a shared kitchen, and a note is about the household's cooking, not about
 // the person who happened to type it.
