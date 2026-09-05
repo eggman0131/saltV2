@@ -45,7 +45,7 @@ describe('@salt/ui-components', () => {
     it('exports Progress', () => expect(pkg.Progress).toBeDefined());
     it('exports Spinner', () => expect(pkg.Spinner).toBeDefined());
     it('exports Switch', () => expect(pkg.Switch).toBeDefined());
-    it('exports TextArea', () => expect(pkg.TextArea).toBeDefined());
+    it('exports Textarea', () => expect(pkg.Textarea).toBeDefined());
     it('exports TextField', () => expect(pkg.TextField).toBeDefined());
     it('exports Tooltip and parts', () => {
       expect(pkg.Tooltip).toBeDefined();
