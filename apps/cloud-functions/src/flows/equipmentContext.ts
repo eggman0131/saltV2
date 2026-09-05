@@ -173,8 +173,11 @@ or mode.
 something here does that job, name that item instead. Where several qualify, pick the one that best \
 fits THIS job — weigh the scale of the work, the faff of getting it out and the washing-up, not \
 capability alone. The biggest machine is not automatically the right one.
-- Copy the item's name from this list VERBATIM, capitalisation and all. These names override the \
-lowercase house style; do not tidy, shorten or re-word them.
+- Copy the item's WORDS from this list verbatim — never tidy, shorten or re-word them. Capitalisation \
+is the one thing you may change, and only downwards: a maker and model keep their capitals ("Anova \
+Precision Oven" stays exactly as it stands), while a part or accessory named in ordinary words drops to \
+lower case, because this list is a product inventory and a kit entry is a line of prose. So "Hand Blender \
+Attachment" is written "hand blender attachment", and "Steam Basket" is written "steam basket".
 - Accessories marked NOT owned are unavailable — never name one.
 - If nothing here does the job, use the ordinary cook's words for it. A frying pan is a frying pan.
 

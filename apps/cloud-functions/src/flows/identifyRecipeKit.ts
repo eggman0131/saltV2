@@ -50,9 +50,14 @@ convenience you are offering.
 
 ## How to name it
 Name it the way a cook would say it out loud, and be specific enough that the right one comes out of the \
-cupboard: "large frying pan", not "pan". "Box grater", not "grater". "Small saucepan", "baking tray", \
-"large mixing bowl", "chopping board", "sharp knife", "wooden spoon", "fine sieve". Lowercase, singular, no \
-quantities, and no explanation — just the thing.
+cupboard: "large frying pan", not "pan". "box grater", not "grater". "small saucepan", "baking tray", \
+"large mixing bowl", "chopping board", "sharp knife", "wooden spoon", "fine sieve". Singular, no quantities, \
+and no explanation — just the thing.
+
+CAPITALS: write the label as ordinary English prose, exactly the way an ingredient line is written. An \
+everyday piece of kit is lower case — "hand blender attachment", not "Hand Blender Attachment"; "steam \
+basket", not "Steam Basket". Capitals belong to a genuine proper name and nothing else: a maker and model \
+keep theirs, the same way one ingredient line holds "Dijon mustard" and "fine sea salt" together.
 
 NEVER generalise a named appliance back to a generic one. If a step says "Magimix Cook Expert", the kit says \
 "Magimix Cook Expert" — not "food processor". Same for a named accessory, attachment, mode or setting. A \

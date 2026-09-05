@@ -88,10 +88,14 @@ import type { RecipeKitEntryDoc } from '../../schemas/index.js';
 // is not ambiguity — the answer is that item either way.)
 //
 // EVERY ENTRY APPEARS EXACTLY ONCE. An entry is a head or is nested under exactly
-// one head, never both and never neither, so the total number of lines this
-// produces always equals `kit.length` — which is what lets the tab's count stay
-// `kit.length` however the rows are arranged. `groupKitByEquipment.test.ts` pins
-// that as a property over every case in the file.
+// one head, never both and never neither, so head count plus accessory count always
+// equals `kit.length`. `groupKitByEquipment.test.ts` pins that as a property over
+// every case in the file.
+//
+// It is no longer a count of LINES. An accessory is said on its appliance's row now
+// rather than under it (`RecipeViewPage.svelte`), so the Equipment tab counts groups
+// — what this returns the length of — and only a kit with no accessories in it makes
+// the two numbers agree.
 
 /** One top-level Equipment row, with the accessory rows that belong under it. */
 export interface KitEquipmentGroup {
