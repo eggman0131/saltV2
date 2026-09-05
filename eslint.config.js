@@ -175,6 +175,29 @@ const FIREBASE_SYNC_SDK_ENTRY_POINTS = [
   },
 ];
 
+// Canon stage internals. These three constants are consumed by four `files:`
+// blocks below and by nothing else, and every one of those blocks scopes to
+// `apps/**` or to an app's `__boundary_tests__` fixture. That scope is
+// deliberate, and worth stating because it is easy to over-read (issue #971).
+//
+// What this rule guarantees: neither app can reach past `findClosestMatch` into
+// a single stage — not by name off `@salt/domain`, not by deep subpath. That is
+// a real boundary and the two fixtures assert it.
+//
+// What it does not, and structurally cannot, guarantee: anything inside
+// `packages/domain/src/canon` itself. In there the stages are ordinary siblings
+// imported by relative path, which a `no-restricted-imports` rule keyed on
+// `@salt/domain` cannot see. So this rule was never what kept stages 1 and 3
+// honest with each other — the agreement test in
+// `packages/domain/tests/canon/findClosestMatch.test.ts` is, and it is what
+// caught the case this list could not: the exact-name predicate written out
+// twice by hand, in two files, as an expression rather than an import.
+//
+// Adding `packages/domain/**` here would be a different guard for a different
+// problem (another domain module reaching into canon's internals cross-package)
+// and was deliberately left to its own issue rather than smuggled into #971.
+// The list is still kept complete — an honest enumeration of the stages, for
+// the same reason as the derived-module-list note below (issue #914).
 const STAGE_INTERNAL_NAMES = [
   'exactNameMatch',
   'tokenMatch',

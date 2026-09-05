@@ -18,7 +18,9 @@ Both server entry points build their ports through `buildMatchOrCreatePorts`, wh
 
 The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF callable; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
 
-`findClosestMatch` is the only stage 1–4 entry point, and neither app may reach past it to `tokenMatch`, `stringSimilarity`, `synonymMatch` or `embedMatch` (stage 5): `no-restricted-imports` in `eslint.config.js` forbids all four by name off `@salt/domain` and by deep subpath, with a `__boundary_tests__` fixture per app asserting the error. That lint rule is the whole guarantee — do not read it as "these are not exported", because `embedMatch` is on the canon barrel (`packages/domain/src/canon/index.ts`).
+`findClosestMatch` is the only stage 1–4 entry point, and neither app may reach past it to `exactNameMatch`, `tokenMatch`, `stringSimilarity`, `synonymMatch` or `embedMatch` (stage 5): `no-restricted-imports` in `eslint.config.js` forbids all five by name off `@salt/domain` and by deep subpath, with a `__boundary_tests__` fixture per app asserting the error. Do not read that as "these are not exported", because `embedMatch` is on the canon barrel (`packages/domain/src/canon/index.ts`).
+
+**What that lint rule covers, exactly** (issue #971). It guarantees the two **apps** cannot reach past `findClosestMatch` into a single stage. It guarantees nothing inside `packages/domain/src/canon`, where the stages are ordinary siblings imported by relative path that a rule keyed on the `@salt/domain` specifier cannot see — and it never could, since a stage's logic can be re-typed by hand as an expression without importing anything at all, which is how the exact-name predicate came to be written out twice. Inside canon, the guarantee is the test suite: `packages/domain/tests/canon/findClosestMatch.test.ts` holds a structural-parity block for stages 2 and 4 and an agreement block for stage 1 against `findExactCanonMatch`, and both go red on divergence whether the shared code stays extracted or is inlined again.
 
 ---
 
@@ -87,6 +89,8 @@ flowchart TD
 ### Stage 1 — Exact name match
 
 Both query and every canon item name run through `normaliseName` (lowercase, trim, collapse whitespace). One winner → `match`. Two or more winners → `ambiguous` (sent to AI arbitration to disambiguate true duplicates). No winners → fall through to stage 2.
+
+The winner set comes from `exactNameMatch`, so stages 1 and 3 now read as siblings — same signature, same already-normalised target, same `readonly CanonItem[]` out — rather than stage 3 being the only extracted one (issue #971). `findExactCanonMatch`, the recipe-canonicalisation query that answers "does this text exactly name a canon item", calls both helpers directly and deliberately does **not** route through this pipeline: stage 2 runs between the two stages it wants, so delegating would let a token-overlap guess pre-empt a curated synonym.
 
 ### Stage 2 — Token overlap
 
