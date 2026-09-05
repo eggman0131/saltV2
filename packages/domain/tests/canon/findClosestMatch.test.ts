@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { findClosestMatch } from '../../src/canon/queries/findClosestMatch.js';
+import { findExactCanonMatch } from '../../src/canon/queries/findExactCanonMatch.js';
+import { normaliseName } from '../../src/canon/queries/normaliseName.js';
+import { MATCH_THRESHOLDS } from '../../src/canon/queries/matchThresholds.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 import type { StageLog } from '../../src/canon/entities/MatchLogEntry.js';
 import { MatchLogBuilder } from '../../src/canon/commands/buildMatchLog.js';
@@ -338,5 +341,197 @@ describe('findClosestMatch — stages 2 and 4 stay structurally identical', () =
     const s4 = stages.get(4)!;
     expect(s2.topCandidates.length).toBeLessThanOrEqual(5);
     expect(s4.topCandidates.length).toBe(s2.topCandidates.length);
+  });
+});
+
+// Two items whose names normalise to the same string — the stage-1 tie.
+const nameTwins: readonly CanonItem[] = [
+  item({ id: 'a', name: 'apple' }),
+  item({ id: 'b', name: 'Apple' }),
+];
+
+// Six items that all normalise to 'apple'. Six, not five, because the stage-1
+// log slices its candidate list to 5 and nothing in the suite reached that bound
+// before: with five or fewer the slice is unobservable and a rewrite could drop
+// it, or slice to a different width, with every assertion still green.
+const sixNameTwins: readonly CanonItem[] = [
+  item({ id: 't1', name: 'apple' }),
+  item({ id: 't2', name: 'Apple' }),
+  item({ id: 't3', name: 'APPLE' }),
+  item({ id: 't4', name: 'Apples' }),
+  item({ id: 't5', name: 'APPLES' }),
+  item({ id: 't6', name: 'ApPlE' }),
+];
+
+function stage1For(items: readonly CanonItem[], query: string): StageLog | undefined {
+  const log = new MatchLogBuilder();
+  log.start(query, query);
+  findClosestMatch(items, query, log);
+  return log.complete('run', 'created', null).stages.find((s) => s.stage === 1);
+}
+
+// Additive (issue #971, Phase 1). Characterization, written and verified green
+// against UNCHANGED source before stage 1's hand-rolled winner loop was replaced
+// by the shared `exactNameMatch` helper. Every existing stage-1 test reads the
+// RETURN value; none read the emitted StageLog, so `bestScore`, `gap`,
+// `topCandidates` ordering and the ≤5 slice were unpinned telemetry — a rewrite
+// of that block could have changed all four with the suite still green. These
+// assertions describe today's output exactly; if one of them ever needs a source
+// edit to pass, the assertion is what is wrong, not the code.
+//
+// `durationMs` is deliberately not asserted: it is wall-clock and unpinnable.
+describe('findClosestMatch — stage 1 emits a fully-specified StageLog', () => {
+  it('logs a single winner: passed, bestScore 1.0, gap 1.0, one candidate', () => {
+    const s = stage1For(catalog, '  TOMATO  ');
+    expect(s).toBeDefined();
+    expect(s!.stage).toBe(1);
+    expect(s!.stageName).toBe('exact_name');
+    expect(s!.threshold).toBe(MATCH_THRESHOLDS.stage1Stop);
+    expect(s!.passed).toBe(true);
+    expect(s!.consideredCount).toBe(catalog.length);
+    expect(s!.skipReason).toBeNull();
+    expect(s!.bestScore).toBe(1.0);
+    expect(s!.gap).toBe(1.0);
+    expect(s!.topCandidates).toEqual([{ itemId: '1', itemName: 'Tomato', score: 1.0 }]);
+  });
+
+  it('logs a two-way tie: passed, bestScore 1.0, gap 0.0, both candidates in catalog order', () => {
+    const s = stage1For(nameTwins, 'apple');
+    expect(s).toBeDefined();
+    expect(s!.passed).toBe(true);
+    expect(s!.consideredCount).toBe(2);
+    expect(s!.skipReason).toBeNull();
+    expect(s!.bestScore).toBe(1.0);
+    expect(s!.gap).toBe(0.0);
+    expect(s!.topCandidates).toEqual([
+      { itemId: 'a', itemName: 'apple', score: 1.0 },
+      { itemId: 'b', itemName: 'Apple', score: 1.0 },
+    ]);
+  });
+
+  it('logs a miss: not passed, bestScore null, gap null, no candidates', () => {
+    const s = stage1For(catalog, 'chia seeds');
+    expect(s).toBeDefined();
+    expect(s!.stageName).toBe('exact_name');
+    expect(s!.threshold).toBe(MATCH_THRESHOLDS.stage1Stop);
+    expect(s!.passed).toBe(false);
+    expect(s!.consideredCount).toBe(catalog.length);
+    expect(s!.skipReason).toBeNull();
+    expect(s!.bestScore).toBeNull();
+    expect(s!.gap).toBeNull();
+    expect(s!.topCandidates).toEqual([]);
+  });
+
+  it('slices the logged candidates to 5 on a six-way tie, in catalog order', () => {
+    const s = stage1For(sixNameTwins, 'apple');
+    expect(s).toBeDefined();
+    expect(s!.passed).toBe(true);
+    expect(s!.consideredCount).toBe(6);
+    expect(s!.gap).toBe(0.0);
+    expect(s!.topCandidates).toEqual([
+      { itemId: 't1', itemName: 'apple', score: 1.0 },
+      { itemId: 't2', itemName: 'Apple', score: 1.0 },
+      { itemId: 't3', itemName: 'APPLE', score: 1.0 },
+      { itemId: 't4', itemName: 'Apples', score: 1.0 },
+      { itemId: 't5', itemName: 'APPLES', score: 1.0 },
+    ]);
+  });
+
+  it('slices the LOG only — the returned ambiguous set still carries all six', () => {
+    const result = findClosestMatch(sixNameTwins, 'apple');
+    expect(result.kind).toBe('ambiguous');
+    if (result.kind === 'ambiguous') {
+      expect(result.candidates.map((c) => c.item.id)).toEqual(['t1', 't2', 't3', 't4', 't5', 't6']);
+    }
+  });
+});
+
+// Additive (issue #971, Phase 1). WHAT THIS BLOCK IS FOR: `findClosestMatch`
+// stage 1 and `findExactCanonMatch` both answer one question — "does this text
+// spell out this item's own name?" — and they answered it in two hand-written
+// copies of the same expression, in two files. #971 replaces both with a single
+// `exactNameMatch` helper, but a helper can always be inlined again by a later
+// edit, and nothing about the extraction itself stops the two halves drifting.
+//
+// Per CLAUDE.md Rule 12 the anti-drift claim is made mechanical rather than
+// asserted in a comment: this block runs both functions over one input table and
+// fails if they ever disagree about which item a string exactly names. It is
+// deliberately written against the two PUBLIC functions, not against the shared
+// helper, so it keeps working — and keeps failing on divergence — whether the
+// predicate lives in one place or two.
+//
+// Verified red before being trusted: re-inlining a DIFFERENT name predicate in
+// `findExactCanonMatch` (raw `item.name === target`, skipping normalisation)
+// fails the case/space/plural and synonym-precedence rows here.
+//
+// Stage 1's winner set is read off its StageLog rather than guessed, so the
+// oracle for "did stage 1 hit" is the code's own emitted decision.
+describe('findClosestMatch stage 1 and findExactCanonMatch never disagree', () => {
+  const impostorAndReal: readonly CanonItem[] = [
+    item({ id: 'imp', name: 'Something Else', synonyms: ['tomato'] }),
+    item({ id: '1', name: 'Tomato' }),
+  ];
+
+  const table: ReadonlyArray<{
+    readonly label: string;
+    readonly items: readonly CanonItem[];
+    readonly query: string;
+  }> = [
+    { label: 'exact name', items: catalog, query: 'Tomato' },
+    { label: 'case and spacing folded', items: catalog, query: '  TOMATO  ' },
+    { label: 'plural folded', items: catalog, query: 'tomatoes' },
+    { label: 'multi-word exact name', items: catalog, query: 'olive oil' },
+    {
+      label: 'name beats another item holding it as a synonym',
+      items: impostorAndReal,
+      query: 'tomato',
+    },
+    { label: 'synonym only — stage 1 misses', items: catalog, query: 'evoo' },
+    { label: 'two-way name tie', items: nameTwins, query: 'apple' },
+    { label: 'six-way name tie', items: sixNameTwins, query: 'apple' },
+    { label: 'no match at all', items: catalog, query: 'chia seeds' },
+    { label: 'blank input', items: catalog, query: '   ' },
+    { label: 'empty catalog', items: [], query: 'tomato' },
+  ];
+
+  it.each(table)('$label', ({ items, query }) => {
+    const stage1 = stage1For(items, query);
+    const exact = findExactCanonMatch(items, query);
+    const result = findClosestMatch(items, query);
+
+    if (stage1 === undefined) {
+      // Blank target — stage 1 never ran, so neither function may name anything.
+      expect(exact).toBeNull();
+      expect(result.kind).toBe('none');
+      return;
+    }
+
+    const winners = stage1.topCandidates;
+
+    if (stage1.passed && winners.length === 1) {
+      // One item's own name spells the target: both must pick that same item.
+      expect(result.kind).toBe('match');
+      if (result.kind === 'match') {
+        expect(result.candidate.stage).toBe(1);
+        expect(result.candidate.item.id).toBe(winners[0]!.itemId);
+      }
+      expect(exact?.id).toBe(winners[0]!.itemId);
+      return;
+    }
+
+    if (stage1.passed) {
+      // A tie is not an answer. `findClosestMatch` hands back every claimant as
+      // ambiguous; `findExactCanonMatch` hands back null. Both refuse to pick.
+      expect(result.kind).toBe('ambiguous');
+      expect(exact).toBeNull();
+      return;
+    }
+
+    // Stage 1 missed, so no item's own name spells the target. `findClosestMatch`
+    // must not claim a stage-1 match, and anything `findExactCanonMatch` returns
+    // must have come from stage 3's synonyms — never from a name.
+    expect(stage1.bestScore).toBeNull();
+    if (result.kind === 'match') expect(result.candidate.stage).not.toBe(1);
+    if (exact !== null) expect(normaliseName(exact.name)).not.toBe(normaliseName(query));
   });
 });

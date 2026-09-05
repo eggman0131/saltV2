@@ -1,5 +1,6 @@
 import type { CanonItem } from '../entities/CanonItem.js';
 import { normaliseName } from './normaliseName.js';
+import { exactNameMatch } from './exactNameMatch.js';
 import { synonymMatch } from './synonymMatch.js';
 
 /**
@@ -29,6 +30,14 @@ import { synonymMatch } from './synonymMatch.js';
  * Returns `null` on a tie. Two items claiming the same text is not an answer, it
  * is a duplicate for the review queue, and the caller should treat it as no answer
  * and carry on down its normal path.
+ *
+ * Shares stage 1's and stage 3's helpers (`exactNameMatch`, `synonymMatch`) but
+ * deliberately does NOT route through `findClosestMatch`, because stage 2 —
+ * token overlap — runs between the two stages this needs, so delegating would let
+ * a fuzzy guess pre-empt a curated synonym (the #865/#866 regression). Its tie
+ * result and return type differ from the pipeline's for the same reason. The two
+ * cannot drift apart on the name question regardless: the agreement block in
+ * `findClosestMatch.test.ts` fails if they ever disagree (issue #971).
  */
 export function findExactCanonMatch(
   items: readonly CanonItem[],
@@ -37,7 +46,7 @@ export function findExactCanonMatch(
   const target = normaliseName(rawName);
   if (!target) return null;
 
-  const byName = items.filter((item) => normaliseName(item.name) === target);
+  const byName = exactNameMatch(items, target);
   if (byName.length === 1) return byName[0]!;
   if (byName.length > 1) return null;
 
