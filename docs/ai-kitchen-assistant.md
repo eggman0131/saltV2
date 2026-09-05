@@ -283,12 +283,12 @@ raw.kind`:
   a chat triggers no AI at all.
 - Schema in `@salt/domain/schemas/kitchenMemory.ts`. `kitchenMemories/{id}` —
   **a collection, one document per note**, family-shared like everything
-  except the three per-user collections (no `ownerUid`). A singleton doc with
-  an entries array was rejected: whole-document LWW with no merge logic means
-  two notes added in the same moment would silently lose one; one doc per
-  note makes an add independent and a delete a plain `deleteDoc`. `author` is
-  a display name denormalised at write time, never a uid.
-  Greenfield collection, no back-compat burden.
+  except the per-user collections enumerated above (no `ownerUid`). A
+  singleton doc with an entries array was rejected: whole-document LWW with
+  no merge logic means two notes added in the same moment would silently lose
+  one; one doc per note makes an add independent and a delete a plain
+  `deleteDoc`. `author` is a display name denormalised at write time, never a
+  uid. Greenfield collection, no back-compat burden.
 - `firebase-sync`'s `kitchenMemorySubscription.ts` follows the **list read**
   contract (skip-and-log a corrupt note, deliver the rest), unlike
   `guidedPlanSubscription`'s single-doc refuse-on-corrupt — a note is one

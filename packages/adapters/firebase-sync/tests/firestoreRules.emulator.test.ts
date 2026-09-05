@@ -753,7 +753,7 @@ describe.skipIf(!reachable)('firestore.rules — shoppingDays (issue #629)', () 
     await assertSucceeds(deleteDoc(doc(db, 'shoppingDays', SHOP_DATE)));
   });
 
-  // The load-bearing difference from the three owner-scoped collections: when the
+  // The load-bearing difference from the owner-scoped collections: when the
   // household shops is FAMILY-SHARED, and `setBy` is an audit field that is
   // deliberately NOT pinned — either of them may reschedule the other's shop.
   it('lets another member move a shop day someone else set', async () => {
