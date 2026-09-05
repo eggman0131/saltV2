@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveProductForm } from '@salt/domain';
 import type { CanonNaming, ProductForm } from '@salt/domain';
+import { STAGING_FORM_ROWS } from './fixtures/stagingSnapshot20260902.js';
 // The canon list `resolveProductForm`'s contested-phrase rule reads (issue
 // #1180). Empty here, deliberately: an empty list makes that rule inert, so
 // these cases measure the label/matcher behaviour on its own — and that is also
@@ -383,58 +384,23 @@ describe('resolveProductForm — a contested phrase loses', () => {
 // rule can trip on. That shape is pinned in its own block below, with the same
 // live forms and the real canon rows it lists.
 describe('resolveProductForm — live staging table, 2026-09-02', () => {
-  const BEETROOT = '924d02cb-3580-4a28-a63f-f9b4df8d4a3a';
-  const BEEF_STOCK_CUBE = 'aa65d8cc-8f51-4721-9b40-bb8eb695e0e6';
-  const WHOLE_CHICKEN = '0288c51e-043e-4d5c-8d75-24007fc85d08';
-  const LEMON = 'c74c2ef0-1660-4f6a-8902-ac23c6cc31ce';
-  const GARLIC = 'eb60fd36-3f2c-420d-b97a-360b9a475713';
-  const MATURE_CHEDDAR = 'f2667b94-9cd1-4056-a76b-4a85fa8e3d20';
-  const EGGS = '129b8420-de9d-4368-acd1-f3843c720542';
-  const OLIVES = '11f808fd-3b0c-4483-928a-c7e9c8e40432';
-  const LIME = 'cd8f724b-8d02-45ec-b658-e494d48d44a9';
-  const PLAIN_YOGURT = '63a6276a-20b9-4975-a376-665bf2f15e09';
+  // The 16 rows themselves live in `fixtures/stagingSnapshot20260902.ts`,
+  // shared with `proposalRejectionReason.test.ts` (issue #1196) — a staging
+  // reseed now updates one file instead of two.
+  const live: ProductForm[] = STAGING_FORM_ROWS.map((row) =>
+    form(row.id, row.label, [...row.matchers], row.parentId),
+  );
 
-  const live: ProductForm[] = [
-    form('21c8be52', 'Fermented beetroot brine', ['fermented beetroot brine'], BEETROOT),
-    form('33ac24ec', 'Beef Stock', ['beef stock'], BEEF_STOCK_CUBE),
-    form('4256c30b', 'chicken breast', ['chicken breasts', 'chicken breast'], WHOLE_CHICKEN),
-    form('4b5bd723', 'Fresh lemon juice', ['fresh lemon juice', 'lemon juice'], LEMON),
-    form(
-      '52ed003a',
-      'garlic clove',
-      ['garlic cloves', 'clove of garlic', 'cloves of garlic'],
-      GARLIC,
-    ),
-    form('72608784', 'Cheddar cheese slice', ['cheddar cheese slices'], MATURE_CHEDDAR),
-    form(
-      '811ab961',
-      'Chicken carcass',
-      ['roast chicken carcass', 'chicken carcass'],
-      WHOLE_CHICKEN,
-    ),
-    form('88dd1d36', 'Egg yolk', ['egg yolk'], EGGS),
-    form('a414e9f4', 'Chicken Drumstick', ['chicken drumstick'], WHOLE_CHICKEN),
-    form('a926262a', 'Olive oil from jar', ['oil from the olive jar'], OLIVES),
-    form('db512d77', 'Lime juice', ['lime juice'], LIME),
-    form('dfc714ad', 'Lemon zest', ['lemon zest'], LEMON),
-    form('e144977c', 'Active whey', ['active whey'], PLAIN_YOGURT),
-    form('e164fb23', 'Lime zest', ['lime zest'], LIME),
-    form('fb35624f', 'Chicken thigh', ['chicken thighs'], WHOLE_CHICKEN),
-    form('fbfc5c88', 'Chicken Leg', ['whole chicken leg'], WHOLE_CHICKEN),
-  ];
-
-  // The ten parents, plus the five canon names that collide with a live phrase.
+  // The ten parents — deduped from the rows above; WHOLE_CHICKEN parents six
+  // of them — plus the five canon names that collide with a live phrase and
+  // the pantry staples a compound line lists alongside something else. Only
+  // the ten parents are shared with the fixture; the rest exists nowhere
+  // else, so it stays hand-written here.
   const canon = [
-    { id: BEETROOT, name: 'Beetroot' },
-    { id: BEEF_STOCK_CUBE, name: 'Beef Stock Cube' },
-    { id: WHOLE_CHICKEN, name: 'Whole Chicken' },
-    { id: LEMON, name: 'Lemon' },
-    { id: GARLIC, name: 'Garlic Bulbs' },
-    { id: MATURE_CHEDDAR, name: 'Mature Cheddar' },
-    { id: EGGS, name: 'Eggs' },
-    { id: OLIVES, name: 'Delicatessen Olives' },
-    { id: LIME, name: 'Lime' },
-    { id: PLAIN_YOGURT, name: 'Plain Yogurt' },
+    ...new Map(
+      STAGING_FORM_ROWS.map((row) => [row.parentId, { id: row.parentId, name: row.parentName }]),
+    ).values(),
+    // The five canon names that collide with a live phrase.
     { id: '85fa5fda-cb52-4854-9c74-1fcbada0b466', name: 'Whey' },
     { id: 'ba944d5e-50ea-4d14-b0d7-a6e40d0daab3', name: 'Cheese' },
     { id: '800a1385-a54f-4d97-a691-a4528d8a63be', name: 'Chicken Stock' },

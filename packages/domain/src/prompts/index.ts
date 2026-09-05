@@ -8,5 +8,9 @@
 // have to carry prompt text it will never send.
 
 export { ONE_OPERATION_PER_STEP_PRINCIPLE } from './stepPolicy.js';
-export { READER_UNIT_PRINCIPLE } from './unitPolicy.js';
+export {
+  READER_UNIT_PRINCIPLE,
+  SPOON_MEASURE_CAP_TBSP,
+  clampSpoonMeasureDisplayText,
+} from './unitPolicy.js';
 export { OPTIMISE_FOR_KITCHEN_PROMPT, REFRESH_PROMPT } from './recipeChatPrompts.js';
