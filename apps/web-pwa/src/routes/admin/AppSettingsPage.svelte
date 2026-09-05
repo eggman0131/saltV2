@@ -143,7 +143,7 @@
     describeEquipmentSubject: 'Equipment description (pictogram art direction)',
     describeRecipeScene: 'Recipe scene brief (hero art direction)',
     embedText: 'Embed text',
-    estimateRecipeTimes: 'Recipe time re-estimate (prep/cook/total backfill)',
+    estimateRecipeTimes: 'Recipe time re-estimate (phase strip + timing summary)',
     extractRecipeFromUrl: 'Recipe import from URL',
     extractRecipeFromPhoto: 'Recipe import from photo',
     extractProcessStages: 'Process stages (bread, ferments, cures)',

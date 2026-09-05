@@ -256,7 +256,7 @@ describe('groupKitByEquipment', () => {
   // Reproduced against PR #1186's review: a bare accessory (pass two) reached an
   // accessory-form top-level row through `headOfItem`, even though that row itself
   // never named the appliance — nesting a jug under a pot, or a pot under itself.
-  // `headOfItem` only registers a row that `namesTheItemItself`, so pass two now
+  // `headOfItem` only registers a row that `namesItemItself`, so pass two now
   // finds no owner and every row here stays flat, matching the boundary above.
   it('never nests a bare accessory under an accessory-form row when no entry names the appliance', () => {
     const groups = groupKitByEquipment(

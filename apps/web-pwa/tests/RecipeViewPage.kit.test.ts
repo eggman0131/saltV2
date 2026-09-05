@@ -634,6 +634,60 @@ describe('RecipeViewPage — accessories under their appliance', () => {
     expect(within(accessory).queryByTestId('canon-icon')).not.toBeNull();
   });
 
+  it('draws the appliance\u2019s own picture on a PREFIXED accessory row (issue #1182)', () => {
+    // The third kind of accessory row, and the one no case above reaches: a label
+    // spelled with the owner's leading word ("Magimix Cocotte Slow Cook Pot") is a
+    // label `resolveEquipmentItem` ACCEPTS, resolving it to the owning item. Since
+    // #1182 that entry nests instead of heading a second row, and the nested row
+    // asks the same `$kitIcons` lookup the head row does — so it draws the SAME
+    // equipment picture, indented and muted under the machine it is part of. That
+    // reads correctly BECAUSE it is nested; two top-level rows wearing one picture
+    // is the defect #1182 fixed in the query.
+    //
+    // The two rows above it — a real miss and a tool-vocabulary hit — say nothing
+    // about this one, because both are labels the equipment resolver REFUSED. A
+    // suppression re-introduced here ("an accessory row draws no tile", or "only
+    // the tool vocabulary may draw on one") would pass both of them and fail this.
+    mockEquipment._set({
+      items: [
+        {
+          id: 'eq-magimix',
+          name: 'Magimix Cook Expert',
+          accessories: [
+            { id: 'acc-cocotte', name: 'Cocotte Slow Cook Pot', owned: true, included: false },
+          ],
+        },
+      ],
+    });
+    mockEquipmentIcons._set(
+      new Map([['eq-magimix', { thumbnail: 'https://example.com/eq/magimix.webp' }]]),
+    );
+    mockRecipes._set([
+      makeEntry({
+        kit: [
+          { label: 'Magimix Cook Expert', stepIds: [] },
+          { label: 'Magimix Cocotte Slow Cook Pot', stepIds: [] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitLabels()).toEqual(['Magimix Cook Expert', 'Magimix Cocotte Slow Cook Pot']);
+
+    const appliance = screen.getByTestId('recipe-kit-row');
+    const accessory = screen.getByTestId('recipe-kit-accessory-row');
+    expect(accessory.className.split(/\s+/)).toContain('pl-12');
+
+    const accessoryImg = within(accessory).getByTestId('canon-icon-img');
+    expect(accessoryImg).toHaveAttribute('src', 'https://example.com/eq/magimix.webp');
+    // The SAME picture as the appliance heading it, asserted as an equality rather
+    // than twice against one literal: whatever the head row draws, the row nested
+    // under it draws too.
+    expect(accessoryImg.getAttribute('src')).toBe(
+      within(appliance).getByTestId('canon-icon-img').getAttribute('src'),
+    );
+  });
+
   it('leaves an accessory named without its appliance as an ordinary top-level row', () => {
     // Staging's Baked Camembert: a sheet pan and an oven rack, no Anova anywhere.
     // Hauling out a steam oven the recipe never asked for is the wrong answer.

@@ -124,7 +124,7 @@ export const MAX_RECIPE_PHASES = 6;
 /**
  * The phase list as the three AUTHORING paths must emit it — the librarian, both
  * extractors and the re-estimator, which all ask the same question against the
- * same definition (`TIME_RULES`).
+ * same definition (`PHASE_RULES`).
  *
  * Tighter than `RecipeMetadataSchema.phases` on purpose, and the asymmetry is the
  * #1123 one restated: the gates are on the way IN. Whole non-negative minutes and
@@ -139,9 +139,9 @@ export const MAX_RECIPE_PHASES = 6;
  * chat-authored recipe over a field invisible to them, and on the estimator path
  * it discarded the three prep/cook/total numbers the model got right alongside
  * it. `[]` reads exactly like "the model omitted phases" to every consumer
- * (`reconcileRecipePhases`, `reconcileEstimatedTimes`) — an over-cap or malformed
- * strip degrades to no strip, never to no recipe. `MAX_RECIPE_PHASES` stays the
- * one stated bound; only the failure mode changed.
+ * (`reconcileRecipePhases`) — an over-cap or malformed strip degrades to no
+ * strip, never to no recipe. `MAX_RECIPE_PHASES` stays the one stated bound; only
+ * the failure mode changed.
  */
 export const AuthoredRecipePhasesSchema = z
   .array(

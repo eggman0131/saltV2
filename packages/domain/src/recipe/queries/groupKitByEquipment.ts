@@ -1,5 +1,5 @@
 import { normaliseName } from '../../canon/index.js';
-import { resolveEquipmentItem } from '../../equipment/index.js';
+import { namesItemItself, resolveEquipmentItem } from '../../equipment/index.js';
 import type { EquipmentItem } from '../../equipment/index.js';
 import type { RecipeKitEntryDoc } from '../../schemas/index.js';
 
@@ -37,13 +37,20 @@ import type { RecipeKitEntryDoc } from '../../schemas/index.js';
 //   an entry whose label is spelled out of one of the item's ACCESSORIES nests
 //   under the entry that names the item ITSELF.
 //
-// WHICH ENTRY HEADS IS NOT DECIDED BY STORED ORDER. `namesTheItemItself` below is
-// the whole test; position only breaks a tie between two entries that both name
-// the item directly. The alternative — first mention heads — was written and
-// reverted during #1179's review, because with the pot listed first ("roughly the
-// order it is needed in" produces that) the POT became the head and the machine
-// rendered indented and muted beneath it, asserting that the appliance is a part
-// of its own accessory. A missing relationship is bad; a false one is worse. This
+// WHICH ENTRY HEADS IS NOT DECIDED BY STORED ORDER. `namesItemItself` is the
+// whole test; position only breaks a tie between two entries that both name the
+// item directly. That test is the RESOLVER'S OWN, exported from
+// `resolveEquipmentItem.ts` and asked here of a pair it has already matched — not
+// a second reading of the words. It was a copy of the resolver's membership rule
+// until #1196, coupled only by both sides folding through `normaliseName`; the
+// membership half itself could have been loosened on one side alone, so a label
+// the resolver counted as an accessory spelling could have started heading its own
+// row. One function now answers for both, and there is nothing left to drift.
+//
+// The alternative — first mention heads — was written and reverted during #1179's
+// review, because with the pot listed first ("roughly the order it is needed in"
+// produces that) the POT became the head and the machine rendered indented and
+// muted beneath it, asserting that the appliance is a part of its own accessory. A missing relationship is bad; a false one is worse. This
 // is pass two's stated principle — stored order decides where the heads go, never
 // what belongs to what — finally applied to pass one as well.
 //
@@ -101,27 +108,6 @@ export interface KitEquipmentGroup {
 }
 
 /**
- * Is this label spelled out of the item's OWN name, rather than out of one of its
- * accessories?
- *
- * Not a resolver and not a second opinion on one: `resolveEquipmentItem` has
- * already decided that `label` names `item`, and this asks the one thing its
- * return value cannot say — which half of its two-part rule got it there. So the
- * item is a given here, never searched for, and loosening or tightening this
- * cannot make a label resolve to something it otherwise would not.
- *
- * Both sides fold through the same `normaliseName` the resolver uses, so the two
- * cannot disagree about case, punctuation, plurals or stripped model numbers.
- */
-function namesTheItemItself(label: string, item: EquipmentItem): boolean {
-  const own = new Set(normaliseName(item.name).split(' ').filter(Boolean));
-  return normaliseName(label)
-    .split(' ')
-    .filter(Boolean)
-    .every((word) => own.has(word));
-}
-
-/**
  * Fold a recipe's kit into display order, with accessories under their appliance.
  *
  * @param kit The recipe's `kit` entries, in stored order.
@@ -145,7 +131,7 @@ export function groupKitByEquipment(
   kit.forEach((entry, index) => {
     const item = resolved[index];
     if (!item || headIndexOfItem.has(item.id)) return;
-    if (namesTheItemItself(entry.label, item)) headIndexOfItem.set(item.id, index);
+    if (namesItemItself(entry.label, item)) headIndexOfItem.set(item.id, index);
   });
 
   // Pass one's whole new rule, stated once: an entry nests when it resolves to an
@@ -157,7 +143,7 @@ export function groupKitByEquipment(
     if (!item) return null;
     const headIndex = headIndexOfItem.get(item.id);
     if (headIndex === undefined || headIndex === index) return null;
-    return namesTheItemItself(entry.label, item) ? null : item.id;
+    return namesItemItself(entry.label, item) ? null : item.id;
   });
 
   // The rows themselves, in stored order. `headOfItem` then lets pass two ask "is
@@ -185,7 +171,7 @@ export function groupKitByEquipment(
       // nesting it) must never anchor another accessory beneath it — that would
       // claim one accessory owns another, the exact false relationship pass one's
       // own boundary above refuses to state.
-      if (!headOfItem.has(item.id) && namesTheItemItself(entry.label, item)) {
+      if (!headOfItem.has(item.id) && namesItemItself(entry.label, item)) {
         headOfItem.set(item.id, head);
       }
     } else {

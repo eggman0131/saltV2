@@ -345,6 +345,31 @@ describe('MealCookPlanPage — the serve time and the clock', () => {
     );
   });
 
+  // The other half of that boundary, and the one this page can still get wrong on
+  // its own: the strip is the ONLY thing the clock is worked from, so a strip a
+  // cook has zeroed by hand states a timing of nothing — start it AT serve time —
+  // while a dish carrying no strip at all states nothing and starts when you like.
+  // `scheduleFor` pins the arithmetic (`hasPhases`, never `elapsedMinutes >= 1`);
+  // what is pinned here is that the PAGE draws the two differently, which a row
+  // reading `phaseMinutes(row) ? clock : null` would collapse into one.
+  it('reads a strip zeroed by hand as "start at serve time", never as no timing at all', () => {
+    const serveAt = new Date('2026-08-16T19:00:00.000Z');
+    mockRecipes._set([
+      dish(MEAL_ID, 'Sunday roast', { componentRecipeIds: ['dressing', 'salad'] }),
+      withElapsed('dressing', 'Vinaigrette', 0),
+      withElapsed('salad', 'Green salad', null),
+    ]);
+    mockCookSession._set(session({ serveAt: serveAt.toISOString() }));
+
+    const { getAllByTestId } = renderPage();
+    expect(getAllByTestId('cook-plan-row-start').map((n) => n.textContent?.trim())).toEqual([
+      `start ${CLOCK.format(serveAt)}`,
+      'start when you like',
+    ]);
+    expect(getAllByTestId('cook-plan-row-cook-time')[0]).toHaveTextContent('0 min');
+    expect(getAllByTestId('cook-plan-row-cook-time')[1]).toHaveTextContent('No timing yet');
+  });
+
   it('calls out the dish whose moment has arrived, and counts the rest down', () => {
     // Serve in an hour: the 90-minute bird is already late, the 30-minute potatoes
     // are half an hour off. Anchored to the real clock so the page's own ticker
