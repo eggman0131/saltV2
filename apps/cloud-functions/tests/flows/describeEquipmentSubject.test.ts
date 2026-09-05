@@ -109,7 +109,7 @@ describe('describeEquipmentSubject flow — revision mode', () => {
     const system = mockGenerate.mock.calls[0]![0].system as string;
     expect(system).toContain('Fold the correction THROUGH the whole brief');
     expect(system).toContain('Keep everything the correction does not touch');
-    expect(system).toContain('ONE sentence');
+    expect(system).toContain('two to four sentences');
   });
 
   it('carries the SAME scope rules as authoring — a correction cannot vote on house style', async () => {

@@ -21,8 +21,8 @@ import { flowModel } from '../ai/fakeModel.js';
 //
 // The two steps are also separated by a user gate in the running app: this flow
 // runs automatically on a manifest write, the image flow runs only when someone
-// presses Draw. That is why the brief must read as a plain, correctable English
-// sentence — it is shown to the user, and correcting it is how a wrong picture
+// presses Draw. That is why the brief must read as plain, correctable English
+// prose — it is shown to the user, and correcting it is how a wrong picture
 // gets fixed at the cause instead of being re-rolled.
 //
 // Since #885 it is ALSO a callable, run from the item page's Revise and Start
@@ -87,8 +87,10 @@ ${SUBJECT_TEXT_RULE}
 
 ${SUBJECT_SCOPE_RULE}
 
-Write ONE sentence of plain prose, at most about 45 words, beginning with the kind of thing it is ("a tilt-head stand \
-mixer with…"). A brief, not a spec sheet. Return only the brief.`;
+Write two to four sentences of plain prose, up to about 120 words, beginning with the kind of thing it is ("a \
+tilt-head stand mixer with…"). Use the length to cover the points above properly, not to pad — and never to invent \
+detail you are not confident about; a shorter brief is the right answer when the item is plain or you know little \
+about it. A brief, not a spec sheet. Return only the brief.`;
 
 // REVISION MODE (issue #885) — "it's matte black, not cream" applied to a
 // description that already exists, rather than a fresh authoring pass.
@@ -127,8 +129,8 @@ ${SUBJECT_TEXT_RULE}
 
 ${SUBJECT_SCOPE_RULE} That holds even if the correction asks for it.
 
-Write ONE sentence of plain prose, at most about 45 words, beginning with the kind of thing it is ("a tilt-head stand \
-mixer with…"). A brief, not a spec sheet. Return only the revised brief.`;
+Write two to four sentences of plain prose, up to about 120 words, beginning with the kind of thing it is ("a \
+tilt-head stand mixer with…"). A brief, not a spec sheet. Return only the revised brief.`;
 
 // PHOTO MODE (issue #947) — "you have seen the thing, this lets you show it".
 // A third system prompt, not a branch of the other two: authoring works from a
@@ -147,11 +149,15 @@ mixer with…"). A brief, not a spec sheet. Return only the revised brief.`;
 // does. It also closes the one gap the two text prompts never had to: a display
 // panel's actual contents are equally off-limits, not just a printed logo.
 //
-// Length deliberately diverges from the other two prompts (2-4 sentences, ~120
-// words, vs. their one sentence / ~45 words): the text prompts describe from
-// half-known model knowledge, where padding just invents detail, but a photo
-// actually contains four bullet points' worth of real, checkable detail —
-// squeezing it into one sentence was losing most of what the photo was for.
+// Length is the SAME in all three prompts — two to four sentences, up to about
+// 120 words. It briefly was not: #947 gave photo mode the longer budget alone,
+// on the reasoning that the text prompts describe from half-known model
+// knowledge where extra length only invents detail. In practice the one-sentence
+// text brief was the thing losing likeness — four bullet points of silhouette,
+// colour, controls and identifying features do not fit in one sentence whether
+// the source is a photograph or model knowledge, and the invention risk is held
+// by the "do NOT invent detail" clauses in each prompt, not by the word count.
+// If they diverge again, it should be because the pictures got worse, not tidier.
 const PHOTO_EQUIPMENT_SYSTEM = `You are an illustrator's art director. You are given the name of one piece of \
 kitchen equipment and a photograph of the actual item. Write a short visual brief describing what THIS SPECIFIC item \
 looks like, for an illustrator who will never see the photo — only your words.

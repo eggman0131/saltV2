@@ -198,7 +198,13 @@ describe('equipment prompt framings', () => {
     const section = equipmentSectionForKit(context);
     expect(section).toContain(context);
     expect(section).toContain('NEVER generalise a named appliance back to a generic one');
-    expect(section).toContain('VERBATIM');
+    expect(section).toContain("Copy the item's WORDS from this list verbatim");
+    // The words are fixed; the CAPITALS are not, and only ever downwards. A product
+    // inventory is title-cased and a kit entry is a line of prose, so an accessory
+    // named in ordinary words reads lower case beside "sharp knife" while a maker
+    // and model keep theirs. Same rule the ingredients tab already reads by.
+    expect(section).toContain('only downwards');
+    expect(section).toContain('"hand blender attachment"');
     expect(section).toContain('NOT owned are unavailable');
     // The limit — naming which appliance must not become adding one.
     expect(section).toContain('NOT a licence to introduce one');

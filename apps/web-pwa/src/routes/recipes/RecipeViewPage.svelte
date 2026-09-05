@@ -188,9 +188,13 @@
   // recipe and a cocktail get the strip, an outing and a placeholder get no body
   // at all (and, per `e2e/recipe-alternatives`, neither word anywhere on the page).
   const showBodyTabs = $derived(showIngredients && showCooking);
-  // Ingredients is the landing tab: it is what you check before you start, and
-  // the method is what you open once you have. `$state`, not `$derived`, because
-  // the page moves it itself when the chat drawer opens (`scrollRecipeToBody`).
+  // Ingredients is the landing tab, and deliberately NOT the first one in the
+  // strip: Equipment sits left of it because the strip reads in the order you do
+  // the job — get the kit out, weigh the things, cook — while the tab you LAND on
+  // answers the question you actually arrive with, which is whether you have the
+  // ingredients. Kit is what you check once you have decided to cook it.
+  // `$state`, not `$derived`, because the page moves it itself when the chat
+  // drawer opens (`scrollRecipeToBody`).
   let bodyTab = $state('ingredients');
   // The count on the Ingredients tab is the number of LINES you will read, so it
   // flattens the groups — a recipe in three named groups is still nineteen
@@ -1171,12 +1175,24 @@
     if (kit.length === 0 && bodyTab === 'equipment') bodyTab = 'ingredients';
   });
 
-  // The Equipment tab's display order, with an accessory folded under the appliance
+  // The Equipment tab's display order, with an accessory folded into the appliance
   // it came in the box with (issue #1140). The rule is pure and lives in `domain` —
   // the page only renders what it returns, and never decides on its own what belongs
-  // to what. Total lines always equal `kit.length`, which is why the tab's count can
-  // stay `kit.length` however the rows are arranged.
+  // to what.
   const kitGroups = $derived(groupKitByEquipment(kit, $equipment?.items ?? []));
+
+  // The accessories of one appliance, as the tail of "with the …". `Intl.ListFormat`
+  // rather than `join(', ')`: three accessories read "a, b and c", and the Oxford-less
+  // en-GB conjunction is exactly what a cook would say out loud, which is the register
+  // the labels themselves are written in.
+  //
+  // Page-local, and staying that way until a second surface needs it. Cook mode shows
+  // kit per step through `kitByStep` — a flat list with no accessory folding at all —
+  // so there is no second caller to share this with today.
+  const accessoryList = new Intl.ListFormat('en-GB', { style: 'long', type: 'conjunction' });
+  function accessoryPhrase(accessories: readonly { label: string }[]): string {
+    return accessoryList.format(accessories.map((a) => a.label));
+  }
 
   // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
   // a nonce, the trigger re-infers, and the new list arrives on the subscription —
@@ -2254,13 +2270,109 @@
              `recipe-view-step` countable from a spec. -->
         {#if showBodyTabs}
           <Tabs bind:value={bodyTab}>
+            <!-- Equipment, ingredients, method — the order you actually do them in:
+                 get the kit out, weigh the things, cook. The strip is not the
+                 landing order, though: `bodyTab` opens on Ingredients, because
+                 what you check first on a recipe you have not committed to is
+                 whether you have the ingredients. Panel order below follows this
+                 one, which is what keeps arrow-key focus and reading order
+                 agreeing with what is on screen. -->
             <TabsList ariaLabel="Recipe">
+              {#if kit.length > 0}
+                <TabsTrigger value="equipment" count={kitGroups.length}>Equipment</TabsTrigger>
+              {/if}
               <TabsTrigger value="ingredients" count={ingredientCount}>Ingredients</TabsTrigger>
               <TabsTrigger value="method" count={recipe.steps.length}>Method</TabsTrigger>
-              {#if kit.length > 0}
-                <TabsTrigger value="equipment" count={kit.length}>Equipment</TabsTrigger>
-              {/if}
             </TabsList>
+
+            <!-- Equipment (issue #1140). Was a "You'll need" card of `PictogramPill`
+                 chips above the strip; it is a third alternative view of the same
+                 region now, which is what ui-spec-v10 §8.28 is for. Read the same
+                 way the ingredients beside it are read: one thing per line, the
+                 picture in a fixed left gutter, a hairline between rows, so the
+                 names start at one left edge and the column is something you run
+                 your eye down rather than a heap of chips.
+
+                 THE GUTTER IS RESERVED, THE TILE IS NOT DRAWN ON A MISS. The
+                 ingredients list draws `CanonIcon` for every row, matched or not,
+                 because its bare tile is what holds the text column straight. Kit
+                 cannot borrow that: #882's contract is that a label the drawn
+                 vocabulary does not know renders its WORDS with no picture — never
+                 the bare placeholder, which reads as a broken image, and never
+                 another tool's drawing. A fixed-width empty gutter buys the straight
+                 column without the tile, so the two rules do not have to be traded
+                 off against each other.
+
+                 The picture comes from `$kitIcons` — equipment vocabulary first,
+                 then kitchen tools; that file's header explains at length why the
+                 order is load-bearing (#954) — so turning the icon kill-switch off
+                 costs the pictures and nothing else.
+
+                 AN ACCESSORY IS NOT A ROW. It is said on the appliance's own row,
+                 as a second line under the name: "Cosori 5L Rice Cooker / with the
+                 steam basket and rice spoon". `groupKitByEquipment` still decides
+                 what belongs to what — a pure query, so the page never guesses, and
+                 it never nests an accessory whose appliance this recipe did not ask
+                 for — but what it returns is now rendered as ONE line per group.
+
+                 It used to be its own `<li>`, indented `pl-12` and muted, drawing
+                 through the same `$kitIcons` lookup as the head row. That lookup is
+                 what killed the design: since #1182 a prefixed accessory resolves to
+                 its OWNING item, so "hand blender attachment" drew the Ninja's
+                 picture at 40px directly beneath the Ninja's picture at 40px, with a
+                 full-width hairline between them. The loudest signal on the row said
+                 "another one of these" while the indent whispered "part of that" —
+                 and the indent lost. Folding it into the appliance removes the
+                 second tile, the second hairline and the ambiguity together: a thing
+                 that came in the box is not a thing you go and fetch.
+
+                 It is also what the accessibility tree wanted. The indented row
+                 needed an `aria-label` — "Rice Spoon, part of Cosori 5L Rice Cooker"
+                 — precisely because `pl-12` and `text-muted-foreground` are pixels,
+                 not structure, and a screen reader walking a flat `<ul>` was handed
+                 siblings. The relationship is now ordinary visible text inside the
+                 appliance's own `<li>`, so it is announced with the appliance
+                 without a parallel accessible name to keep in step with what is on
+                 screen. `RecipeViewPage.kit.test.ts` reads it as text.
+
+                 The tab's count follows the LINES, `kitGroups.length`, exactly as
+                 Ingredients counts the lines you will read rather than the groups
+                 they sit in. It was `kit.length` while every entry was its own row
+                 and the two were the same number; they no longer are. -->
+            {#if kit.length > 0}
+              <TabsContent value="equipment">
+                <Card>
+                  <CardContent class="p-4">
+                    <ul class="flex flex-col" data-testid="recipe-kit-list">
+                      {#each kitGroups as group (group.entry.label)}
+                        <li
+                          class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
+                          data-testid="recipe-kit-row"
+                        >
+                          <div class="flex h-10 w-10 shrink-0 items-center justify-center">
+                            {#if $kitIcons.kitIconFor(group.entry.label)}
+                              <CanonIcon
+                                thumbnail={$kitIcons.kitIconFor(group.entry.label)}
+                                version={$kitIcons.kitIconVersionFor(group.entry.label)}
+                                name={group.entry.label}
+                                size={40}
+                              />
+                            {/if}
+                          </div>
+                          <span class="min-w-0 flex-1"
+                            >{group.entry.label}{#if group.accessories.length > 0}<span
+                                class="block text-xs text-muted-foreground"
+                                data-testid="recipe-kit-accessories"
+                                >with the {accessoryPhrase(group.accessories)}</span
+                              >{/if}</span
+                          >
+                        </li>
+                      {/each}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            {/if}
 
             <TabsContent value="ingredients">
               <Card>
@@ -2624,138 +2736,6 @@
                 </CardContent>
               </Card>
             </TabsContent>
-
-            <!-- Equipment (issue #1140). Was a "You'll need" card of `PictogramPill`
-                 chips above the strip; it is a third alternative view of the same
-                 region now, which is what ui-spec-v10 §8.28 is for. Read the same
-                 way the ingredients beside it are read: one thing per line, the
-                 picture in a fixed left gutter, a hairline between rows, so the
-                 names start at one left edge and the column is something you run
-                 your eye down rather than a heap of chips.
-
-                 THE GUTTER IS RESERVED, THE TILE IS NOT DRAWN ON A MISS. The
-                 ingredients list draws `CanonIcon` for every row, matched or not,
-                 because its bare tile is what holds the text column straight. Kit
-                 cannot borrow that: #882's contract is that a label the drawn
-                 vocabulary does not know renders its WORDS with no picture — never
-                 the bare placeholder, which reads as a broken image, and never
-                 another tool's drawing. A fixed-width empty gutter buys the straight
-                 column without the tile, so the two rules do not have to be traded
-                 off against each other.
-
-                 The picture comes from `$kitIcons` — equipment vocabulary first,
-                 then kitchen tools; that file's header explains at length why the
-                 order is load-bearing (#954) — so turning the icon kill-switch off
-                 costs the pictures and nothing else.
-
-                 ACCESSORIES SIT UNDER THEIR APPLIANCE, indented. The rice spoon
-                 came in the rice cooker's box, and a flat list saying otherwise is
-                 the defect. `groupKitByEquipment` decides what belongs to what — a
-                 pure query, so the page never guesses — and it never nests an
-                 accessory whose appliance this recipe did not ask for.
-
-                 AN ACCESSORY ROW STILL ASKS `$kitIcons`, THE SAME LOOKUP THE HEAD
-                 ROW USES. `equipmentIcons` is keyed by item id, so it is true that
-                 there is no OWNED-ITEM picture for an accessory — but `kitIconFor`
-                 is not that lookup alone; per that file's header it asks the
-                 equipment vocabulary FIRST, then falls through to the kitchen-tool
-                 vocabulary. MOST accessory rows are a label
-                 `resolveEquipmentItem` refused — every bare one, which is how the
-                 library names them today — and for those the tool-vocabulary half
-                 is precisely the half that still has something to draw (a rice
-                 spoon draws the generic rice-paddle pictogram; a mixing bowl
-                 accessory draws the generic bowl). Since #1182 that is no longer
-                 ALL of them: a prefixed accessory ("Magimix Cocotte Slow Cook
-                 Pot") does resolve, to its owning item, so its nested row draws
-                 the SAME equipment picture as the appliance heading it. That
-                 reads correctly — indented and muted under the machine it is part
-                 of — and it is exactly what must not happen on two TOP-LEVEL rows,
-                 which is the defect #1182 fixed in the query. Calling the same
-                 lookup here means a genuine miss on BOTH vocabularies still
-                 renders no tile — never a placeholder (#882) — but a
-                 tool-vocabulary hit is not suppressed just because the row is
-                 nested (#1179 review finding B1). `RecipeViewPage.kit.test.ts`
-                 pins a real hit alongside the real miss so this claim stays true.
-
-                 Both kinds of row are `<li>`s in ONE `<ul>`, so the hairline
-                 rhythm is unbroken and `last:border-b-0` still means the last line
-                 on screen. That flat structure is a LAYOUT choice, and it is why
-                 the nesting has to be said in words as well (#1182): a screen
-                 reader walking this list is handed siblings, and `pl-12` plus
-                 `text-muted-foreground` are pixels, not structure. The accessory
-                 row's `aria-label` is what carries the relationship — "Rice
-                 Spoon, part of Cosori 5L Rice Cooker" — so the row is announced
-                 as belonging to the appliance above it rather than as an
-                 unrelated peer.
-
-                 `aria-label` rather than a nested `<ul>` or visually-hidden text,
-                 for two reasons: a nested list is the thing that would break
-                 `last:border-b-0` (the last accessory would be last in ITS list,
-                 not on screen), and hidden text inside the row would land in
-                 `textContent`, where several of this page's tests read the row's
-                 words from. It is an ADDITION to the accessible name, never a
-                 replacement: the visible label is its first words, so nothing a
-                 sighted user reads goes missing from what is announced.
-                 `RecipeViewPage.kit.test.ts` asserts it through
-                 `getByRole('listitem', { name })`, never through the class.
-
-                 One template literal, not `aria-label="{a}, part of {b}"`. The
-                 interpolated-attribute form compiles to a concatenation with a
-                 `?? ''` per hole, and both labels are non-optional `string`s in
-                 `RecipeKitEntrySchema` — so those two branches are unreachable,
-                 uncoverable, and cost the routes area exactly the two uncovered
-                 branches that put it over its ratchet ceiling. -->
-            {#if kit.length > 0}
-              <TabsContent value="equipment">
-                <Card>
-                  <CardContent class="p-4">
-                    <ul class="flex flex-col" data-testid="recipe-kit-list">
-                      {#each kitGroups as group (group.entry.label)}
-                        <li
-                          class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
-                          data-testid="recipe-kit-row"
-                        >
-                          <div class="flex h-10 w-10 shrink-0 items-center justify-center">
-                            {#if $kitIcons.kitIconFor(group.entry.label)}
-                              <CanonIcon
-                                thumbnail={$kitIcons.kitIconFor(group.entry.label)}
-                                version={$kitIcons.kitIconVersionFor(group.entry.label)}
-                                name={group.entry.label}
-                                size={40}
-                              />
-                            {/if}
-                          </div>
-                          <span class="min-w-0 flex-1">{group.entry.label}</span>
-                        </li>
-                        {#each group.accessories as accessory (accessory.label)}
-                          <!-- `pl-12` is the gutter (40px) plus the row gap (8px), so
-                               an accessory's OWN gutter+text starts one step in from
-                               the head row's, keeping the nesting visible even though
-                               this row draws through the same `$kitIcons` lookup. -->
-                          <li
-                            class="flex items-center gap-2 border-b border-border py-1.5 pl-12 text-sm text-muted-foreground last:border-b-0"
-                            data-testid="recipe-kit-accessory-row"
-                            aria-label={`${accessory.label}, part of ${group.entry.label}`}
-                          >
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center">
-                              {#if $kitIcons.kitIconFor(accessory.label)}
-                                <CanonIcon
-                                  thumbnail={$kitIcons.kitIconFor(accessory.label)}
-                                  version={$kitIcons.kitIconVersionFor(accessory.label)}
-                                  name={accessory.label}
-                                  size={40}
-                                />
-                              {/if}
-                            </div>
-                            <span class="min-w-0 flex-1">{accessory.label}</span>
-                          </li>
-                        {/each}
-                      {/each}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            {/if}
           </Tabs>
         {/if}
 

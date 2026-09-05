@@ -99,6 +99,18 @@ the stamp is present. The mechanism is in `scripts/lib/recipeKitRequest.mjs`; th
 here is only that **omitting `--redo` reports "0 to ask" and remediates nothing**, which
 is exactly what a first attempt at this did.
 
+## Reasons to redo, so far
+
+Two, and the procedure below is identical for both — only the deployed change differs.
+
+1. **#954, generalised labels.** The flow named "food processor" where the household owns
+   a Magimix, so every label inferred before it needs asking again.
+2. **Capitals.** The flow was told "Lowercase, singular" while the manifest framing told
+   it to copy an owned item's name capitalisation and all, so a recipe's kit column mixed
+   "sharp knife" with "Hand Blender Attachment". Both prompts now ask for ordinary English
+   capitals — a proper name keeps its own, everything else is lower case — which is the
+   rule the ingredients tab beside it already reads by.
+
 ## The two ways a run silently does nothing
 
 1. **Functions not deployed** (above). Worse than a no-op: the old flow answers and

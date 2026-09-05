@@ -216,6 +216,24 @@ describe('identifyRecipeKit flow — the manifest (issue #954)', () => {
     expect(system).not.toContain('## Your kitchen');
   });
 
+  it('asks for ordinary English capitals, so the tab reads like the ingredients beside it', async () => {
+    // The equipment tab prints the stored label verbatim, exactly as the ingredients
+    // tab prints `parsed.item` verbatim — so a column mixing "sharp knife" with
+    // "Hand Blender Attachment" is a defect in what was WRITTEN, not in what is
+    // rendered. Everyday kit lower case, a proper name keeps its capitals: the same
+    // rule that lets one ingredient line hold "Dijon mustard" and "fine sea salt".
+    mockGenerate.mockResolvedValue({ output: { kit: [] } });
+
+    await (identifyRecipeKitFlow as Function)(input);
+
+    const system = mockGenerate.mock.calls[0]?.[0]?.system as string;
+    expect(system).toContain('CAPITALS');
+    expect(system).toContain('"hand blender attachment", not "Hand Blender Attachment"');
+    // And the old flat instruction is gone: "Lowercase" full stop is what would
+    // strip the capitals off "Magimix Cook Expert".
+    expect(system).not.toContain('Lowercase, singular');
+  });
+
   it('no longer forbids brand names', async () => {
     // The #954 defect in one line: the prompt used to end the naming rules with
     // "no brand names", which is what discarded "Magimix Cook Expert" from a step
