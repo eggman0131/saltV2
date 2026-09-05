@@ -2,7 +2,7 @@ import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, resolveProductForm } from '@salt/domain';
-import type { MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
+import type { CanonLocalStorePort, MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
 import {
   MatchOrCreateCanonInputSchema,
   MatchOrCreateCanonOutputSchema,
@@ -76,6 +76,11 @@ const PRODUCT_FORMS_READ_FAILED = 'productForms read failed — derived-name syn
  */
 async function buildDefaultDerivedNamePredicate(
   db: ReturnType<typeof getFirestore>,
+  // The SAME store `buildMatchOrCreatePorts` is about to hand `matchOrCreate` as
+  // `ports.store` — see `withMemoizedList` below (#1196). Passed in rather than
+  // built here so this function's own canon read and `matchOrCreateBatch`'s
+  // classification read share one Firestore query instead of two.
+  canonStore: CanonLocalStorePort,
 ): Promise<MatchOrCreatePorts['isDerivedName']> {
   const formsResult = await createFirestoreProductFormStore(db).list();
   if (formsResult.kind !== 'ok') {
@@ -87,16 +92,36 @@ async function buildDefaultDerivedNamePredicate(
   const forms = formsResult.value;
   // The canon list `resolveProductForm`'s contested-phrase rule consults (issue
   // #1180). Read only once there is a non-empty forms table to consult it for,
-  // so the no-forms environments that short-circuit above pay nothing.
+  // so the no-forms environments that short-circuit above pay nothing — and even
+  // then it costs nothing extra: `matchOrCreateBatch` reads this same canon list
+  // for its own classification, so this trigger of the memoized read is simply
+  // whichever of the two happens first.
   //
   // Its own degrade is SILENT and deliberately unlike the forms read's: a failed
   // canon read leaves the list empty, the contested rule inert, and the
   // predicate exactly as accurate as it was before #1180 — no guarantee is lost,
   // so there is no window to announce (Rule 10). A failed FORMS read is
   // different in kind, which is why it keeps its logger + PostHog pair above.
-  const canonResult = await createFirestoreCanonStore(db).list();
+  const canonResult = await canonStore.list();
   const canon = canonResult.kind === 'ok' ? canonResult.value : [];
   return (name: string) => resolveProductForm(name, forms, canon) !== null;
+}
+
+/**
+ * Memoizes `.list()` on a request-scoped `CanonLocalStorePort` (issue #1196).
+ * Without this, `buildDefaultDerivedNamePredicate`'s contested-phrase check and
+ * `matchOrCreateBatch`'s own classification read each ran a full canon
+ * collection read on every single-item add — two reads of the same,
+ * unchanging-within-the-request table. Every other method passes through
+ * untouched: nothing here caches a write, and the memo is discarded with the
+ * wrapper — it is never shared across two different requests.
+ */
+function withMemoizedList(store: CanonLocalStorePort): CanonLocalStorePort {
+  let cached: ReturnType<CanonLocalStorePort['list']> | null = null;
+  return {
+    ...store,
+    list: () => (cached ??= store.list()),
+  };
 }
 
 export async function buildMatchOrCreatePorts(
@@ -120,9 +145,23 @@ export async function buildMatchOrCreatePorts(
   extras?: Pick<MatchOrCreatePorts, 'isDerivedName'>,
 ): Promise<MatchOrCreatePorts> {
   const db = getFirestore();
+  let store: CanonLocalStorePort = createFirestoreCanonStore(db, parentSpan, traceContext);
   // The override wins, and short-circuits the read: a caller that already holds
   // the forms should not pay a second collection read to be overruled.
-  const isDerivedName = extras?.isDerivedName ?? (await buildDefaultDerivedNamePredicate(db));
+  let isDerivedName = extras?.isDerivedName;
+  if (isDerivedName === undefined) {
+    // Only THIS path pays for a second canon read — the predicate's own
+    // contested-phrase check, on top of `matchOrCreateBatch`'s classification
+    // read below (#1196). So only it gets `withMemoizedList`: memoizing
+    // unconditionally would go stale for a caller like the recipe batch, which
+    // calls `matchOrCreateBatch` more than once against the SAME `ports` object
+    // and writes new canon items between those calls — a memoized `.list()`
+    // would hide them from the second call. That caller always supplies its own
+    // `extras.isDerivedName`, so it never reaches this branch.
+    const memoizedStore = withMemoizedList(store);
+    isDerivedName = await buildDefaultDerivedNamePredicate(db, memoizedStore);
+    store = memoizedStore;
+  }
   // Both match-log sinks: firebase-functions/logger + PostHog. Built once here so
   // the fan-out port below reuses them across entries.
   const logSinks = [
@@ -134,7 +173,7 @@ export async function buildMatchOrCreatePorts(
     // load, write-back) nest under canon.matchOrCreateCanon / the recipe batch
     // span instead of re-rooting — mirroring the match-logging adapter below.
     // traceContext rides through to the write-back so the icon trigger nests.
-    store: createFirestoreCanonStore(db, parentSpan, traceContext),
+    store,
     aisleStore: createFirestoreAisleStore(db),
     embedding: createServerEmbeddingAdapter(),
     arbitration: createServerArbitrationAdapter(),

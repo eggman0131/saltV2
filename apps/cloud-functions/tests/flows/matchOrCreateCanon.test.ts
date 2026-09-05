@@ -18,9 +18,15 @@ function getCollection(name: string) {
 // path of a read that fails rather than merely returning nothing.
 const failingReads = new Set<string>();
 
+// How many times each collection's `.get()` (a full collection read) actually
+// ran — issue #1196's regression guard reads this to prove a would-be second
+// canon read was memoized away rather than merely producing the same answer.
+const collectionReadCounts = new Map<string, number>();
+
 function resetFirestore() {
   collections.clear();
   failingReads.clear();
+  collectionReadCounts.clear();
 }
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -43,6 +49,7 @@ vi.mock('firebase-admin/firestore', () => ({
           },
         }),
         async get() {
+          collectionReadCounts.set(name, (collectionReadCounts.get(name) ?? 0) + 1);
           if (failingReads.has(name)) throw new Error(`simulated ${name} read failure`);
           return {
             docs: [...store.values()].map((data, i) => ({
@@ -437,6 +444,48 @@ describe('buildMatchOrCreatePorts', () => {
     });
 
     expect(ports.isDerivedName).toBe(override);
+  });
+
+  // Issue #1196: the predicate's own contested-phrase check and
+  // `matchOrCreateBatch`'s classification read both want the full canon list.
+  // Before this, each ran its own `createFirestoreCanonStore(db).list()`, so a
+  // single-item add paid for the collection twice. This is the case the fix
+  // targets: `buildDefaultDerivedNamePredicate` actually runs (a non-empty,
+  // readable productForms table), so it is the one path that used to double-read.
+  it("shares one canon read between the derived-name predicate and the caller's own list()", async () => {
+    seedGarlicCloveForm();
+    seedCanonItem(makeItem({ id: GARLIC_BULBS, name: 'Garlic Bulbs' }));
+
+    const ports = await buildMatchOrCreatePorts();
+
+    // The predicate's own read has already happened by the time the builder
+    // returns (it's awaited inline), so `canonItems` is read exactly once so far.
+    expect(collectionReadCounts.get('canonItems')).toBe(1);
+
+    // What `matchOrCreateBatch` does next with `ports.store` — a second `.list()`
+    // call against the SAME store instance. Before #1196 this cost a second
+    // Firestore read; now it must be served from the memo.
+    const second = await ports.store.list();
+    expect(second.kind).toBe('ok');
+    expect(collectionReadCounts.get('canonItems')).toBe(1);
+  });
+
+  // The control: when a form minted mid-batch must be visible to a LATER read
+  // (the recipe-canonicalisation flow's own two-call use of `ports.store`),
+  // memoizing would hide it. That caller always supplies `extras.isDerivedName`,
+  // so `buildMatchOrCreatePorts` must not memoize on this path — proven here by
+  // showing two `.list()` calls against the returned store cost two real reads.
+  it('does NOT memoize store.list() on the extras-supplied path (would go stale for a multi-call caller)', async () => {
+    seedCanonItem(makeItem({ id: GARLIC_BULBS, name: 'Garlic Bulbs' }));
+
+    const ports = await buildMatchOrCreatePorts(undefined, undefined, {
+      isDerivedName: () => false,
+    });
+
+    await ports.store.list();
+    await ports.store.list();
+
+    expect(collectionReadCounts.get('canonItems')).toBe(2);
   });
 });
 

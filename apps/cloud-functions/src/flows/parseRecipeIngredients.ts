@@ -6,7 +6,17 @@ import {
 // The reader-facing unit policy, shared with the chef's prose (#934). It governs
 // `displayText` — the bracket the cook reads — and nothing else here; the
 // `quantity`/`unit` conversion rules below are this flow's own.
-import { READER_UNIT_PRINCIPLE } from '@salt/domain/prompts';
+//
+// `SPOON_MEASURE_CAP_TBSP` and `clampSpoonMeasureDisplayText` are the #1196
+// pair: the constant is interpolated into every prompt bullet that states the
+// bound (so it is one number, not five hand-typed literals), and the clamp is
+// the deterministic backstop applied to every `displayText` after generation —
+// see the header comment on `unitPolicy.ts` for why prose alone isn't enough.
+import {
+  READER_UNIT_PRINCIPLE,
+  SPOON_MEASURE_CAP_TBSP,
+  clampSpoonMeasureDisplayText,
+} from '@salt/domain/prompts';
 import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
@@ -57,7 +67,11 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
           item: ingredient.item,
           preparation: ingredient.preparation,
           notes: ingredient.notes,
-          displayText: ingredient.displayText,
+          // Deterministic backstop for the spoon-measure cap (#1196): the prompt
+          // bullet below only asks the model for it, this nulls a bracket the
+          // model returned anyway above the cap so the stored ingredient can't
+          // carry one.
+          displayText: clampSpoonMeasureDisplayText(ingredient.displayText),
         },
         canonId: null,
         matchState: 'pending' as const,
@@ -178,13 +192,13 @@ const SYSTEM_INSTRUCTIONS = [
   `  2 medium)").`,
   `  ${READER_UNIT_PRINCIPLE}`,
   `  • For SPOON measures, keep the exact measure verbatim: "½ tsp", "2 tbsp", "1½ tsp" — but ONLY up`,
-  `    to 3 tbsp. Above that the spoon has stopped being the useful way to read the amount (nobody`,
+  `    to ${SPOON_MEASURE_CAP_TBSP} tbsp. Above that the spoon has stopped being the useful way to read the amount (nobody`,
   `    counts out 5 tbsp at the bench), so convert as always and leave displayText NULL:`,
   `    "6 tbsp olive oil" → null.`,
-  `  • When the line ALREADY reads metric-first with a spoon measure of 3 tbsp or less in`,
+  `  • When the line ALREADY reads metric-first with a spoon measure of ${SPOON_MEASURE_CAP_TBSP} tbsp or less in`,
   `    brackets after it — "3 g salt (½ tsp)", "15 ml oil (1 tbsp)" — that BRACKET IS the displayText:`,
   `    lift it out verbatim ("½ tsp", "1 tbsp") and do NOT treat the line as already-metric below.`,
-  `    Above 3 tbsp the bracket earns no displayText either — apply the cap instead and leave it`,
+  `    Above ${SPOON_MEASURE_CAP_TBSP} tbsp the bracket earns no displayText either — apply the cap instead and leave it`,
   `    NULL, e.g. "90 ml oil (6 tbsp)" → null. This is the only way a chat-authored recipe keeps its`,
   `    spoon measure: the chef writes the bracket, the librarian carries it through into rawText,`,
   `    and this is where it lands.`,
@@ -210,7 +224,7 @@ const SYSTEM_INSTRUCTIONS = [
   `    yield it converts to is an estimate.`,
   `  Set to null when the source is already in g, kg, ml, or l AND carries no bracketed spoon measure`,
   `  of its own, when the source measure is one of the banned ones above, when a spoon measure is`,
-  `  larger than 3 tbsp, or when the line states no amount.`,
+  `  larger than ${SPOON_MEASURE_CAP_TBSP} tbsp, or when the line states no amount.`,
   ``,
   `## Metric conversion`,
   `Liquids (water, milk, oil, vinegar, stock, juice, cream, etc.) → ml:`,

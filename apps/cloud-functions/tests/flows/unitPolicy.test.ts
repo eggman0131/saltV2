@@ -53,7 +53,14 @@ const FIELD_RULES_SRC = 'apps/cloud-functions/src/flows/recipeFieldRules.ts';
 
 describe('the unit policy is declared once and interpolated', () => {
   it('lives in @salt/domain/prompts and nowhere else', () => {
-    expect(read(DECLARATION_SRC)).toContain(READER_UNIT_PRINCIPLE);
+    // Not a full `toContain(READER_UNIT_PRINCIPLE)` any more (#1196): the
+    // constant itself now interpolates `SPOON_MEASURE_CAP_TBSP`, so its
+    // RESOLVED value ("...3 tbsp or less...") is never a verbatim substring of
+    // its own source ("...${SPOON_MEASURE_CAP_TBSP} tbsp or less..."). A
+    // static fragment the interpolation doesn't touch still proves the
+    // sentence is declared here.
+    expect(read(DECLARATION_SRC)).toContain('The metric value always comes first');
+    expect(read(DECLARATION_SRC)).toContain('${SPOON_MEASURE_CAP_TBSP} tbsp or less');
     for (const consumer of [CHEF_SRC, PARSER_SRC]) {
       expect(read(consumer)).not.toContain(READER_UNIT_PRINCIPLE);
       expect(read(consumer)).toContain('${READER_UNIT_PRINCIPLE}');
@@ -111,7 +118,11 @@ describe('the chef flip and the parser rule ship as one', () => {
     expect(parser).toContain('that BRACKET IS the displayText');
     expect(parser).toContain('do NOT treat the line as already-metric below');
     expect(parser).toContain('but ONLY up');
-    expect(parser).toContain('to 3 tbsp');
+    // #1196: the bound is interpolated from the shared constant, not a
+    // hand-typed literal — asserted on the SOURCE text, so a paraphrase that
+    // re-types "3 tbsp" here instead of using the constant fails this.
+    expect(parser).toContain('to ${SPOON_MEASURE_CAP_TBSP} tbsp');
+    expect(parser).not.toContain('to 3 tbsp');
     // ...and the already-metric null rule now says "AND carries no bracketed spoon
     // measure", which is the clause that stops the two rules cancelling out.
     expect(parser).toContain('already in g, kg, ml, or l AND carries no bracketed spoon measure');

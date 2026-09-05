@@ -42,6 +42,20 @@ describe('ONE_OPERATION_PER_STEP_PRINCIPLE', () => {
       'a change of station, a wait, or a distinct process starts a new step',
     );
   });
+
+  it('splits with a plain sentence-case clause, not the old shouted label (#1196)', () => {
+    // Before #934 unified the two registers, the field-list prompt shouted
+    // "SPLIT any instruction...". The migrated principle deliberately uses
+    // sentence case instead, for the prose it now sits inside — pin the exact
+    // casing so a "tidy" back to the old register (or a silent re-shout) is
+    // caught here rather than shipping unasserted. `stepRules.test.ts` pins the
+    // OTHER label this file interpolates into (`ONE COHERENT OPERATION PER
+    // STEP`), which is deliberately still shouted and untouched by this change.
+    expect(ONE_OPERATION_PER_STEP_PRINCIPLE).toContain(
+      'Split any instruction that bundles several operations into consecutive steps.',
+    );
+    expect(ONE_OPERATION_PER_STEP_PRINCIPLE).not.toContain('SPLIT any instruction');
+  });
 });
 
 describe('the canned chef turns', () => {

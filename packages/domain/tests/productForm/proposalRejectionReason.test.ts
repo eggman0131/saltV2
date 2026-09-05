@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { proposalRejectionReason } from '../../src/productForm/index.js';
 import type { ProductFormProposal } from '../../src/schemas/productFormArbitration.js';
+import { STAGING_FORM_ROWS } from './fixtures/stagingSnapshot20260902.js';
 
 function proposal(over: Partial<Extract<ProductFormProposal, { kind: 'form' }>> = {}) {
   return {
@@ -199,28 +200,18 @@ describe('proposalRejectionReason', () => {
       expect(proposalRejectionReason(proposal({ parentName: 'Lime', label: '2' }))).toBeNull();
     });
 
-    // The 16 labels in the live `productForms` table, read from staging
-    // `s2-stage-ccb22` on 2026-09-02 (refreshed wholesale from production on
-    // 2026-08-30), each against its real parent's canon name. Fifteen clear the
-    // rule. This is what makes "the rule would not have blocked the table we
-    // actually have" mechanical rather than asserted (Hard rule 12).
-    it.each([
-      ['Fermented beetroot brine', 'Beetroot'],
-      ['Beef Stock', 'Beef Stock Cube'],
-      ['chicken breast', 'Whole Chicken'],
-      ['Fresh lemon juice', 'Lemon'],
-      ['garlic clove', 'Garlic Bulbs'],
-      ['Cheddar cheese slice', 'Mature Cheddar'],
-      ['Chicken carcass', 'Whole Chicken'],
-      ['Egg yolk', 'Eggs'],
-      ['Chicken Drumstick', 'Whole Chicken'],
-      ['Olive oil from jar', 'Delicatessen Olives'],
-      ['Lime juice', 'Lime'],
-      ['Lemon zest', 'Lemon'],
-      ['Lime zest', 'Lime'],
-      ['Chicken thigh', 'Whole Chicken'],
-      ['Chicken Leg', 'Whole Chicken'],
-    ])('live label %j on parent %j is not rejected', (label, parentName) => {
+    // The 16 rows in the live `productForms` table live in
+    // `fixtures/stagingSnapshot20260902.ts`, shared with
+    // `resolveProductForm.test.ts` (issue #1196) — a staging reseed now updates
+    // one file instead of two. Fifteen of the sixteen (all but "Active whey",
+    // asserted separately below) clear the rule against their real parent's
+    // canon name. This is what makes "the rule would not have blocked the
+    // table we actually have" mechanical rather than asserted (Hard rule 12).
+    it.each(
+      STAGING_FORM_ROWS.filter((row) => row.label !== 'Active whey').map(
+        (row) => [row.label, row.parentName] as const,
+      ),
+    )('live label %j on parent %j is not rejected', (label, parentName) => {
       expect(proposalRejectionReason(proposal({ label, parentName }))).toBeNull();
     });
 

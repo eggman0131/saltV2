@@ -298,6 +298,45 @@ describe('parseRecipeIngredients — displayText threading', () => {
     expect(result[0].items[1].parsed.displayText).toBe('1 tbsp');
   });
 
+  it('nulls a spoon-measure displayText the model returned above the cap (#1196)', async () => {
+    // The prompt bullet only ASKS the model to leave displayText null above the
+    // cap; this is the deterministic backstop for when it doesn't. A model that
+    // ignores the bullet and returns "6 tbsp" anyway must not reach storage.
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: '6 tbsp olive oil',
+              quantity: { type: 'single', value: 90 },
+              unit: 'ml',
+              item: 'olive oil',
+              displayText: '6 tbsp',
+            }),
+            simpleIngredient({
+              rawText: '3 tbsp olive oil',
+              quantity: { type: 'single', value: 45 },
+              unit: 'ml',
+              item: 'olive oil',
+              displayText: '3 tbsp',
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({
+      rawText: '6 tbsp olive oil\n3 tbsp olive oil',
+    });
+
+    // Over the cap: clamped to null even though the model returned a bracket.
+    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'single', value: 90 });
+    expect(result[0].items[0].parsed.displayText).toBeNull();
+    // At the cap ("3 tbsp or less"): untouched.
+    expect(result[0].items[1].parsed.displayText).toBe('3 tbsp');
+  });
+
   it('threads metric weight, "g" unit, and a count displayText for count/item-based ingredients', async () => {
     // Count items are now converted to estimated metric weight by the model; the original
     // count form rides along in displayText. The flow threads whatever the model returns.
