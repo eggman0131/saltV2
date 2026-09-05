@@ -175,15 +175,22 @@ const FIREBASE_SYNC_SDK_ENTRY_POINTS = [
   },
 ];
 
-const STAGE_INTERNAL_NAMES = ['tokenMatch', 'stringSimilarity', 'synonymMatch', 'embedMatch'];
+const STAGE_INTERNAL_NAMES = [
+  'exactNameMatch',
+  'tokenMatch',
+  'stringSimilarity',
+  'synonymMatch',
+  'embedMatch',
+];
 const STAGE_INTERNAL_SUBPATHS = [
+  '@salt/domain/**/queries/exactNameMatch*',
   '@salt/domain/**/queries/tokenMatch*',
   '@salt/domain/**/queries/stringSimilarity*',
   '@salt/domain/**/queries/synonymMatch*',
   '@salt/domain/**/queries/embedMatch*',
 ];
 const STAGE_INTERNAL_MESSAGE =
-  'Stage 1–5 internals (tokenMatch, stringSimilarity, synonymMatch, embedMatch) must not be called directly from apps. Use findClosestMatch (which composes stages 1–4) or call the matchOrCreateCanon CF.';
+  'Stage 1–5 internals (exactNameMatch, tokenMatch, stringSimilarity, synonymMatch, embedMatch) must not be called directly from apps. Use findClosestMatch (which composes stages 1–4) or call the matchOrCreateCanon CF.';
 
 function forbidGroup(pkgs, message) {
   return pkgs.map((g) => ({ group: [g], message }));

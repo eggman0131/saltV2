@@ -1,8 +1,8 @@
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
-import type { CandidateLog } from '../entities/MatchLogEntry.js';
 import { MATCH_THRESHOLDS } from './matchThresholds.js';
 import { normaliseName } from './normaliseName.js';
+import { exactNameMatch } from './exactNameMatch.js';
 import { tokenMatch } from './tokenMatch.js';
 import { synonymMatch } from './synonymMatch.js';
 import { stringSimilarity } from './stringSimilarity.js';
@@ -30,15 +30,8 @@ export function findClosestMatch(
   // Stage 1: exact normalised name match
   {
     const t0 = Date.now();
-    const exactMatches: CandidateLog[] = [];
-    const winners: CanonItem[] = [];
-    for (const item of items) {
-      if (normaliseName(item.name) === target) {
-        exactMatches.push({ itemId: item.id, itemName: item.name, score: 1.0 });
-        winners.push(item);
-      }
-    }
-    const top = exactMatches.slice(0, 5);
+    const winners = exactNameMatch(items, target);
+    const top = winners.slice(0, 5).map((i) => ({ itemId: i.id, itemName: i.name, score: 1.0 }));
     const passed = winners.length > 0;
     // gap between best (1.0) and second (also 1.0 if tie, else 0)
     const gap = winners.length === 1 ? 1.0 : winners.length > 1 ? 0.0 : null;
